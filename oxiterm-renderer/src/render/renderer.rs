@@ -7,7 +7,19 @@ pub struct Renderer;
 
 impl Renderer {
     pub fn render_node(doc: &THTMLDocument, layout: &LayoutResult, buffer: &mut CellBuffer) {
-        buffer.clear();
+        // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
+        for y in 0..buffer.height {
+            for x in 0..buffer.width {
+                buffer.set(x, y, Cell {
+                    ch: ' ',
+                    fg: oxiterm_proto::style::AnsiColor::Color256(15),
+                    bg: oxiterm_proto::style::AnsiColor::Color256(0),
+                    ..Default::default()
+                });
+            }
+        }
+        
+        // 2. Rekurencyjne rysowanie drzewa DOM
         Self::render_recursive(doc, layout, buffer, doc.root, 0, 0);
     }
 

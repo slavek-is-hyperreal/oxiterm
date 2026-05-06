@@ -62,7 +62,7 @@ impl WeatherApp {
 
     pub fn build_document(&self, cols: u16, rows: u16) -> (THTMLDocument, Option<oxiterm_proto::dom::NodeId>) {
         let mut doc = THTMLDocument::new();
-        let mut input_id_out = None;
+        let mut input_id_out;
         
         let mut main_box = Node::new(NodeTag::Box);
         main_box.style.width = Some(cols);
@@ -84,17 +84,16 @@ impl WeatherApp {
         header.style.padding.right = 2;
         let header_id = doc.arena.alloc(header);
         doc.append_child(main_id, header_id).unwrap();
-        
-        // ... (title and view_text nodes unchanged) ...
 
         let mut title = Node::new(NodeTag::Text);
         title.text_content = Some("🌤  OxiTerm Weather — Kraków".to_string());
         title.style.fg = AnsiColor::Color256(226); // Yellow
         title.style.height = Some(1);
+        title.style.width = Some(30);
         let title_id = doc.arena.alloc(title);
         doc.append_child(header_id, title_id).unwrap();
 
-        // View Indicator
+        // View Indicator - Fixed width to prevent collapse
         let mut view_text = Node::new(NodeTag::Text);
         view_text.text_content = Some(match self.view {
             AppView::Current => "[ AKTUALNA ]".to_string(),
@@ -103,10 +102,11 @@ impl WeatherApp {
         });
         view_text.style.fg = AnsiColor::Color256(46); // Green
         view_text.style.height = Some(1);
+        view_text.style.width = Some(15);
         let view_id = doc.arena.alloc(view_text);
         doc.append_child(header_id, view_id).unwrap();
 
-        // Content Area (H = reszta)
+        // Content Area
         let mut content_box = Node::new(NodeTag::Box);
         content_box.style.width = Some(cols);
         content_box.style.height = Some(rows.saturating_sub(6)); 
@@ -118,14 +118,24 @@ impl WeatherApp {
 
         if self.loading {
             let mut loading = Node::new(NodeTag::Text);
-            loading.text_content = Some("Ładowanie danych pogodowych...".to_string());
-            loading.style.fg = AnsiColor::Color256(245);
+            loading.text_content = Some("⌛ Inicjalizacja silnika i pobieranie danych...".to_string());
+            loading.style.fg = AnsiColor::Color256(250);
+            loading.style.height = Some(1);
             let loading_id = doc.arena.alloc(loading);
             doc.append_child(content_id, loading_id).unwrap();
+            
+            let mut sub = Node::new(NodeTag::Text);
+            sub.text_content = Some("Proszę czekać, łączymy się z Open-Meteo API...".to_string());
+            sub.style.fg = AnsiColor::Color256(242);
+            sub.style.height = Some(1);
+            sub.style.margin.top = 1;
+            let sub_id = doc.arena.alloc(sub);
+            doc.append_child(content_id, sub_id).unwrap();
         } else if let Some(err) = &self.error {
             let mut error = Node::new(NodeTag::Text);
-            error.text_content = Some(format!("BŁĄD: {}", err));
-            error.style.fg = AnsiColor::Color256(196); // Red
+            error.text_content = Some(format!("❌ BŁĄD: {}", err));
+            error.style.fg = AnsiColor::Color256(196);
+            error.style.height = Some(1);
             let error_id = doc.arena.alloc(error);
             doc.append_child(content_id, error_id).unwrap();
         } else if let Some(data) = &self.data {
@@ -153,14 +163,14 @@ impl WeatherApp {
         help.text_content = Some("[1-3] Widok  [Tab] Dalej  [R] Odśwież  [Q] Wyjście".to_string());
         help.style.fg = AnsiColor::Color256(250);
         help.style.height = Some(1);
+        help.style.width = Some(50);
         let help_id = doc.arena.alloc(help);
         doc.append_child(footer_id, help_id).unwrap();
 
-        // Dodaj pole input dla Predictive Echo
         let mut input_node = Node::new(NodeTag::Input);
         input_node.style.width = Some(10);
         input_node.style.height = Some(1);
-        input_node.style.fg = AnsiColor::Color256(46); // Green echo
+        input_node.style.fg = AnsiColor::Color256(46);
         let input_id = doc.arena.alloc(input_node);
         doc.append_child(footer_id, input_id).unwrap();
         input_id_out = Some(input_id);
@@ -177,7 +187,7 @@ impl WeatherApp {
         let mut main_line = Node::new(NodeTag::Text);
         main_line.text_content = Some(format!("{}  {}", weather_emoji(data.current.weathercode, data.current.is_day), weather_description(data.current.weathercode)));
         main_line.style.fg = AnsiColor::Color256(15);
-        main_line.style.height = Some(2);
+        main_line.style.height = Some(1);
         let ml_id = doc.arena.alloc(main_line);
         doc.append_child(row_id, ml_id).unwrap();
 
@@ -185,12 +195,14 @@ impl WeatherApp {
         temp_line.text_content = Some(format!("Temperatura: {:.1}°C", data.current.temp_c));
         temp_line.style.fg = AnsiColor::Color256(208);
         temp_line.style.height = Some(1);
+        temp_line.style.margin.top = 1;
         let tl_id = doc.arena.alloc(temp_line);
         doc.append_child(row_id, tl_id).unwrap();
 
         let mut feel_line = Node::new(NodeTag::Text);
         feel_line.text_content = Some(format!("Odczuwalna:  {:.1}°C", data.current.apparent_temp));
         feel_line.style.fg = AnsiColor::Color256(245);
+        feel_line.style.height = Some(1);
         let fl_id = doc.arena.alloc(feel_line);
         doc.append_child(row_id, fl_id).unwrap();
     }
@@ -211,6 +223,7 @@ impl WeatherApp {
                 weather_description(day.weathercode)
             ));
             line.style.height = Some(1);
+            line.style.margin.bottom = 1; // Odstęp między dniami
             let line_id = doc.arena.alloc(line);
             doc.append_child(list_id, line_id).unwrap();
         }
@@ -234,6 +247,7 @@ impl WeatherApp {
             line.text_content = Some(txt);
             line.style.fg = AnsiColor::Color256(color);
             line.style.height = Some(1);
+            line.style.margin.bottom = 1;
             let line_id = doc.arena.alloc(line);
             doc.append_child(row_id, line_id).unwrap();
         }

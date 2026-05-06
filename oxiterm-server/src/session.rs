@@ -195,85 +195,66 @@ impl EventLoop {
     }
 
     pub fn run(&mut self) {
-        info!("Starting EventLoop for session {}", self.session.id);
+        // Initial clear screen and scrollback
+        let mut initial_clear = Vec::new();
+        initial_clear.extend_from_slice(b"\x1b[2J\x1b[3J\x1b[H");
+        let _ = self.output_tx.send(initial_clear);
         
-        // BUG-C03: Removed sleep(200ms). The SSH handshake handles readiness.
+        info!("EventLoop started for session {}", self.session.id);
 
-        // Initial render before blocking on input
-        if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
-            Renderer::render_node(&self.doc, &layout, &mut self.buffer.back);
-            let mut out = Vec::new();
-            // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
-            out.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
-            if SyncedEmitter::emit_frame(&mut out, &self.buffer.front, &self.buffer.back).is_ok() {
-                if !out.is_empty() {
-                    let _ = self.output_tx.send(out);
-                    self.buffer.swap();
-                }
-            }
-        }
+        let mut first_frame = true;
 
-        let rx_lock = self.session.event_rx.lock();
-        
-        while let Ok(event) = rx_lock.recv() {
-            let mut needs_render = false;
-            match event {
-                InputEvent::Resize { cols, rows } => {
-                    info!("Resizing EventLoop to {}x{}", cols, rows);
-                    self.buffer = DoubleBuffer::new(cols, rows);
-                    let (doc, input_id) = self.app.build_document(cols, rows);
-                    self.doc = doc;
-                    self.session.predictive_echo.write().active_node = input_id;
-                    
-                    // Wymuś pełne czyszczenie terminala i bufora przewijania
-                    let mut clear = Vec::new();
-                    clear.extend_from_slice(b"\x1b[2J\x1b[3J\x1b[H"); 
-                    let _ = self.output_tx.send(clear);
-                    
-                    needs_render = true;
-                }
-                InputEvent::KeyPress(key) => {
-                    if key.codepoint == 'q' || key.codepoint == 'Q' {
-                        info!("Quit requested via keyboard: {}", key.codepoint);
-                        break;
+        loop {
+            let mut needs_render = first_frame;
+            first_frame = false;
+
+            {
+                let rx_lock = self.session.event_rx.lock();
+                while let Ok(event) = rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
+                    match event {
+                        InputEvent::Resize { cols, rows } => {
+                            info!("Resizing EventLoop to {}x{}", cols, rows);
+                            self.buffer = DoubleBuffer::new(cols, rows);
+                            let (doc, input_id) = self.app.build_document(cols, rows);
+                            self.doc = doc;
+                            self.session.predictive_echo.write().active_node = input_id;
+                            
+                            let mut clear = Vec::new();
+                            clear.extend_from_slice(b"\x1b[2J\x1b[3J\x1b[H"); 
+                            let _ = self.output_tx.send(clear);
+                            needs_render = true;
+                        }
+                        InputEvent::KeyPress(key) => {
+                            if key.codepoint == 'q' || key.codepoint == 'Q' {
+                                info!("Quit requested via keyboard: {}", key.codepoint);
+                                return;
+                            }
+
+                            if self.app.handle_key(key.codepoint) {
+                                let dims = *self.session.dims.read();
+                                let (doc, input_id) = self.app.build_document(dims.cols, dims.rows);
+                                self.doc = doc;
+                                self.session.predictive_echo.write().active_node = input_id;
+                                needs_render = true;
+                            }
+
+                            let mut echo = self.session.predictive_echo.write();
+                            echo.buffer.push(key.codepoint);
+                            needs_render = true;
+                        }
+                        InputEvent::MouseEvent(mouse) => {
+                            self.pending_mouse = Some(mouse);
+                            needs_render = true;
+                        }
+                        InputEvent::CapabilityResponse(raw) => {
+                            info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
+                            self.session.terminal_profile.write().parse_da1_response(&raw);
+                        }
+                        InputEvent::Xoff => { self.output_paused = true; }
+                        InputEvent::Xon => { self.output_paused = false; needs_render = true; }
+                        InputEvent::Refresh => { needs_render = true; }
+                        _ => {}
                     }
-
-                    if self.app.handle_key(key.codepoint) {
-                        let dims = *self.session.dims.read();
-                        let (doc, input_id) = self.app.build_document(dims.cols, dims.rows);
-                        self.doc = doc;
-                        self.session.predictive_echo.write().active_node = input_id;
-                        needs_render = true;
-                    }
-
-                    // Predictive echo for fun
-                    let mut echo = self.session.predictive_echo.write();
-                    echo.buffer.push(key.codepoint);
-                    needs_render = true;
-                }
-                InputEvent::MouseEvent(mouse) => {
-                    // QUAL-01: Store mouse event for processing during render (requires layout)
-                    self.pending_mouse = Some(mouse);
-                    needs_render = true;
-                }
-                InputEvent::CapabilityResponse(raw) => {
-                    info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
-                    self.session.terminal_profile.write().parse_da1_response(&raw);
-                }
-                InputEvent::Xoff => {
-                    warn!("Received XOFF - pausing output");
-                    self.output_paused = true;
-                }
-                InputEvent::Xon => {
-                    info!("Received XON - resuming output");
-                    self.output_paused = false;
-                    needs_render = true; // force render to catch up
-                }
-                InputEvent::Refresh => {
-                    needs_render = true;
-                }
-                InputEvent::Unknown(raw) => {
-                    warn!("Unknown input: {}", String::from_utf8_lossy(&raw));
                 }
             }
 
@@ -285,8 +266,6 @@ impl EventLoop {
             }
 
             if needs_render && !self.output_paused && self.frame_limiter.should_render() {
-                // Non-blocking rate limit — skip render if too soon, no sleep
-
                 if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {
@@ -298,7 +277,6 @@ impl EventLoop {
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();
                     if !echo.buffer.is_empty() {
-                        // BUG-H02: Use active node position if available
                         let (mut cursor_x, mut cursor_y) = (0, 0);
                         if let Some(node_id) = echo.active_node {
                             if let Some(rect) = layout.nodes.get(&node_id) {
