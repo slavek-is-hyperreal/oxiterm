@@ -67,7 +67,7 @@ pub fn send_esu(channel: ChannelId, session: &mut Session) -> Result<()> {
 
 /// S5-26: Send Unicode version OSC (for VTM compliance).
 pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, version: u8) -> Result<()> {
-    let osc = format!("\x1b]52;u;{}\x1b\\", version);
+    let osc = format!("\x1b]52;u;{version}\x1b\\");
     session.data(channel, osc.into_bytes().into());
     Ok(())
 }

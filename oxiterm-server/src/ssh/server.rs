@@ -67,7 +67,27 @@ impl Handler for OxiServer {
     async fn shell_request(&mut self, channel: ChannelId, session: &mut Session) -> Result<(), Self::Error> {
         info!("Shell request on channel: {channel:?}");
         crate::ssh::negotiator::negotiate_capabilities(channel, session)?;
-        // Start SSR engine here (Sprint 4+)
+        
+        let sid = self.channels.lock().get(&channel).copied();
+        if let Some(sid) = sid {
+            if let Some(client_session) = self.registry.sessions.read().get(&sid).cloned() {
+                let handle = session.handle();
+                let (output_tx, mut output_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+                
+                let event_bus = Arc::new(crate::events::EventBus::new());
+                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx);
+                
+                std::thread::spawn(move || {
+                    event_loop.run();
+                });
+                
+                tokio::spawn(async move {
+                    while let Some(data) = output_rx.recv().await {
+                        let _ = handle.data(channel, data.into()).await;
+                    }
+                });
+            }
+        }
         Ok(())
     }
 

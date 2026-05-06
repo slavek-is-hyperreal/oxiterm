@@ -35,7 +35,7 @@ impl RateLimiter {
             window_start: now,
         });
 
-        if now.duration_since(counter.window_start) > Duration::from_mins(1) {
+        if now.duration_since(counter.window_start) > Duration::from_secs(60) {
             counter.count = 1;
             counter.window_start = now;
             RateResult::Allow
@@ -43,7 +43,15 @@ impl RateLimiter {
             RateResult::Deny
         } else {
             counter.count += 1;
-            RateResult::Allow
+            
+            // S5-38: Implement Throttle for sessions approaching the limit (above 80%)
+            let threshold = (self.limit_per_min as f32 * 0.8) as u32;
+            if counter.count > threshold {
+                let delay = Duration::from_millis(100 * (counter.count - threshold) as u64);
+                RateResult::Throttle(delay)
+            } else {
+                RateResult::Allow
+            }
         }
     }
 }

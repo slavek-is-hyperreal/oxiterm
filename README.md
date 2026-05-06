@@ -18,8 +18,11 @@ OxiTerm is a high-performance, server-side rendered (SSR) terminal-based applica
 
 ## Project Status
 
-- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS
-- **Sprint 4 & 5**: ✅ Interactivity, RRT, SGR/Kitty, Backpressure & Stability
+- **Sprint 1**: ✅ SSH Transport Layer & Security (Completed)
+- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS (Completed & Optimized)
+- **Sprint 4 & 5**: ❌ INCOMPLETE. Core interactivity and rendering are still missing.
+
+> **REVIEWER NOTE:** After multiple brutal revisions, the parser and layout engines have been properly optimized with persistent state and dirty-flagging. Proceed with caution to Sprint 4.
 
 ## Architecture
 

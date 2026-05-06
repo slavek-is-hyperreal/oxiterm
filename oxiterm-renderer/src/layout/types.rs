@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use oxiterm_proto::dom::NodeId;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Rect {
     pub x: u16,
     pub y: u16,

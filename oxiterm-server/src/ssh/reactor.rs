@@ -1,6 +1,6 @@
 use std::thread;
 use std::sync::mpsc;
-use oxiterm_proto::input::{InputEvent, decoder::InputDecoder};
+use oxiterm_proto::input::{InputEvent, decoder::InputStateMachine};
 use tracing::{error, debug};
 
 pub struct ReactorThread {
@@ -13,12 +13,12 @@ impl ReactorThread {
     pub fn spawn(rx: mpsc::Receiver<Vec<u8>>, tx: mpsc::Sender<InputEvent>) -> Self {
         let handle = thread::spawn(move || {
             debug!("ReactorThread started");
-            let mut decoder = InputDecoder::new();
+            let mut decoder = InputStateMachine::new();
             
             while let Ok(data) = rx.recv() {
                 Self::detect_flow_control(&data, &tx);
                 if let Some(frame) = Self::sanitize_frame(&data) {
-                    let events = decoder.feed(&frame);
+                    let events = decoder.feed_slice(&frame);
                     for event in events {
                         if let Err(e) = tx.send(event) {
                             error!("Failed to send InputEvent from ReactorThread: {:?}", e);
