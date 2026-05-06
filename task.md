@@ -3,6 +3,48 @@
 > Granularność: 1 funkcja / 1 obiekt = 1 task  
 > Status: `[ ]` todo · `[/]` in progress · `[x]` done
 
+> **Zmiany po audycie (2026-05-06):** poprawiony `S3-20` (flat Vec), dodano `S2-09b` defragmentacja Areny, `S2-02b` sanityzacja `style_raw`, Sprint 0 (infrastruktura) i Sprint 7 (operacyjność).
+
+---
+
+## Sprint 0 — Infrastruktura i Szkielet Projektu
+
+> Cel: Środowisko deweloperskie, CI/CD, konfiguracja runtime — wykonać **przed** Sprint 1.
+
+### 0.1 Workspace Cargo
+- [ ] `S0-01` Plik `Cargo.toml` workspace z crate'ami: `oxiterm-server`, `oxiterm-proto`, `oxiterm-renderer`, `oxiterm-a11y`
+- [ ] `S0-02` Plik `.cargo/config.toml` — target linker, clippy lints (`#![deny(unsafe_op_in_unsafe_fn)]`)
+- [ ] `S0-03` Plik `rust-toolchain.toml` — przypięcie wersji rustc dla reproducibility
+
+### 0.2 Konfiguracja runtime
+- [ ] `S0-04` Struct `OxiTermConfig` — wszystkie parametry serwera (port, bind addr, key path, max sessions, fps limit)
+- [ ] `S0-05` Funkcja `OxiTermConfig::from_file(path: &Path) -> Result<OxiTermConfig>` — ładowanie z TOML
+- [ ] `S0-06` Funkcja `OxiTermConfig::from_env() -> Result<OxiTermConfig>` — override przez zmienne środowiskowe
+- [ ] `S0-07` Funkcja `OxiTermConfig::validate(&self) -> Result<()>` — walidacja spójności config
+
+### 0.3 Logowanie i telemetria
+- [ ] `S0-08` Inicjalizacja `tracing_subscriber` z filtrowaniem po `RUST_LOG`
+- [ ] `S0-09` Struct `SessionMetrics` — `connected_at`, `bytes_sent`, `bytes_recv`, `frame_count`, `drop_count`
+- [ ] `S0-10` Funkcja `emit_prometheus_metrics(metrics: &SessionMetrics, writer: &mut impl Write)` — eksport w formacie Prometheus text
+- [ ] `S0-11` Endpoint `GET /metrics` (HTTP mini-server na osobnym porcie) — scraping przez Prometheus
+
+### 0.4 Rate limiting i ochrona
+- [ ] `S0-12` Struct `RateLimiter` — sliding window counter per IP (`HashMap<IpAddr, WindowCounter>`)
+- [ ] `S0-13` Metoda `RateLimiter::check_and_record(ip: IpAddr) -> RateResult` — sprawdzenie limitu połączeń/min
+- [ ] `S0-14` Enum `RateResult` — `Allow`, `Throttle(Duration)`, `Deny`
+- [ ] `S0-15` Integracja `RateLimiter` w handlerze `channel_open_session` (Sprint 1)
+
+### 0.5 CI/CD
+- [ ] `S0-16` Plik `.github/workflows/ci.yml` — build + clippy + test na każdy PR
+- [ ] `S0-17` Job `cargo audit` — skanowanie CVE w zależnościach
+- [ ] `S0-18` Job cross-compilation `x86_64-unknown-linux-musl` — statyczny binarny dla deploymentu
+- [ ] `S0-19` Job `cargo tarpaulin` — raport pokrycia kodu testami
+
+### 0.6 Graceful restart
+- [ ] `S0-20` Handler sygnału `SIGUSR1` — inicjacja graceful drain (brak nowych połączeń, dokończenie aktywnych)
+- [ ] `S0-21` Handler sygnału `SIGTERM` — forceful shutdown z timeoutem drain 30s
+- [ ] `S0-22` Funkcja `drain_sessions(registry: &SessionRegistry, timeout: Duration)` — oczekiwanie na zamknięcie sesji
+
 ---
 
 ## Sprint 1 — Warstwa Transportowa i Demon SSH
@@ -66,6 +108,7 @@
 - [ ] `S2-07` Metoda `NodeArena::get(id: NodeId) -> Option<&Node>` — dostęp przez id
 - [ ] `S2-08` Metoda `NodeArena::get_mut(id: NodeId) -> Option<&mut Node>` — mutacja przez id
 - [ ] `S2-09` Metoda `NodeArena::remove(id: NodeId)` — usuwanie węzła (lazy-mark)
+- [ ] `S2-09b` Metoda `NodeArena::compact() -> RemapTable` — defragmentacja: przepakowanie aktywnych węzłów, zwrot mapy przesunięć `NodeId -> NodeId` (**wymagane gdy wypełnienie < 70%**)
 
 ### 2.3 Drzewo dokumentu
 - [ ] `S2-10` Struct `THTMLDocument` — `arena: NodeArena`, `root: NodeId`, `dirty_nodes: Vec<NodeId>`
@@ -77,10 +120,11 @@
 - [ ] `S2-14` Funkcja `parse_thtml(input: &str) -> Result<THTMLDocument>` — punkt wejścia parsera
 - [ ] `S2-15` Struct `THTMLParser` — wewnętrzny stan parsera (pozycja, stos tagów)
 - [ ] `S2-16` Metoda `THTMLParser::parse_tag(&mut self) -> Result<NodeTag>` — rozpoznanie tagu
-- [ ] `S2-17` Metoda `THTMLParser::parse_attributes(&mut self) -> Result<NodeAttributes>` — parsowanie atrybutuów
+- [ ] `S2-17` Metoda `THTMLParser::parse_attributes(&mut self) -> Result<NodeAttributes>` — parsowanie atrybutów
 - [ ] `S2-18` Metoda `THTMLParser::parse_text_content(&mut self) -> Result<String>` — treść tekstowa
 - [ ] `S2-19` Metoda `THTMLParser::expect_close_tag(&mut self, tag: NodeTag) -> Result<()>` — walidacja zamknięcia
 - [ ] `S2-20` Funkcja `reject_unknown_tag(name: &str) -> ParseError` — odrzucenie nieznanych tagów
+- [ ] `S2-20b` Funkcja `sanitize_style_raw(raw: &str) -> Result<String, SanitizeError>` — usunięcie sekwencji ANSI / escape chars wstrzykniętych w wartość atrybutu `style_raw` (**wektor ataku: CSS injection**)
 
 ### 2.5 Serializacja i klonowanie stanu
 - [ ] `S2-21` Trait `Serialize` dla `THTMLDocument` — zapis stanu do testów / snapshotów
@@ -124,9 +168,10 @@
 ### 3.4 Siatka komórek (Cell Buffer)
 - [ ] `S3-18` Struct `Cell` — `ch: char`, `fg: AnsiColor`, `bg: AnsiColor`, `modifiers: CellModifiers`
 - [ ] `S3-19` Struct `CellModifiers` — `bold: bool`, `underline: bool`, `italic: bool`
-- [ ] `S3-20` Struct `CellBuffer` — `cells: Vec<Vec<Cell>>`, `width: u16`, `height: u16`
-- [ ] `S3-21` Metoda `CellBuffer::new(width: u16, height: u16) -> CellBuffer` — inicjalizacja pustą siatką
-- [ ] `S3-22` Metoda `CellBuffer::set(x: u16, y: u16, cell: Cell)` — zapis komórki
+- [ ] `S3-20` Struct `CellBuffer` — `cells: Vec<Cell>` (**flat layout**, nie Vec<Vec<Cell>>), `width: u16`, `height: u16` — indeksowanie: `idx = y * width + x`
+- [ ] `S3-20b` Funkcja `flat_idx(x: u16, y: u16, width: u16) -> usize` — inline helper dla bezpiecznego obliczania indeksu w flat buforze
+- [ ] `S3-21` Metoda `CellBuffer::new(width: u16, height: u16) -> CellBuffer` — inicjalizacja `Vec<Cell>` o pojemności `width * height`
+- [ ] `S3-22` Metoda `CellBuffer::set(x: u16, y: u16, cell: Cell)` — zapis przez `flat_idx`, bounds check w debug mode
 - [ ] `S3-23` Metoda `CellBuffer::clear()` — reset do spacji z domyślnymi kolorami
 
 ### 3.5 Renderer AST → CellBuffer
@@ -212,3 +257,122 @@
 - [ ] `S4-33` Test: `parse_sgr_mouse` — poprawne współrzędne i button przy sfragmentowanym buforze
 - [ ] `S4-34` Test: `HitTester::find_node` — poprawny `NodeId` dla kliknięcia w obszar przycisku
 - [ ] `S4-35` Test: `EventBus::dispatch` → wywołanie handlera + mutacja `THTMLDocument`
+
+---
+
+## Sprint 5 — Optymalizacja, Capability Negotiation i Backpressure
+
+> Cel: Adaptacja do możliwości emulatora, kontrola przepływu, latency mitigation, Unicode width stabilization.
+
+### 5.1 Negocjacja możliwości emulatora (Capability Negotiation)
+- [ ] `S5-01` Funkcja `send_da1_query(writer: &mut impl Write) -> Result<()>` — wysłanie `ESC [c`
+- [ ] `S5-02` Funkcja `parse_da1_response(buf: &[u8]) -> TerminalProfile` — parsowanie odpowiedzi emulatora
+- [ ] `S5-03` Struct `TerminalProfile` — `supports_kitty_kbd: bool`, `supports_kitty_gfx: bool`, `supports_sgr_mouse: bool`, `unicode_version: u8`, `color_depth: ColorDepth`
+- [ ] `S5-04` Enum `ColorDepth` — `TrueColor`, `Color256`, `Color16`
+- [ ] `S5-05` Funkcja `negotiate_capabilities(session: &mut ClientSession) -> Result<TerminalProfile>` — pełny handshake z timeoutem
+
+### 5.2 Adaptacyjny tryb renderowania
+- [ ] `S5-06` Enum `RenderMode` — `Full60fps`, `Degraded30fps`, `Minimal`
+- [ ] `S5-07` Funkcja `select_render_mode(profile: &TerminalProfile, rtt_ms: u32) -> RenderMode` — wybór trybu na podstawie profilu i latencji
+- [ ] `S5-08` Struct `FrameRateLimiter` — `target_fps: u8`, `last_frame: Instant`
+- [ ] `S5-09` Metoda `FrameRateLimiter::should_render() -> bool` — sprawdzenie czy czas na nową klatkę
+- [ ] `S5-10` Metoda `FrameRateLimiter::frame_drop(doc: &THTMLDocument) -> CellBuffer` — pominięcie klatek pośrednich, bezpośredni skok do aktualnego stanu
+
+### 5.3 Synchronized Updates (BSU/ESU, tearing prevention)
+- [ ] `S5-11` Funkcja `send_bsu(writer: &mut impl Write) -> Result<()>` — `CSI ? 2026 h` (Begin Synchronized Update)
+- [ ] `S5-12` Funkcja `send_esu(writer: &mut impl Write) -> Result<()>` — `CSI ? 2026 l` (End Synchronized Update)
+- [ ] `S5-13` Struct `SyncedEmitter` — opakowuje writer, automatycznie BSU/ESU przy emit_diff
+
+### 5.4 Backpressure i kontrola przepływu
+- [ ] `S5-14` Struct `BoundedFrameChannel` — `sender: mpsc::SyncSender<Vec<u8>>`, pojemność = 2 klatki
+- [ ] `S5-15` Metoda `BoundedFrameChannel::try_send(frame: Vec<u8>) -> SendResult` — nieblokujące wysłanie lub load-shed
+- [ ] `S5-16` Enum `SendResult` — `Sent`, `Dropped`, `Blocked`
+- [ ] `S5-17` Funkcja `poll_ready(writer: &TcpStream) -> bool` — sprawdzenie czy bufor TCP klienta jest gotowy
+
+### 5.5 XON/XOFF In-Band Flow Control
+- [ ] `S5-18` Funkcja `handle_xoff(session: &mut ClientSession)` — zatrzymanie wysyłania po odebraniu `DC3 (0x13)`
+- [ ] `S5-19` Funkcja `handle_xon(session: &mut ClientSession)` — wznowienie wysyłania po `DC1 (0x11)`
+- [ ] `S5-20` Metoda `ReactorThread::detect_flow_control(byte: u8) -> Option<FlowSignal>` — detekcja XON/XOFF w strumieniu
+
+### 5.6 Lokalne echo predykcyjne (Mosh-style)
+- [ ] `S5-21` Struct `PredictiveEcho` — bufor przewidywanych znaków z flagą `confirmed: bool`
+- [ ] `S5-22` Metoda `PredictiveEcho::predict(ch: char, node: NodeId)` — rysowanie znaku z atrybutem "predykcja" (underline)
+- [ ] `S5-23` Metoda `PredictiveEcho::confirm(server_state: &CellBuffer)` — porównanie z autorytatywnym stanem, cofnięcie przy konflikcie
+- [ ] `S5-24` Metoda `PredictiveEcho::flush_to_server(tx: &mpsc::Sender<InputEvent>)` — wysłanie zbuforowanego tekstu do serwera
+- [ ] `S5-25` Funkcja `rtt_detector(session: &ClientSession) -> u32` — pomiar RTT, decyzja o włączeniu predykcji
+
+### 5.7 Stabilizacja szerokości Unicode
+- [ ] `S5-26` Funkcja `send_unicode_version_osc(writer: &mut impl Write, version: u8) -> Result<()>` — OSC 1337 ; UnicodeVersion=N
+- [ ] `S5-27` Struct `UnicodeWidthCache` — cache `char -> u8` dla wyników `unicode_width`
+- [ ] `S5-28` Metoda `UnicodeWidthCache::width(ch: char) -> u8` — lookup z cache, fallback do biblioteki
+- [ ] `S5-29` Funkcja `insert_vtm_modifier(buf: &mut Vec<u8>, cluster_width: u8)` — wstawienie modyfikatora PUA (U+D0000–U+D08F6) po klastrze grafemowym
+
+### 5.8 Debouncing SIGWINCH
+- [ ] `S5-30` Struct `ResizeDebouncer` — `pending: Option<PtyDimensions>`, `deadline: Option<Instant>`, `window_ms: u64`
+- [ ] `S5-31` Metoda `ResizeDebouncer::push(dims: PtyDimensions)` — akumulacja sygnałów resize
+- [ ] `S5-32` Metoda `ResizeDebouncer::poll() -> Option<PtyDimensions>` — zwróc stabilny rozmiar po upływie okna
+
+### 5.9 Testy Sprintu 5
+- [ ] `S5-33` Test: `negotiate_capabilities` → poprawny `TerminalProfile` dla GNOME Terminal / Alacritty / Ghostty
+- [ ] `S5-34` Test: `BoundedFrameChannel::try_send` przy pełnym kanale → `SendResult::Dropped`
+- [ ] `S5-35` Test: `PredictiveEcho::confirm` przy konflikcie → cofnięcie predykcji
+- [ ] `S5-36` Test: `ResizeDebouncer` → pojedynczy callback po serii sygnałów SIGWINCH
+
+---
+
+## Sprint 6 — Grafika (Kitty/Sixel), Bezpieczeństwo i Dostępność (A11y / AT-SPI2)
+
+> Cel: Obsługa `<img>`, defensywne parsowanie, tunelowanie D-Bus dla Orca.
+
+### 6.1 Detekcja obsługi grafiki
+- [ ] `S6-01` Funkcja `probe_kitty_graphics(writer: &mut impl Write) -> Result<()>` — wysłanie testowego APC, oczekiwanie na ACK
+- [ ] `S6-02` Funkcja `parse_kitty_ack(buf: &[u8]) -> bool` — rozpoznanie odpowiedzi `OK` od emulatora
+- [ ] `S6-03` Funkcja `probe_sixel_support(profile: &TerminalProfile) -> bool` — sprawdzenie flagi w `TerminalProfile`
+
+### 6.2 Kitty Graphics Protocol
+- [ ] `S6-04` Struct `KittyImageManager` — rejestr `image_id: u32 -> KittyCachedImage`
+- [ ] `S6-05` Struct `KittyCachedImage` — `id: u32`, `width: u32`, `height: u32`, `uploaded: bool`
+- [ ] `S6-06` Metoda `KittyImageManager::upload(id: u32, png_data: &[u8], writer: &mut impl Write) -> Result<()>` — chunked Base64 upload przez APC
+- [ ] `S6-07` Funkcja `encode_kitty_chunk(id: u32, chunk: &[u8], more: bool) -> Vec<u8>` — enkodowanie pojedynczego chunka APC
+- [ ] `S6-08` Metoda `KittyImageManager::place(id: u32, x: u16, y: u16, writer: &mut impl Write) -> Result<()>` — rysowanie z cache terminala (bez ponownego uploadu)
+- [ ] `S6-09` Metoda `KittyImageManager::evict(id: u32, writer: &mut impl Write) -> Result<()>` — usunięcie obrazu z cache terminala
+
+### 6.3 Sixel (fallback)
+- [ ] `S6-10` Funkcja `encode_sixel(img: &RgbaImage, palette_size: u8) -> Vec<u8>` — konwersja obrazu do strumienia Sixel z kwantyzacją
+- [ ] `S6-11` Funkcja `sixel_rle_compress(data: &[u8]) -> Vec<u8>` — kompresja Run-Length Encoding dla Sixel
+- [ ] `S6-12` Funkcja `dither_image(img: &RgbaImage, colors: u8) -> RgbaImage` — bezszumna kwantyzacja dla fallbacku Unicode-block
+
+### 6.4 Renderer węzła `<img>`
+- [ ] `S6-13` Metoda `Renderer::render_img(node: NodeId, rect: Rect, buf: &mut CellBuffer, writer: &mut impl Write)` — dispatching do Kitty/Sixel/Unicode-block
+- [ ] `S6-14` Funkcja `unicode_block_fallback(img: &RgbaImage, rect: Rect, buf: &mut CellBuffer)` — renderowanie przez znaki `▄`/`▀` gdy brak wsparcia graficznego
+
+### 6.5 Defensive Parsing — granica bezpieczeństwa
+- [ ] `S6-15` Struct `BoundedSubnegBuffer` — bufor o stałej pojemności (max 256 bajtów)
+- [ ] `S6-16` Metoda `BoundedSubnegBuffer::push(byte: u8) -> Result<(), OverflowError>` — odrzucenie po przekroczeniu limitu
+- [ ] `S6-17` Struct `InputStateMachine` — automat skończony parsujący sekwencje ANSI/Kitty/SGR
+- [ ] `S6-18` Metoda `InputStateMachine::feed(byte: u8) -> Option<InputEvent>` — krok automatu, panic-free
+- [ ] `S6-19` Metoda `InputStateMachine::reset()` — reset do stanu `Idle` przy błędzie lub przepełnieniu
+- [ ] `S6-20` Funkcja `validate_thtml_attribute(key: &str, value: &str) -> Result<(), SanitizeError>` — walidacja atrybutów THTML przed insertem do AST
+
+### 6.6 Dostępność — tunelowanie AT-SPI2 przez SSH
+- [ ] `S6-21` Struct `A11yNode` — semantyczne odwzorowanie `Node` z AST: `role: AtSpRole`, `label: String`, `value: Option<String>`
+- [ ] `S6-22` Enum `AtSpRole` — `Button`, `TextInput`, `Label`, `Container`, `Image`
+- [ ] `S6-23` Funkcja `build_a11y_tree(doc: &THTMLDocument) -> Vec<A11yNode>` — mapowanie AST na drzewo AT-SPI
+- [ ] `S6-24` Struct `DBusBridge` — zarządza tunelem gniazda AF_UNIX przez SSH port forwarding
+- [ ] `S6-25` Metoda `DBusBridge::read_dbus_address() -> Result<String>` — odczyt `DBUS_SESSION_BUS_ADDRESS` na serwerze
+- [ ] `S6-26` Metoda `DBusBridge::open_tunnel(local_path: &Path, remote_path: &Path) -> Result<()>` — wywołanie `ssh -L` dla gniazda D-Bus
+- [ ] `S6-27` Metoda `DBusBridge::register_at_spi(tree: &[A11yNode]) -> Result<()>` — rejestracja węzłów przez AT-SPI2 po tunelu
+- [ ] `S6-28` Metoda `DBusBridge::update_focus(node: NodeId, tree: &[A11yNode]) -> Result<()>` — powiadomienie Orki o zmianie focusu
+
+### 6.7 Tryb Fallback liniowy (A11y safe mode)
+- [ ] `S6-29` Funkcja `detect_a11y_mode(args: &[String]) -> bool` — wykrywanie flagi `--a11y` przy połączeniu
+- [ ] `S6-30` Funkcja `render_linear_fallback(doc: &THTMLDocument) -> String` — spłaszczenie AST do semantycznego tekstu liniowego
+- [ ] `S6-31` Funkcja `emit_linear_stream(text: &str, writer: &mut impl Write) -> Result<()>` — wysłanie tekstu do klienta bez TCSS/Flexbox
+
+### 6.8 Testy Sprintu 6
+- [ ] `S6-32` Test: `KittyImageManager::upload` → poprawne chunki APC Base64
+- [ ] `S6-33` Test: `encode_sixel` → poprawny strumień Sixel dla obrazu 2x2 px
+- [ ] `S6-34` Test: `BoundedSubnegBuffer::push` powyżej 256 bajtów → `OverflowError` + reset automatu
+- [ ] `S6-35` Test: `InputStateMachine::feed` na zdeformowanej sekwencji → `InputEvent::Unknown`, brak paniki
+- [ ] `S6-36` Test: `build_a11y_tree` → poprawne role AT-SPI dla przycisków i inputów
+- [ ] `S6-37` Test: `render_linear_fallback` → płaski tekst semantyczny bez znaków Box Drawing

@@ -1,0 +1,10 @@
+[package]
+name = "oxiterm-renderer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxiterm-proto = { path = "../oxiterm-proto" }
+taffy = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
