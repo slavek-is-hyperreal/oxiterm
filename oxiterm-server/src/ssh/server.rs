@@ -9,6 +9,7 @@ use crate::ssh::keys::AuthorizedKeys;
 
 #[derive(Clone)]
 pub struct OxiServer {
+    pub config: crate::config::OxiTermConfig,
     pub registry: Arc<SessionRegistry>,
     pub auth_keys: Arc<AuthorizedKeys>,
     pub rate_limiter: Arc<crate::ratelimit::RateLimiter>,
@@ -31,7 +32,15 @@ impl Handler for OxiServer {
         }
     }
 
-    async fn auth_password(&mut self, _user: &str, _password: &str) -> Result<server::Auth, Self::Error> {
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<server::Auth, Self::Error> {
+        if let Some(ref config_pass) = self.config.server.password {
+            if password == config_pass {
+                info!("Accepted password auth for user: {user}");
+                return Ok(server::Auth::Accept);
+            }
+        }
+        
+        warn!("Rejected password attempt for user: {user}");
         Ok(server::Auth::Reject { proceed_with_methods: None })
     }
 

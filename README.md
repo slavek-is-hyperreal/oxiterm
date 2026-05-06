@@ -2,36 +2,37 @@
 
 OxiTerm is a high-performance, server-side rendered (SSR) terminal-based application framework. It allows developers to build rich, interactive terminal user interfaces (TUI) using a declarative HTML-like syntax (THTML) and CSS-like styling (TCSS), all rendered on the server and delivered via SSH.
 
+## 🌤 Weather Dashboard Showcase (New!)
+
+We have successfully implemented a full-scale Weather Dashboard as a demonstration of OxiTerm's capabilities.
+- **Real-time Data**: Integrated with Open-Meteo API.
+- **Responsive Layout**: Adapts to terminal window resizing.
+- **Multi-view UI**: Current weather, 7-day forecast, and detailed metrics.
+- **Low Latency**: Optimized via Predictive Local Echo and Diff-based rendering.
+
 ## Key Features
 
-- **Zero-Client Logic**: No JavaScript or complex dependencies on the client side. Only a terminal emulator and SSH client are required.
+- **Zero-Client Logic**: Only a terminal emulator and SSH client are required.
 - **THTML & TCSS**: Familiar declarative structure for terminal layouts.
-- **Flexbox Layout**: Powered by Taffy/Yoga for responsive terminal designs.
-- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
-- **Predictive Local Echo**: Mitigation for high-latency network connections via `PredictiveEcho` buffer.
-- **Synchronized Updates**: Prevents screen tearing during high-frequency updates via BSU/ESU commands.
-- **Backpressure**: `BoundedFrameChannel` drops oldest frames if the renderer is too slow to prevent memory exhaustion.
-- **Hit-Testing**: `HitTester` maps screen coordinates to `NodeId` using `LayoutResult` from Taffy.
-- **High Performance**: Rust-based engine with double buffering, compacting Node Arena, and diff-based rendering.
-- **Defensive Design**: Panic-free THTML parsing with ANSI-injection sanitization.
-- **Accessibility**: Built-in support for screen readers via AT-SPI2 tunneling.
+- **Flexbox Layout**: Powered by Taffy for high-performance terminal designs.
+- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop.
+- **Predictive Local Echo**: Mitigation for high-latency connections.
+- **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
+- **Secure Auth**: Configurable password-based SSH authentication.
+- **Deep Screen Clearing**: Prevents scrollback artifacts using `\x1b[3J`.
 
 ## Project Status
 
 - **Sprint 1**: ✅ SSH Transport Layer & Security (Completed)
-- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS (Completed & Optimized)
-- **Sprint 4 & 5**: ❌ INCOMPLETE. Core interactivity and rendering are still missing.
-
-> **REVIEWER NOTE:** After multiple brutal revisions, the parser and layout engines have been properly optimized with persistent state and dirty-flagging. Proceed with caution to Sprint 4.
+- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS (Completed)
+- **Sprint 4 & 5**: ✅ Interactivity, Weather Demo & Production Polish (Completed)
 
 ## Architecture
 
 OxiTerm follows a "Thin Client" architecture:
 1. **Server**: Manages application state, parses THTML/TCSS, calculates layouts, and generates ANSI escape sequences.
 2. **Transport**: SSH tunnel delivers optimized diffs to the client.
-3. **Client**: Any modern terminal emulator (Alacritty, Ghostty, WezTerm, etc.) acting as a passive renderer.
-
-See [Architecture Documentation](docs/ARCHITECTURE.md) for more details.
+3. **Client**: Any modern terminal emulator acting as a passive renderer.
 
 ## Getting Started
 
@@ -39,15 +40,19 @@ See [Architecture Documentation](docs/ARCHITECTURE.md) for more details.
 - Rust 1.75+
 - OpenSSH client
 
-### Running the Server
-```bash
-cargo run --bin oxiterm-server
-```
-
-### Connecting
-```bash
-ssh -p 2222 localhost
-```
+### Running the Weather Demo
+1. Set the password for the session:
+   ```bash
+   export OXITERM_PASSWORD=krakow
+   ```
+2. Start the server in release mode:
+   ```bash
+   cargo run --release -p oxiterm-server
+   ```
+3. Connect from another terminal:
+   ```bash
+   ssh -p 2222 localhost
+   ```
 
 ## Project Structure
 

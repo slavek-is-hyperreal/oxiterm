@@ -40,8 +40,9 @@ pub async fn run_server(
         // Rate limiting (QUAL-004)
         match rate_limiter.check_and_record(peer_addr.ip()) {
             crate::ratelimit::RateResult::Allow => {
-                let config = ssh_config.clone();
+                let russh_config_ref = ssh_config.clone();
                 let handler = OxiServer {
+                    config: config.clone(),
                     registry: registry.clone(),
                     auth_keys: auth_keys.clone(),
                     rate_limiter: rate_limiter.clone(),
@@ -51,7 +52,7 @@ pub async fn run_server(
                 let session_registry = registry.clone();
                 let session_channels = handler.channels.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = russh::server::run_stream(config, stream, handler).await {
+                    if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
                         warn!("SSH session error for {peer_addr}: {e:?}");
                     }
                     // QUAL-006: Ensure all sessions are removed even on abrupt disconnect

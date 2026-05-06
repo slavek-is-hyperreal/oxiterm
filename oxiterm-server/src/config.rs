@@ -14,6 +14,7 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub host_key_path: PathBuf,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -35,6 +36,7 @@ impl Default for OxiTermConfig {
                 host: "0.0.0.0".to_string(),
                 port: 2222,
                 host_key_path: PathBuf::from("host_key"),
+                password: None,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -66,6 +68,9 @@ impl OxiTermConfig {
         }
         if let Ok(port) = std::env::var("OXITERM_PORT") {
             config.server.port = port.parse()?;
+        }
+        if let Ok(password) = std::env::var("OXITERM_PASSWORD") {
+            config.server.password = Some(password);
         }
         // ... more env overrides as needed
         config.validate()?;

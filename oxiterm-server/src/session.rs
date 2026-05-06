@@ -168,34 +168,17 @@ pub struct EventLoop {
     pub output_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     pub frame_limiter: crate::ratelimit::FrameRateLimiter,
     pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
+    pub app: crate::weather_app::WeatherApp,
 }
 
 impl EventLoop {
     pub fn new(session: Arc<ClientSession>, event_bus: Arc<crate::events::EventBus>, output_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>) -> Self {
         let dims = *session.dims.read();
-        let mut document = oxiterm_renderer::document::THTMLDocument::new();
         
-        // Dodaj powitalne UI
-        let mut box_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box);
-        box_node.style.width = Some(80);
-        box_node.style.height = Some(24);
-        box_node.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
-        let box_id = document.arena.alloc(box_node);
-        document.append_child(document.root, box_id).unwrap();
-
-        let mut text_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Text);
-        text_node.text_content = Some("Witaj w OxiTerm! Demo dla Inwestora (Sprint 6). Wpisz coś:".to_string());
-        text_node.style.fg = oxiterm_proto::style::AnsiColor::Color256(14);
-        text_node.style.width = Some(80);
-        text_node.style.height = Some(2);
-        let text_id = document.arena.alloc(text_node);
-        document.append_child(box_id, text_id).unwrap();
-
-        let mut input_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Input);
-        input_node.style.width = Some(80);
-        input_node.style.height = Some(1);
-        let input_id = document.arena.alloc(input_node);
-        document.append_child(box_id, input_id).unwrap();
+        let mut app = crate::weather_app::WeatherApp::new();
+        app.refresh();
+        let (document, input_id) = app.build_document(dims.cols, dims.rows);
+        session.predictive_echo.write().active_node = input_id;
 
         Self { 
             session, 
@@ -207,6 +190,7 @@ impl EventLoop {
             output_tx,
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
             pending_mouse: None,
+            app,
         }
     }
 
@@ -219,8 +203,8 @@ impl EventLoop {
         if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
             Renderer::render_node(&self.doc, &layout, &mut self.buffer.back);
             let mut out = Vec::new();
-            // Włącz Alt Buffer, Wyczyść ekran, Schowaj kursor
-            out.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[?25l");
+            // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
+            out.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
             if SyncedEmitter::emit_frame(&mut out, &self.buffer.front, &self.buffer.back).is_ok() {
                 if !out.is_empty() {
                     let _ = self.output_tx.send(out);
@@ -235,12 +219,34 @@ impl EventLoop {
             let mut needs_render = false;
             match event {
                 InputEvent::Resize { cols, rows } => {
-                    info!("Resizing EventLoop buffer to {}x{}", cols, rows);
+                    info!("Resizing EventLoop to {}x{}", cols, rows);
                     self.buffer = DoubleBuffer::new(cols, rows);
+                    let (doc, input_id) = self.app.build_document(cols, rows);
+                    self.doc = doc;
+                    self.session.predictive_echo.write().active_node = input_id;
+                    
+                    // Wymuś pełne czyszczenie terminala i bufora przewijania
+                    let mut clear = Vec::new();
+                    clear.extend_from_slice(b"\x1b[2J\x1b[3J\x1b[H"); 
+                    let _ = self.output_tx.send(clear);
+                    
                     needs_render = true;
                 }
                 InputEvent::KeyPress(key) => {
-                    info!("Key: {:?}", key);
+                    if key.codepoint == 'q' || key.codepoint == 'Q' {
+                        info!("Quit requested via keyboard: {}", key.codepoint);
+                        break;
+                    }
+
+                    if self.app.handle_key(key.codepoint) {
+                        let dims = *self.session.dims.read();
+                        let (doc, input_id) = self.app.build_document(dims.cols, dims.rows);
+                        self.doc = doc;
+                        self.session.predictive_echo.write().active_node = input_id;
+                        needs_render = true;
+                    }
+
+                    // Predictive echo for fun
                     let mut echo = self.session.predictive_echo.write();
                     echo.buffer.push(key.codepoint);
                     needs_render = true;

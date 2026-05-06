@@ -24,3 +24,4 @@ hyper = { workspace = true }
 http-body-util = { workspace = true }
 hyper-util = { workspace = true }
 async-trait = { workspace = true }
+ureq = { version = "2", features = ["json"] }

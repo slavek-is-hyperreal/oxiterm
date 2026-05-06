@@ -19,7 +19,13 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_log::LogTracer::init().ok();
-    tracing_subscriber::fmt::init();
+    // Całkowicie odetnij logi od terminala - pisz do pliku, żeby nie śmiecić w SSH
+    let file_appender = std::fs::File::create("/tmp/oxiterm.log")?;
+    tracing_subscriber::fmt()
+        .with_writer(Arc::new(file_appender))
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init()
+        .ok();
 
     let config = OxiTermConfig::from_env().unwrap_or_default();
     info!("Starting OxiTerm server with config: {:?}", config);
