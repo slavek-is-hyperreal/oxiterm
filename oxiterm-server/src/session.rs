@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 pub type SessionId = usize;
 
@@ -53,11 +53,17 @@ impl SessionRegistry {
 
     pub async fn drain_sessions(&self, timeout: Duration) {
         info!("Draining sessions with timeout: {:?}", timeout);
-        // In a real implementation, we would signal all sessions to close
-        // and wait for them to finish or timeout.
+        
         let start = std::time::Instant::now();
-        while !self.sessions.read().is_empty() && start.elapsed() < timeout {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        while start.elapsed() < timeout {
+            let count = self.sessions.read().len();
+            if count == 0 {
+                info!("All sessions drained successfully.");
+                return;
+            }
+            info!("Waiting for {} sessions to close...", count);
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
+        warn!("Drain timeout reached. {} sessions still active.", self.sessions.read().len());
     }
 }

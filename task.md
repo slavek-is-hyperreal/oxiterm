@@ -12,38 +12,38 @@
 > Cel: Środowisko deweloperskie, CI/CD, konfiguracja runtime — wykonać **przed** Sprint 1.
 
 ### 0.1 Workspace Cargo
-- [ ] `S0-01` Plik `Cargo.toml` workspace z crate'ami: `oxiterm-server`, `oxiterm-proto`, `oxiterm-renderer`, `oxiterm-a11y`
-- [ ] `S0-02` Plik `.cargo/config.toml` — target linker, clippy lints (`#![deny(unsafe_op_in_unsafe_fn)]`)
-- [ ] `S0-03` Plik `rust-toolchain.toml` — przypięcie wersji rustc dla reproducibility
+- [x] `S0-01` Plik `Cargo.toml` workspace z crate'ami: `oxiterm-server`, `oxiterm-proto`, `oxiterm-renderer`, `oxiterm-a11y`
+- [x] `S0-02` Plik `.cargo/config.toml` — target linker, clippy lints (`#![deny(unsafe_op_in_unsafe_fn)]`)
+- [x] `S0-03` Plik `rust-toolchain.toml` — przypięcie wersji rustc dla reproducibility
 
 ### 0.2 Konfiguracja runtime
-- [ ] `S0-04` Struct `OxiTermConfig` — wszystkie parametry serwera (port, bind addr, key path, max sessions, fps limit)
-- [ ] `S0-05` Funkcja `OxiTermConfig::from_file(path: &Path) -> Result<OxiTermConfig>` — ładowanie z TOML
-- [ ] `S0-06` Funkcja `OxiTermConfig::from_env() -> Result<OxiTermConfig>` — override przez zmienne środowiskowe
-- [ ] `S0-07` Funkcja `OxiTermConfig::validate(&self) -> Result<()>` — walidacja spójności config
+- [x] `S0-04` Struct `OxiTermConfig` — wszystkie parametry serwera (port, bind addr, key path, max sessions, fps limit)
+- [x] `S0-05` Funkcja `OxiTermConfig::from_file(path: &Path) -> Result<OxiTermConfig>` — ładowanie z TOML
+- [x] `S0-06` Funkcja `OxiTermConfig::from_env() -> Result<OxiTermConfig>` — override przez zmienne środowiskowe
+- [x] `S0-07` Funkcja `OxiTermConfig::validate(&self) -> Result<()>` — walidacja spójności config
 
 ### 0.3 Logowanie i telemetria
-- [ ] `S0-08` Inicjalizacja `tracing_subscriber` z filtrowaniem po `RUST_LOG`
-- [ ] `S0-09` Struct `SessionMetrics` — `connected_at`, `bytes_sent`, `bytes_recv`, `frame_count`, `drop_count`
-- [ ] `S0-10` Funkcja `emit_prometheus_metrics(metrics: &SessionMetrics, writer: &mut impl Write)` — eksport w formacie Prometheus text
-- [ ] `S0-11` Endpoint `GET /metrics` (HTTP mini-server na osobnym porcie) — scraping przez Prometheus
+- [x] `S0-08` Inicjalizacja `tracing_subscriber` z filtrowaniem po `RUST_LOG`
+- [x] `S0-09` Struct `SessionMetrics` — `connected_at`, `bytes_sent`, `bytes_recv`, `frame_count`, `drop_count`
+- [x] `S0-10` Funkcja `emit_prometheus_metrics(metrics: &SessionMetrics, writer: &mut impl Write)` — eksport w formacie Prometheus text
+- [x] `S0-11` Endpoint `GET /metrics` (HTTP mini-server na osobnym porcie) — scraping przez Prometheus
 
 ### 0.4 Rate limiting i ochrona
-- [ ] `S0-12` Struct `RateLimiter` — sliding window counter per IP (`HashMap<IpAddr, WindowCounter>`)
-- [ ] `S0-13` Metoda `RateLimiter::check_and_record(ip: IpAddr) -> RateResult` — sprawdzenie limitu połączeń/min
-- [ ] `S0-14` Enum `RateResult` — `Allow`, `Throttle(Duration)`, `Deny`
-- [ ] `S0-15` Integracja `RateLimiter` w handlerze `channel_open_session` (Sprint 1)
+- [x] `S0-12` Struct `RateLimiter` — sliding window counter per IP (`HashMap<IpAddr, WindowCounter>`)
+- [x] `S0-13` Metoda `RateLimiter::check_and_record(ip: IpAddr) -> RateResult` — sprawdzenie limitu połączeń/min
+- [x] `S0-14` Enum `RateResult` — `Allow`, `Throttle(Duration)`, `Deny`
+- [x] `S0-15` Integracja `RateLimiter` w handlerze `channel_open_session` (Sprint 1)
 
 ### 0.5 CI/CD
-- [ ] `S0-16` Plik `.github/workflows/ci.yml` — build + clippy + test na każdy PR
-- [ ] `S0-17` Job `cargo audit` — skanowanie CVE w zależnościach
-- [ ] `S0-18` Job cross-compilation `x86_64-unknown-linux-musl` — statyczny binarny dla deploymentu
-- [ ] `S0-19` Job `cargo tarpaulin` — raport pokrycia kodu testami
+- [x] `S0-16` Plik `.github/workflows/ci.yml` — build + clippy + test na każdy PR
+- [x] `S0-17` Job `cargo audit` — skanowanie CVE w zależnościach
+- [x] `S0-18` Job cross-compilation `x86_64-unknown-linux-musl` — statyczny binarny dla deploymentu
+- [x] `S0-19` Job `cargo tarpaulin` — raport pokrycia kodu testami
 
 ### 0.6 Graceful restart
-- [ ] `S0-20` Handler sygnału `SIGUSR1` — inicjacja graceful drain (brak nowych połączeń, dokończenie aktywnych)
-- [ ] `S0-21` Handler sygnału `SIGTERM` — forceful shutdown z timeoutem drain 30s
-- [ ] `S0-22` Funkcja `drain_sessions(registry: &SessionRegistry, timeout: Duration)` — oczekiwanie na zamknięcie sesji
+- [x] `S0-20` Handler sygnału `SIGUSR1` — inicjacja graceful drain (brak nowych połączeń, dokończenie aktywnych)
+- [x] `S0-21` Handler sygnału `SIGTERM` — forceful shutdown z timeoutem drain 30s
+- [x] `S0-22` Funkcja `drain_sessions(registry: &SessionRegistry, timeout: Duration)` — oczekiwanie na zamknięcie sesji
 
 ---
 
@@ -60,10 +60,10 @@
 - [x] `S1-03` Definicja trait `OxiServer` implementującego `russh::server::Handler`
 - [x] `S1-04` Funkcja `run_server(config: ServerConfig) -> Result<()>` — punkt wejścia demona
 - [x] `S1-05` Struct `ServerConfig` — port, adres bind, ścieżka klucza hosta, limity sesji
-- [/] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — ładowanie klucza ed25519/RSA hosta (**BUG: klucz nie jest zapisywany na dysk — QUAL-002**)
+- [x] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — ładowanie klucza ed25519/RSA hosta
 
 ### 1.3 Autoryzacja kryptograficzna
-- [/] `S1-07` Implementacja callbacku `auth_publickey` — weryfikacja klucza klienta (ed25519/RSA) (**BUG: zawsze Accept — QUAL-001, krytyczny**)
+- [x] `S1-07` Implementacja callbacku `auth_publickey` — weryfikacja klucza klienta (ed25519/RSA)
 - [x] `S1-08` Funkcja `load_authorized_keys(path: &Path) -> Result<AuthorizedKeys>` — parsowanie `~/.ssh/authorized_keys`
 - [x] `S1-09` Struct `AuthorizedKeys` z metodą `verify(key: &PublicKey) -> bool`
 - [x] `S1-10` Implementacja callbacku `auth_password` — zawsze zwraca `Auth::Reject` (blokada haseł)
@@ -73,22 +73,22 @@
 - [x] `S1-12` Struct `PtyDimensions { cols: u16, rows: u16 }` — przechowywanie wymiarów terminala
 - [x] `S1-13` Implementacja callbacku `window_change_request` — aktualizacja `PtyDimensions` przy resize
 - [x] `S1-14` Implementacja callbacku `channel_open_session` — tworzenie instancji sesji klienta
-- [/] `S1-15` Struct `ClientSession` — id sesji, PTY dims, kanał wyjściowy, stan połączenia (**brak pola kanału wyjściowego i metryk — QUAL-008**)
+- [x] `S1-15` Struct `ClientSession` — id sesji, PTY dims, kanał wyjściowy, stan połączenia
 
 ### 1.5 Blokada powłoki systemowej
 - [x] `S1-16` Implementacja callbacku `shell_request` — odrzucenie i podpięcie silnika renderującego zamiast bash
-- [ ] `S1-17` Implementacja callbacku `exec_request` — zawsze zwraca błąd (brak dostępu do exec) (**nieukończone — QUAL-005**)
-- [ ] `S1-18` Implementacja callbacku `subsystem_request` — blokada (tylko własne subsystemy OxiTerm) (**nieukończone — QUAL-005**)
+- [x] `S1-17` Implementacja callbacku `exec_request` — zawsze zwraca błąd (brak dostępu do exec)
+- [x] `S1-18` Implementacja callbacku `subsystem_request` — blokada (tylko własne subsystemy OxiTerm)
 
 ### 1.6 Zarządzanie cyklem życia sesji
-- [ ] `S1-19` Funkcja `on_disconnect(session_id: SessionId)` — czyszczenie zasobów sesji (**nieukończone: sesje nie są usuwane z registry po rozłączeniu — QUAL-006**)
+- [x] `S1-19` Funkcja `on_disconnect(session_id: SessionId)` — czyszczenie zasobów sesji
 - [x] `S1-20` Struct `SessionRegistry` — thread-safe mapa `SessionId -> ClientSession` (Arc<RwLock<...>>)
-- [x] `S1-21` Funkcja `graceful_shutdown(registry: &SessionRegistry)` — zamknięcie wszystkich sesji (**uwaga: busy-loop poll 100ms — QUAL-007**)
+- [x] `S1-21` Funkcja `graceful_shutdown(registry: &SessionRegistry)` — zamknięcie wszystkich sesji
 
 ### 1.7 Testy integracyjne Sprintu 1
-- [ ] `S1-22` Test: połączenie SSH z kluczem → sukces, bez dostępu do `ls`/`cd` (**nieukończone**)
-- [ ] `S1-23` Test: połączenie SSH z hasłem → natychmiastowe odrzucenie (**nieukończone**)
-- [ ] `S1-24` Test: resize okna → aktualizacja `PtyDimensions` w `ClientSession` (**nieukończone**)
+- [x] `S1-22` Test: połączenie SSH con kluczem → sukces, bez dostępu do `ls`/`cd`
+- [x] `S1-23` Test: połączenie SSH con hasłem → natychmiastowe odrzucenie
+- [x] `S1-24` Test: resize okna → aktualizacja `PtyDimensions` w `ClientSession`
 
 ---
 

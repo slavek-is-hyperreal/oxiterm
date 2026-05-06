@@ -70,13 +70,15 @@ impl Handler for OxiServer {
         Ok(())
     }
 
-    async fn exec_request(&mut self, channel: ChannelId, data: &[u8], _session: &mut Session) -> Result<(), Self::Error> {
+    async fn exec_request(&mut self, channel: ChannelId, data: &[u8], session: &mut Session) -> Result<(), Self::Error> {
         warn!("Blocking exec request on channel {channel:?}: {:?}", String::from_utf8_lossy(data));
+        session.request_failure();
         Ok(()) 
     }
 
-    async fn subsystem_request(&mut self, channel: ChannelId, name: &str, _session: &mut Session) -> Result<(), Self::Error> {
+    async fn subsystem_request(&mut self, channel: ChannelId, name: &str, session: &mut Session) -> Result<(), Self::Error> {
         warn!("Blocking subsystem request on channel {channel:?}: {name}");
+        session.request_failure();
         Ok(())
     }
 

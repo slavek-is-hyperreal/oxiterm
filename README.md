@@ -7,9 +7,16 @@ OxiTerm is a high-performance, server-side rendered (SSR) terminal-based applica
 - **Zero-Client Logic**: No JavaScript or complex dependencies on the client side. Only a terminal emulator and SSH client are required.
 - **THTML & TCSS**: Familiar declarative structure for terminal layouts.
 - **Flexbox Layout**: Powered by Taffy/Yoga for responsive terminal designs.
-- **Secure Transport**: Encrypted communication via SSH (using `russh`).
-- **High Performance**: Rust-based engine with double buffering and diff-based rendering.
+- **Secure Transport**: Encrypted communication via SSH with strict public-key only authentication.
+- **Tearing-Free Rendering**: Protocol-level Synchronized Updates (BSU/ESU) for atomic frame delivery.
+- **High Performance**: Rust-based engine with double buffering, compacting Node Arena, and diff-based rendering.
+- **Defensive Design**: Panic-free THTML parsing with ANSI-injection sanitization.
 - **Accessibility**: Built-in support for screen readers via AT-SPI2 tunneling.
+
+## Project Status
+
+- **Sprint 0 & 1**: ✅ Infrastructure & SSH Daemon (Hardened)
+- **Sprint 2 & 3**: 🚧 AST Arena, THTML Parser, Layout Engine & TCSS (In Progress)
 
 ## Architecture
 
