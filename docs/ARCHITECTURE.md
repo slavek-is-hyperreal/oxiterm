@@ -32,7 +32,11 @@ Communication is handled by a custom `russh` server.
 
 ## 5. Resilience & Optimization
 - **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
-- **Predictive Local Echo**: Mitigation for high-latency network connections via `PredictiveEcho` buffer.
-- **Synchronized Updates**: Prevents screen tearing during high-frequency updates via BSU/ESU commands.
-- **Backpressure**: `BoundedFrameChannel` drops oldest frames if the renderer is too slow to prevent memory exhaustion.
-- **Hit-Testing**: `HitTester` maps screen coordinates to `NodeId` using `LayoutResult` from Taffy.
+- **Predictive Local Echo**: Mitigation for high-latency connections.
+- **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
+- **Backpressure**: Frame dropping to prevent memory exhaustion during slow rendering.
+- **Deep Screen Clearing**: Uses `\x1b[3J` to clear the terminal's scrollback buffer, ensuring a clean slate on startup and resize.
+
+## 6. Diagnostics & Debugging
+- **Log Isolation**: All server-side logs are redirected to `/tmp/oxiterm.log` to prevent interference with the SSH TUI data stream.
+- **Event Tracing**: Detailed tracing of keyboard and resize events for easier debugging of client-server interactions.
