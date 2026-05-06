@@ -9,6 +9,7 @@ pub type SessionId = usize;
 pub struct SessionRegistry {
     pub sessions: RwLock<HashMap<SessionId, Arc<ClientSession>>>,
     pub next_id: RwLock<SessionId>,
+    pub prometheus_registry: Arc<prometheus::Registry>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -20,13 +21,15 @@ pub struct PtyDimensions {
 pub struct ClientSession {
     pub id: SessionId,
     pub dims: RwLock<PtyDimensions>,
+    pub metrics: Arc<crate::metrics::SessionMetrics>,
 }
 
 impl SessionRegistry {
-    pub fn new() -> Self {
+    pub fn new(prometheus_registry: Arc<prometheus::Registry>) -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
             next_id: RwLock::new(0),
+            prometheus_registry,
         }
     }
 
@@ -38,6 +41,7 @@ impl SessionRegistry {
         let session = Arc::new(ClientSession { 
             id,
             dims: RwLock::new(PtyDimensions { cols: 80, rows: 24 }),
+            metrics: crate::metrics::SessionMetrics::new(&id.to_string(), &self.prometheus_registry),
         });
         self.sessions.write().insert(id, session.clone());
         session

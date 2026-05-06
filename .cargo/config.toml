@@ -3,4 +3,7 @@ rustflags = [
     "-D", "unsafe_op_in_unsafe_fn",
     "-W", "clippy::all",
     "-W", "clippy::pedantic",
+    "-A", "clippy::missing_errors_doc",
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::must_use_candidate",
 ]

@@ -53,42 +53,42 @@
 > Stack: Rust + `russh` + `tokio`
 
 ### 1.1 Inicjalizacja projektu Cargo
-- [ ] `S1-01` Inicjalizacja workspace Cargo z podziałem na crate'y (`server`, `proto`, `renderer`)
-- [ ] `S1-02` Dodanie zależności: `russh`, `tokio`, `tokio-util`, `tracing`, `anyhow`
+- [x] `S1-01` Inicjalizacja workspace Cargo z podziałem na crate'y (`server`, `proto`, `renderer`)
+- [x] `S1-02` Dodanie zależności: `russh`, `tokio`, `tokio-util`, `tracing`, `anyhow`
 
 ### 1.2 Struktura demona SSH
-- [ ] `S1-03` Definicja trait `OxiServer` implementującego `russh::server::Handler`
-- [ ] `S1-04` Funkcja `run_server(config: ServerConfig) -> Result<()>` — punkt wejścia demona
-- [ ] `S1-05` Struct `ServerConfig` — port, adres bind, ścieżka klucza hosta, limity sesji
-- [ ] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — ładowanie klucza ed25519/RSA hosta
+- [x] `S1-03` Definicja trait `OxiServer` implementującego `russh::server::Handler`
+- [x] `S1-04` Funkcja `run_server(config: ServerConfig) -> Result<()>` — punkt wejścia demona
+- [x] `S1-05` Struct `ServerConfig` — port, adres bind, ścieżka klucza hosta, limity sesji
+- [/] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — ładowanie klucza ed25519/RSA hosta (**BUG: klucz nie jest zapisywany na dysk — QUAL-002**)
 
 ### 1.3 Autoryzacja kryptograficzna
-- [ ] `S1-07` Implementacja callbacku `auth_publickey` — weryfikacja klucza klienta (ed25519/RSA)
-- [ ] `S1-08` Funkcja `load_authorized_keys(path: &Path) -> Result<AuthorizedKeys>` — parsowanie `~/.ssh/authorized_keys`
-- [ ] `S1-09` Struct `AuthorizedKeys` z metodą `verify(key: &PublicKey) -> bool`
-- [ ] `S1-10` Implementacja callbacku `auth_password` — zawsze zwraca `Auth::Reject` (blokada haseł)
+- [/] `S1-07` Implementacja callbacku `auth_publickey` — weryfikacja klucza klienta (ed25519/RSA) (**BUG: zawsze Accept — QUAL-001, krytyczny**)
+- [x] `S1-08` Funkcja `load_authorized_keys(path: &Path) -> Result<AuthorizedKeys>` — parsowanie `~/.ssh/authorized_keys`
+- [x] `S1-09` Struct `AuthorizedKeys` z metodą `verify(key: &PublicKey) -> bool`
+- [x] `S1-10` Implementacja callbacku `auth_password` — zawsze zwraca `Auth::Reject` (blokada haseł)
 
 ### 1.4 Obsługa PTY i sesji
-- [ ] `S1-11` Implementacja callbacku `pty_request` — przechwycenie wymiarów `(cols, rows)` okna
-- [ ] `S1-12` Struct `PtyDimensions { cols: u16, rows: u16 }` — przechowywanie wymiarów terminala
-- [ ] `S1-13` Implementacja callbacku `window_change_request` — aktualizacja `PtyDimensions` przy resize
-- [ ] `S1-14` Implementacja callbacku `channel_open_session` — tworzenie instancji sesji klienta
-- [ ] `S1-15` Struct `ClientSession` — id sesji, PTY dims, kanał wyjściowy, stan połączenia
+- [x] `S1-11` Implementacja callbacku `pty_request` — przechwycenie wymiarów `(cols, rows)` okna
+- [x] `S1-12` Struct `PtyDimensions { cols: u16, rows: u16 }` — przechowywanie wymiarów terminala
+- [x] `S1-13` Implementacja callbacku `window_change_request` — aktualizacja `PtyDimensions` przy resize
+- [x] `S1-14` Implementacja callbacku `channel_open_session` — tworzenie instancji sesji klienta
+- [/] `S1-15` Struct `ClientSession` — id sesji, PTY dims, kanał wyjściowy, stan połączenia (**brak pola kanału wyjściowego i metryk — QUAL-008**)
 
 ### 1.5 Blokada powłoki systemowej
-- [ ] `S1-16` Implementacja callbacku `shell_request` — odrzucenie i podpięcie silnika renderującego zamiast bash
-- [ ] `S1-17` Implementacja callbacku `exec_request` — zawsze zwraca błąd (brak dostępu do exec)
-- [ ] `S1-18` Implementacja callbacku `subsystem_request` — blokada (tylko własne subsystemy OxiTerm)
+- [x] `S1-16` Implementacja callbacku `shell_request` — odrzucenie i podpięcie silnika renderującego zamiast bash
+- [ ] `S1-17` Implementacja callbacku `exec_request` — zawsze zwraca błąd (brak dostępu do exec) (**nieukończone — QUAL-005**)
+- [ ] `S1-18` Implementacja callbacku `subsystem_request` — blokada (tylko własne subsystemy OxiTerm) (**nieukończone — QUAL-005**)
 
 ### 1.6 Zarządzanie cyklem życia sesji
-- [ ] `S1-19` Funkcja `on_disconnect(session_id: SessionId)` — czyszczenie zasobów sesji
-- [ ] `S1-20` Struct `SessionRegistry` — thread-safe mapa `SessionId -> ClientSession` (Arc<RwLock<...>>)
-- [ ] `S1-21` Funkcja `graceful_shutdown(registry: &SessionRegistry)` — zamknięcie wszystkich sesji
+- [ ] `S1-19` Funkcja `on_disconnect(session_id: SessionId)` — czyszczenie zasobów sesji (**nieukończone: sesje nie są usuwane z registry po rozłączeniu — QUAL-006**)
+- [x] `S1-20` Struct `SessionRegistry` — thread-safe mapa `SessionId -> ClientSession` (Arc<RwLock<...>>)
+- [x] `S1-21` Funkcja `graceful_shutdown(registry: &SessionRegistry)` — zamknięcie wszystkich sesji (**uwaga: busy-loop poll 100ms — QUAL-007**)
 
 ### 1.7 Testy integracyjne Sprintu 1
-- [ ] `S1-22` Test: połączenie SSH z kluczem → sukces, bez dostępu do `ls`/`cd`
-- [ ] `S1-23` Test: połączenie SSH z hasłem → natychmiastowe odrzucenie
-- [ ] `S1-24` Test: resize okna → aktualizacja `PtyDimensions` w `ClientSession`
+- [ ] `S1-22` Test: połączenie SSH z kluczem → sukces, bez dostępu do `ls`/`cd` (**nieukończone**)
+- [ ] `S1-23` Test: połączenie SSH z hasłem → natychmiastowe odrzucenie (**nieukończone**)
+- [ ] `S1-24` Test: resize okna → aktualizacja `PtyDimensions` w `ClientSession` (**nieukończone**)
 
 ---
 

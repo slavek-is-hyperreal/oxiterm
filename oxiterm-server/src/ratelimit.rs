@@ -35,7 +35,7 @@ impl RateLimiter {
             window_start: now,
         });
 
-        if now.duration_since(counter.window_start) > Duration::from_secs(60) {
+        if now.duration_since(counter.window_start) > Duration::from_mins(1) {
             counter.count = 1;
             counter.window_start = now;
             RateResult::Allow

@@ -1,6 +1,7 @@
 use oxiterm_server::OxiTermConfig;
 use oxiterm_server::metrics::emit_prometheus_metrics;
 use oxiterm_server::session::SessionRegistry;
+use oxiterm_server::ratelimit::RateLimiter;
 use oxiterm_server::ssh::run_server;
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
@@ -22,8 +23,9 @@ async fn main() -> anyhow::Result<()> {
     let config = OxiTermConfig::from_env().unwrap_or_default();
     info!("Starting OxiTerm server with config: {:?}", config);
 
-    let registry = Arc::new(SessionRegistry::new());
-    let prometheus_registry = Registry::new();
+    let prometheus_registry = Arc::new(Registry::new());
+    let registry = Arc::new(SessionRegistry::new(prometheus_registry.clone()));
+    let rate_limiter = Arc::new(RateLimiter::new(60)); // 60 conn/min
     
     // Start metrics server if enabled
     if config.metrics.enabled {
@@ -57,8 +59,9 @@ async fn main() -> anyhow::Result<()> {
     // Start SSH server
     let ssh_config = config.clone();
     let ssh_registry = registry.clone();
+    let ssh_rate_limiter = rate_limiter.clone();
     tokio::spawn(async move {
-        if let Err(e) = run_server(ssh_config, ssh_registry).await {
+        if let Err(e) = run_server(ssh_config, ssh_registry, ssh_rate_limiter).await {
             warn!("SSH server error: {:?}", e);
         }
     });

@@ -1,8 +1,6 @@
 use std::sync::Arc;
-use parking_lot::RwLock;
 use std::time::Instant;
-use prometheus::{Encoder, TextEncoder, Opts, Counter, Gauge, Registry};
-use std::io::Write;
+use prometheus::{Encoder, TextEncoder, Opts, Counter, Registry};
 
 pub struct SessionMetrics {
     pub connected_at: Instant,
@@ -15,26 +13,29 @@ pub struct SessionMetrics {
 impl SessionMetrics {
     pub fn new(id: &str, registry: &Registry) -> Arc<Self> {
         let bytes_sent = Counter::with_opts(Opts::new(
-            format!("oxiterm_session_{}_bytes_sent", id),
+            format!("oxiterm_session_{id}_bytes_sent"),
             "Bytes sent in session"
-        )).unwrap();
+        )).expect("Failed to create metrics counter");
+        
         let bytes_recv = Counter::with_opts(Opts::new(
-            format!("oxiterm_session_{}_bytes_recv", id),
+            format!("oxiterm_session_{id}_bytes_recv"),
             "Bytes received in session"
-        )).unwrap();
+        )).expect("Failed to create metrics counter");
+        
         let frame_count = Counter::with_opts(Opts::new(
-            format!("oxiterm_session_{}_frames", id),
+            format!("oxiterm_session_{id}_frames"),
             "Frames rendered in session"
-        )).unwrap();
+        )).expect("Failed to create metrics counter");
+        
         let drop_count = Counter::with_opts(Opts::new(
-            format!("oxiterm_session_{}_drops", id),
+            format!("oxiterm_session_{id}_drops"),
             "Frames dropped in session"
-        )).unwrap();
+        )).expect("Failed to create metrics counter");
 
-        registry.register(Box::new(bytes_sent.clone())).unwrap();
-        registry.register(Box::new(bytes_recv.clone())).unwrap();
-        registry.register(Box::new(frame_count.clone())).unwrap();
-        registry.register(Box::new(drop_count.clone())).unwrap();
+        registry.register(Box::new(bytes_sent.clone())).expect("Failed to register metric");
+        registry.register(Box::new(bytes_recv.clone())).expect("Failed to register metric");
+        registry.register(Box::new(frame_count.clone())).expect("Failed to register metric");
+        registry.register(Box::new(drop_count.clone())).expect("Failed to register metric");
 
         Arc::new(Self {
             connected_at: Instant::now(),
@@ -50,6 +51,9 @@ pub fn emit_prometheus_metrics(registry: &Registry) -> Vec<u8> {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
     let metric_families = registry.gather();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+    // In memory encode usually doesn't fail unless OOM
+    if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
+        tracing::error!("Failed to encode metrics: {e}");
+    }
     buffer
 }
