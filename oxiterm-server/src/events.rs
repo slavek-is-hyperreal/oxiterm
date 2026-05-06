@@ -59,3 +59,9 @@ impl EventBus {
         Ok(())
     }
 }
+
+pub fn partial_update(doc: &mut THTMLDocument, node_id: NodeId) -> Result<()> {
+    info!("Performing partial update for node: {:?}", node_id);
+    doc.mark_dirty(node_id);
+    Ok(())
+}

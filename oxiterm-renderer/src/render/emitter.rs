@@ -1,6 +1,6 @@
 use std::io::Write;
 use anyhow::Result;
-use crate::render::diff::{DiffEngine, AnsiCommand};
+use crate::render::diff::DiffEngine;
 use crate::render::buffer::CellBuffer;
 
 /// S5-13: `SyncedEmitter`

@@ -6,6 +6,8 @@ pub enum InputEvent {
     MouseEvent(MouseInput),
     Resize { cols: u16, rows: u16 },
     CapabilityResponse(Vec<u8>),
+    Xon,
+    Xoff,
     Unknown(Vec<u8>),
 }
 

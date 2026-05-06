@@ -30,6 +30,24 @@ pub struct PredictiveEcho {
     pub active_node: Option<NodeId>,
 }
 
+impl PredictiveEcho {
+    pub fn push(&mut self, ch: char) {
+        self.buffer.push(ch);
+    }
+
+    pub fn confirm(&mut self, ch: char) {
+        if let Some(pos) = self.buffer.chars().position(|c| c == ch) {
+            let mut chars: Vec<char> = self.buffer.chars().collect();
+            chars.remove(pos);
+            self.buffer = chars.into_iter().collect();
+        }
+    }
+
+    pub fn flush_to_server(&mut self) -> String {
+        self.buffer.drain(..).collect()
+    }
+}
+
 #[derive(Debug)]
 pub struct ResizeDebouncer {
     pub pending: Option<PtyDimensions>,
@@ -63,6 +81,7 @@ pub struct ClientSession {
     pub event_rx: Arc<parking_lot::Mutex<mpsc::Receiver<InputEvent>>>,
     pub predictive_echo: RwLock<PredictiveEcho>,
     pub resize_debouncer: RwLock<ResizeDebouncer>,
+    pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
 }
 
 impl SessionRegistry {
@@ -96,6 +115,7 @@ impl SessionRegistry {
                 pending: None,
                 last_update: std::time::Instant::now(),
             }),
+            terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
         });
         self.sessions.write().insert(id, session.clone());
         session
@@ -149,6 +169,16 @@ impl EventLoop {
                 }
                 InputEvent::MouseEvent(m) => {
                     info!("Mouse: {:?}", m);
+                }
+                InputEvent::CapabilityResponse(raw) => {
+                    info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
+                    self.session.terminal_profile.write().parse_da1_response(&raw);
+                }
+                InputEvent::Xoff => {
+                    warn!("Received XOFF - pausing output");
+                }
+                InputEvent::Xon => {
+                    info!("Received XON - resuming output");
                 }
                 InputEvent::Unknown(raw) => {
                     warn!("Unknown input: {}", String::from_utf8_lossy(&raw));

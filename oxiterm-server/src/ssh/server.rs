@@ -64,8 +64,9 @@ impl Handler for OxiServer {
         Ok(())
     }
 
-    async fn shell_request(&mut self, channel: ChannelId, _session: &mut Session) -> Result<(), Self::Error> {
+    async fn shell_request(&mut self, channel: ChannelId, session: &mut Session) -> Result<(), Self::Error> {
         info!("Shell request on channel: {channel:?}");
+        crate::ssh::negotiator::negotiate_capabilities(channel, session)?;
         // Start SSR engine here (Sprint 4+)
         Ok(())
     }

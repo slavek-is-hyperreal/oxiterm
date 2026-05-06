@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 /// S5-08: `FrameRateLimiter`
 /// Manages frame delivery to stay within target FPS and handles frame dropping under load.
 pub struct FrameRateLimiter {
+    #[allow(dead_code)]
     target_fps: u32,
     last_frame: Instant,
     frame_interval: Duration,

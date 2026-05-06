@@ -16,6 +16,7 @@ impl ReactorThread {
             let mut decoder = InputDecoder::new();
             
             while let Ok(data) = rx.recv() {
+                Self::detect_flow_control(&data, &tx);
                 if let Some(frame) = Self::sanitize_frame(&data) {
                     let events = decoder.feed(&frame);
                     for event in events {
@@ -40,8 +41,17 @@ impl ReactorThread {
             return None;
         }
         
-        // Basic validation: ignore if it contains null bytes in weird places (optional)
-        
         Some(raw.to_vec())
+    }
+
+    /// S5-20: Detection of XON/XOFF flow control characters.
+    fn detect_flow_control(data: &[u8], tx: &mpsc::Sender<InputEvent>) {
+        for &b in data {
+            if b == 0x13 { // XOFF (Ctrl-S)
+                let _ = tx.send(InputEvent::Xoff);
+            } else if b == 0x11 { // XON (Ctrl-Q)
+                let _ = tx.send(InputEvent::Xon);
+            }
+        }
     }
 }
