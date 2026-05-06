@@ -95,6 +95,13 @@ impl InputDecoder {
                     None
                 }
             }
+            b'c' => {
+                if self.buffer.len() > 2 && self.buffer[2] == b'?' {
+                    Some((InputEvent::CapabilityResponse(self.buffer[..full_len].to_vec()), full_len))
+                } else {
+                    Some((InputEvent::Unknown(self.buffer[..full_len].to_vec()), full_len))
+                }
+            }
             _ => Some((InputEvent::Unknown(self.buffer[..full_len].to_vec()), full_len)),
         }
     }

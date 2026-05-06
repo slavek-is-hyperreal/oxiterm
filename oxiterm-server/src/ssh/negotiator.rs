@@ -18,6 +18,20 @@ pub enum ColorDepth {
     Color16,
 }
 
+impl TerminalProfile {
+    pub fn parse_da1_response(&mut self, response: &[u8]) {
+        let s = String::from_utf8_lossy(response);
+        if s.contains("?64") || s.contains("?62") {
+            // Level 4 or Level 2 terminal
+            self.supports_sgr_mouse = true;
+            self.color_depth = ColorDepth::TrueColor;
+        }
+        if s.contains(";4;") || s.contains(";4c") {
+            self.supports_kitty_gfx = true; // Sixel/Graphics support
+        }
+    }
+}
+
 pub fn send_da1_query(writer: &mut impl Write) -> Result<()> {
     debug!("Sending DA1 query");
     writer.write_all(b"\x1b[c")?;
@@ -50,5 +64,14 @@ pub fn send_bsu(writer: &mut impl Write) -> Result<()> {
 pub fn send_esu(writer: &mut impl Write) -> Result<()> {
     writer.write_all(b"\x1b[?2026l")?;
     writer.flush()?;
+    Ok(())
+}
+
+pub fn negotiate_capabilities(writer: &mut impl Write, profile: &mut TerminalProfile) -> Result<()> {
+    send_da1_query(writer)?;
+    // In a real implementation, we would wait for the response and call parse_da1_response.
+    // For now, we assume standard features if it's a modern terminal.
+    enable_sgr_mouse(writer)?;
+    profile.supports_sgr_mouse = true;
     Ok(())
 }

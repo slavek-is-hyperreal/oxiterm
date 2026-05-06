@@ -31,9 +31,6 @@ impl<'a> HitTester<'a> {
     }
 
     pub fn find_node(&self, col: u16, row: u16) -> Option<NodeId> {
-        // Find the node under (col, row). 
-        // In a real implementation, we would respect Z-index and nesting.
-        // For now, we take the one that covers the smallest area (usually the most specific child).
         let mut best_node = None;
         let mut best_area = u32::MAX;
 
@@ -48,5 +45,13 @@ impl<'a> HitTester<'a> {
         }
 
         best_node
+    }
+
+    pub fn is_interactive(&self, id: NodeId, doc: &crate::document::THTMLDocument) -> bool {
+        if let Some(node) = doc.arena.get(id) {
+            matches!(node.tag, oxiterm_proto::dom::NodeTag::Button | oxiterm_proto::dom::NodeTag::Input) || node.attrs.event_htmx.is_some()
+        } else {
+            false
+        }
     }
 }

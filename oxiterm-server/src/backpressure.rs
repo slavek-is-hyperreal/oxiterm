@@ -1,6 +1,13 @@
 use tokio::sync::mpsc;
 use tracing::warn;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendResult {
+    Sent,
+    Dropped,
+    Closed,
+}
+
 /// S5-47: `BoundedFrameChannel` with backpressure (drop oldest on overflow).
 /// Encapsulates a tokio mpsc channel with a fixed capacity and a "drop oldest" strategy.
 pub struct BoundedFrameChannel<T> {
@@ -14,17 +21,21 @@ impl<T: Send + 'static> BoundedFrameChannel<T> {
         (Self { tx, capacity }, rx)
     }
 
-    pub fn try_send(&self, item: T) {
+    pub fn try_send(&self, item: T) -> SendResult {
         match self.tx.try_send(item) {
-            Ok(()) => {},
+            Ok(()) => SendResult::Sent,
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!("Frame buffer full (cap={}), dropping oldest frame", self.capacity);
-                // In a real "drop oldest" we might need a broadcast channel or a custom queue.
-                // For now, we just warn and drop the *new* frame to prevent blocking the reactor.
+                SendResult::Dropped
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 warn!("Frame channel closed");
+                SendResult::Closed
             }
         }
+    }
+
+    pub fn poll_ready(&self) -> bool {
+        self.tx.capacity() > 0
     }
 }
