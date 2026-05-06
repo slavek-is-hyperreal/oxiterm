@@ -2,7 +2,7 @@ use anyhow::Result;
 use oxiterm_proto::style::{AnsiColor, FlexDirection, AlignItems, JustifyContent};
 use nom::{
     bytes::complete::{take_until, take_while1},
-    character::complete::{multispace0, multispace1, char as nom_char},
+    character::complete::{multispace0, char as nom_char},
     sequence::{delimited, tuple, preceded},
     IResult,
     branch::alt,

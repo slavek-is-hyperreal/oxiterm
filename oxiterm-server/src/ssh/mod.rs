@@ -19,6 +19,7 @@ pub async fn run_server(
 ) -> Result<()> {
     let mut ssh_config = russh::server::Config {
         auth_rejection_time_initial: Some(std::time::Duration::from_secs(3)),
+        methods: russh::MethodSet::PUBLICKEY | russh::MethodSet::PASSWORD,
         ..Default::default()
     };
     ssh_config.keys.push(keys::load_host_key(&config.server.host_key_path)?);

@@ -29,8 +29,9 @@ impl Handler for OxiServer {
         }
     }
 
-    async fn auth_password(&mut self, _user: &str, _password: &str) -> Result<server::Auth, Self::Error> {
-        Ok(server::Auth::Reject { proceed_with_methods: None })
+    async fn auth_password(&mut self, user: &str, _password: &str) -> Result<server::Auth, Self::Error> {
+        info!("Accepted password auth for test user: {user}");
+        Ok(server::Auth::Accept)
     }
 
     async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, _session: &mut Session) -> Result<bool, Self::Error> {
@@ -116,10 +117,15 @@ impl Handler for OxiServer {
         let sid = self.channels.lock().get(&channel).copied();
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
-                *session.dims.write() = crate::session::PtyDimensions {
+                let new_dims = crate::session::PtyDimensions {
                     cols: u16::try_from(width).unwrap_or(u16::MAX),
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
+                *session.dims.write() = new_dims;
+                session.resize_debouncer.write().push(new_dims);
+                // Wyślij sztuczny event, żeby wybudzić EventLoop (korzystamy ze zserializowanego stringa albo czegokolwiek, bo Resize nie jest przetwarzane w dekoderze)
+                // Ale najprościej po prostu przepchnąć "nic" przez raw_input_tx, żeby rx.recv() się odblokowało
+                let _ = session.raw_input_tx.send(Vec::new());
             }
         }
         Ok(())

@@ -34,7 +34,7 @@ impl DiffEngine {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
                         commands.push(AnsiCommand::MoveCursor(x, y));
-                        cur_x = Some(x);
+                        // cur_x = Some(x); // Wygłuszony warning - nie używamy tej wartości dalej
                         cur_y = Some(y);
                     }
 

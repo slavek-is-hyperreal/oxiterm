@@ -161,12 +161,31 @@ pub struct EventLoop {
 
 impl EventLoop {
     pub fn new(session: Arc<ClientSession>, event_bus: Arc<crate::events::EventBus>, output_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>) -> Self {
+        let mut document = oxiterm_renderer::document::THTMLDocument::new();
+        
+        // Dodaj powitalne UI
+        let box_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box);
+        let box_id = document.arena.alloc(box_node);
+        document.append_child(document.root, box_id).unwrap();
+
+        let mut text_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Text);
+        text_node.text_content = Some("Witaj w OxiTerm! Demo dla Inwestora (Sprint 6). Wpisz coś:".to_string());
+        text_node.style.fg = oxiterm_proto::style::AnsiColor::Color256(14);
+        let text_id = document.arena.alloc(text_node);
+        document.append_child(box_id, text_id).unwrap();
+
+        let input_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Input);
+        let input_id = document.arena.alloc(input_node);
+        document.append_child(box_id, input_id).unwrap();
+
+        let dims = *session.dims.read();
+        
         Self { 
             session, 
             event_bus,
-            doc: THTMLDocument::new(),
+            doc: document,
             layout_engine: LayoutEngine::new(),
-            buffer: DoubleBuffer::new(80, 24),
+            buffer: DoubleBuffer::new(dims.cols, dims.rows),
             output_paused: false,
             output_tx,
         }
@@ -174,6 +193,24 @@ impl EventLoop {
 
     pub fn run(&mut self) {
         info!("Starting EventLoop for session {}", self.session.id);
+        
+        // Zabezpieczenie przed race-condition w SSH (czekamy na channel_success)
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Initial render before blocking on input
+        if let Ok(layout) = self.layout_engine.compute(&self.doc) {
+            Renderer::render_node(&self.doc, &layout, &mut self.buffer.back);
+            let mut out = Vec::new();
+            // Włącz Alt Buffer, Wyczyść ekran, Schowaj kursor
+            out.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[?25l");
+            if SyncedEmitter::emit_frame(&mut out, &self.buffer.front, &self.buffer.back).is_ok() {
+                if !out.is_empty() {
+                    let _ = self.output_tx.send(out);
+                    self.buffer.swap();
+                }
+            }
+        }
+
         let rx_lock = self.session.event_rx.lock();
         
         while let Ok(event) = rx_lock.recv() {

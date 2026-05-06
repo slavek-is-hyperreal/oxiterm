@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_proto::dom::{NodeTag, NodeId};
 
