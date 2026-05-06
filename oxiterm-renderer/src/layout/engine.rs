@@ -3,6 +3,7 @@ use crate::document::THTMLDocument;
 use crate::layout::types::{LayoutResult, Rect as OxiRect};
 use oxiterm_proto::dom::NodeId as OxiNodeId;
 use std::collections::HashMap;
+use anyhow::anyhow;
 
 pub struct LayoutEngine {
     pub taffy: TaffyTree<()>,
@@ -26,7 +27,7 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    pub fn compute(&mut self, doc: &THTMLDocument) -> anyhow::Result<LayoutResult> {
+    pub fn compute(&mut self, doc: &mut THTMLDocument) -> anyhow::Result<LayoutResult> {
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
         self.ensure_nodes_exist_recursive(doc, doc.root)?;
 
@@ -68,7 +69,8 @@ impl LayoutEngine {
         
         let mut nodes = HashMap::new();
         for (&oxi_id, &taffy_id) in &self.node_map {
-            let layout = self.taffy.layout(taffy_id).unwrap();
+            let layout = self.taffy.layout(taffy_id)
+                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
             nodes.insert(oxi_id, OxiRect {
                 x: layout.location.x.round() as u16,
                 y: layout.location.y.round() as u16,
@@ -76,6 +78,9 @@ impl LayoutEngine {
                 height: layout.size.height.round() as u16,
             });
         }
+
+        // BUG-H05: Clear dirty nodes after computation
+        doc.clear_dirty();
 
         Ok(LayoutResult { nodes })
     }

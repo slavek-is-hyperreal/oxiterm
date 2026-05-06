@@ -34,7 +34,6 @@ impl DiffEngine {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
                         commands.push(AnsiCommand::MoveCursor(x, y));
-                        // cur_x = Some(x); // Wygłuszony warning - nie używamy tej wartości dalej
                         cur_y = Some(y);
                     }
 
@@ -74,10 +73,6 @@ impl DiffEngine {
 
     pub fn encode_ansi(commands: &[AnsiCommand]) -> Vec<u8> {
         let mut buf = Vec::new();
-        
-        // BSU: CSI ? 2026 h
-        buf.extend_from_slice(b"\x1b[?2026h");
-        
         let mut last_fg = AnsiColor::Reset;
         let mut last_bg = AnsiColor::Reset;
 
@@ -117,9 +112,6 @@ impl DiffEngine {
                 }
             }
         }
-        
-        // ESU: CSI ? 2026 l
-        buf.extend_from_slice(b"\x1b[?2026l");
         
         buf
     }

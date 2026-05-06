@@ -32,7 +32,7 @@
 - [x] `S0-12` Struct `RateLimiter` — sliding window counter per IP (`HashMap<IpAddr, WindowCounter>`)
 - [x] `S0-13` Metoda `RateLimiter::check_and_record(ip: IpAddr) -> RateResult` — sprawdzenie limitu połączeń/min
 - [x] `S0-14` Enum `RateResult` — `Allow`, `Throttle(Duration)`, `Deny`
-- [x] `S0-15` Integracja `RateLimiter` w handlerze `channel_open_session` (Sprint 1)
+- [/] `S0-15` Integracja `RateLimiter` w handlerze `channel_open_session` — **BUG-H06: RateLimiter zdefiniowany ale nigdzie nie podłączony**
 
 ### 0.5 CI/CD
 - [x] `S0-16` Plik `.github/workflows/ci.yml` — build + clippy + test na każdy PR
@@ -60,13 +60,13 @@
 - [x] `S1-03` Definicja trait `OxiServer` implementującego `russh::server::Handler`
 - [x] `S1-04` Funkcja `run_server(config: ServerConfig) -> Result<()>` — punkt wejścia demona
 - [x] `S1-05` Struct `ServerConfig` — port, adres bind, ścieżka klucza hosta, limity sesji
-- [x] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — ładowanie klucza ed25519/RSA hosta
+- [/] `S1-06` Funkcja `load_host_key(path: &Path) -> Result<KeyPair>` — **BUG-C02: klucz nie jest zapisywany na dysk przy generowaniu**
 
 ### 1.3 Autoryzacja kryptograficzna
 - [x] `S1-07` Implementacja callbacku `auth_publickey` — weryfikacja klucza klienta (ed25519/RSA)
 - [x] `S1-08` Funkcja `load_authorized_keys(path: &Path) -> Result<AuthorizedKeys>` — parsowanie `~/.ssh/authorized_keys`
 - [x] `S1-09` Struct `AuthorizedKeys` z metodą `verify(key: &PublicKey) -> bool`
-- [x] `S1-10` Implementacja callbacku `auth_password` — zawsze zwraca `Auth::Reject` (blokada haseł)
+- [/] `S1-10` Implementacja callbacku `auth_password` — **BUG-C01 KRYTYCZNY: Auth::Accept zamiast Reject — LUKA BEZPIECZEŃSTWA**
 
 ### 1.4 Obsługa PTY i sesji
 - [x] `S1-11` Implementacja callbacku `pty_request` — przechwycenie wymiarów `(cols, rows)` okna

@@ -3,6 +3,11 @@ use std::sync::mpsc;
 use oxiterm_proto::input::{InputEvent, decoder::InputStateMachine};
 use tracing::{error, debug};
 
+pub enum ReactorMessage {
+    Raw(Vec<u8>),
+    Resize(u16, u16),
+}
+
 pub struct ReactorThread {
     _handle: thread::JoinHandle<()>,
 }
@@ -10,20 +15,27 @@ pub struct ReactorThread {
 impl ReactorThread {
     /// Spawns a dedicated OS thread for input processing.
     /// Bridges raw byte stream from SSH to structured `InputEvents`.
-    pub fn spawn(rx: mpsc::Receiver<Vec<u8>>, tx: mpsc::Sender<InputEvent>) -> Self {
+    pub fn spawn(rx: mpsc::Receiver<ReactorMessage>, tx: mpsc::Sender<InputEvent>) -> Self {
         let handle = thread::spawn(move || {
             debug!("ReactorThread started");
             let mut decoder = InputStateMachine::new();
             
-            while let Ok(data) = rx.recv() {
-                Self::detect_flow_control(&data, &tx);
-                if let Some(frame) = Self::sanitize_frame(&data) {
-                    let events = decoder.feed_slice(&frame);
-                    for event in events {
-                        if let Err(e) = tx.send(event) {
-                            error!("Failed to send InputEvent from ReactorThread: {:?}", e);
-                            return;
+            while let Ok(msg) = rx.recv() {
+                match msg {
+                    ReactorMessage::Raw(data) => {
+                        Self::detect_flow_control(&data, &tx);
+                        if let Some(frame) = Self::sanitize_frame(&data) {
+                            let events = decoder.feed_slice(&frame);
+                            for event in events {
+                                if let Err(e) = tx.send(event) {
+                                    error!("Failed to send InputEvent from ReactorThread: {:?}", e);
+                                    return;
+                                }
+                            }
                         }
+                    }
+                    ReactorMessage::Resize(cols, rows) => {
+                        let _ = tx.send(InputEvent::Resize { cols, rows });
                     }
                 }
             }

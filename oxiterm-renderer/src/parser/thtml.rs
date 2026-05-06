@@ -23,6 +23,18 @@ pub fn sanitize_style_raw(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
+/// BUG-M03: Sanitize `event-htmx` attribute values.
+/// Only URL-safe characters are permitted. All control chars and escape sequences are stripped.
+pub fn sanitize_htmx_value(input: &str) -> String {
+    input
+        .chars()
+        .filter(|&c| matches!(c,
+            'a'..='z' | 'A'..='Z' | '0'..='9'
+            | '-' | '_' | '/' | '#' | '?' | '=' | '&' | '.' | ':' | '@' | '%'
+        ))
+        .collect()
+}
+
 pub struct THTMLParser;
 
 type ParseResult<'a, T> = IResult<&'a str, T, VerboseError<&'a str>>;
@@ -70,8 +82,16 @@ impl THTMLParser {
     fn parse_nodes(input: &str) -> ParseResult<'_, Vec<ParsedNode>> {
         many0(alt((
             map(Self::parse_element, Some),
+            map(Self::parse_comment, |_| None),
             map(multispace1, |_| None),
         )))(input).map(|(i, v)| (i, v.into_iter().flatten().collect()))
+    }
+
+    fn parse_comment(input: &str) -> ParseResult<'_, ()> {
+        let (input, _) = tag("<!--")(input)?;
+        let (input, _) = take_until("-->")(input)?;
+        let (input, _) = tag("-->")(input)?;
+        Ok((input, ()))
     }
 
     fn parse_element(input: &str) -> ParseResult<'_, ParsedNode> {
@@ -211,10 +231,11 @@ fn parse_attr_kv(input: &str) -> ParseResult<'_, (String, String)> {
     let (input, _) = multispace0(input)?;
     let (input, value) = delimited(nom_char('"'), take_until("\""), nom_char('"'))(input)?;
     
-    let value = if key == "style" {
-        sanitize_style_raw(value)
-    } else {
-        value.to_string()
+    let value = match key {
+        "style" => sanitize_style_raw(value),
+        // BUG-M03: sanitize event-htmx — allow only URL-safe chars, reject ANSI/escape sequences
+        "event-htmx" => sanitize_htmx_value(value),
+        _ => value.to_string(),
     };
     
     Ok((input, (key.to_string(), value)))

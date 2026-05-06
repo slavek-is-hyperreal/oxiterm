@@ -59,6 +59,23 @@ impl THTMLDocument {
         self.dirty_nodes.clear();
     }
 
+    /// BUG-M02: Compact the arena and update root/dirty nodes
+    pub fn compact(&mut self) {
+        let remap = self.arena.compact();
+        if let Some(&new_root) = remap.get(&self.root) {
+            self.root = new_root;
+        }
+        
+        // Also update dirty_nodes
+        let mut new_dirty = Vec::new();
+        for id in &self.dirty_nodes {
+            if let Some(&new_id) = remap.get(id) {
+                new_dirty.push(new_id);
+            }
+        }
+        self.dirty_nodes = new_dirty;
+    }
+
     pub fn clone_subtree(&self, root_id: NodeId) -> Result<THTMLDocument> {
         let mut new_doc = THTMLDocument {
             arena: NodeArena::new(),

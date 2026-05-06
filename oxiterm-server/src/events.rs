@@ -37,7 +37,7 @@ impl EventBus {
         self.handlers.insert(node_id, handler);
     }
 
-    pub fn dispatch(&self, event: &HtmxEvent, doc: &mut THTMLDocument, layout: Option<&oxiterm_renderer::LayoutResult>) -> Result<()> {
+    pub fn dispatch(&self, event: &HtmxEvent, doc: &mut THTMLDocument, layout: Option<&oxiterm_renderer::layout::types::LayoutResult>) -> Result<()> {
         let node_id = match event {
             HtmxEvent::Click(id) | HtmxEvent::Input(id, _) | HtmxEvent::Focus(id) | HtmxEvent::Blur(id) => Some(*id),
             HtmxEvent::Mouse(m) => {
@@ -57,6 +57,11 @@ impl EventBus {
         }
         
         Ok(())
+    }
+
+    /// QUAL-01: Dedicated mouse dispatch for EventLoop
+    pub fn dispatch_mouse(&self, mouse: oxiterm_proto::input::MouseInput, doc: &mut THTMLDocument, layout: &oxiterm_renderer::layout::types::LayoutResult) -> Result<()> {
+        self.dispatch(&HtmxEvent::Mouse(mouse), doc, Some(layout))
     }
 }
 

@@ -44,6 +44,8 @@ pub async fn run_server(
                 let handler = OxiServer {
                     registry: registry.clone(),
                     auth_keys: auth_keys.clone(),
+                    rate_limiter: rate_limiter.clone(),
+                    peer_addr,
                     channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
                 };
                 let session_registry = registry.clone();

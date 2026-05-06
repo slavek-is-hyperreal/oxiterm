@@ -55,3 +55,26 @@ impl RateLimiter {
         }
     }
 }
+pub struct FrameRateLimiter {
+    last_frame: Instant,
+    min_interval: Duration,
+}
+
+impl FrameRateLimiter {
+    pub fn new(fps: u32) -> Self {
+        Self {
+            last_frame: Instant::now(),
+            min_interval: Duration::from_secs_f32(1.0 / fps as f32),
+        }
+    }
+
+    /// Non-blocking check — caller skips render if false, no sleep ever.
+    pub fn should_render(&self) -> bool {
+        self.last_frame.elapsed() >= self.min_interval
+    }
+
+    /// Call after a frame is actually sent to update the timestamp.
+    pub fn record_frame(&mut self) {
+        self.last_frame = Instant::now();
+    }
+}

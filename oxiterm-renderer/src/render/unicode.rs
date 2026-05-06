@@ -31,11 +31,9 @@ impl UnicodeWidthCache {
     }
 }
 
-/// S5-29: `insert_vtm_modifier`
-/// Wstawia modyfikator PUA (U+D0000–U+D08F6) po klastrze grafemowym dla stabilizacji szerokości.
 pub fn insert_vtm_modifier(buf: &mut String, cluster_width: u8) {
-    // VTM (Virtual Terminal Modifier) PUA range starts at U+D0000.
-    // We use a simplified mapping where width is encoded in the lower bits.
-    let modifier = std::char::from_u32(0xD_0000 + u32::from(cluster_width)).unwrap_or('\u{D0000}');
+    // VTM (Virtual Terminal Modifier) PUA range.
+    // The auditor requested U+E000–U+F8FF.
+    let modifier = std::char::from_u32(0xE000 + u32::from(cluster_width)).unwrap_or('\u{E000}');
     buf.push(modifier);
 }

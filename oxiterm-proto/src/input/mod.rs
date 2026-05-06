@@ -8,6 +8,7 @@ pub enum InputEvent {
     CapabilityResponse(Vec<u8>),
     Xon,
     Xoff,
+    Refresh, // S6-refresh
     Unknown(Vec<u8>),
 }
 

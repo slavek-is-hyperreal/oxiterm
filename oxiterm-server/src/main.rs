@@ -18,6 +18,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_log::LogTracer::init().ok();
     tracing_subscriber::fmt::init();
 
     let config = OxiTermConfig::from_env().unwrap_or_default();
