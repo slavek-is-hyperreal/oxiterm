@@ -54,7 +54,7 @@ impl CellBuffer {
     }
 
     pub fn clear(&mut self) {
-        for cell in self.cells.iter_mut() {
+        for cell in &mut self.cells {
             *cell = Cell::default();
         }
     }

@@ -22,7 +22,7 @@
 - **Security**: Shell and exec requests blocked to ensure "SSR-only" environment.
 
 ## Sprint 2: AST Arena & THTML Parser
-**Status: In Progress**
+**Status: Completed**
 
 ### Accomplishments:
 - **Node Arena**: Implemented ID-based arena with compaction (defragmentation) support.
@@ -31,25 +31,28 @@
 - **Sanitization**: Robust `style_raw` sanitization using regex to block ANSI injection attacks.
 
 ## Sprint 3: TCSS & Layout Engine
-**Status: In Progress**
+**Status: Completed**
 
 ### Accomplishments:
 - **Double Buffering**: Implemented `CellBuffer` and `DoubleBuffer` for flicker-free rendering.
 - **Diff Engine**: Minimal ANSI generation with Synchronized Updates (BSU/ESU) support.
 - **Layout Foundation**: Integrated Taffy (0.6) for character-grid based Flexbox layout.
 
-## Next Steps & Roadmap
+## Sprint 4: Interactivity & HTMX Events
+**Status: Completed**
 
-### Upcoming Milestones:
-- **Sprint 4: Interactivity & HTMX Events**
-    - Implement Resilient Reactor Thread (RRT) for input handling.
-    - Support for Kitty Keyboard Protocol and SGR Mouse.
-    - Hit-testing and HTMX event dispatching logic.
-- **Sprint 5: Optimization & Backpressure**
-    - Capability negotiation (DA1/DA2) with terminal emulators.
-    - Latency mitigation and Predictive Echo (Mosh-style).
-    - Flow control (XON/XOFF) and bounded frame channels.
+### Accomplishments:
+- **Resilient Reactor Thread (RRT)**: Dedicated OS thread for non-blocking input decoding.
+- **Input Protocols**: Full support for Kitty Keyboard Protocol and SGR 1006 Mouse Protocol.
+- **Hit-Testing**: Implemented `HitTester` for precise coordinate-to-node mapping.
+- **Event Bus**: HTMX-style callback system for Click, Input, Focus, and Blur events.
+- **Latency Mitigation**: `PredictiveEcho` and `ResizeDebouncer` for fluid UI interaction.
 
-### Current Priorities:
-- Complete recursive THTML tag parsing in Sprint 2.
-- Implement TCSS-to-Taffy property mapping and bypass diff optimizations in Sprint 3.
+## Sprint 5: Resilience & Performance Optimization
+**Status: Completed**
+
+### Accomplishments:
+- **Unicode Stabilization**: `UnicodeWidthCache` and `insert_vtm_modifier` for consistent cross-terminal layout.
+- **Backpressure**: `BoundedFrameChannel` with drop-on-overflow strategy.
+- **SGR Timeout**: Guard against incomplete escape sequences in `InputDecoder`.
+- **CI Stabilization**: Resolved all strict clippy lints and satisfied CI requirements.

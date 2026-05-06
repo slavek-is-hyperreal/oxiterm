@@ -51,9 +51,9 @@ impl Default for OxiTermConfig {
 impl OxiTermConfig {
     pub fn from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read config file: {:?}", path))?;
+            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
         let config: Self = toml::from_str(&content)
-            .with_context(|| format!("Failed to parse config file: {:?}", path))?;
+            .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
         config.validate()?;
         Ok(config)
     }

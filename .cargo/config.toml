@@ -4,6 +4,10 @@ rustflags = [
     "-W", "clippy::all",
     "-W", "clippy::pedantic",
     "-A", "clippy::missing_errors_doc",
+    "-A", "clippy::missing_panics_doc",
     "-A", "clippy::module_name_repetitions",
     "-A", "clippy::must_use_candidate",
+    "-A", "clippy::cast_possible_truncation",
+    "-A", "clippy::cast_precision_loss",
+    "-A", "clippy::cast_sign_loss",
 ]

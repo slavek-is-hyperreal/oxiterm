@@ -27,21 +27,20 @@ pub struct THTMLParser<'a> {
 }
 
 impl<'a> THTMLParser<'a> {
-    pub fn parse(input: &'a str) -> Result<THTMLDocument> {
+    pub fn parse(_input: &'a str) -> Result<THTMLDocument> {
         let mut doc = THTMLDocument::new();
         let root_id = doc.root;
-        let parser = Self { _input: input };
-        parser.parse_into(&mut doc, root_id)?;
+        Self::parse_into(&mut doc, root_id);
         Ok(doc)
     }
 
-    fn parse_into(&self, _doc: &mut THTMLDocument, _parent: NodeId) -> Result<()> {
+    fn parse_into(_doc: &mut THTMLDocument, _parent: NodeId) {
         // Implementation placeholder
-        Ok(())
     }
 }
 
 /// A very basic nom parser for THTML tags
+#[allow(dead_code)]
 fn parse_tag_name(input: &str) -> IResult<&str, NodeTag> {
     alt((
         map(tag("screen"), |_| NodeTag::Screen),
@@ -53,6 +52,7 @@ fn parse_tag_name(input: &str) -> IResult<&str, NodeTag> {
     ))(input)
 }
 
+#[allow(dead_code)]
 fn parse_attr_kv(input: &str) -> IResult<&str, (String, String)> {
     let (input, key) = take_while1(|c: char| c.is_alphanumeric() || c == '-' || c == '_')(input)?;
     let (input, _) = multispace0(input)?;

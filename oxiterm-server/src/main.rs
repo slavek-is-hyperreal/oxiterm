@@ -72,15 +72,21 @@ async fn main() -> anyhow::Result<()> {
     let mut sigint = signal(SignalKind::interrupt())?;
 
     tokio::select! {
-        _ = sigusr1.recv() => {
-            info!("Received SIGUSR1, initiating graceful drain...");
-            registry.drain_sessions(Duration::from_secs(30)).await;
+        res = sigusr1.recv() => {
+            if res.is_some() {
+                info!("Received SIGUSR1, initiating graceful drain...");
+                registry.drain_sessions(Duration::from_secs(30)).await;
+            }
         }
-        _ = sigterm.recv() => {
-            info!("Received SIGTERM, shutting down...");
+        res = sigterm.recv() => {
+            if res.is_some() {
+                info!("Received SIGTERM, shutting down...");
+            }
         }
-        _ = sigint.recv() => {
-            info!("Received SIGINT, shutting down...");
+        res = sigint.recv() => {
+            if res.is_some() {
+                info!("Received SIGINT, shutting down...");
+            }
         }
     }
 

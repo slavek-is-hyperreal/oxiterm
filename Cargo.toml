@@ -28,3 +28,4 @@ hyper-util = { version = "0.1", features = ["full"] }
 async-trait = "0.1"
 nom = "7.1"
 regex = "1.10"
+unicode-width = "0.2"

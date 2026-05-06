@@ -31,7 +31,8 @@ Communication is handled by a custom `russh` server.
 - **Output**: ANSI diffs are streamed to the client.
 
 ## 5. Resilience & Optimization
-- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop.
-- **Predictive Local Echo**: Mitigation for high-latency network connections.
-- **Synchronized Updates**: Prevents screen tearing during high-frequency updates.
-- **Backpressure**: XON/XOFF and bounded channels to prevent memory exhaustion.
+- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
+- **Predictive Local Echo**: Mitigation for high-latency network connections via `PredictiveEcho` buffer.
+- **Synchronized Updates**: Prevents screen tearing during high-frequency updates via BSU/ESU commands.
+- **Backpressure**: `BoundedFrameChannel` drops oldest frames if the renderer is too slow to prevent memory exhaustion.
+- **Hit-Testing**: `HitTester` maps screen coordinates to `NodeId` using `LayoutResult` from Taffy.

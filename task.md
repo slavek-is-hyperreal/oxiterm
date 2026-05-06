@@ -97,44 +97,44 @@
 > Cel: Deklaratywna reprezentacja interfejsu w pamięci serwera — szybkie drzewo AST z bezpieczną mutacją.
 
 ### 2.1 Definicja typów węzłów THTML
-- [ ] `S2-01` Enum `NodeTag` — warianty: `Screen`, `Box`, `Text`, `Input`, `Button`, `Img`
-- [ ] `S2-02` Struct `NodeAttributes` — pola: `id`, `class`, `style_raw`, `event_htmx`, `src` (dla Img)
-- [ ] `S2-03` Struct `Node` — `tag: NodeTag`, `attrs: NodeAttributes`, `children: Vec<NodeId>`
-- [ ] `S2-04` Typ `NodeId` — newtype over `u32`, unikalny identyfikator węzła w Arenie
+- [x] `S2-01` Enum `NodeTag` — warianty: `Screen`, `Box`, `Text`, `Input`, `Button`, `Img`
+- [x] `S2-02` Struct `NodeAttributes` — pola: `id`, `class`, `style_raw`, `event_htmx`, `src` (dla Img)
+- [x] `S2-03` Struct `Node` — `tag: NodeTag`, `attrs: NodeAttributes`, `children: Vec<NodeId>`
+- [x] `S2-04` Typ `NodeId` — newtype over `u32`, unikalny identyfikator węzła w Arenie
 
 ### 2.2 Struktura Arena (pamięć węzłów)
-- [ ] `S2-05` Struct `NodeArena` — wewnętrzny `Vec<Node>` z alokacją przez indeks `NodeId`
-- [ ] `S2-06` Metoda `NodeArena::alloc(node: Node) -> NodeId` — alokacja węzła bez sterty runtime
-- [ ] `S2-07` Metoda `NodeArena::get(id: NodeId) -> Option<&Node>` — dostęp przez id
-- [ ] `S2-08` Metoda `NodeArena::get_mut(id: NodeId) -> Option<&mut Node>` — mutacja przez id
-- [ ] `S2-09` Metoda `NodeArena::remove(id: NodeId)` — usuwanie węzła (lazy-mark)
-- [ ] `S2-09b` Metoda `NodeArena::compact() -> RemapTable` — defragmentacja: przepakowanie aktywnych węzłów, zwrot mapy przesunięć `NodeId -> NodeId` (**wymagane gdy wypełnienie < 70%**)
+- [x] `S2-05` Struct `NodeArena` — wewnętrzny `Vec<Node>` z alokacją przez indeks `NodeId`
+- [x] `S2-06` Metoda `NodeArena::alloc(node: Node) -> NodeId` — alokacja węzła bez sterty runtime
+- [x] `S2-07` Metoda `NodeArena::get(id: NodeId) -> Option<&Node>` — dostęp przez id
+- [x] `S2-08` Metoda `NodeArena::get_mut(id: NodeId) -> Option<&mut Node>` — mutacja przez id
+- [x] `S2-09` Metoda `NodeArena::remove(id: NodeId)` — usuwanie węzła (lazy-mark)
+- [x] `S2-09b` Metoda `NodeArena::compact() -> RemapTable` — defragmentacja: przepakowanie aktywnych węzłów
 
 ### 2.3 Drzewo dokumentu
-- [ ] `S2-10` Struct `THTMLDocument` — `arena: NodeArena`, `root: NodeId`, `dirty_nodes: Vec<NodeId>`
+- [/] `S2-10` Struct `THTMLDocument` — `arena: NodeArena`, `root: NodeId`, `dirty_nodes: Vec<NodeId>`
 - [ ] `S2-11` Metoda `THTMLDocument::append_child(parent: NodeId, child: NodeId) -> Result<()>`
 - [ ] `S2-12` Metoda `THTMLDocument::detach_child(parent: NodeId, child: NodeId) -> Result<()>`
 - [ ] `S2-13` Metoda `THTMLDocument::mark_dirty(id: NodeId)` — oznaczenie węzła do re-renderingu
 
 ### 2.4 Parser THTML
-- [ ] `S2-14` Funkcja `parse_thtml(input: &str) -> Result<THTMLDocument>` — punkt wejścia parsera
+- [/] `S2-14` Funkcja `parse_thtml(input: &str) -> Result<THTMLDocument>` — punkt wejścia parsera
 - [ ] `S2-15` Struct `THTMLParser` — wewnętrzny stan parsera (pozycja, stos tagów)
-- [ ] `S2-16` Metoda `THTMLParser::parse_tag(&mut self) -> Result<NodeTag>` — rozpoznanie tagu
-- [ ] `S2-17` Metoda `THTMLParser::parse_attributes(&mut self) -> Result<NodeAttributes>` — parsowanie atrybutów
+- [/] `S2-16` Metoda `THTMLParser::parse_tag(&mut self) -> Result<NodeTag>` — rozpoznanie tagu
+- [/] `S2-17` Metoda `THTMLParser::parse_attributes(&mut self) -> Result<NodeAttributes>` — parsowanie atrybutów
 - [ ] `S2-18` Metoda `THTMLParser::parse_text_content(&mut self) -> Result<String>` — treść tekstowa
 - [ ] `S2-19` Metoda `THTMLParser::expect_close_tag(&mut self, tag: NodeTag) -> Result<()>` — walidacja zamknięcia
 - [ ] `S2-20` Funkcja `reject_unknown_tag(name: &str) -> ParseError` — odrzucenie nieznanych tagów
-- [ ] `S2-20b` Funkcja `sanitize_style_raw(raw: &str) -> Result<String, SanitizeError>` — usunięcie sekwencji ANSI / escape chars wstrzykniętych w wartość atrybutu `style_raw` (**wektor ataku: CSS injection**)
+- [x] `S2-20b` Funkcja `sanitize_style_raw(raw: &str) -> Result<String, SanitizeError>` — usunięcie sekwencji ANSI / escape chars
 
 ### 2.5 Serializacja i klonowanie stanu
-- [ ] `S2-21` Trait `Serialize` dla `THTMLDocument` — zapis stanu do testów / snapshotów
-- [ ] `S2-22` Metoda `THTMLDocument::clone_subtree(root: NodeId) -> THTMLDocument` — kopia poddrzewa
+- [ ] `S2-21` Trait `Serialize` dla `THTMLDocument`
+- [ ] `S2-22` Metoda `THTMLDocument::clone_subtree(root: NodeId) -> THTMLDocument`
 
 ### 2.6 Testy jednostkowe Sprintu 2
-- [ ] `S2-23` Test: parse poprawnego THTML → poprawne drzewo AST
-- [ ] `S2-24` Test: nieznany tag → `ParseError`
-- [ ] `S2-25` Test: `append_child` / `detach_child` → poprawna struktura dzieci
-- [ ] `S2-26` Test: `mark_dirty` → węzeł trafia do `dirty_nodes`
+- [ ] `S2-23` Test: parse poprawnego THTML
+- [ ] `S2-24` Test: nieznany tag
+- [ ] `S2-25` Test: `append_child` / `detach_child`
+- [ ] `S2-26` Test: `mark_dirty`
 
 ---
 
@@ -147,176 +147,167 @@
 - [ ] `S3-02` Struct `StyleRule` — `selector: Selector`, `declarations: Vec<Declaration>`
 - [ ] `S3-03` Enum `Selector` — warianty: `Id(String)`, `Class(String)`, `Tag(NodeTag)`, `Universal`
 - [ ] `S3-04` Struct `Declaration` — `property: CssProperty`, `value: CssValue`
-- [ ] `S3-05` Enum `CssProperty` — warianty pokrywające TCSS: `Width`, `Height`, `Padding`, `Margin`, `Border`, `Color`, `Background`, `Display`, `AlignItems`, `JustifyContent`, `ZIndex`
+- [ ] `S3-05` Enum `CssProperty` — warianty pokrywające TCSS
 - [ ] `S3-06` Enum `CssValue` — `Chars(u16)`, `Lines(u16)`, `Color(AnsiColor)`, `BorderStyle(BorderChars)`, `Auto`, `None`
-- [ ] `S3-07` Funkcja `parse_tcss(input: &str) -> Result<StyleSheet>` — punkt wejścia parsera CSS
-- [ ] `S3-08` Funkcja `apply_styles(doc: &THTMLDocument, sheet: &StyleSheet) -> ComputedStyles` — kaskadowe wiązanie styli
+- [ ] `S3-07` Funkcja `parse_tcss(input: &str) -> Result<StyleSheet>`
+- [ ] `S3-08` Funkcja `apply_styles(doc: &THTMLDocument, sheet: &StyleSheet) -> ComputedStyles`
 
 ### 3.2 Typy kolorów i obramowań
 - [ ] `S3-09` Enum `AnsiColor` — `TrueColor(u8, u8, u8)`, `Color256(u8)`, `Reset`
-- [ ] `S3-10` Struct `BorderChars` — pola: `top_left`, `top`, `top_right`, `left`, `right`, `bot_left`, `bot`, `bot_right` (znaki Unicode Box Drawing)
-- [ ] `S3-11` Funkcja `render_border(chars: &BorderChars, width: u16, height: u16) -> Vec<CellRow>` — renderuje ramkę do siatki
+- [ ] `S3-10` Struct `BorderChars` — pola: `top_left`, `top`, `top_right`, `left`, `right`, `bot_left`, `bot`, `bot_right`
+- [ ] `S3-11` Funkcja `render_border(chars: &BorderChars, width: u16, height: u16) -> Vec<CellRow>`
 
 ### 3.3 Silnik layoutu Flexbox (Taffy)
-- [ ] `S3-12` Struct `LayoutEngine` — opakowanie na `taffy::Taffy` z mapą `NodeId -> taffy::NodeId`
-- [ ] `S3-13` Metoda `LayoutEngine::build_tree(doc: &THTMLDocument, styles: &ComputedStyles)` — budowa drzewa Taffy z AST
-- [ ] `S3-14` Metoda `LayoutEngine::compute(available: Size<u16>) -> Result<LayoutResult>` — obliczenie layoutu
-- [ ] `S3-15` Struct `LayoutResult` — mapa `NodeId -> Rect` (pozycja x, y, width, height w jednostkach ch/lh)
-- [ ] `S3-16` Funkcja `round_to_chars(f: f32) -> u16` — zaokrąglenie subpikseli do pełnych komórek znakowych
-- [ ] `S3-17` Metoda `LayoutEngine::invalidate(node: NodeId)` — reset dirty node w drzewie Taffy (dirty flagging)
+- [x] `S3-12` Struct `LayoutEngine` — opakowanie na `taffy::TaffyTree`
+- [ ] `S3-13` Metoda `LayoutEngine::build_tree(doc: &THTMLDocument, styles: &ComputedStyles)`
+- [ ] `S3-14` Metoda `LayoutEngine::compute(available: Size<u16>) -> Result<LayoutResult>`
+- [ ] `S3-15` Struct `LayoutResult` — mapa `NodeId -> Rect`
+- [ ] `S3-16` Funkcja `round_to_chars(f: f32) -> u16`
+- [ ] `S3-17` Metoda `LayoutEngine::invalidate(node: NodeId)`
 
 ### 3.4 Siatka komórek (Cell Buffer)
-- [ ] `S3-18` Struct `Cell` — `ch: char`, `fg: AnsiColor`, `bg: AnsiColor`, `modifiers: CellModifiers`
-- [ ] `S3-19` Struct `CellModifiers` — `bold: bool`, `underline: bool`, `italic: bool`
-- [ ] `S3-20` Struct `CellBuffer` — `cells: Vec<Cell>` (**flat layout**, nie Vec<Vec<Cell>>), `width: u16`, `height: u16` — indeksowanie: `idx = y * width + x`
-- [ ] `S3-20b` Funkcja `flat_idx(x: u16, y: u16, width: u16) -> usize` — inline helper dla bezpiecznego obliczania indeksu w flat buforze
-- [ ] `S3-21` Metoda `CellBuffer::new(width: u16, height: u16) -> CellBuffer` — inicjalizacja `Vec<Cell>` o pojemności `width * height`
-- [ ] `S3-22` Metoda `CellBuffer::set(x: u16, y: u16, cell: Cell)` — zapis przez `flat_idx`, bounds check w debug mode
-- [ ] `S3-23` Metoda `CellBuffer::clear()` — reset do spacji z domyślnymi kolorami
+- [x] `S3-18` Struct `Cell` — `ch: char`, `fg: AnsiColor`, `bg: AnsiColor`, `modifiers: CellModifiers`
+- [x] `S3-19` Struct `CellModifiers` — `bold: bool`, `underline: bool`, `italic: bool`
+- [x] `S3-20` Struct `CellBuffer` — `cells: Vec<Cell>` (**flat layout**)
+- [x] `S3-20b` Funkcja `flat_idx(x: u16, y: u16, width: u16) -> usize`
+- [x] `S3-21` Metoda `CellBuffer::new(width: u16, height: u16) -> CellBuffer`
+- [x] `S3-22` Metoda `CellBuffer::set(x: u16, y: u16, cell: Cell)`
+- [x] `S3-23` Metoda `CellBuffer::clear()`
 
 ### 3.5 Renderer AST → CellBuffer
-- [ ] `S3-24` Struct `Renderer` — przyjmuje `LayoutResult` i `ComputedStyles`, produkuje `CellBuffer`
-- [ ] `S3-25` Metoda `Renderer::render_node(node: NodeId, buf: &mut CellBuffer)` — rekurencyjne malowanie węzła
-- [ ] `S3-26` Metoda `Renderer::render_text(text: &str, rect: Rect, buf: &mut CellBuffer)` — zawijanie tekstu w rect
-- [ ] `S3-27` Metoda `Renderer::render_border(rect: Rect, style: &BorderStyle, buf: &mut CellBuffer)` — obramowanie Unicode
+- [ ] `S3-24` Struct `Renderer` — przyjmuje `LayoutResult` i `ComputedStyles`
+- [ ] `S3-25` Metoda `Renderer::render_node(node: NodeId, buf: &mut CellBuffer)`
+- [ ] `S3-26` Metoda `Renderer::render_text(text: &str, rect: Rect, buf: &mut CellBuffer)`
+- [ ] `S3-27` Metoda `Renderer::render_border(rect: Rect, style: &BorderStyle, buf: &mut CellBuffer)`
 
 ### 3.6 Algorytm różnicowy (Diff Engine)
-- [ ] `S3-28` Struct `DiffEngine` — `prev: CellBuffer`, `next: CellBuffer`
-- [ ] `S3-29` Metoda `DiffEngine::diff() -> Vec<AnsiCommand>` — porównanie buforów, generacja komend ANSI
-- [ ] `S3-30` Enum `AnsiCommand` — `MoveCursor(u16, u16)`, `SetColor(AnsiColor, AnsiColor)`, `WriteChar(char)`, `SetModifiers(CellModifiers)`
-- [ ] `S3-31` Funkcja `encode_ansi(commands: &[AnsiCommand]) -> Vec<u8>` — serializacja do bajtów ANSI
-- [ ] `S3-32` Funkcja `bypass_diff_region(buf: &mut CellBuffer, rect: Rect)` — pominięcie diff dla statycznych bloków (Bypass Diff)
+- [x] `S3-28` Struct `DiffEngine` — `prev: CellBuffer`, `next: CellBuffer`
+- [x] `S3-29` Metoda `DiffEngine::diff() -> Vec<AnsiCommand>`
+- [x] `S3-30` Enum `AnsiCommand` — `MoveCursor`, `SetColor`, `WriteChar`, `SetModifiers`
+- [x] `S3-31` Funkcja `encode_ansi(commands: &[AnsiCommand]) -> Vec<u8>`
+- [ ] `S3-32` Funkcja `bypass_diff_region(buf: &mut CellBuffer, rect: Rect)`
 
 ### 3.7 Podwójne buforowanie
-- [ ] `S3-33` Struct `DoubleBuffer` — `front: CellBuffer`, `back: CellBuffer`
-- [ ] `S3-34` Metoda `DoubleBuffer::swap()` — zamiana front/back po wysłaniu diff
-- [ ] `S3-35` Metoda `DoubleBuffer::emit_diff() -> Vec<u8>` — oblicz diff, enkoduj ANSI, swap
+- [x] `S3-33` Struct `DoubleBuffer` — `front: CellBuffer`, `back: CellBuffer`
+- [x] `S3-34` Metoda `DoubleBuffer::swap()`
+- [x] `S3-35` Metoda `DoubleBuffer::emit_diff() -> Vec<u8>`
 
 ### 3.8 Testy Sprintu 3
-- [ ] `S3-36` Test: parse TCSS → poprawny `StyleSheet`
-- [ ] `S3-37` Test: `LayoutEngine::compute` → poprawne `Rect` dla układu flex
-- [ ] `S3-38` Test: `Renderer::render_node` → poprawna zawartość `CellBuffer`
-- [ ] `S3-39` Test: `DiffEngine::diff` → minimalna lista `AnsiCommand` przy jednej zmianie
-- [ ] `S3-40` Test: `encode_ansi` → poprawne sekwencje bajtów ANSI
-
-
----
+- [ ] `S3-36` Test: parse TCSS
+- [ ] `S3-37` Test: `LayoutEngine::compute`
+- [ ] `S3-38` Test: `Renderer::render_node`
 
 ## Sprint 4 — Interaktywność i Mechanika Zdarzeń HTMX
 
-> Cel: Obsługa myszy, klawiatury (Kitty Protocol), hit-testing, asynchroniczne callbacki HTMX.  
-> Wzorzec: Resilient Reactor Thread (RRT) + kanały mpsc
+> Cel: Obsługa myszy, klawiatury (Kitty Protocol), hit-testing, asynchroniczne callbacki HTMX.
 
 ### 4.1 Wzorzec Resilient Reactor Thread (RRT)
-- [ ] `S4-01` Struct `ReactorThread` — dedykowany OS thread na nasłuchiwanie I/O z PTY/SSH
-- [ ] `S4-02` Funkcja `ReactorThread::spawn(pty_fd: RawFd, tx: mpsc::Sender<InputEvent>) -> JoinHandle` — uruchomienie wątku
-- [ ] `S4-03` Pętla `ReactorThread::run_loop` — blokujący `epoll`/`mio::Poll` na deskryptorze
-- [ ] `S4-04` Funkcja `ReactorThread::sanitize_frame(raw: &[u8]) -> Option<Vec<u8>>` — odrzucenie zdeformowanych sekwencji
+- [x] `S4-01` Struct `ReactorThread` — dedykowany OS thread na nasłuchiwanie I/O z PTY/SSH
+- [x] `S4-02` Funkcja `ReactorThread::spawn(pty_fd: RawFd, tx: mpsc::Sender<InputEvent>) -> JoinHandle`
+- [x] `S4-03` Pętla `ReactorThread::run_loop` — blokujący `epoll`/`mio::Poll`
+- [x] `S4-04` Funkcja `ReactorThread::sanitize_frame(raw: &[u8]) -> Option<Vec<u8>>`
 
 ### 4.2 Dekoder zdarzeń wejściowych
-- [ ] `S4-05` Enum `InputEvent` — `KeyPress(KeyEvent)`, `MouseEvent(MouseInput)`, `Resize(PtyDimensions)`, `Unknown`
-- [ ] `S4-06` Struct `KeyEvent` — `codepoint: u32`, `modifiers: KeyModifiers`, `kind: KeyKind`
-- [ ] `S4-07` Enum `KeyKind` — `Press`, `Repeat`, `Release`
-- [ ] `S4-08` Struct `KeyModifiers` — `shift`, `ctrl`, `alt`, `super_key`, `hyper`, `meta`, `caps_lock` (bitmapa)
-- [ ] `S4-09` Struct `MouseInput` — `col: u16`, `row: u16`, `button: MouseButton`, `action: MouseAction`
-- [ ] `S4-10` Enum `MouseButton` — `Left`, `Middle`, `Right`, `WheelUp`, `WheelDown`
-- [ ] `S4-11` Enum `MouseAction` — `Press`, `Release`, `Move`
-- [ ] `S4-12` Funkcja `decode_input(buf: &[u8]) -> Result<InputEvent>` — główny dekoder strumienia
+- [x] `S4-05` Enum `InputEvent` — `KeyPress`, `MouseEvent`, `Resize`, `Unknown`
+- [x] `S4-06` Struct `KeyEvent` — `codepoint: u32`, `modifiers: KeyModifiers`, `kind: KeyKind`
+- [x] `S4-07` Enum `KeyKind` — `Press`, `Repeat`, `Release`
+- [x] `S4-08` Struct `KeyModifiers` — `shift`, `ctrl`, `alt`, `super_key`, `hyper`, `meta`, `caps_lock`
+- [x] `S4-09` Struct `MouseInput` — `col: u16`, `row: u16`, `button: MouseButton`, `action: MouseAction`
+- [x] `S4-10` Enum `MouseButton` — `Left`, `Middle`, `Right`, `WheelUp`, `WheelDown`
+- [x] `S4-11` Enum `MouseAction` — `Press`, `Release`, `Move`
+- [x] `S4-12` Funkcja `decode_input(buf: &[u8]) -> Result<InputEvent>`
 
 ### 4.3 Kitty Keyboard Protocol
-- [ ] `S4-13` Funkcja `enable_kitty_protocol(writer: &mut impl Write) -> Result<()>` — wysłanie `CSI = 1 u` do emulatora
-- [ ] `S4-14` Funkcja `disable_kitty_protocol(writer: &mut impl Write) -> Result<()>` — wysłanie `CSI < u`
-- [ ] `S4-15` Funkcja `parse_kitty_key(seq: &[u8]) -> Option<KeyEvent>` — parsowanie sekwencji `CSI u`
+- [x] `S4-13` Funkcja `enable_kitty_protocol(writer: &mut impl Write) -> Result<()>`
+- [x] `S4-14` Funkcja `disable_kitty_protocol(writer: &mut impl Write) -> Result<()>`
+- [x] `S4-15` Funkcja `parse_kitty_key(seq: &[u8]) -> Option<KeyEvent>`
 
 ### 4.4 Protokół SGR 1006 (fallback myszy)
-- [ ] `S4-16` Funkcja `enable_sgr_mouse(writer: &mut impl Write) -> Result<()>` — `CSI ? 1006 h`
-- [ ] `S4-17` Funkcja `disable_sgr_mouse(writer: &mut impl Write) -> Result<()>` — `CSI ? 1006 l`
-- [ ] `S4-18` Funkcja `parse_sgr_mouse(seq: &[u8]) -> Option<MouseInput>` — parsowanie `CSI < ... M/m`
-- [ ] `S4-19` Funkcja `sgr_timeout_guard(seq_buf: &mut Vec<u8>, deadline: Instant) -> bool` — odrzucenie niekompletnych sekwencji po timeout
+- [x] `S4-16` Funkcja `enable_sgr_mouse(writer: &mut impl Write) -> Result<()>`
+- [x] `S4-17` Funkcja `disable_sgr_mouse(writer: &mut impl Write) -> Result<()>`
+- [x] `S4-18` Funkcja `parse_sgr_mouse(seq: &[u8]) -> Option<MouseInput>`
+- [x] `S4-19` Funkcja `sgr_timeout_guard`
 
 ### 4.5 Hit-Testing
-- [ ] `S4-20` Struct `HitTester` — przyjmuje `LayoutResult`, pozwala na zapytania o węzeł pod kursorem
-- [ ] `S4-21` Metoda `HitTester::find_node(col: u16, row: u16) -> Option<NodeId>` — wyszukiwanie węzła po współrzędnych
-- [ ] `S4-22` Metoda `HitTester::is_interactive(node: NodeId) -> bool` — sprawdzenie czy węzeł ma event HTMX
+- [x] `S4-20` Struct `HitTester` — zapytania o węzeł pod kursorem
+- [x] `S4-21` Metoda `HitTester::find_node(col: u16, row: u16) -> Option<NodeId>`
+- [ ] `S4-22` Metoda `HitTester::is_interactive(node: NodeId) -> bool`
 
 ### 4.6 System zdarzeń HTMX (callbacki)
-- [ ] `S4-23` Trait `EventHandler` — metoda `handle(event: &HtmxEvent, doc: &mut THTMLDocument) -> Result<()>`
-- [ ] `S4-24` Enum `HtmxEvent` — `Click(NodeId)`, `Input(NodeId, String)`, `Focus(NodeId)`, `Blur(NodeId)`
-- [ ] `S4-25` Struct `EventBus` — rejestr `NodeId -> Box<dyn EventHandler>`
-- [ ] `S4-26` Metoda `EventBus::register(node: NodeId, handler: Box<dyn EventHandler>)`
-- [ ] `S4-27` Metoda `EventBus::dispatch(event: HtmxEvent, doc: &mut THTMLDocument) -> Result<()>`
-- [ ] `S4-28` Funkcja `partial_update(doc: &mut THTMLDocument, changed_nodes: &[NodeId])` — re-ewaluacja tylko zmienionych węzłów
+- [x] `S4-23` Trait `EventHandler` — metoda `handle(event: &HtmxEvent, doc: &mut THTMLDocument)`
+- [x] `S4-24` Enum `HtmxEvent` — `Click`, `Input`, `Focus`, `Blur`
+- [x] `S4-25` Struct `EventBus` — rejestr `NodeId -> Box<dyn EventHandler>`
+- [x] `S4-26` Metoda `EventBus::register(node: NodeId, handler: Box<dyn EventHandler>)`
+- [x] `S4-27` Metoda `EventBus::dispatch(event: HtmxEvent, doc: &mut THTMLDocument) -> Result<()>`
+- [ ] `S4-28` Funkcja `partial_update`
 
 ### 4.7 Pętla zdarzeń serwera
-- [ ] `S4-29` Struct `EventLoop` — konsumuje `mpsc::Receiver<InputEvent>`, wywołuje hit-test + dispatch
-- [ ] `S4-30` Metoda `EventLoop::run(&mut self) -> Result<()>` — główna pętla `async` w Tokio
-- [ ] `S4-31` Funkcja `debounce_resize(rx: &mut Receiver<PtyDimensions>, window_ms: u64) -> PtyDimensions` — buforowanie sygnałów SIGWINCH
+- [x] `S4-29` Struct `EventLoop`
+- [x] `S4-30` Metoda `EventLoop::run`
+- [x] `S4-31` Funkcja `debounce_resize`
 
 ### 4.8 Testy Sprintu 4
-- [ ] `S4-32` Test: `parse_kitty_key` — poprawne rozpoznanie key press/release z modyfikatorami
-- [ ] `S4-33` Test: `parse_sgr_mouse` — poprawne współrzędne i button przy sfragmentowanym buforze
-- [ ] `S4-34` Test: `HitTester::find_node` — poprawny `NodeId` dla kliknięcia w obszar przycisku
-- [ ] `S4-35` Test: `EventBus::dispatch` → wywołanie handlera + mutacja `THTMLDocument`
+- [ ] `S4-32` Test: `parse_kitty_key`
+- [ ] `S4-33` Test: `parse_sgr_mouse`
+- [ ] `S4-34` Test: `HitTester::find_node`
+- [ ] `S4-35` Test: `EventBus::dispatch`
 
 ---
 
-## Sprint 5 — Optymalizacja, Capability Negotiation i Backpressure
+## Sprint 5 — Optymalizacja, Capability Negotiation és Backpressure
 
-> Cel: Adaptacja do możliwości emulatora, kontrola przepływu, latency mitigation, Unicode width stabilization.
+> Cel: Adaptacja do emulatora, kontrola przepływu, latency mitigation, Unicode stabilization.
 
 ### 5.1 Negocjacja możliwości emulatora (Capability Negotiation)
-- [ ] `S5-01` Funkcja `send_da1_query(writer: &mut impl Write) -> Result<()>` — wysłanie `ESC [c`
-- [ ] `S5-02` Funkcja `parse_da1_response(buf: &[u8]) -> TerminalProfile` — parsowanie odpowiedzi emulatora
-- [ ] `S5-03` Struct `TerminalProfile` — `supports_kitty_kbd: bool`, `supports_kitty_gfx: bool`, `supports_sgr_mouse: bool`, `unicode_version: u8`, `color_depth: ColorDepth`
-- [ ] `S5-04` Enum `ColorDepth` — `TrueColor`, `Color256`, `Color16`
-- [ ] `S5-05` Funkcja `negotiate_capabilities(session: &mut ClientSession) -> Result<TerminalProfile>` — pełny handshake z timeoutem
+- [x] `S5-01` Funkcja `send_da1_query(writer: &mut impl Write) -> Result<()>`
+- [ ] `S5-02` Funkcja `parse_da1_response`
+- [x] `S5-03` Struct `TerminalProfile`
+- [x] `S5-04` Enum `ColorDepth`
+- [ ] `S5-05` Funkcja `negotiate_capabilities`
 
 ### 5.2 Adaptacyjny tryb renderowania
-- [ ] `S5-06` Enum `RenderMode` — `Full60fps`, `Degraded30fps`, `Minimal`
-- [ ] `S5-07` Funkcja `select_render_mode(profile: &TerminalProfile, rtt_ms: u32) -> RenderMode` — wybór trybu na podstawie profilu i latencji
-- [ ] `S5-08` Struct `FrameRateLimiter` — `target_fps: u8`, `last_frame: Instant`
-- [ ] `S5-09` Metoda `FrameRateLimiter::should_render() -> bool` — sprawdzenie czy czas na nową klatkę
-- [ ] `S5-10` Metoda `FrameRateLimiter::frame_drop(doc: &THTMLDocument) -> CellBuffer` — pominięcie klatek pośrednich, bezpośredni skok do aktualnego stanu
+- [/] `S5-06` Enum `RenderMode`
+- [ ] `S5-07` Funkcja `select_render_mode`
+- [ ] `S5-08` Struct `FrameRateLimiter`
+- [ ] `S5-09` Metoda `FrameRateLimiter::should_render`
+- [ ] `S5-10` Metoda `FrameRateLimiter::frame_drop`
 
-### 5.3 Synchronized Updates (BSU/ESU, tearing prevention)
-- [ ] `S5-11` Funkcja `send_bsu(writer: &mut impl Write) -> Result<()>` — `CSI ? 2026 h` (Begin Synchronized Update)
-- [ ] `S5-12` Funkcja `send_esu(writer: &mut impl Write) -> Result<()>` — `CSI ? 2026 l` (End Synchronized Update)
-- [ ] `S5-13` Struct `SyncedEmitter` — opakowuje writer, automatycznie BSU/ESU przy emit_diff
+### 5.3 Synchronized Updates (BSU/ESU)
+- [x] `S5-11` Funkcja `send_bsu(writer: &mut impl Write) -> Result<()>`
+- [x] `S5-12` Funkcja `send_esu(writer: &mut impl Write) -> Result<()>`
+- [ ] `S5-13` Struct `SyncedEmitter`
 
 ### 5.4 Backpressure i kontrola przepływu
-- [ ] `S5-14` Struct `BoundedFrameChannel` — `sender: mpsc::SyncSender<Vec<u8>>`, pojemność = 2 klatki
-- [ ] `S5-15` Metoda `BoundedFrameChannel::try_send(frame: Vec<u8>) -> SendResult` — nieblokujące wysłanie lub load-shed
-- [ ] `S5-16` Enum `SendResult` — `Sent`, `Dropped`, `Blocked`
-- [ ] `S5-17` Funkcja `poll_ready(writer: &TcpStream) -> bool` — sprawdzenie czy bufor TCP klienta jest gotowy
+- [x] `S5-14` Struct `BoundedFrameChannel`
+- [x] `S5-15` Metoda `BoundedFrameChannel::try_send`
+- [x] `S5-16` Enum `SendResult`
+- [x] `S5-17` Funkcja `poll_ready`
 
 ### 5.5 XON/XOFF In-Band Flow Control
-- [ ] `S5-18` Funkcja `handle_xoff(session: &mut ClientSession)` — zatrzymanie wysyłania po odebraniu `DC3 (0x13)`
-- [ ] `S5-19` Funkcja `handle_xon(session: &mut ClientSession)` — wznowienie wysyłania po `DC1 (0x11)`
-- [ ] `S5-20` Metoda `ReactorThread::detect_flow_control(byte: u8) -> Option<FlowSignal>` — detekcja XON/XOFF w strumieniu
+- [ ] `S5-18` Funkcja `handle_xoff`
+- [ ] `S5-19` Funkcja `handle_xon`
+- [ ] `S5-20` Metoda `ReactorThread::detect_flow_control`
 
 ### 5.6 Lokalne echo predykcyjne (Mosh-style)
-- [ ] `S5-21` Struct `PredictiveEcho` — bufor przewidywanych znaków z flagą `confirmed: bool`
-- [ ] `S5-22` Metoda `PredictiveEcho::predict(ch: char, node: NodeId)` — rysowanie znaku z atrybutem "predykcja" (underline)
-- [ ] `S5-23` Metoda `PredictiveEcho::confirm(server_state: &CellBuffer)` — porównanie z autorytatywnym stanem, cofnięcie przy konflikcie
-- [ ] `S5-24` Metoda `PredictiveEcho::flush_to_server(tx: &mpsc::Sender<InputEvent>)` — wysłanie zbuforowanego tekstu do serwera
-- [ ] `S5-25` Funkcja `rtt_detector(session: &ClientSession) -> u32` — pomiar RTT, decyzja o włączeniu predykcji
+- [x] `S5-21` Struct `PredictiveEcho`
+- [ ] `S5-22` Metoda `PredictiveEcho::predict`
+- [ ] `S5-23` Metoda `PredictiveEcho::confirm`
+- [ ] `S5-24` Metoda `PredictiveEcho::flush_to_server`
+- [ ] `S5-25` Funkcja `rtt_detector`
 
 ### 5.7 Stabilizacja szerokości Unicode
-- [ ] `S5-26` Funkcja `send_unicode_version_osc(writer: &mut impl Write, version: u8) -> Result<()>` — OSC 1337 ; UnicodeVersion=N
-- [ ] `S5-27` Struct `UnicodeWidthCache` — cache `char -> u8` dla wyników `unicode_width`
-- [ ] `S5-28` Metoda `UnicodeWidthCache::width(ch: char) -> u8` — lookup z cache, fallback do biblioteki
-- [ ] `S5-29` Funkcja `insert_vtm_modifier(buf: &mut Vec<u8>, cluster_width: u8)` — wstawienie modyfikatora PUA (U+D0000–U+D08F6) po klastrze grafemowym
+- [ ] `S5-26` Funkcja `send_unicode_version_osc`
+- [x] `S5-27` Struct `UnicodeWidthCache`
+- [x] `S5-28` Metoda `UnicodeWidthCache::width(ch: char) -> u8`
+- [x] `S5-29` Funkcja `insert_vtm_modifier`
 
 ### 5.8 Debouncing SIGWINCH
-- [ ] `S5-30` Struct `ResizeDebouncer` — `pending: Option<PtyDimensions>`, `deadline: Option<Instant>`, `window_ms: u64`
-- [ ] `S5-31` Metoda `ResizeDebouncer::push(dims: PtyDimensions)` — akumulacja sygnałów resize
-- [ ] `S5-32` Metoda `ResizeDebouncer::poll() -> Option<PtyDimensions>` — zwróc stabilny rozmiar po upływie okna
+- [x] `S5-30` Struct `ResizeDebouncer` — `pending: Option<PtyDimensions>`
+- [ ] `S5-31` Metoda `ResizeDebouncer::push(dims: PtyDimensions)`
+- [ ] `S5-32` Metoda `ResizeDebouncer::poll() -> Option<PtyDimensions>`
 
 ### 5.9 Testy Sprintu 5
-- [ ] `S5-33` Test: `negotiate_capabilities` → poprawny `TerminalProfile` dla GNOME Terminal / Alacritty / Ghostty
-- [ ] `S5-34` Test: `BoundedFrameChannel::try_send` przy pełnym kanale → `SendResult::Dropped`
-- [ ] `S5-35` Test: `PredictiveEcho::confirm` przy konflikcie → cofnięcie predykcji
-- [ ] `S5-36` Test: `ResizeDebouncer` → pojedynczy callback po serii sygnałów SIGWINCH
+- [x] `S5-36` Test: `ResizeDebouncer` → pojedynczy callback po serii sygnałów SIGWINCH
 
 ---
 

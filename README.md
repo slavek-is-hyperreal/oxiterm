@@ -7,16 +7,19 @@ OxiTerm is a high-performance, server-side rendered (SSR) terminal-based applica
 - **Zero-Client Logic**: No JavaScript or complex dependencies on the client side. Only a terminal emulator and SSH client are required.
 - **THTML & TCSS**: Familiar declarative structure for terminal layouts.
 - **Flexbox Layout**: Powered by Taffy/Yoga for responsive terminal designs.
-- **Secure Transport**: Encrypted communication via SSH with strict public-key only authentication.
-- **Tearing-Free Rendering**: Protocol-level Synchronized Updates (BSU/ESU) for atomic frame delivery.
+- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
+- **Predictive Local Echo**: Mitigation for high-latency network connections via `PredictiveEcho` buffer.
+- **Synchronized Updates**: Prevents screen tearing during high-frequency updates via BSU/ESU commands.
+- **Backpressure**: `BoundedFrameChannel` drops oldest frames if the renderer is too slow to prevent memory exhaustion.
+- **Hit-Testing**: `HitTester` maps screen coordinates to `NodeId` using `LayoutResult` from Taffy.
 - **High Performance**: Rust-based engine with double buffering, compacting Node Arena, and diff-based rendering.
 - **Defensive Design**: Panic-free THTML parsing with ANSI-injection sanitization.
 - **Accessibility**: Built-in support for screen readers via AT-SPI2 tunneling.
 
 ## Project Status
 
-- **Sprint 0 & 1**: ✅ Infrastructure & SSH Daemon (Hardened)
-- **Sprint 2 & 3**: 🚧 AST Arena, THTML Parser, Layout Engine & TCSS (In Progress)
+- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS
+- **Sprint 4 & 5**: ✅ Interactivity, RRT, SGR/Kitty, Backpressure & Stability
 
 ## Architecture
 

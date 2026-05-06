@@ -34,7 +34,7 @@ impl Handler for OxiServer {
     }
 
     async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, _session: &mut Session) -> Result<bool, Self::Error> {
-        info!("Opening session on channel: {:?}", channel.id());
+        info!("Opening session on channel: {}", channel.id());
         let client_session = self.registry.create_session();
         self.channels.lock().insert(channel.id(), client_session.id);
         Ok(true)
@@ -71,7 +71,7 @@ impl Handler for OxiServer {
     }
 
     async fn exec_request(&mut self, channel: ChannelId, data: &[u8], session: &mut Session) -> Result<(), Self::Error> {
-        warn!("Blocking exec request on channel {channel:?}: {:?}", String::from_utf8_lossy(data));
+        warn!("Blocking exec request on channel {channel:?}: {}", String::from_utf8_lossy(data));
         session.request_failure();
         Ok(()) 
     }
@@ -114,6 +114,19 @@ impl Handler for OxiServer {
         if let Some(sid) = sid {
             info!("Removing session {sid} from registry");
             self.registry.remove_session(sid);
+        }
+        Ok(())
+    }
+
+    async fn data(&mut self, channel: ChannelId, data: &[u8], _session: &mut Session) -> Result<(), Self::Error> {
+        let sid = self.channels.lock().get(&channel).copied();
+        if let Some(sid) = sid {
+            if let Some(session) = self.registry.sessions.read().get(&sid) {
+                // Send raw data to RRT
+                if let Err(e) = session.raw_input_tx.send(data.to_vec()) {
+                    warn!("Failed to send data to reactor for session {sid}: {e:?}");
+                }
+            }
         }
         Ok(())
     }

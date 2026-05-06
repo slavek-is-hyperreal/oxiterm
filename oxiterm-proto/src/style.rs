@@ -1,16 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AnsiColor {
     TrueColor(u8, u8, u8),
     Color256(u8),
+    #[default]
     Reset,
-}
-
-impl Default for AnsiColor {
-    fn default() -> Self {
-        Self::Reset
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

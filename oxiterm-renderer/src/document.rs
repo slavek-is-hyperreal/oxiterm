@@ -18,10 +18,19 @@ impl THTMLDocument {
             dirty_nodes: Vec::new(),
         }
     }
+}
+
+impl Default for THTMLDocument {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl THTMLDocument {
 
     pub fn append_child(&mut self, parent: NodeId, child: NodeId) -> Result<()> {
         let parent_node = self.arena.get_mut(parent)
-            .ok_or_else(|| anyhow!("Parent node {:?} not found", parent))?;
+            .ok_or_else(|| anyhow!("Parent node {parent:?} not found"))?;
         parent_node.children.push(child);
         self.mark_dirty(parent);
         Ok(())
@@ -29,14 +38,14 @@ impl THTMLDocument {
 
     pub fn detach_child(&mut self, parent: NodeId, child: NodeId) -> Result<()> {
         let parent_node = self.arena.get_mut(parent)
-            .ok_or_else(|| anyhow!("Parent node {:?} not found", parent))?;
+            .ok_or_else(|| anyhow!("Parent node {parent:?} not found"))?;
         
         if let Some(pos) = parent_node.children.iter().position(|&id| id == child) {
             parent_node.children.remove(pos);
             self.mark_dirty(parent);
             Ok(())
         } else {
-            Err(anyhow!("Child node {:?} not found in parent {:?}", child, parent))
+            Err(anyhow!("Child node {child:?} not found in parent {parent:?}"))
         }
     }
 
@@ -64,7 +73,7 @@ impl THTMLDocument {
 
     fn copy_node_recursive(&self, target_doc: &mut THTMLDocument, source_id: NodeId) -> Result<NodeId> {
         let source_node = self.arena.get(source_id)
-            .ok_or_else(|| anyhow!("Source node {:?} not found", source_id))?;
+            .ok_or_else(|| anyhow!("Source node {source_id:?} not found"))?;
         
         let mut new_node = source_node.clone();
         new_node.children.clear();

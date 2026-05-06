@@ -12,3 +12,5 @@ nom = { workspace = true }
 regex = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+unicode-width = { workspace = true }
+parking_lot = { workspace = true }

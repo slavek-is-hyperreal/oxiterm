@@ -53,8 +53,8 @@ impl DiffEngine {
                 }
                 AnsiCommand::SetColor(fg, bg) => {
                     // Simplified color encoding
-                    buf.extend_from_slice(Self::encode_color(fg, true).as_bytes());
-                    buf.extend_from_slice(Self::encode_color(bg, false).as_bytes());
+                    buf.extend_from_slice(Self::encode_color(*fg, true).as_bytes());
+                    buf.extend_from_slice(Self::encode_color(*bg, false).as_bytes());
                 }
                 AnsiCommand::WriteChar(ch) => {
                     let mut b = [0; 4];
@@ -75,11 +75,11 @@ impl DiffEngine {
         buf
     }
 
-    fn encode_color(color: &AnsiColor, is_fg: bool) -> String {
+    fn encode_color(color: AnsiColor, is_fg: bool) -> String {
         let prefix = if is_fg { "38" } else { "48" };
         match color {
-            AnsiColor::TrueColor(r, g, b) => format!("\x1b[{};2;{};{};{}m", prefix, r, g, b),
-            AnsiColor::Color256(n) => format!("\x1b[{};5;{}m", prefix, n),
+            AnsiColor::TrueColor(r, g, b) => format!("\x1b[{prefix};2;{r};{g};{b}m"),
+            AnsiColor::Color256(n) => format!("\x1b[{prefix};5;{n}m"),
             AnsiColor::Reset => if is_fg { "\x1b[39m".to_string() } else { "\x1b[49m".to_string() },
         }
     }

@@ -13,28 +13,37 @@ impl NodeArena {
             free_list: Vec::new(),
         }
     }
+}
+
+impl Default for NodeArena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NodeArena {
 
     pub fn alloc(&mut self, node: Node) -> NodeId {
         if let Some(index) = self.free_list.pop() {
-            self.nodes[index as usize] = Some(node);
+            self.nodes[usize::try_from(index).unwrap()] = Some(node);
             NodeId(index)
         } else {
-            let index = self.nodes.len() as u32;
+            let index = u32::try_from(self.nodes.len()).unwrap();
             self.nodes.push(Some(node));
             NodeId(index)
         }
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
-        self.nodes.get(id.0 as usize).and_then(|n| n.as_ref())
+        self.nodes.get(usize::try_from(id.0).unwrap()).and_then(Option::as_ref)
     }
 
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
-        self.nodes.get_mut(id.0 as usize).and_then(|n| n.as_mut())
+        self.nodes.get_mut(usize::try_from(id.0).unwrap()).and_then(Option::as_mut)
     }
 
     pub fn remove(&mut self, id: NodeId) {
-        if let Some(node_slot) = self.nodes.get_mut(id.0 as usize) {
+        if let Some(node_slot) = self.nodes.get_mut(usize::try_from(id.0).unwrap()) {
             if node_slot.is_some() {
                 *node_slot = None;
                 self.free_list.push(id.0);
@@ -50,8 +59,8 @@ impl NodeArena {
         
         for (old_idx, node_opt) in self.nodes.drain(..).enumerate() {
             if let Some(node) = node_opt {
-                let new_idx = new_nodes.len() as u32;
-                let old_id = NodeId(old_idx as u32);
+                let new_idx = u32::try_from(new_nodes.len()).unwrap();
+                let old_id = NodeId(u32::try_from(old_idx).unwrap());
                 let new_id = NodeId(new_idx);
                 remap.insert(old_id, new_id);
                 new_nodes.push(Some(node));
@@ -62,12 +71,10 @@ impl NodeArena {
         self.free_list.clear();
 
         // Update children pointers in the new nodes
-        for node_opt in self.nodes.iter_mut() {
-            if let Some(node) = node_opt {
-                for child_id in node.children.iter_mut() {
-                    if let Some(&new_id) = remap.get(child_id) {
-                        *child_id = new_id;
-                    }
+        for node in self.nodes.iter_mut().flatten() {
+            for child_id in &mut node.children {
+                if let Some(&new_id) = remap.get(child_id) {
+                    *child_id = new_id;
                 }
             }
         }
@@ -77,7 +84,7 @@ impl NodeArena {
 
     pub fn occupancy(&self) -> f32 {
         if self.nodes.is_empty() { return 1.0; }
-        let active = self.nodes.iter().filter(|n| n.is_some()).count();
-        active as f32 / self.nodes.len() as f32
+        let active = self.nodes.iter().flatten().count();
+        (active as f32) / (self.nodes.len() as f32)
     }
 }
