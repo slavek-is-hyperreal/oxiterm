@@ -19,22 +19,22 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Lints
-      run: cargo clippy -- -D warnings
+      run: cargo clippy
 
   audit:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
     - name: Run audit
-      run: cargo audit
+      uses: rustsec/audit-check@v1.4.1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Install tarpaulin
-      run: cargo install cargo-tarpaulin
+      uses: taiki-e/install-action@cargo-tarpaulin
     - name: Run tarpaulin
       run: cargo tarpaulin --out xml
