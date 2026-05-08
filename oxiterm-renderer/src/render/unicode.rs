@@ -32,8 +32,30 @@ impl UnicodeWidthCache {
 }
 
 pub fn insert_vtm_modifier(buf: &mut String, cluster_width: u8) {
-    // VTM (Virtual Terminal Modifier) PUA range.
-    // The auditor requested U+E000–U+F8FF.
-    let modifier = std::char::from_u32(0xE000 + u32::from(cluster_width)).unwrap_or('\u{E000}');
+    // VTM (Virtual Terminal Modifier) Supplementary PUA-B range (U+D0000-U+D08F6).
+    // Using 0xD0000 as base. u8 (0-255) fits well within the range.
+    let modifier = std::char::from_u32(0xD0000 + u32::from(cluster_width)).unwrap_or('\u{D0000}');
     buf.push(modifier);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unicode_width_cache() {
+        let cache = UnicodeWidthCache::get();
+        assert_eq!(cache.width('A'), 1);
+        assert_eq!(cache.width('🚀'), 2);
+        assert_eq!(cache.width('\n'), 0);
+    }
+
+    #[test]
+    fn test_vtm_modifier() {
+        let mut s = String::new();
+        insert_vtm_modifier(&mut s, 2);
+        assert_eq!(s.chars().count(), 1);
+        let ch = s.chars().next().unwrap();
+        assert_eq!(ch as u32, 0xD0002);
+    }
 }

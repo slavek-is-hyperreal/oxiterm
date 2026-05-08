@@ -5,6 +5,7 @@ pub mod session;
 pub mod events;
 pub mod ssh;
 pub mod backpressure;
+pub mod loader;
 pub mod weather;
 pub mod weather_app;
 

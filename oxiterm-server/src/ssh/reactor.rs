@@ -15,7 +15,7 @@ pub struct ReactorThread {
 impl ReactorThread {
     /// Spawns a dedicated OS thread for input processing.
     /// Bridges raw byte stream from SSH to structured `InputEvents`.
-    pub fn spawn(rx: mpsc::Receiver<ReactorMessage>, tx: mpsc::Sender<InputEvent>) -> Self {
+    pub fn spawn(rx: mpsc::Receiver<ReactorMessage>, tx: crate::backpressure::BoundedFrameChannel<InputEvent>) -> Self {
         let handle = thread::spawn(move || {
             debug!("ReactorThread started");
             let mut decoder = InputStateMachine::new();
@@ -27,15 +27,15 @@ impl ReactorThread {
                         if let Some(frame) = Self::sanitize_frame(&data) {
                             let events = decoder.feed_slice(&frame);
                             for event in events {
-                                if let Err(e) = tx.send(event) {
-                                    error!("Failed to send InputEvent from ReactorThread: {:?}", e);
+                                if tx.try_send(event) == crate::backpressure::SendResult::Closed {
+                                    error!("Failed to send InputEvent from ReactorThread: Channel Closed");
                                     return;
                                 }
                             }
                         }
                     }
                     ReactorMessage::Resize(cols, rows) => {
-                        let _ = tx.send(InputEvent::Resize { cols, rows });
+                        let _ = tx.try_send(InputEvent::Resize { cols, rows });
                     }
                 }
             }
@@ -57,12 +57,12 @@ impl ReactorThread {
     }
 
     /// S5-20: Detection of XON/XOFF flow control characters.
-    fn detect_flow_control(data: &[u8], tx: &mpsc::Sender<InputEvent>) {
+    fn detect_flow_control(data: &[u8], tx: &crate::backpressure::BoundedFrameChannel<InputEvent>) {
         for &b in data {
             if b == 0x13 { // XOFF (Ctrl-S)
-                let _ = tx.send(InputEvent::Xoff);
+                let _ = tx.try_send(InputEvent::Xoff);
             } else if b == 0x11 { // XON (Ctrl-Q)
-                let _ = tx.send(InputEvent::Xon);
+                let _ = tx.try_send(InputEvent::Xon);
             }
         }
     }

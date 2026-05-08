@@ -18,6 +18,7 @@ pub struct NodeAttributes {
     pub style_raw: Option<String>,
     pub src: Option<String>,
     pub event_htmx: Option<String>,
+    pub bind_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -28,7 +29,7 @@ pub struct Node {
     pub tag: NodeTag,
     pub attrs: NodeAttributes,
     pub children: Vec<NodeId>,
-    pub text_content: Option<String>,
+    pub text: Option<String>,
     /// Computed style after applying TCSS
     pub style: ComputedStyle,
 }
@@ -39,7 +40,7 @@ impl Node {
             tag,
             attrs: NodeAttributes::default(),
             children: Vec::new(),
-            text_content: None,
+            text: None,
             style: ComputedStyle::default(),
         }
     }

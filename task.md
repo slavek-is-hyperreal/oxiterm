@@ -367,3 +367,46 @@
 - [ ] `S6-35` Test: `InputStateMachine::feed` na zdeformowanej sekwencji → `InputEvent::Unknown`, brak paniki
 - [ ] `S6-36` Test: `build_a11y_tree` → poprawne role AT-SPI dla przycisków i inputów
 - [ ] `S6-37` Test: `render_linear_fallback` → płaski tekst semantyczny bez znaków Box Drawing
+
+---
+
+## Sprint 7 — Production Roadmap Implementation (2026-05-06)
+
+> **Cel:** Przekształcić OxiTerm z projektu portfolio w narzędzie produkcyjne.
+
+### Sprint A: Demo Hardening & Stability
+- [x] FIX-01: Auth hardening (reject empty/default)
+- [x] FIX-02: TerminalCleanupGuard (RAII cleanup)
+- [x] FIX-03: Unicode modifier range (U+D0000)
+- [x] FIX-04: BoundedFrameChannel (Backpressure)
+- [x] FIX-05: FrameRateLimiter deduplication
+- [x] SA-01: Session limits (max 20)
+- [x] SA-02: Idle timeout (10 min)
+- [x] SA-03: Logging to /tmp/oxiterm.log
+
+### Sprint B: CLI & Dynamic Hosting
+- [x] SB-01: `oxiterm-cli` crate setup
+- [x] SB-02: `oxiterm serve <file>` command
+- [x] SB-03: `oxiterm check <file>` validator
+- [x] SB-04: Document-agnostic EventLoop
+
+### Sprint C: Hot Reload (The Killer Feature)
+- [x] SC-01: File watcher integration (`notify`)
+- [x] SC-02: `InputEvent::Reload` signal
+- [x] SC-03: `broadcast_input_event` in Registry
+- [x] SC-04: Dynamic re-rendering on file save
+- [x] SC-05: Multi-page navigation (`event-htmx`)
+
+### Sprint D: DX & Examples
+- [x] SD-01: `examples/hello.thtml`
+- [x] SD-02: `examples/counter.thtml`
+- [x] SD-03: `examples/todo.thtml`
+
+### Sprint E: Testing & QA
+- [x] SE-01: Parser unit tests
+- [x] SE-02: Buffer/Renderer unit tests
+
+### Sprint F: Polish & Final Release
+- [ ] SF-01: Update README.md (User Guide)
+- [ ] SF-02: Final Walkthrough recording
+- [ ] SF-03: Production build verification

@@ -19,9 +19,6 @@ impl SyncedEmitter {
         writer.write_all(b"\x1b[?2026h")?;
         
         let bytes = DiffEngine::encode_ansi(&commands);
-        // Note: encode_ansi currently includes BSU/ESU inside it. 
-        // We should probably refactor DiffEngine to be cleaner, 
-        // but for now we'll just write the bytes.
         writer.write_all(&bytes)?;
         
         // ESU: CSI ? 2026 l

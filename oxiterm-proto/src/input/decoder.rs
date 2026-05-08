@@ -48,6 +48,7 @@ impl BoundedSubnegBuffer {
 pub struct InputStateMachine {
     state: State,
     buffer: BoundedSubnegBuffer,
+    utf8_buf: Vec<u8>,
     last_activity: Instant,
 }
 
@@ -63,6 +64,7 @@ impl InputStateMachine {
             state: State::Idle,
             // S6-15: Max 256 bytes buffer
             buffer: BoundedSubnegBuffer::new(256),
+            utf8_buf: Vec::with_capacity(4),
             last_activity: Instant::now(),
         }
     }
@@ -71,6 +73,7 @@ impl InputStateMachine {
     pub fn reset(&mut self) {
         self.state = State::Idle;
         self.buffer.clear();
+        self.utf8_buf.clear();
     }
 
     pub fn feed_slice(&mut self, data: &[u8]) -> Vec<InputEvent> {
@@ -96,6 +99,23 @@ impl InputStateMachine {
                 } else if byte == 0x11 || byte == 0x13 {
                     // XON/XOFF handled directly in ReactorThread
                     None
+                } else if byte >= 0x80 {
+                    // BUG-UTF8-01: Handle multi-byte UTF-8
+                    self.utf8_buf.push(byte);
+                    if let Ok(s) = std::str::from_utf8(&self.utf8_buf) {
+                        let cp = s.chars().next().unwrap();
+                        self.utf8_buf.clear();
+                        Some(InputEvent::KeyPress(KeyEvent {
+                            codepoint: cp,
+                            modifiers: KeyModifiers::default(),
+                            kind: KeyKind::Press,
+                        }))
+                    } else if self.utf8_buf.len() >= 4 {
+                        self.utf8_buf.clear();
+                        None
+                    } else {
+                        None
+                    }
                 } else {
                     Some(InputEvent::KeyPress(KeyEvent {
                         codepoint: byte as char,

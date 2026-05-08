@@ -75,3 +75,24 @@ impl DoubleBuffer {
         std::mem::swap(&mut self.front, &mut self.back);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_buffer_creation() {
+        let buf = CellBuffer::new(80, 24);
+        assert_eq!(buf.width, 80);
+        assert_eq!(buf.height, 24);
+        assert_eq!(buf.cells.len(), 80 * 24);
+    }
+
+    #[test]
+    fn test_buffer_clear() {
+        let mut buf = CellBuffer::new(10, 10);
+        buf.cells[0].ch = 'X';
+        buf.clear();
+        assert_eq!(buf.cells[0].ch, ' ');
+    }
+}

@@ -15,6 +15,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub host_key_path: PathBuf,
     pub password: Option<String>,
+    pub no_auth: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,6 +38,7 @@ impl Default for OxiTermConfig {
                 port: 2222,
                 host_key_path: PathBuf::from("host_key"),
                 password: None,
+                no_auth: false,
             },
             session: SessionConfig {
                 max_sessions: 100,

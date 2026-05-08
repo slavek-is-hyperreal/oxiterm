@@ -9,6 +9,7 @@ pub struct LayoutEngine {
     pub taffy: TaffyTree<()>,
     /// Persistent mapping from OxiTerm NodeId to Taffy NodeId
     node_map: HashMap<OxiNodeId, taffy::NodeId>,
+    pub last_layout: Option<LayoutResult>,
 }
 
 impl LayoutEngine {
@@ -16,7 +17,15 @@ impl LayoutEngine {
         Self {
             taffy: TaffyTree::new(),
             node_map: HashMap::new(),
+            last_layout: None,
         }
+    }
+
+    /// BUG-COMPACT-01: Clear the node map to ensure consistency after document compaction.
+    pub fn reset_nodes(&mut self) {
+        self.taffy = TaffyTree::new();
+        self.node_map.clear();
+        self.last_layout = None;
     }
 }
 
@@ -82,7 +91,27 @@ impl LayoutEngine {
         // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
 
-        Ok(LayoutResult { nodes })
+        let result = LayoutResult { nodes };
+        self.last_layout = Some(result.clone());
+        Ok(result)
+    }
+
+    pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
+        let layout = self.last_layout.as_ref()?;
+        let mut best_node = None;
+        let mut best_area = u32::MAX;
+
+        for (&id, rect) in &layout.nodes {
+            if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+                // We want the smallest (deepest) node
+                let area = (rect.width as u32) * (rect.height as u32);
+                if area <= best_area {
+                    best_area = area;
+                    best_node = Some(id);
+                }
+            }
+        }
+        best_node
     }
 
     fn ensure_nodes_exist_recursive(
@@ -146,5 +175,49 @@ impl LayoutEngine {
             },
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::THTMLDocument;
+    use oxiterm_proto::dom::{Node, NodeTag};
+
+    #[test]
+    fn test_basic_layout() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(20);
+        child.style.height = Some(10);
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(doc.root, child_id).unwrap();
+        
+        let result = engine.compute(&mut doc).unwrap();
+        let rect = result.nodes.get(&child_id).unwrap();
+        assert_eq!(rect.width, 20);
+        assert_eq!(rect.height, 10);
+    }
+
+    #[test]
+    fn test_hit_test() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(10);
+        child.style.height = Some(10);
+        child.style.margin.left = 5;
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(doc.root, child_id).unwrap();
+        
+        engine.compute(&mut doc).unwrap();
+        
+        // Inside
+        assert_eq!(engine.hit_test(6, 1), Some(child_id));
+        // Outside
+        assert_eq!(engine.hit_test(1, 1), Some(doc.root));
     }
 }

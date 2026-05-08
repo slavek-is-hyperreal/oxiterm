@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use async_trait::async_trait;
 use russh::{server, server::{Session, Handler}, ChannelId, Channel};
 use russh_keys::key;
 use tracing::{info, warn};
-use crate::session::{SessionRegistry, SessionId};
+use crate::session::{SessionRegistry, SessionId, THTMLDocument};
 use crate::ssh::keys::AuthorizedKeys;
 
 #[derive(Clone)]
@@ -16,6 +17,8 @@ pub struct OxiServer {
     pub peer_addr: std::net::SocketAddr,
     /// Map of SSH channels to `OxiTerm` session IDs
     pub channels: Arc<parking_lot::Mutex<HashMap<ChannelId, SessionId>>>,
+    pub initial_document: Option<THTMLDocument>,
+    pub source_path: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -32,38 +35,34 @@ impl Handler for OxiServer {
         }
     }
 
-    async fn auth_password(&mut self, user: &str, password: &str) -> Result<server::Auth, Self::Error> {
-        if let Some(ref config_pass) = self.config.server.password {
-            if password == config_pass {
-                info!("Accepted password auth for user: {user}");
-                return Ok(server::Auth::Accept);
+    async fn auth_password(&mut self, _user: &str, password: &str) -> Result<russh::server::Auth, Self::Error> {
+        if self.config.server.no_auth {
+            return Ok(russh::server::Auth::Accept);
+        }
+
+        if let Some(ref required_password) = self.config.server.password {
+            if !password.is_empty() && password == required_password {
+                return Ok(russh::server::Auth::Accept);
             }
         }
         
-        warn!("Rejected password attempt for user: {user}");
-        Ok(server::Auth::Reject { proceed_with_methods: None })
+        warn!("Auth rejected for {} (unauthorized or missing password)", self.peer_addr);
+        Ok(russh::server::Auth::Reject { proceed_with_methods: None })
     }
 
     async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, _session: &mut Session) -> Result<bool, Self::Error> {
         info!("Opening session on channel: {}", channel.id());
         
         // BUG-H06: Rate limiting
-        let ip = self.peer_addr.ip();
-        match self.rate_limiter.check_and_record(ip) {
-            crate::ratelimit::RateResult::Deny => {
-                warn!("Rate limit exceeded for IP: {ip}, denying session");
-                return Ok(false);
-            }
-            crate::ratelimit::RateResult::Throttle(delay) => {
-                info!("Throttling session for IP: {ip} for {:?}", delay);
-                tokio::time::sleep(delay).await;
-            }
-            crate::ratelimit::RateResult::Allow => {}
+        // BUG-RATELIMIT-01: Removed double check here. 
+        // Rate limit is already checked at the TCP accept level in mod.rs.
+        if let Some(client_session) = self.registry.create_session() {
+            self.channels.lock().insert(channel.id(), client_session.id);
+            Ok(true)
+        } else {
+            warn!("Rejecting SSH channel: session registry full");
+            Ok(false)
         }
-
-        let client_session = self.registry.create_session();
-        self.channels.lock().insert(channel.id(), client_session.id);
-        Ok(true)
     }
 
     async fn pty_request(
@@ -96,12 +95,29 @@ impl Handler for OxiServer {
         
         let sid = self.channels.lock().get(&channel).copied();
         if let Some(sid) = sid {
-            if let Some(client_session) = self.registry.sessions.read().get(&sid).cloned() {
+            let client_session = self.registry.sessions.read().get(&sid).cloned();
+            if let Some(client_session) = client_session {
                 let handle = session.handle();
-                let (output_tx, mut output_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+                let (output_tx, mut output_rx) = crate::backpressure::BoundedFrameChannel::<Vec<u8>>::new(32);
                 
                 let event_bus = Arc::new(crate::events::EventBus::new());
-                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx);
+                
+                let app = tokio::task::spawn_blocking(|| {
+                    let mut a = crate::weather_app::WeatherApp::new();
+                    a.refresh();
+                    a
+                }).await.unwrap();
+                
+                let dims = *client_session.dims.read(); // BUG-TOCTOU-01: One lock
+                let (doc, input_id) = app.build_document(dims.cols, dims.rows);
+                client_session.predictive_echo.write().active_node = input_id;
+
+                let (weather_tx, weather_rx) = std::sync::mpsc::channel();
+                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc);
+                event_loop.weather_app = Some(app);
+                event_loop.source_path = self.source_path.clone();
+                event_loop.weather_tx = Some(weather_tx);
+                event_loop.weather_rx = Some(weather_rx);
                 
                 std::thread::spawn(move || {
                     event_loop.run();

@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer" }
-oxiterm-a11y = { path = "../oxiterm-a11y" }
 tokio = { workspace = true }
 russh = { workspace = true }
 russh-keys = { workspace = true }

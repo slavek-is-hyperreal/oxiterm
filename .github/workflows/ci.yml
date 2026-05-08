@@ -38,3 +38,18 @@ jobs:
       uses: taiki-e/install-action@cargo-tarpaulin
     - name: Run tarpaulin
       run: cargo tarpaulin --out xml
+
+  release:
+    name: Release
+    needs: [build, audit]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/oxiterm-cli

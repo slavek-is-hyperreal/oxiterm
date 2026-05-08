@@ -9,6 +9,7 @@ pub enum InputEvent {
     Xon,
     Xoff,
     Refresh, // S6-refresh
+    Reload,  // SC-02: Hot Reload signal
     Unknown(Vec<u8>),
 }
 

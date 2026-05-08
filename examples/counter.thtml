@@ -1,0 +1,25 @@
+<box style="flex-direction: column; width: 80; height: 24; background-color: #0f172a;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
+        <text style="color: #38bdf8; font-weight: bold;">OxiTerm Counter Demo</text>
+        <text style="color: #94a3b8;" event-htmx="hello.thtml">[ Back to Home ]</text>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column;">
+        <text style="color: #94a3b8; margin-bottom: 1;">Current Value:</text>
+        <box style="padding: 2; border-style: double; border-color: #f59e0b;">
+            <text style="color: #ffffff; font-size: 200%; font-weight: bold;" bind-state="counter">0</text>
+        </box>
+        
+        <box class="controls">
+            <button class="btn" event-htmx="dec:counter">-</button>
+            <button class="btn" event-htmx="inc:counter">+</button>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; background-color: #1e293b; justify-content: center;">
+        <text style="color: #64748b;">Powered by OxiTerm Engine</text>
+    </box>
+</box>

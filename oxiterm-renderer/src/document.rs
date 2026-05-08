@@ -2,6 +2,7 @@ use crate::arena::NodeArena;
 use oxiterm_proto::dom::{Node, NodeId, NodeTag};
 use anyhow::{Result, anyhow};
 
+#[derive(Clone)]
 pub struct THTMLDocument {
     pub arena: NodeArena,
     pub root: NodeId,
@@ -103,5 +104,13 @@ impl THTMLDocument {
         }
         
         Ok(new_id)
+    }
+
+    pub fn get_node(&self, id: NodeId) -> Option<&Node> {
+        self.arena.get(id)
+    }
+
+    pub fn get_root(&self) -> &Node {
+        self.arena.get(self.root).expect("Root node must exist")
     }
 }

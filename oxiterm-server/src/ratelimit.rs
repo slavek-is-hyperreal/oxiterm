@@ -30,6 +30,12 @@ impl RateLimiter {
     pub fn check_and_record(&self, ip: IpAddr) -> RateResult {
         let mut windows = self.windows.lock();
         let now = Instant::now();
+
+        // BUG-H06 Fix: Occasional cleanup to prevent memory leak
+        if windows.len() > 1000 {
+            windows.retain(|_, v| now.duration_since(v.window_start) < Duration::from_secs(60));
+        }
+
         let counter = windows.entry(ip).or_insert_with(|| WindowCounter {
             count: 0,
             window_start: now,

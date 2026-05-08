@@ -1,0 +1,14 @@
+<box style="flex-direction: column; justify-content: center; align-items: center; width: 80; height: 24; background-color: #1a1b26;">
+    <box style="padding: 1; border-style: double; border-color: #7aa2f7;">
+        <text style="color: #bb9af7; font-weight: bold;">Welcome to OxiTerm!</text>
+    </box>
+    <box style="margin-top: 1;">
+        <text style="color: #9ece6a;">This is a standalone THTML application.</text>
+    </box>
+    <box style="margin-top: 2; padding: 1; background-color: #414868; border-style: rounded;">
+        <text style="color: #ffffff;">Press [Q] to exit</text>
+    </box>
+    <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #f7768e;" event-htmx="counter.thtml">
+        <text style="color: #e0af68;">Click here to see the Counter demo</text>
+    </box>
+</box>

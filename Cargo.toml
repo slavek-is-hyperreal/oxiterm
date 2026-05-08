@@ -3,7 +3,7 @@ members = [
     "oxiterm-server",
     "oxiterm-proto",
     "oxiterm-renderer",
-    "oxiterm-a11y",
+    "oxiterm-cli",
 ]
 resolver = "2"
 

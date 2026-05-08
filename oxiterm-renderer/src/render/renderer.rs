@@ -52,7 +52,7 @@ impl Renderer {
 
             match &node.tag {
                 NodeTag::Text => {
-                    if let Some(text) = &node.text_content {
+                    if let Some(text) = &node.text {
                         let mut cx = 0;
                         let mut cy = 0;
                         for ch in text.chars() {

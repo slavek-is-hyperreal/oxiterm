@@ -17,6 +17,7 @@ impl Rect {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
 }

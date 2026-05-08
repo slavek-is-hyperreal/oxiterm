@@ -1,65 +1,38 @@
-# OxiTerm — SSR Terminal Thin Client
+# 🚀 OxiTerm — Build TUI like a Website
 
-OxiTerm is a high-performance, server-side rendered (SSR) terminal-based application framework. It allows developers to build rich, interactive terminal user interfaces (TUI) using a declarative HTML-like syntax (THTML) and CSS-like styling (TCSS), all rendered on the server and delivered via SSH.
+OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH. No client installation required—just `ssh demo.oxiterm.dev`.
 
-## 🌤 Weather Dashboard Showcase (New!)
+### 🌟 "TUI as a Website"
+Why build complex terminal apps with low-level libraries when you can use **THTML**?
+- **HTML-like Syntax**: Define layouts, colors, and buttons in THTML files.
+- **HTMX-style Interactivity**: Simple `event-htmx` and `bind-state` attributes for real-time interaction.
+- **Hot Reload**: Change a `.thtml` file and see the terminal update instantly.
 
-We have successfully implemented a full-scale Weather Dashboard as a demonstration of OxiTerm's capabilities.
-- **Real-time Data**: Integrated with Open-Meteo API.
-- **Responsive Layout**: Adapts to terminal window resizing.
-- **Multi-view UI**: Current weather, 7-day forecast, and detailed metrics.
-- **Low Latency**: Optimized via Predictive Local Echo and Diff-based rendering.
+### 🛠 Developer Workflow
+```bash
+# 1. Install the OxiTerm CLI
+cargo install oxiterm-cli
 
-## Key Features
+# 2. Start a local dev server with Hot Reload
+oxiterm serve ./myapp.thtml --port 2222
 
-- **Zero-Client Logic**: Only a terminal emulator and SSH client are required.
-- **THTML & TCSS**: Familiar declarative structure for terminal layouts.
-- **Flexbox Layout**: Powered by Taffy for high-performance terminal designs.
-- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop.
-- **Predictive Local Echo**: Mitigation for high-latency connections.
-- **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
-- **Secure Auth**: Configurable password-based SSH authentication.
-- **Deep Screen Clearing**: Prevents scrollback artifacts using `\x1b[3J`.
+# 3. Connect from any terminal
+ssh localhost -p 2222
+```
 
-## Project Status
+### 💎 Key Features
+- **Bounded Backpressure**: Secure `BoundedFrameChannel` architecture prevents memory exhaustion.
+- **PUA-B Unicode Stabilization**: Pixel-perfect layouts across different terminal emulators.
+- **Predictive Echo**: Zero-latency feedback for keyboard input.
+- **Developer Tools**: `oxiterm check` for syntax validation and `oxiterm demo` for instant inspiration.
 
-- **Sprint 1**: ✅ SSH Transport Layer & Security (Completed)
-- **Sprint 2 & 3**: ✅ AST Arena, THTML Parser, Layout Engine & TCSS (Completed)
-- **Sprint 4 & 5**: ✅ Interactivity, Weather Demo & Production Polish (Completed)
+### 🚀 Quick Start (THTML Example)
+```html
+<box style="background-color: #1e293b; padding: 2;">
+  <text style="color: #38bdf8; font-weight: bold;">Counter: <text bind-state="count">0</text></text>
+  <button event-htmx="inc:count">[ + ] Increment</button>
+</box>
+```
 
-## Architecture
-
-OxiTerm follows a "Thin Client" architecture:
-1. **Server**: Manages application state, parses THTML/TCSS, calculates layouts, and generates ANSI escape sequences.
-2. **Transport**: SSH tunnel delivers optimized diffs to the client.
-3. **Client**: Any modern terminal emulator acting as a passive renderer.
-
-## Getting Started
-
-### Prerequisites
-- Rust 1.75+
-- OpenSSH client
-
-### Running the Weather Demo
-1. Set the password for the session:
-   ```bash
-   export OXITERM_PASSWORD=krakow
-   ```
-2. Start the server in release mode:
-   ```bash
-   cargo run --release -p oxiterm-server
-   ```
-3. Connect from another terminal:
-   ```bash
-   ssh -p 2222 localhost
-   ```
-
-## Project Structure
-
-- `oxiterm-server`: The main SSH daemon and SSR engine.
-- `oxiterm-proto`: Shared types and protocol definitions.
-- `oxiterm-renderer`: Layout calculation and ANSI generation.
-- `oxiterm-a11y`: Accessibility and screen reader integration.
-
-## License
-MIT
+---
+*Built with ❤️ in Rust for the modern terminal.*

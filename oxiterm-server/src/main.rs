@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let ssh_registry = registry.clone();
     let ssh_rate_limiter = rate_limiter.clone();
     tokio::spawn(async move {
-        if let Err(e) = run_server(ssh_config, ssh_registry, ssh_rate_limiter).await {
+        if let Err(e) = run_server(ssh_config, ssh_registry, ssh_rate_limiter, None, None).await {
             warn!("SSH server error: {:?}", e);
         }
     });

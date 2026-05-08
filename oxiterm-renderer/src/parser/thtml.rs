@@ -30,7 +30,7 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .chars()
         .filter(|&c| matches!(c,
             'a'..='z' | 'A'..='Z' | '0'..='9'
-            | '-' | '_' | '/' | '#' | '?' | '=' | '&' | '.' | ':' | '@' | '%'
+            | '-' | '_' | ':'
         ))
         .collect()
 }
@@ -67,7 +67,7 @@ impl THTMLParser {
     fn insert_node_recursive(doc: &mut THTMLDocument, parent_id: NodeId, parsed: ParsedNode) -> Result<()> {
         let mut node = Node::new(parsed.tag);
         node.attrs = parsed.attrs;
-        node.text_content = parsed.text;
+        node.text = parsed.text;
         
         let node_id = doc.arena.alloc(node);
         doc.append_child(parent_id, node_id)?;
@@ -134,28 +134,14 @@ impl THTMLParser {
                 break;
             }
 
-            // Try to parse child element
             if let Ok((remaining, child)) = Self::parse_element(current_input) {
                 children.push(child);
                 current_input = remaining;
             } else {
-                // Szach-mat, tak to piszą profesjonaliści.
-                if let Ok((remaining, text_chunk)) = take_until::<&str, &str, nom::error::Error<&str>>("<")(current_input) {
-                    if text_chunk.is_empty() {
-                        // Jesteśmy na znaku '<', ale to nie jest ani prawidłowe dziecko, ani nasz tag zamykający.
-                        // Konsumujemy jeden znak, żeby nie wpaść w nieskończoną pętlę przy śmieciowym HTML.
-                        if let Some(c) = current_input.chars().next() {
-                            text_content.push(c);
-                            current_input = &current_input[c.len_utf8()..];
-                        }
-                    } else {
-                        text_content.push_str(text_chunk);
-                        current_input = remaining;
-                    }
+                if let Some(c) = current_input.chars().next() {
+                    text_content.push(c);
+                    current_input = &current_input[c.len_utf8()..];
                 } else {
-                    // Nie ma więcej znaków '<' w dokumencie.
-                    text_content.push_str(current_input);
-                    current_input = "";
                     break;
                 }
             }
@@ -215,6 +201,7 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "style" => attrs.style_raw = Some(value),
             "src" => attrs.src = Some(value),
             "event-htmx" => attrs.event_htmx = Some(value),
+            "bind-state" => attrs.bind_state = Some(value),
             _ => {}
         }
         input = rem;
@@ -235,8 +222,70 @@ fn parse_attr_kv(input: &str) -> ParseResult<'_, (String, String)> {
         "style" => sanitize_style_raw(value),
         // BUG-M03: sanitize event-htmx — allow only URL-safe chars, reject ANSI/escape sequences
         "event-htmx" => sanitize_htmx_value(value),
+        "bind-state" => sanitize_htmx_value(value), // Same safety rules for state keys
         _ => value.to_string(),
     };
     
     Ok((input, (key.to_string(), value)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple() {
+        let input = r#"<box id="main"><text>Hello</text></box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.tag, NodeTag::Screen);
+        assert_eq!(root.children.len(), 1);
+        
+        let box_id = root.children[0];
+        let box_node = doc.get_node(box_id).unwrap();
+        assert_eq!(box_node.tag, NodeTag::Box);
+        assert_eq!(box_node.attrs.id, Some("main".to_string()));
+        assert_eq!(box_node.children.len(), 1);
+        
+        let text_id = box_node.children[0];
+        let text_node = doc.get_node(text_id).unwrap();
+        assert_eq!(text_node.text, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_sanitize_style() {
+        let input = "\x1b[31mred text\x1b[0m";
+        let sanitized = sanitize_style_raw(input);
+        assert_eq!(sanitized, "red text");
+    }
+
+    #[test]
+    fn test_sanitize_htmx() {
+        let input = "alert('xss');/path/to/target";
+        let sanitized = sanitize_htmx_value(input);
+        // Only URL-safe chars allowed
+        assert!(!sanitized.contains('('));
+        assert!(!sanitized.contains('\''));
+        assert!(sanitized.contains("/path/to/target"));
+    }
+
+    #[test]
+    fn test_parse_nested() {
+        let input = r#"<box><box><text>Deep</text></box></box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.children.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_attributes_extra() {
+        let input = r#"<button id="btn" bind-state="count" event-htmx="inc:count">Go</button>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let btn_id = root.children[0];
+        let btn = doc.get_node(btn_id).unwrap();
+        assert_eq!(btn.attrs.id, Some("btn".to_string()));
+        assert_eq!(btn.attrs.bind_state, Some("count".to_string()));
+        assert_eq!(btn.attrs.event_htmx, Some("inc:count".to_string()));
+    }
 }

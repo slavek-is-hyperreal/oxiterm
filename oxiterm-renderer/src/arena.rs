@@ -1,6 +1,7 @@
 use oxiterm_proto::dom::{Node, NodeId};
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct NodeArena {
     nodes: Vec<Option<Node>>,
     free_list: Vec<u32>,
@@ -12,6 +13,10 @@ impl NodeArena {
             nodes: Vec::with_capacity(1024),
             free_list: Vec::new(),
         }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Node> {
+        self.nodes.iter_mut().flatten()
     }
 }
 

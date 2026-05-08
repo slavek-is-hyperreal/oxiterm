@@ -125,3 +125,40 @@ impl DiffEngine {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::buffer::CellBuffer;
+    use oxiterm_proto::style::AnsiColor;
+
+    #[test]
+    fn test_diff_empty() {
+        let prev = CellBuffer::new(10, 10);
+        let next = CellBuffer::new(10, 10);
+        let cmds = DiffEngine::diff(&prev, &next);
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn test_diff_simple_write() {
+        let prev = CellBuffer::new(10, 1);
+        let mut next = CellBuffer::new(10, 1);
+        next.cells[0].ch = 'H';
+        let cmds = DiffEngine::diff(&prev, &next);
+        assert_eq!(cmds.len(), 2); // MoveCursor(0,0) + WriteChar('H')
+        assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
+        assert!(matches!(cmds[1], AnsiCommand::WriteChar('H')));
+    }
+
+    #[test]
+    fn test_diff_style_change() {
+        let prev = CellBuffer::new(10, 1);
+        let mut next = CellBuffer::new(10, 1);
+        next.cells[0].ch = 'X';
+        next.cells[0].fg = AnsiColor::Color256(1);
+        let cmds = DiffEngine::diff(&prev, &next);
+        // MoveCursor + SetColor + WriteChar
+        assert_eq!(cmds.len(), 3);
+        assert!(matches!(cmds[1], AnsiCommand::SetColor { .. }));
+    }
+}

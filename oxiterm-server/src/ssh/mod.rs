@@ -5,9 +5,10 @@ pub mod server;
 pub use server::OxiServer;
 
 use std::sync::Arc;
+use std::path::PathBuf;
 use anyhow::Result;
 use crate::config::OxiTermConfig;
-use crate::session::SessionRegistry;
+use crate::session::{SessionRegistry, THTMLDocument};
 use crate::ratelimit::RateLimiter;
 use tracing::{info, warn};
 use std::collections::HashMap;
@@ -16,6 +17,8 @@ pub async fn run_server(
     config: OxiTermConfig, 
     registry: Arc<SessionRegistry>,
     rate_limiter: Arc<RateLimiter>,
+    initial_document: Option<THTMLDocument>,
+    source_path: Option<PathBuf>,
 ) -> Result<()> {
     let mut ssh_config = russh::server::Config {
         auth_rejection_time_initial: Some(std::time::Duration::from_secs(3)),
@@ -48,6 +51,8 @@ pub async fn run_server(
                     rate_limiter: rate_limiter.clone(),
                     peer_addr,
                     channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+                    initial_document: initial_document.clone(),
+                    source_path: source_path.clone(),
                 };
                 let session_registry = registry.clone();
                 let session_channels = handler.channels.clone();
