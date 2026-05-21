@@ -11,4 +11,7 @@
     <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #f7768e;" event-htmx="counter.thtml">
         <text style="color: #e0af68;">Click here to see the Counter demo</text>
     </box>
+    <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #7aa2f7;" event-htmx="showcase.thtml">
+        <text style="color: #38bdf8;">Click here to see the Showcase demo</text>
+    </box>
 </box>

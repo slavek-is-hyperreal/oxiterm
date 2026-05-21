@@ -25,11 +25,15 @@ impl DiffEngine {
         let mut cur_y: Option<u16> = None;
 
         for y in 0..next.height {
-            for x in 0..next.width {
+            let mut x = 0;
+            while x < next.width {
                 let idx = y as usize * next.width as usize + x as usize;
                 let next_cell = &next.cells[idx];
                 let prev_cell = prev.cells.get(idx);
                 
+                let char_w = crate::render::unicode::UnicodeWidthCache::get().width(next_cell.ch) as u16;
+                let char_w = if char_w == 0 { 1 } else { char_w };
+
                 if Some(next_cell) != prev_cell {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
@@ -59,12 +63,13 @@ impl DiffEngine {
                     commands.push(AnsiCommand::WriteChar(next_cell.ch));
                     
                     // Update tracked position
-                    cur_x = Some(x + 1);
+                    cur_x = Some(x + char_w);
                     if cur_x.unwrap() >= next.width {
                         cur_x = Some(0);
                         cur_y = Some(y + 1);
                     }
                 }
+                x += char_w;
             }
         }
         
@@ -160,5 +165,23 @@ mod tests {
         // MoveCursor + SetColor + WriteChar
         assert_eq!(cmds.len(), 3);
         assert!(matches!(cmds[1], AnsiCommand::SetColor { .. }));
+    }
+
+    #[test]
+    fn test_diff_wide_character() {
+        let prev = CellBuffer::new(10, 1);
+        let mut next = CellBuffer::new(10, 1);
+        next.cells[0].ch = '🚀'; // Width 2
+        next.cells[2].ch = 'A'; // Width 1
+        
+        let cmds = DiffEngine::diff(&prev, &next);
+        
+        // 1. MoveCursor(0, 0)
+        // 2. WriteChar('🚀')
+        // 3. WriteChar('A') (Should NOT have MoveCursor because cursor naturally advanced to x=2)
+        assert_eq!(cmds.len(), 3);
+        assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
+        assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));
+        assert!(matches!(cmds[2], AnsiCommand::WriteChar('A')));
     }
 }

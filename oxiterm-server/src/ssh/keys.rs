@@ -21,7 +21,13 @@ impl AuthorizedKeys {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            if let Ok(key) = russh_keys::parse_public_key_base64(line) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let base64_str = if parts.len() >= 2 {
+                parts[1]
+            } else {
+                line
+            };
+            if let Ok(key) = russh_keys::parse_public_key_base64(base64_str) {
                 keys.push(key);
             }
         }
@@ -30,6 +36,22 @@ impl AuthorizedKeys {
 
     pub fn verify(&self, key: &key::PublicKey) -> bool {
         self.keys.contains(key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_parse_key() {
+        let line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ/vG24eD+1GRR4GAfJ25RUpeo5GcPV8RmPY7r/RznqC slavekm@slavekm-desktop";
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let base64_str = if parts.len() >= 2 {
+            parts[1]
+        } else {
+            line
+        };
+        let res = russh_keys::parse_public_key_base64(base64_str);
+        assert!(res.is_ok(), "Failed to parse standard key: {:?}", res);
     }
 }
 

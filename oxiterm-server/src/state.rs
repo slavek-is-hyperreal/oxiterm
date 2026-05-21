@@ -116,7 +116,13 @@ impl StateManager {
                 }
             }
             "clear" => {
-                self.set(key.to_string(), StateValue::List(Vec::new()));
+                let default_val = match self.store.get(key) {
+                    Some(StateValue::Int(_)) => StateValue::Int(0),
+                    Some(StateValue::Str(_)) => StateValue::Str(String::new()),
+                    Some(StateValue::Bool(_)) => StateValue::Bool(false),
+                    Some(StateValue::List(_)) | None => StateValue::List(Vec::new()),
+                };
+                self.set(key.to_string(), default_val);
             }
             _ => {}
         }
@@ -184,5 +190,18 @@ mod tests {
         if let Some(StateValue::List(l)) = sm.get("items") {
             assert!(l.is_empty());
         }
+
+        // Test clear on other types (string, int, bool)
+        sm.apply_action("set:str_val=hello");
+        sm.apply_action("clear:str_val");
+        assert_eq!(sm.get("str_val"), Some(&StateValue::Str(String::new())));
+
+        sm.apply_action("inc:int_val");
+        sm.apply_action("clear:int_val");
+        assert_eq!(sm.get("int_val"), Some(&StateValue::Int(0)));
+
+        sm.apply_action("toggle:bool_val");
+        sm.apply_action("clear:bool_val");
+        assert_eq!(sm.get("bool_val"), Some(&StateValue::Bool(false)));
     }
 }

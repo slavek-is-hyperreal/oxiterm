@@ -1,14 +1,13 @@
 use anyhow::Result;
 use oxiterm_proto::style::{AnsiColor, FlexDirection, AlignItems, JustifyContent};
 use nom::{
-    bytes::complete::{take_until, take_while1},
+    bytes::complete::take_while1,
     character::complete::{multispace0, char as nom_char},
     sequence::{delimited, tuple, preceded},
     IResult,
     branch::alt,
     combinator::{map, opt},
     multi::many0,
-    error::Error,
 };
 
 #[derive(Debug, Clone)]
@@ -29,6 +28,9 @@ pub enum Declaration {
     JustifyContent(JustifyContent),
     Padding(u16),
     Margin(u16),
+    Border(AnsiColor),
+    BorderStyle(String),
+    BorderColor(AnsiColor),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -67,6 +69,41 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
             style.margin.bottom = *m;
             style.margin.left = *m;
         }
+        Declaration::Border(color) => {
+            if let Some(ref mut border) = style.border {
+                border.fg = *color;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: *color,
+                    chars: oxiterm_proto::style::BorderChars::default(),
+                });
+            }
+        }
+        Declaration::BorderColor(color) => {
+            if let Some(ref mut border) = style.border {
+                border.fg = *color;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: *color,
+                    chars: oxiterm_proto::style::BorderChars::default(),
+                });
+            }
+        }
+        Declaration::BorderStyle(style_name) => {
+            let chars = match style_name.as_str() {
+                "double" => oxiterm_proto::style::BorderChars::double(),
+                "rounded" => oxiterm_proto::style::BorderChars::rounded(),
+                _ => oxiterm_proto::style::BorderChars::single(),
+            };
+            if let Some(ref mut border) = style.border {
+                border.chars = chars;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: oxiterm_proto::style::AnsiColor::Reset,
+                    chars,
+                });
+            }
+        }
     }
 }
 
@@ -94,47 +131,47 @@ fn parse_declarations(input: &str) -> IResult<&str, Vec<Declaration>> {
         parse_declaration,
         opt(nom_char(';')),
         multispace0,
-    )))(input).map(|(i, v)| (i, v.into_iter().map(|(_, d, _, _)| d).collect()))
+    )))(input).map(|(i, v)| (i, v.into_iter().filter_map(|(_, d, _, _)| d).collect()))
 }
 
-fn parse_declaration(input: &str) -> IResult<&str, Declaration> {
+fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     let (input, key) = take_while1(|c: char| c.is_alphanumeric() || c == '-')(input)?;
     let (input, _) = multispace0(input)?;
     let (input, _) = nom_char(':')(input)?;
     let (input, _) = multispace0(input)?;
     
-    // Take value until ; or end of input
-    let (input, value) = if let Ok(res) = take_until::<&str, &str, Error<&str>>(";")(input) {
-        res
-    } else {
-        ( "", input ) // Use the rest of the input
-    };
-    
+    // Take value until ; or } or end of input
+    let end_idx = input.find(|c| c == ';' || c == '}').unwrap_or(input.len());
+    let (value, input) = input.split_at(end_idx);
+
     let decl = match key {
-        "fg" | "color" => Declaration::Fg(parse_color(value.trim())),
-        "bg" | "background-color" => Declaration::Bg(parse_color(value.trim())),
-        "width" => Declaration::Width(value.trim().parse().unwrap_or(0)),
-        "height" => Declaration::Height(value.trim().parse().unwrap_or(0)),
+        "fg" | "color" => Some(Declaration::Fg(parse_color(value.trim()))),
+        "bg" | "background-color" => Some(Declaration::Bg(parse_color(value.trim()))),
+        "width" => Some(Declaration::Width(value.trim().parse().unwrap_or(0))),
+        "height" => Some(Declaration::Height(value.trim().parse().unwrap_or(0))),
         "flex-direction" => match value.trim() {
-            "column" => Declaration::FlexDirection(FlexDirection::Column),
-            _ => Declaration::FlexDirection(FlexDirection::Row),
+            "column" => Some(Declaration::FlexDirection(FlexDirection::Column)),
+            _ => Some(Declaration::FlexDirection(FlexDirection::Row)),
         },
         "align-items" => match value.trim() {
-            "flex-end" => Declaration::AlignItems(AlignItems::FlexEnd),
-            "center" => Declaration::AlignItems(AlignItems::Center),
-            "stretch" => Declaration::AlignItems(AlignItems::Stretch),
-            _ => Declaration::AlignItems(AlignItems::FlexStart),
+            "flex-end" => Some(Declaration::AlignItems(AlignItems::FlexEnd)),
+            "center" => Some(Declaration::AlignItems(AlignItems::Center)),
+            "stretch" => Some(Declaration::AlignItems(AlignItems::Stretch)),
+            _ => Some(Declaration::AlignItems(AlignItems::FlexStart)),
         },
         "justify-content" => match value.trim() {
-            "flex-end" => Declaration::JustifyContent(JustifyContent::FlexEnd),
-            "center" => Declaration::JustifyContent(JustifyContent::Center),
-            "space-between" => Declaration::JustifyContent(JustifyContent::SpaceBetween),
-            "space-around" => Declaration::JustifyContent(JustifyContent::SpaceAround),
-            _ => Declaration::JustifyContent(JustifyContent::FlexStart),
+            "flex-end" => Some(Declaration::JustifyContent(JustifyContent::FlexEnd)),
+            "center" => Some(Declaration::JustifyContent(JustifyContent::Center)),
+            "space-between" => Some(Declaration::JustifyContent(JustifyContent::SpaceBetween)),
+            "space-around" => Some(Declaration::JustifyContent(JustifyContent::SpaceAround)),
+            _ => Some(Declaration::JustifyContent(JustifyContent::FlexStart)),
         },
-        "padding" => Declaration::Padding(value.trim().parse().unwrap_or(0)),
-        "margin" => Declaration::Margin(value.trim().parse().unwrap_or(0)),
-        _ => return Err(nom::Err::Error(Error::new(input, nom::error::ErrorKind::Tag))),
+        "padding" => Some(Declaration::Padding(value.trim().parse().unwrap_or(0))),
+        "margin" => Some(Declaration::Margin(value.trim().parse().unwrap_or(0))),
+        "border" => Some(Declaration::Border(parse_color(value.trim()))),
+        "border-style" => Some(Declaration::BorderStyle(value.trim().to_string())),
+        "border-color" => Some(Declaration::BorderColor(parse_color(value.trim()))),
+        _ => None,
     };
     
     Ok((input, decl))
@@ -170,4 +207,28 @@ fn parse_color(value: &str) -> AnsiColor {
         return AnsiColor::Color256(n);
     }
     AnsiColor::Reset
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_border_parsing() {
+        let input = "
+            border-style: rounded;
+            border-color: #7aa2f7;
+        ";
+        let decls = parse_inline_tcss(input).unwrap();
+        assert_eq!(decls.len(), 2);
+        
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for decl in &decls {
+            apply_declaration(&mut style, decl);
+        }
+        
+        let border = style.border.unwrap();
+        assert_eq!(border.chars.top_left, '╭');
+        assert_eq!(border.fg, AnsiColor::TrueColor(122, 162, 247));
+    }
 }

@@ -36,7 +36,7 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    pub fn compute(&mut self, doc: &mut THTMLDocument) -> anyhow::Result<LayoutResult> {
+    pub fn compute(&mut self, doc: &mut THTMLDocument, term_width: u16, term_height: u16) -> anyhow::Result<LayoutResult> {
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
         self.ensure_nodes_exist_recursive(doc, doc.root)?;
 
@@ -45,7 +45,7 @@ impl LayoutEngine {
             if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
                 if let Some(node) = doc.arena.get(oxi_id) {
                     // Update style
-                    let style = self.map_style(&node.style);
+                    let style = self.map_style(node);
                     self.taffy.set_style(taffy_id, style)?;
 
                     // Update children
@@ -66,27 +66,34 @@ impl LayoutEngine {
 
         // Step 3: Compute layout
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
-        let width = doc.arena.get(doc.root).and_then(|n| n.style.width).unwrap_or(80) as f32;
-        let height = doc.arena.get(doc.root).and_then(|n| n.style.height).unwrap_or(24) as f32;
+        
+        let mut root_w = term_width;
+        let mut root_h = term_height;
+
+        if let Some(root_node) = doc.arena.get(doc.root) {
+            let mut style = self.map_style(root_node);
+            if let Some(w) = root_node.style.width {
+                root_w = w;
+            } else {
+                style.size.width = taffy::style::Dimension::Length(term_width as f32);
+            }
+            if let Some(h) = root_node.style.height {
+                root_h = h;
+            } else {
+                style.size.height = taffy::style::Dimension::Length(term_height as f32);
+            }
+            self.taffy.set_style(root_taffy_id, style)?;
+        }
 
         let available_space = Size {
-            width: AvailableSpace::Definite(width),
-            height: AvailableSpace::Definite(height),
+            width: AvailableSpace::Definite(root_w as f32),
+            height: AvailableSpace::Definite(root_h as f32),
         };
 
         self.taffy.compute_layout(root_taffy_id, available_space)?;
         
         let mut nodes = HashMap::new();
-        for (&oxi_id, &taffy_id) in &self.node_map {
-            let layout = self.taffy.layout(taffy_id)
-                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
-            nodes.insert(oxi_id, OxiRect {
-                x: layout.location.x.round() as u16,
-                y: layout.location.y.round() as u16,
-                width: layout.size.width.round() as u16,
-                height: layout.size.height.round() as u16,
-            });
-        }
+        self.flatten_layout_recursive(doc, doc.root, 0, 0, &mut nodes)?;
 
         // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
@@ -94,6 +101,42 @@ impl LayoutEngine {
         let result = LayoutResult { nodes };
         self.last_layout = Some(result.clone());
         Ok(result)
+    }
+
+    fn flatten_layout_recursive(
+        &self,
+        doc: &THTMLDocument,
+        oxi_id: OxiNodeId,
+        parent_x: u16,
+        parent_y: u16,
+        nodes: &mut HashMap<OxiNodeId, OxiRect>,
+    ) -> anyhow::Result<()> {
+        if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
+            let layout = self.taffy.layout(taffy_id)
+                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
+            
+            let rect_x = layout.location.x.round() as u16;
+            let rect_y = layout.location.y.round() as u16;
+            let width = layout.size.width.round() as u16;
+            let height = layout.size.height.round() as u16;
+            
+            let abs_x = parent_x + rect_x;
+            let abs_y = parent_y + rect_y;
+            
+            nodes.insert(oxi_id, OxiRect {
+                x: abs_x,
+                y: abs_y,
+                width,
+                height,
+            });
+
+            if let Some(node) = doc.arena.get(oxi_id) {
+                for &child_id in &node.children {
+                    self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
@@ -130,14 +173,34 @@ impl LayoutEngine {
             children.push(self.ensure_nodes_exist_recursive(doc, child_id)?);
         }
 
-        let style = self.map_style(&node.style);
+        let style = self.map_style(node);
         let taffy_id = self.taffy.new_with_children(style, &children)?;
         
         self.node_map.insert(oxi_id, taffy_id);
         Ok(taffy_id)
     }
 
-    fn map_style(&self, style: &oxiterm_proto::style::ComputedStyle) -> Style {
+    fn map_style(&self, node: &oxiterm_proto::dom::Node) -> Style {
+        let style = &node.style;
+        let mut width = style.width;
+        let mut height = style.height;
+
+        if node.tag == oxiterm_proto::dom::NodeTag::Text {
+            if let Some(text) = &node.text {
+                if width.is_none() {
+                    let calculated_width = text.lines()
+                        .map(|line| line.chars().map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16).sum())
+                        .max()
+                        .unwrap_or(0);
+                    width = Some(calculated_width);
+                }
+                if height.is_none() {
+                    let calculated_height = text.lines().count() as u16;
+                    height = Some(calculated_height.max(1));
+                }
+            }
+        }
+
         Style {
             display: Display::Flex,
             flex_direction: match style.flex_direction {
@@ -158,8 +221,8 @@ impl LayoutEngine {
                 oxiterm_proto::style::JustifyContent::SpaceAround => JustifyContent::SpaceAround,
             }),
             size: Size {
-                width: style.width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
-                height: style.height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
+                width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
+                height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
             },
             padding: Rect {
                 left: LengthPercentage::Length(style.padding.left as f32),
@@ -172,6 +235,21 @@ impl LayoutEngine {
                 right: LengthPercentage::Length(style.margin.right as f32).into(),
                 top: LengthPercentage::Length(style.margin.top as f32).into(),
                 bottom: LengthPercentage::Length(style.margin.bottom as f32).into(),
+            },
+            border: if style.border.is_some() {
+                Rect {
+                    left: LengthPercentage::Length(1.0),
+                    right: LengthPercentage::Length(1.0),
+                    top: LengthPercentage::Length(1.0),
+                    bottom: LengthPercentage::Length(1.0),
+                }
+            } else {
+                Rect {
+                    left: LengthPercentage::Length(0.0),
+                    right: LengthPercentage::Length(0.0),
+                    top: LengthPercentage::Length(0.0),
+                    bottom: LengthPercentage::Length(0.0),
+                }
             },
             ..Default::default()
         }
@@ -195,7 +273,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        let result = engine.compute(&mut doc).unwrap();
+        let result = engine.compute(&mut doc, 80, 24).unwrap();
         let rect = result.nodes.get(&child_id).unwrap();
         assert_eq!(rect.width, 20);
         assert_eq!(rect.height, 10);
@@ -213,11 +291,55 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        engine.compute(&mut doc).unwrap();
+        engine.compute(&mut doc, 80, 24).unwrap();
         
         // Inside
         assert_eq!(engine.hit_test(6, 1), Some(child_id));
         // Outside
         assert_eq!(engine.hit_test(1, 1), Some(doc.root));
+    }
+
+    #[test]
+    fn test_hit_test_nested() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut parent = Node::new(NodeTag::Box);
+        parent.style.width = Some(20);
+        parent.style.height = Some(20);
+        parent.style.margin.left = 10;
+        let parent_id = doc.arena.alloc(parent);
+        doc.append_child(doc.root, parent_id).unwrap();
+
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(5);
+        child.style.height = Some(5);
+        child.style.margin.left = 5;
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(parent_id, child_id).unwrap();
+        
+        engine.compute(&mut doc, 80, 24).unwrap();
+        
+        // Child absolute coordinate: parent.left (10) + child.left (5) = 15.
+        // Inside nested child (e.g. x = 16, y = 1)
+        assert_eq!(engine.hit_test(16, 1), Some(child_id));
+        // Outside child but inside parent (e.g. x = 11, y = 1)
+        assert_eq!(engine.hit_test(11, 1), Some(parent_id));
+    }
+
+    #[test]
+    fn test_text_node_intrinsic_size() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("Hello\nWorld!".to_string());
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+        
+        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let rect = result.nodes.get(&node_id).unwrap();
+        assert_eq!(rect.width, 6);
+        assert_eq!(rect.height, 2);
     }
 }

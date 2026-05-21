@@ -22,6 +22,24 @@ pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
 }
 
+impl LayoutResult {
+    pub fn get_centering_offset(&self, doc: &crate::document::THTMLDocument, view_w: u16, view_h: u16) -> (u16, u16) {
+        let target_node_id = if let Some(root_node) = doc.get_node(doc.root) {
+            root_node.children.first().copied().unwrap_or(doc.root)
+        } else {
+            doc.root
+        };
+
+        if let Some(rect) = self.nodes.get(&target_node_id) {
+            let ox = if view_w > rect.width { (view_w - rect.width) / 2 } else { 0 };
+            let oy = if view_h > rect.height { (view_h - rect.height) / 2 } else { 0 };
+            (ox, oy)
+        } else {
+            (0, 0)
+        }
+    }
+}
+
 pub struct HitTester<'a> {
     pub result: &'a LayoutResult,
 }

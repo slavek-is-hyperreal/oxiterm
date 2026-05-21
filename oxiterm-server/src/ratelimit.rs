@@ -68,9 +68,10 @@ pub struct FrameRateLimiter {
 
 impl FrameRateLimiter {
     pub fn new(fps: u32) -> Self {
+        let min_interval = Duration::from_secs_f32(1.0 / fps as f32);
         Self {
-            last_frame: Instant::now(),
-            min_interval: Duration::from_secs_f32(1.0 / fps as f32),
+            last_frame: Instant::now() - min_interval,
+            min_interval,
         }
     }
 

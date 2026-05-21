@@ -313,4 +313,21 @@ mod tests {
         // Bg color should be blue (TrueColor(0, 0, 255))
         assert_eq!(box_node.style.bg, oxiterm_proto::style::AnsiColor::TrueColor(0, 0, 255));
     }
+
+    #[test]
+    fn test_parse_style_missing_semicolon() {
+        // Test inline style without trailing semicolon
+        let input = r#"<box style="fg: red">Styled</box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let box_node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
+
+        // Test stylesheet parsing block without trailing semicolon
+        let css = ".myclass { fg: green }";
+        let stylesheet = crate::parser::tcss::parse_tcss(css).unwrap();
+        assert_eq!(stylesheet.rules.len(), 1);
+        let (_selector, decls) = &stylesheet.rules[0];
+        assert_eq!(decls.len(), 1);
+    }
 }

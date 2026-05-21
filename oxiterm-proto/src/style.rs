@@ -31,10 +31,10 @@ pub enum FlexDirection {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub enum AlignItems {
-    #[default]
     FlexStart,
     FlexEnd,
     Center,
+    #[default]
     Stretch,
 }
 
@@ -74,9 +74,8 @@ pub struct BorderChars {
     pub bot_right: char,
 }
 
-impl Default for BorderChars {
-    fn default() -> Self {
-        // Standard Unicode Box Drawing
+impl BorderChars {
+    pub fn single() -> Self {
         Self {
             top_left: '┌',
             top: '─',
@@ -87,5 +86,37 @@ impl Default for BorderChars {
             bot: '─',
             bot_right: '┘',
         }
+    }
+
+    pub fn rounded() -> Self {
+        Self {
+            top_left: '╭',
+            top: '─',
+            top_right: '╮',
+            left: '│',
+            right: '│',
+            bot_left: '╰',
+            bot: '─',
+            bot_right: '╯',
+        }
+    }
+
+    pub fn double() -> Self {
+        Self {
+            top_left: '╔',
+            top: '═',
+            top_right: '╗',
+            left: '║',
+            right: '║',
+            bot_left: '╚',
+            bot: '═',
+            bot_right: '╝',
+        }
+    }
+}
+
+impl Default for BorderChars {
+    fn default() -> Self {
+        Self::single()
     }
 }

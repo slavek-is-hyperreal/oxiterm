@@ -100,23 +100,43 @@ impl InputStateMachine {
                     // XON/XOFF handled directly in ReactorThread
                     None
                 } else if byte >= 0x80 {
-                    // BUG-UTF8-01: Handle multi-byte UTF-8
+                    // Check if this is the start of a sequence
+                    if self.utf8_buf.is_empty() {
+                        let expected_len = if (0xc2..=0xdf).contains(&byte) {
+                            2
+                        } else if (0xe0..=0xef).contains(&byte) {
+                            3
+                        } else if (0xf0..=0xf4).contains(&byte) {
+                            4
+                        } else {
+                            0
+                        };
+                        if expected_len == 0 {
+                            // Invalid UTF-8 start byte: discard to prevent state leak
+                            return None;
+                        }
+                    }
+
                     self.utf8_buf.push(byte);
-                    if let Ok(s) = std::str::from_utf8(&self.utf8_buf) {
-                        let cp = s.chars().next().unwrap();
-                        self.utf8_buf.clear();
-                        Some(InputEvent::KeyPress(KeyEvent {
-                            codepoint: cp,
-                            modifiers: KeyModifiers::default(),
-                            kind: KeyKind::Press,
-                        }))
-                    } else if self.utf8_buf.len() >= 4 {
-                        self.utf8_buf.clear();
-                        None
-                    } else {
-                        None
+                    match std::str::from_utf8(&self.utf8_buf) {
+                        Ok(s) => {
+                            let cp = s.chars().next().unwrap();
+                            self.utf8_buf.clear();
+                            Some(InputEvent::KeyPress(KeyEvent {
+                                codepoint: cp,
+                                modifiers: KeyModifiers::default(),
+                                kind: KeyKind::Press,
+                            }))
+                        }
+                        Err(e) => {
+                            if e.error_len().is_some() || self.utf8_buf.len() >= 4 {
+                                self.utf8_buf.clear();
+                            }
+                            None
+                        }
                     }
                 } else {
+                    self.utf8_buf.clear();
                     Some(InputEvent::KeyPress(KeyEvent {
                         codepoint: byte as char,
                         modifiers: KeyModifiers::default(),
@@ -259,5 +279,49 @@ impl InputStateMachine {
             action,
             modifiers,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_utf8_decoding_and_state_leaks() {
+        let mut sm = InputStateMachine::new();
+
+        // 1. Decodes valid UTF-8 sequence (e.g. 'ł' which is 0xc5, 0x82)
+        let ev1 = sm.feed(0xc5);
+        assert!(ev1.is_none());
+        let ev2 = sm.feed(0x82);
+        if let Some(InputEvent::KeyPress(ke)) = ev2 {
+            assert_eq!(ke.codepoint, 'ł');
+        } else {
+            panic!("Expected KeyEvent");
+        }
+
+        // 2. Reject invalid UTF-8 start byte immediately to prevent leak
+        let ev_invalid = sm.feed(0x80); // Invalid start byte
+        assert!(ev_invalid.is_none());
+        assert!(sm.utf8_buf.is_empty()); // Should not leak / store this byte
+
+        // 3. Incomplete followed by ASCII char boundary reset
+        let ev3 = sm.feed(0xc5); // Incomplete ł
+        assert!(ev3.is_none());
+        assert_eq!(sm.utf8_buf.len(), 1);
+        let ev4 = sm.feed(0x61); // ASCII 'a'
+        assert_eq!(sm.utf8_buf.len(), 0); // Should be cleared!
+        if let Some(InputEvent::KeyPress(ke)) = ev4 {
+            assert_eq!(ke.codepoint, 'a');
+        } else {
+            panic!("Expected KeyEvent 'a'");
+        }
+
+        // 4. Incomplete followed by invalid continuation byte clears buffer
+        let ev5 = sm.feed(0xc5); // Incomplete ł
+        assert!(ev5.is_none());
+        let ev6 = sm.feed(0xc5); // Another start byte instead of continuation -> invalid
+        assert!(ev6.is_none());
+        assert!(sm.utf8_buf.is_empty()); // Should clear immediately
     }
 }

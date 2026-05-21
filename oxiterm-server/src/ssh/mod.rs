@@ -74,7 +74,31 @@ pub async fn run_server(
             }
             crate::ratelimit::RateResult::Throttle(delay) => {
                 warn!("Throttling {peer_addr} for {delay:?}");
-                tokio::time::sleep(delay).await;
+                let russh_config_ref = ssh_config.clone();
+                let handler = OxiServer {
+                    config: config.clone(),
+                    registry: registry.clone(),
+                    auth_keys: auth_keys.clone(),
+                    rate_limiter: rate_limiter.clone(),
+                    peer_addr,
+                    channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+                    initial_document: initial_document.clone(),
+                    source_path: source_path.clone(),
+                };
+                let session_registry = registry.clone();
+                let session_channels = handler.channels.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
+                        warn!("SSH session error for {peer_addr}: {e:?}");
+                    }
+                    // QUAL-006: Ensure all sessions are removed even on abrupt disconnect
+                    let mut channels = session_channels.lock();
+                    for (_, sid) in channels.drain() {
+                        info!("Cleanup: Removing session {sid} from registry");
+                        session_registry.remove_session(sid);
+                    }
+                });
             }
         }
     }

@@ -24,7 +24,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2222)]
         port: u16,
         /// Listen address
-        #[arg(short, long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "0.0.0.0")]
         host: String,
         /// Disable authentication (for development)
         #[arg(long)]
@@ -45,7 +45,12 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
     let cli = Cli::parse();
 
     match cli.command {

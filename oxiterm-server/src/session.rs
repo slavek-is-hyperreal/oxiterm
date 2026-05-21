@@ -110,6 +110,12 @@ pub struct ClientSession {
     pub state: RwLock<crate::state::StateManager>,
 }
 
+impl ClientSession {
+    pub fn close(&self) {
+        self.event_rx.lock().close();
+    }
+}
+
 impl SessionRegistry {
     pub fn new(prometheus_registry: Arc<prometheus::Registry>) -> Self {
         Self {
@@ -157,7 +163,9 @@ impl SessionRegistry {
     }
 
     pub fn remove_session(&self, id: SessionId) {
-        self.sessions.write().remove(&id);
+        if let Some(session) = self.sessions.write().remove(&id) {
+            session.close();
+        }
     }
 
     pub fn broadcast_input_event(&self, event: InputEvent) {
@@ -210,6 +218,10 @@ impl Drop for TerminalCleanupGuard {
         let mut cleanup = Vec::new();
         cleanup.extend_from_slice(b"\x1b[?2026l"); // ESU
         cleanup.extend_from_slice(b"\x1b[?25h");   // Show Cursor
+        cleanup.extend_from_slice(b"\x1b[?1000l"); // Disable Standard Mouse Tracking
+        cleanup.extend_from_slice(b"\x1b[?1003l"); // Disable Any-event Mouse Tracking
+        cleanup.extend_from_slice(b"\x1b[?1006l"); // Disable SGR Mouse Mode
+        cleanup.extend_from_slice(b"\x1b[=0u");     // Disable Kitty Keyboard Protocol
         cleanup.extend_from_slice(b"\x1b[?1049l"); // Disable Alt Buffer
         let _ = self.output_tx.try_send(cleanup);
     }
@@ -279,6 +291,36 @@ impl EventLoop {
         }
     }
 
+    fn find_htmx_target_path(doc: &THTMLDocument, current: NodeId, target: NodeId, path: &mut Vec<NodeId>) -> bool {
+        path.push(current);
+        if current == target {
+            return true;
+        }
+        if let Some(node) = doc.get_node(current) {
+            for &child in &node.children {
+                if Self::find_htmx_target_path(doc, child, target, path) {
+                    return true;
+                }
+            }
+        }
+        path.pop();
+        false
+    }
+
+    fn get_htmx_node_and_target(doc: &THTMLDocument, node_id: NodeId) -> Option<(NodeId, String)> {
+        let mut path = Vec::new();
+        if Self::find_htmx_target_path(doc, doc.root, node_id, &mut path) {
+            for &id in path.iter().rev() {
+                if let Some(node) = doc.get_node(id) {
+                    if let Some(ref htmx) = node.attrs.event_htmx {
+                        return Some((id, htmx.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn run(&mut self) {
         // BUG-C03 Fix: Use a RAII guard to ensure cleanup is ALWAYS sent
         let _cleanup_guard = TerminalCleanupGuard { output_tx: self.output_tx.clone() };
@@ -318,144 +360,199 @@ impl EventLoop {
                         let dims = *self.session.dims.read();
                         let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                         self.doc = new_doc;
+                        self.layout_engine.reset_nodes();
                         needs_render = true;
                     }
                 }
             }
 
+            let mut disconnected = false;
             {
                 let mut rx_lock = self.session.event_rx.lock();
-                while let Ok(event) = rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
-                    match event {
-                        InputEvent::Resize { cols, rows } => {
-                            info!("Reactor notified resize to {}x{}", cols, rows);
-                            // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
-                            // to avoid double allocation. We just signal that a render might be needed.
-                            needs_render = true;
-                        }
-                        InputEvent::Reload => {
-                            if let Some(ref path) = self.source_path {
-                                match crate::loader::load_thtml_file(path) {
-                                    Ok(mut new_doc) => {
-                                        info!("Hot Reload successful for session {}", self.session.id);
-                                        let mut state = self.session.state.write();
-                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                        Self::inject_initial_state(&mut new_doc, &*state);
-                                        self.doc = new_doc;
-                                        needs_render = true;
-                                    }
-                                    Err(e) => {
-                                        warn!("Hot Reload failed for session {}: {}", self.session.id, e);
-                                        // TODO: Show error overlay in TUI
+                loop {
+                    match rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
+                        Ok(event) => {
+                            match event {
+                                InputEvent::Resize { cols, rows } => {
+                                    info!("Reactor notified resize to {}x{}", cols, rows);
+                                    // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
+                                    // to avoid double allocation. We just signal that a render might be needed.
+                                    needs_render = true;
+                                }
+                                InputEvent::Reload => {
+                                    if let Some(ref path) = self.source_path {
+                                        match crate::loader::load_thtml_file(path) {
+                                            Ok(mut new_doc) => {
+                                                info!("Hot Reload successful for session {}", self.session.id);
+                                                let mut state = self.session.state.write();
+                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                Self::inject_initial_state(&mut new_doc, &*state);
+                                                self.doc = new_doc;
+                                                self.layout_engine.reset_nodes();
+                                                needs_render = true;
+                                            }
+                                            Err(e) => {
+                                                warn!("Hot Reload failed for session {}: {}", self.session.id, e);
+                                                // TODO: Show error overlay in TUI
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
-                        InputEvent::KeyPress(key) => {
-                            if key.codepoint == 'q' || key.codepoint == 'Q' {
-                                info!("Quit requested via keyboard: {}", key.codepoint);
-                                return;
-                            }
+                                InputEvent::KeyPress(key) => {
+                                    if key.codepoint == 'q' || key.codepoint == 'Q' {
+                                        info!("Quit requested via keyboard: {}", key.codepoint);
+                                        disconnected = true;
+                                        break;
+                                    }
 
-                            // Group 1-9 for quick navigation (S6-nav)
-                            if ('1'..='9').contains(&key.codepoint) || key.codepoint == '\t' || key.codepoint == 'r' || key.codepoint == 'R' {
-                                if let Some(ref mut app) = self.weather_app {
-                                    if key.codepoint == 'r' || key.codepoint == 'R' {
-                                        if !app.loading {
-                                            if let Some(ref tx) = self.weather_tx {
-                                                app.loading = true;
-                                                let tx_clone = tx.clone();
-                                                std::thread::spawn(move || {
-                                                    let res = crate::weather::fetch_krakow()
-                                                        .map_err(|e| e.to_string());
-                                                    let _ = tx_clone.send(res);
-                                                });
+                                    // Group 1-9 for quick navigation (S6-nav)
+                                    if ('1'..='9').contains(&key.codepoint) || key.codepoint == '\t' || key.codepoint == 'r' || key.codepoint == 'R' {
+                                        if let Some(ref mut app) = self.weather_app {
+                                            if key.codepoint == 'r' || key.codepoint == 'R' {
+                                                if !app.loading {
+                                                    if let Some(ref tx) = self.weather_tx {
+                                                        app.loading = true;
+                                                        let tx_clone = tx.clone();
+                                                        std::thread::spawn(move || {
+                                                            let res = crate::weather::fetch_krakow()
+                                                                .map_err(|e| e.to_string());
+                                                            let _ = tx_clone.send(res);
+                                                        });
+                                                        needs_render = true;
+                                                    }
+                                                }
+                                            } else if app.handle_key(key.codepoint) {
+                                                info!("WeatherApp handled key: {}", key.codepoint);
+                                                let dims = *self.session.dims.read();
+                                                let (new_doc, _) = app.build_document(dims.cols, dims.rows);
+                                                self.doc = new_doc;
+                                                self.layout_engine.reset_nodes();
                                                 needs_render = true;
                                             }
                                         }
-                                    } else if app.handle_key(key.codepoint) {
-                                        info!("WeatherApp handled key: {}", key.codepoint);
-                                        let dims = *self.session.dims.read();
-                                        let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                                        self.doc = new_doc;
+                                    } else {
+                                        let mut echo = self.session.predictive_echo.write();
+                                        echo.buffer.push(key.codepoint);
                                         needs_render = true;
                                     }
                                 }
-                            }
+                                InputEvent::MouseEvent(mut mouse) => {
+                                    let dims = *self.session.dims.read();
+                                    info!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
+                                    if let Some(layout) = &self.layout_engine.last_layout {
+                                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                                        info!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
+                                        mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
+                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1);
+                                        info!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
+                                    } else {
+                                        warn!("No last layout found!");
+                                    }
+                                    self.pending_mouse = Some(mouse.clone());
+                                    
+                                    // SC-05: Handle HTMX navigation
+                                    if mouse.action == oxiterm_proto::input::MouseAction::Press {
+                                        // Find node at coordinates
+                                        if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
+                                            info!("Hit test found node: {:?}", node_id);
+                                            if let Some(node) = self.doc.get_node(node_id) {
+                                                info!("Node details: tag={:?}, attrs={:?}", node.tag, node.attrs);
+                                            }
+                                            if let Some((target_node_id, htmx_target)) = Self::get_htmx_node_and_target(&self.doc, node_id) {
+                                                info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
+                                                if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
+                                                    // BUG-SEC-01: Path Traversal prevention
+                                                    let base_dir = self.source_path.as_ref()
+                                                        .and_then(|p| p.parent())
+                                                        .map(|p| p.to_path_buf())
+                                                        .unwrap_or_else(|| std::env::current_dir().unwrap());
+                                                    
+                                                    let mut filename = htmx_target.to_string();
+                                                    if !filename.ends_with(".thtml") {
+                                                        filename.push_str(".thtml");
+                                                    }
+                                                    
+                                                    let new_path = base_dir.join(filename);
+                                                    
+                                                    let is_safe = (|| -> Option<bool> {
+                                                        let canonical_base = base_dir.canonicalize().ok()?;
+                                                        let canonical_target = new_path.canonicalize().ok()?;
+                                                        Some(canonical_target.starts_with(canonical_base))
+                                                    })().unwrap_or(false);
 
-                            let mut echo = self.session.predictive_echo.write();
-                            echo.buffer.push(key.codepoint);
-                            needs_render = true;
-                        }
-                        InputEvent::MouseEvent(mouse) => {
-                            self.pending_mouse = Some(mouse.clone());
-                            
-                            // SC-05: Handle HTMX navigation
-                            if mouse.action == oxiterm_proto::input::MouseAction::Press {
-                                // Find node at coordinates
-                                if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
-                                    if let Some(node) = self.doc.get_node(node_id) {
-                                        if let Some(ref htmx_target) = node.attrs.event_htmx {
-                                            info!("HTMX Navigation: {}", htmx_target);
-                                            if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                // BUG-SEC-01: Path Traversal prevention
-                                                let base_dir = self.source_path.as_ref()
-                                                    .and_then(|p| p.parent())
-                                                    .map(|p| p.to_path_buf())
-                                                    .unwrap_or_else(|| std::env::current_dir().unwrap());
-                                                
-                                                let mut filename = htmx_target.to_string();
-                                                if !filename.ends_with(".thtml") {
-                                                    filename.push_str(".thtml");
-                                                }
-                                                
-                                                let new_path = base_dir.join(filename);
-                                                
-                                                let is_safe = (|| -> Option<bool> {
-                                                    let canonical_base = base_dir.canonicalize().ok()?;
-                                                    let canonical_target = new_path.canonicalize().ok()?;
-                                                    Some(canonical_target.starts_with(canonical_base))
-                                                })().unwrap_or(false);
-
-                                                if is_safe {
-                                                    if let Ok(mut new_doc) = crate::loader::load_thtml_file(&new_path) {
-                                                        let mut state = self.session.state.write();
-                                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                                        Self::inject_initial_state(&mut new_doc, &*state);
-                                                        self.doc = new_doc;
-                                                        self.source_path = Some(new_path);
+                                                    if is_safe {
+                                                        match crate::loader::load_thtml_file(&new_path) {
+                                                            Ok(mut new_doc) => {
+                                                                let mut state = self.session.state.write();
+                                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                                Self::inject_initial_state(&mut new_doc, &*state);
+                                                                self.doc = new_doc;
+                                                                self.layout_engine.reset_nodes();
+                                                                self.source_path = Some(new_path);
+                                                            }
+                                                            Err(e) => {
+                                                                warn!("Failed to load THTML file {:?}: {}", new_path, e);
+                                                            }
+                                                        }
+                                                    } else {
+                                                        warn!("Blocked Path Traversal attempt to: {:?}", new_path);
                                                     }
                                                 } else {
-                                                    warn!("Blocked Path Traversal attempt to: {:?}", new_path);
+                                                    // Handle general HTMX action (inc, dec, toggle, set, etc.)
+                                                    self.session.state.write().apply_action(&htmx_target);
                                                 }
                                             } else {
-                                                // Handle general HTMX action (inc, dec, toggle, set, etc.)
-                                                self.session.state.write().apply_action(htmx_target);
-                                                needs_render = true;
+                                                info!("No HTMX target found for node {:?}", node_id);
                                             }
+                                        } else {
+                                            info!("Hit test returned None");
                                         }
                                     }
-                                }
-                            }
 
-                            needs_render = true;
+                                    needs_render = true;
+                                }
+                                InputEvent::CapabilityResponse(raw) => {
+                                    info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
+                                    self.session.terminal_profile.write().parse_da1_response(&raw);
+                                }
+                                InputEvent::Xoff => { self.output_paused = true; }
+                                InputEvent::Xon => { self.output_paused = false; needs_render = true; }
+                                InputEvent::Refresh => { needs_render = true; }
+                                _ => {}
+                            }
                         }
-                        InputEvent::CapabilityResponse(raw) => {
-                            info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
-                            self.session.terminal_profile.write().parse_da1_response(&raw);
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            break;
                         }
-                        InputEvent::Xoff => { self.output_paused = true; }
-                        InputEvent::Xon => { self.output_paused = false; needs_render = true; }
-                        InputEvent::Refresh => { needs_render = true; }
-                        _ => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                            info!("Event loop receiver disconnected. Exiting run loop.");
+                            disconnected = true;
+                            break;
+                        }
                     }
                 }
+            }
+
+            if disconnected {
+                return;
             }
 
             if let Some(dims) = self.session.resize_debouncer.write().poll() {
                 *self.session.dims.write() = dims;
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
                 info!("Resized session {} to {:?}", self.session.id, dims);
+
+                if let Some(ref mut app) = self.weather_app {
+                    let (new_doc, _) = app.build_document(dims.cols, dims.rows);
+                    self.doc = new_doc;
+                    self.layout_engine.reset_nodes();
+                }
+
+                // Clear physical screen and cursor to home to match clean front buffer
+                let mut clear_seq = Vec::new();
+                clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
+                let _ = self.output_tx.try_send(clear_seq);
+
                 needs_render = true;
             }
 
@@ -463,7 +560,8 @@ impl EventLoop {
                 // Sync reactive state before render
                 Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
 
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
+                let dims = *self.session.dims.read();
+                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
@@ -474,11 +572,13 @@ impl EventLoop {
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();
                     if !echo.buffer.is_empty() {
-                        let (mut cursor_x, mut cursor_y) = (0, 0);
+                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+
+                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y);
                         if let Some(node_id) = echo.active_node {
                             if let Some(rect) = layout.nodes.get(&node_id) {
-                                cursor_x = rect.x;
-                                cursor_y = rect.y;
+                                cursor_x = rect.x + offset_x;
+                                cursor_y = rect.y + offset_y;
                             }
                         }
 

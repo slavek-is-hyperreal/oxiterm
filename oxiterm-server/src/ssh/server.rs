@@ -170,7 +170,6 @@ impl Handler for OxiServer {
                     cols: u16::try_from(width).unwrap_or(u16::MAX),
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
-                *session.dims.write() = new_dims;
                 session.resize_debouncer.write().push(new_dims);
                 // BUG-H03: Use ReactorMessage::Resize instead of empty Vec
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
@@ -195,6 +194,7 @@ impl Handler for OxiServer {
 
     async fn data(&mut self, channel: ChannelId, data: &[u8], _session: &mut Session) -> Result<(), Self::Error> {
         let sid = self.channels.lock().get(&channel).copied();
+        info!("SSH Data received on channel {:?}: len={}, bytes={:?}", channel, data.len(), data);
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
                 // Send raw data to RRT

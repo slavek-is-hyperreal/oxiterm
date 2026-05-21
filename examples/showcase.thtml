@@ -1,0 +1,95 @@
+<box style="flex-direction: column; width: 90; height: 32; background-color: #0f172a;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
+        <text style="color: #38bdf8; font-weight: bold;">🧪 OxiTerm Edge-Case & Showcase Page</text>
+        <box style="background-color: #334155; padding: 0.5; border: #38bdf8;" event-htmx="hello.thtml">
+            <text style="color: #ffffff; font-weight: bold;">[ BACK TO HOME ]</text>
+        </box>
+    </box>
+
+    <!-- Main Body: Two Rows -->
+    <box style="flex-direction: column; flex: 1; padding: 1;">
+        <!-- Row 1: Standard Components -->
+        <box style="flex-direction: row; height: 12; margin-bottom: 1;">
+            <!-- Panel 1: Borders & Padding -->
+            <box style="width: 28; height: 11; border-style: rounded; border-color: #ef4444; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #ef4444; font-weight: bold;">Borders & Padding</text>
+                <box style="background-color: #f97316; height: 2; justify-content: center; align-items: center;">
+                    <text style="color: #ffffff;">Solid Box</text>
+                </box>
+                <box style="background-color: transparent; border-style: single; border-color: #e2e8f0; height: 2; justify-content: center; align-items: center;">
+                    <text style="color: #38bdf8;">Transparent</text>
+                </box>
+            </box>
+
+            <!-- Panel 2: Wide Unicode & Text -->
+            <box style="width: 28; height: 11; border-style: double; border-color: #3b82f6; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #3b82f6; font-weight: bold;">Wide Chars & Text</text>
+                <text style="color: #10b981;">Wide: [🚀][🌧️][☀️][A]</text>
+                <text style="color: #f43f5e;">Multiline Text:
+Line 1 of text
+Line 2 of text</text>
+            </box>
+
+            <!-- Panel 3: Interactive Inputs -->
+            <box style="width: 28; height: 11; border-style: single; border-color: #10b981; flex-direction: column; justify-content: space-around; align-items: center; padding: 1;">
+                <text style="color: #10b981; font-weight: bold;">Inputs & Actions</text>
+                <input style="color: #38bdf8; width: 20; height: 1;" />
+                <box style="flex-direction: row; justify-content: space-between; width: 22;">
+                    <button style="background-color: #e11d48; padding: 1; border: #ffffff;" event-htmx="dec:showcase_counter">
+                        <text style="color: #ffffff; font-weight: bold;"> - </text>
+                    </button>
+                    <box style="justify-content: center; align-items: center; width: 8; border: #ffffff;">
+                        <text style="color: #ffffff; font-weight: bold;" bind-state="showcase_counter">0</text>
+                    </box>
+                    <button style="background-color: #059669; padding: 1; border: #ffffff;" event-htmx="inc:showcase_counter">
+                        <text style="color: #ffffff; font-weight: bold;"> + </text>
+                    </button>
+                </box>
+            </box>
+        </box>
+
+        <!-- Row 2: Edge Cases & Robot Stress Tests -->
+        <box style="flex-direction: row; height: 12;">
+            <!-- Panel 4: CSS Parser & Text Overflow Edge Cases -->
+            <box style="width: 42; height: 11; border-style: rounded; border-color: #eab308; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #eab308; font-weight: bold;">CSS Parser & Overflow Edge Cases</text>
+                <!-- Invalid styles: color hex, width, font weight, trailing junk -->
+                <box style="color:   #xyz ;   width:   abc  ;;   padding: 1.5; background-color: invalid_color;">
+                    <text style="color: #xyz; font-weight: invalid;">Style Fallbacks: OK</text>
+                </box>
+                <!-- Extremely long text element to test clipping / bounds overflow -->
+                <text style="color: #f59e0b;">LongWord: Supercalifragilisticexpialidocious</text>
+                <!-- Missing bind-state -->
+                <text style="color: #a855f7;">Missing state bind: [<text bind-state="missing_var">DEFAULT</text>]</text>
+            </box>
+
+            <!-- Panel 5: Small Borders, Nesting & Zero Width -->
+            <box style="width: 42; height: 11; border-style: double; border-color: #ec4899; flex-direction: column; justify-content: space-around; padding: 1;">
+                <text style="color: #ec4899; font-weight: bold;">Borders, Nesting & Zero Width</text>
+                <box style="flex-direction: row; justify-content: space-between; align-items: center;">
+                    <!-- Tiny Bordered Boxes -->
+                    <box style="width: 1; height: 1; border: #ef4444; margin-right: 1;"></box>
+                    <box style="width: 2; height: 2; border: #3b82f6; margin-right: 1;"></box>
+                    <!-- Deeply Nested Border Offset Logic -->
+                    <box style="border: #10b981; padding: 1; width: 10; height: 5;">
+                        <box style="border: #ef4444; padding: 1; width: 6; height: 3;">
+                            <box style="border: #3b82f6; width: 2; height: 1; background-color: #3b82f6;"></box>
+                        </box>
+                    </box>
+                    <!-- Zero Width Characters / Modifiers & Empty blocks -->
+                    <box style="flex-direction: column; align-items: flex-start;">
+                        <text style="color: #a855f7;">ZeroW: A​B️C</text>
+                        <text style="color: #6366f1;">Spaces: [      ]</text>
+                        <text></text>
+                    </box>
+                </box>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; background-color: #1e293b; justify-content: center;">
+        <text style="color: #64748b;">Use mouse clicks to increment counter. Press [Q] to exit</text>
+    </box>
+</box>
