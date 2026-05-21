@@ -107,7 +107,7 @@ pub struct ClientSession {
     pub resize_debouncer: RwLock<ResizeDebouncer>,
     pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
     pub last_activity: RwLock<std::time::Instant>,
-    pub state: RwLock<HashMap<String, i32>>,
+    pub state: RwLock<crate::state::StateManager>,
 }
 
 impl SessionRegistry {
@@ -150,7 +150,7 @@ impl SessionRegistry {
             resize_debouncer: RwLock::new(ResizeDebouncer::new()),
             terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
             last_activity: RwLock::new(std::time::Instant::now()),
-            state: RwLock::new(HashMap::new()),
+            state: RwLock::new(crate::state::StateManager::new()),
         });
         self.sessions.write().insert(id, session.clone());
         Some(session)
@@ -241,13 +241,41 @@ impl EventLoop {
         }
     }
 
-    fn inject_state(doc: &mut THTMLDocument, state: &HashMap<String, i32>) {
-        for node in doc.arena.iter_mut() {
+    fn setup_state_subscriptions(doc: &THTMLDocument, state: &mut crate::state::StateManager) {
+        state.clear_subscriptions();
+        for (id, node) in doc.arena.iter() {
+            if let Some(key) = &node.attrs.bind_state {
+                state.subscribe(key.clone(), id);
+            }
+        }
+    }
+
+    fn sync_dirty_state(doc: &mut THTMLDocument, state: &mut crate::state::StateManager) {
+        let dirty_nodes = state.get_dirty_nodes();
+        for node_id in dirty_nodes {
+            if let Some(node) = doc.arena.get_mut(node_id) {
+                if let Some(key) = &node.attrs.bind_state {
+                    if let Some(val) = state.get(key) {
+                        node.text = Some(val.to_string());
+                        doc.mark_dirty(node_id);
+                    }
+                }
+            }
+        }
+    }
+
+    fn inject_initial_state(doc: &mut THTMLDocument, state: &crate::state::StateManager) {
+        let mut dirty = Vec::new();
+        for (id, node) in doc.arena.iter_mut() {
             if let Some(key) = &node.attrs.bind_state {
                 if let Some(val) = state.get(key) {
                     node.text = Some(val.to_string());
+                    dirty.push(id);
                 }
             }
+        }
+        for id in dirty {
+            doc.mark_dirty(id);
         }
     }
 
@@ -310,7 +338,9 @@ impl EventLoop {
                                 match crate::loader::load_thtml_file(path) {
                                     Ok(mut new_doc) => {
                                         info!("Hot Reload successful for session {}", self.session.id);
-                                        Self::inject_state(&mut new_doc, &self.session.state.read());
+                                        let mut state = self.session.state.write();
+                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                        Self::inject_initial_state(&mut new_doc, &*state);
                                         self.doc = new_doc;
                                         needs_render = true;
                                     }
@@ -389,29 +419,18 @@ impl EventLoop {
 
                                                 if is_safe {
                                                     if let Ok(mut new_doc) = crate::loader::load_thtml_file(&new_path) {
-                                                        Self::inject_state(&mut new_doc, &self.session.state.read());
+                                                        let mut state = self.session.state.write();
+                                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                        Self::inject_initial_state(&mut new_doc, &*state);
                                                         self.doc = new_doc;
                                                         self.source_path = Some(new_path);
                                                     }
                                                 } else {
                                                     warn!("Blocked Path Traversal attempt to: {:?}", new_path);
                                                 }
-                                            } else if htmx_target.starts_with("inc:") {
-                                                let key = htmx_target.strip_prefix("inc:").unwrap();
-                                                let mut state = self.session.state.write();
-                                                let val = state.entry(key.to_string()).or_insert(0);
-                                                *val += 1;
-                                                info!("State incremented: {} = {}", key, *val);
-                                                // Re-render current doc with new state
-                                                Self::inject_state(&mut self.doc, &state);
-                                                needs_render = true;
-                                            } else if htmx_target.starts_with("dec:") {
-                                                let key = htmx_target.strip_prefix("dec:").unwrap();
-                                                let mut state = self.session.state.write();
-                                                let val = state.entry(key.to_string()).or_insert(0);
-                                                *val -= 1;
-                                                info!("State decremented: {} = {}", key, *val);
-                                                Self::inject_state(&mut self.doc, &state);
+                                            } else {
+                                                // Handle general HTMX action (inc, dec, toggle, set, etc.)
+                                                self.session.state.write().apply_action(htmx_target);
                                                 needs_render = true;
                                             }
                                         }
@@ -441,6 +460,9 @@ impl EventLoop {
             }
 
             if needs_render && !self.output_paused && self.frame_limiter.should_render() {
+                // Sync reactive state before render
+                Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+
                 if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {

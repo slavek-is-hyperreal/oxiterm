@@ -41,6 +41,35 @@ pub fn parse_tcss(input: &str) -> Result<StyleSheet> {
     Ok(StyleSheet { rules })
 }
 
+pub fn parse_inline_tcss(input: &str) -> Result<Vec<Declaration>> {
+    let (_, decls) = parse_declarations(input).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
+    Ok(decls)
+}
+
+pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: &Declaration) {
+    match decl {
+        Declaration::Fg(color) => style.fg = *color,
+        Declaration::Bg(color) => style.bg = *color,
+        Declaration::Width(w) => style.width = Some(*w),
+        Declaration::Height(h) => style.height = Some(*h),
+        Declaration::FlexDirection(d) => style.flex_direction = *d,
+        Declaration::AlignItems(a) => style.align_items = *a,
+        Declaration::JustifyContent(j) => style.justify_content = *j,
+        Declaration::Padding(p) => {
+            style.padding.top = *p;
+            style.padding.right = *p;
+            style.padding.bottom = *p;
+            style.padding.left = *p;
+        }
+        Declaration::Margin(m) => {
+            style.margin.top = *m;
+            style.margin.right = *m;
+            style.margin.bottom = *m;
+            style.margin.left = *m;
+        }
+    }
+}
+
 fn parse_rules(input: &str) -> IResult<&str, Vec<(Selector, Vec<Declaration>)>> {
     many0(tuple((
         multispace0,
@@ -74,16 +103,16 @@ fn parse_declaration(input: &str) -> IResult<&str, Declaration> {
     let (input, _) = nom_char(':')(input)?;
     let (input, _) = multispace0(input)?;
     
-    // Explicitly handle error type for or_else
+    // Take value until ; or end of input
     let (input, value) = if let Ok(res) = take_until::<&str, &str, Error<&str>>(";")(input) {
         res
     } else {
-        take_until::<&str, &str, Error<&str>>("}")(input)?
+        ( "", input ) // Use the rest of the input
     };
     
     let decl = match key {
-        "color" => Declaration::Fg(parse_color(value.trim())),
-        "background-color" => Declaration::Bg(parse_color(value.trim())),
+        "fg" | "color" => Declaration::Fg(parse_color(value.trim())),
+        "bg" | "background-color" => Declaration::Bg(parse_color(value.trim())),
         "width" => Declaration::Width(value.trim().parse().unwrap_or(0)),
         "height" => Declaration::Height(value.trim().parse().unwrap_or(0)),
         "flex-direction" => match value.trim() {
@@ -112,9 +141,25 @@ fn parse_declaration(input: &str) -> IResult<&str, Declaration> {
 }
 
 fn parse_color(value: &str) -> AnsiColor {
-    if value == "reset" {
+    let value = value.to_lowercase();
+    let value = value.trim();
+    
+    if value == "reset" || value == "transparent" {
         return AnsiColor::Reset;
     }
+    
+    match value {
+        "black" => return AnsiColor::TrueColor(0, 0, 0),
+        "red" => return AnsiColor::TrueColor(255, 0, 0),
+        "green" => return AnsiColor::TrueColor(0, 255, 0),
+        "yellow" => return AnsiColor::TrueColor(255, 255, 0),
+        "blue" => return AnsiColor::TrueColor(0, 0, 255),
+        "magenta" => return AnsiColor::TrueColor(255, 0, 255),
+        "cyan" => return AnsiColor::TrueColor(0, 255, 255),
+        "white" => return AnsiColor::TrueColor(255, 255, 255),
+        _ => {}
+    }
+
     if value.starts_with('#') && value.len() == 7 {
         let r = u8::from_str_radix(&value[1..3], 16).unwrap_or(0);
         let g = u8::from_str_radix(&value[3..5], 16).unwrap_or(0);

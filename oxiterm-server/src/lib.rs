@@ -8,6 +8,7 @@ pub mod backpressure;
 pub mod loader;
 pub mod weather;
 pub mod weather_app;
+pub mod state;
 
 pub use config::OxiTermConfig;
 pub use metrics::SessionMetrics;

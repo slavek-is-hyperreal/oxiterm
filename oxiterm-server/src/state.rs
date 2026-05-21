@@ -1,0 +1,188 @@
+use std::collections::{HashMap, HashSet};
+use oxiterm_proto::dom::NodeId;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StateValue {
+    Int(i64),
+    Str(String),
+    Bool(bool),
+    List(Vec<String>),
+}
+
+impl std::fmt::Display for StateValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateValue::Int(i) => write!(f, "{}", i),
+            StateValue::Str(s) => write!(f, "{}", s),
+            StateValue::Bool(b) => write!(f, "{}", b),
+            StateValue::List(l) => write!(f, "[{}]", l.join(", ")),
+        }
+    }
+}
+
+pub struct StateManager {
+    store: HashMap<String, StateValue>,
+    subscriptions: HashMap<String, Vec<NodeId>>,
+    dirty_keys: HashSet<String>,
+}
+
+impl StateManager {
+    pub fn new() -> Self {
+        Self {
+            store: HashMap::new(),
+            subscriptions: HashMap::new(),
+            dirty_keys: HashSet::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&StateValue> {
+        self.store.get(key)
+    }
+
+    pub fn set(&mut self, key: String, value: StateValue) {
+        if self.store.get(&key) != Some(&value) {
+            self.store.insert(key.clone(), value);
+            self.dirty_keys.insert(key);
+        }
+    }
+
+    pub fn subscribe(&mut self, key: String, node_id: NodeId) {
+        self.subscriptions.entry(key).or_default().push(node_id);
+    }
+
+    pub fn clear_subscriptions(&mut self) {
+        self.subscriptions.clear();
+    }
+
+    pub fn get_dirty_nodes(&mut self) -> Vec<NodeId> {
+        let mut nodes = Vec::new();
+        for key in self.dirty_keys.drain() {
+            if let Some(subs) = self.subscriptions.get(&key) {
+                nodes.extend(subs.iter().copied());
+            }
+        }
+        nodes
+    }
+
+    pub fn apply_action(&mut self, action: &str) {
+        // format: "cmd:key=val" or "cmd:key"
+        let parts: Vec<&str> = action.splitn(2, ':').collect();
+        if parts.len() < 2 { return; }
+        
+        let cmd = parts[0];
+        let rest = parts[1];
+        
+        let (key, val_str) = if let Some(pos) = rest.find('=') {
+            (&rest[..pos], Some(&rest[pos+1..]))
+        } else {
+            (rest, None)
+        };
+
+        match cmd {
+            "inc" => {
+                let current = match self.store.get(key) {
+                    Some(StateValue::Int(i)) => *i,
+                    _ => 0,
+                };
+                self.set(key.to_string(), StateValue::Int(current + 1));
+            }
+            "dec" => {
+                let current = match self.store.get(key) {
+                    Some(StateValue::Int(i)) => *i,
+                    _ => 0,
+                };
+                self.set(key.to_string(), StateValue::Int(current - 1));
+            }
+            "toggle" => {
+                let current = match self.store.get(key) {
+                    Some(StateValue::Bool(b)) => *b,
+                    _ => false,
+                };
+                self.set(key.to_string(), StateValue::Bool(!current));
+            }
+            "set" => {
+                if let Some(v) = val_str {
+                    self.set(key.to_string(), StateValue::Str(v.to_string()));
+                }
+            }
+            "append" => {
+                if let Some(v) = val_str {
+                    let mut list = match self.store.remove(key) {
+                        Some(StateValue::List(l)) => l,
+                        _ => Vec::new(),
+                    };
+                    list.push(v.to_string());
+                    self.set(key.to_string(), StateValue::List(list));
+                }
+            }
+            "clear" => {
+                self.set(key.to_string(), StateValue::List(Vec::new()));
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_state_basic() {
+        let mut sm = StateManager::new();
+        sm.set("count".to_string(), StateValue::Int(10));
+        assert_eq!(sm.get("count"), Some(&StateValue::Int(10)));
+    }
+
+    #[test]
+    fn test_dirty_tracking() {
+        let mut sm = StateManager::new();
+        let node_id = NodeId(1);
+        sm.subscribe("count".to_string(), node_id);
+        
+        sm.set("count".to_string(), StateValue::Int(1));
+        let dirty = sm.get_dirty_nodes();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0], node_id);
+        
+        // After drain, should be empty
+        assert!(sm.get_dirty_nodes().is_empty());
+    }
+
+    #[test]
+    fn test_htmx_actions() {
+        let mut sm = StateManager::new();
+        
+        // Test inc
+        sm.apply_action("inc:counter");
+        assert_eq!(sm.get("counter"), Some(&StateValue::Int(1)));
+        sm.apply_action("inc:counter");
+        assert_eq!(sm.get("counter"), Some(&StateValue::Int(2)));
+        
+        // Test toggle
+        sm.apply_action("toggle:flag");
+        assert_eq!(sm.get("flag"), Some(&StateValue::Bool(true)));
+        sm.apply_action("toggle:flag");
+        assert_eq!(sm.get("flag"), Some(&StateValue::Bool(false)));
+        
+        // Test set
+        sm.apply_action("set:name=OxiTerm");
+        assert_eq!(sm.get("name"), Some(&StateValue::Str("OxiTerm".to_string())));
+        
+        // Test list
+        sm.apply_action("append:items=task1");
+        sm.apply_action("append:items=task2");
+        if let Some(StateValue::List(l)) = sm.get("items") {
+            assert_eq!(l.len(), 2);
+            assert_eq!(l[0], "task1");
+            assert_eq!(l[1], "task2");
+        } else {
+            panic!("Expected list");
+        }
+        
+        sm.apply_action("clear:items");
+        if let Some(StateValue::List(l)) = sm.get("items") {
+            assert!(l.is_empty());
+        }
+    }
+}

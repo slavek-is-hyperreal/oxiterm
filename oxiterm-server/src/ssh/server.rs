@@ -102,19 +102,27 @@ impl Handler for OxiServer {
                 
                 let event_bus = Arc::new(crate::events::EventBus::new());
                 
-                let app = tokio::task::spawn_blocking(|| {
-                    let mut a = crate::weather_app::WeatherApp::new();
-                    a.refresh();
-                    a
-                }).await.unwrap();
+                let dims = *client_session.dims.read();
+                let mut app_opt = None;
                 
-                let dims = *client_session.dims.read(); // BUG-TOCTOU-01: One lock
-                let (doc, input_id) = app.build_document(dims.cols, dims.rows);
+                let (doc, input_id) = if let Some(ref initial) = self.initial_document {
+                    (initial.clone(), None)
+                } else {
+                    let app = tokio::task::spawn_blocking(|| {
+                        let mut a = crate::weather_app::WeatherApp::new();
+                        a.refresh();
+                        a
+                    }).await.unwrap();
+                    let (d, id) = app.build_document(dims.cols, dims.rows);
+                    app_opt = Some(app);
+                    (d, id)
+                };
+                
                 client_session.predictive_echo.write().active_node = input_id;
 
                 let (weather_tx, weather_rx) = std::sync::mpsc::channel();
                 let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc);
-                event_loop.weather_app = Some(app);
+                event_loop.weather_app = app_opt;
                 event_loop.source_path = self.source_path.clone();
                 event_loop.weather_tx = Some(weather_tx);
                 event_loop.weather_rx = Some(weather_rx);

@@ -15,8 +15,16 @@ impl NodeArena {
         }
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Node> {
-        self.nodes.iter_mut().flatten()
+    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &Node)> {
+        self.nodes.iter().enumerate().filter_map(|(i, n)| {
+            n.as_ref().map(|node| (NodeId(i as u32), node))
+        })
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (NodeId, &mut Node)> {
+        self.nodes.iter_mut().enumerate().filter_map(|(i, n)| {
+            n.as_mut().map(|node| (NodeId(i as u32), node))
+        })
     }
 }
 

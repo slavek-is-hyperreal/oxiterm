@@ -13,6 +13,7 @@ use nom::{
 };
 use regex::Regex;
 use std::sync::OnceLock;
+use crate::parser::tcss::{parse_inline_tcss, apply_declaration};
 
 static ANSI_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -30,7 +31,7 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .chars()
         .filter(|&c| matches!(c,
             'a'..='z' | 'A'..='Z' | '0'..='9'
-            | '-' | '_' | ':'
+            | '-' | '_' | ':' | '/' | '.'
         ))
         .collect()
 }
@@ -68,6 +69,15 @@ impl THTMLParser {
         let mut node = Node::new(parsed.tag);
         node.attrs = parsed.attrs;
         node.text = parsed.text;
+        
+        // Apply inline styles if present
+        if let Some(ref style_str) = node.attrs.style_raw {
+            if let Ok(decls) = parse_inline_tcss(style_str) {
+                for decl in decls {
+                    apply_declaration(&mut node.style, &decl);
+                }
+            }
+        }
         
         let node_id = doc.arena.alloc(node);
         doc.append_child(parent_id, node_id)?;
@@ -287,5 +297,20 @@ mod tests {
         assert_eq!(btn.attrs.id, Some("btn".to_string()));
         assert_eq!(btn.attrs.bind_state, Some("count".to_string()));
         assert_eq!(btn.attrs.event_htmx, Some("inc:count".to_string()));
+    }
+
+    #[test]
+    fn test_parse_inline_style() {
+        let input = r#"<box style="fg: red; bg: #0000ff; width: 50; flex-direction: column;">Styled</box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let box_node = doc.get_node(root.children[0]).unwrap();
+        
+        assert_eq!(box_node.style.width, Some(50));
+        assert_eq!(box_node.style.flex_direction, oxiterm_proto::style::FlexDirection::Column);
+        // Fg color should be red (TrueColor(255, 0, 0))
+        assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
+        // Bg color should be blue (TrueColor(0, 0, 255))
+        assert_eq!(box_node.style.bg, oxiterm_proto::style::AnsiColor::TrueColor(0, 0, 255));
     }
 }
