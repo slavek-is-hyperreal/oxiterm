@@ -27,7 +27,15 @@ pub enum Declaration {
     AlignItems(AlignItems),
     JustifyContent(JustifyContent),
     Padding(u16),
+    PaddingTop(u16),
+    PaddingRight(u16),
+    PaddingBottom(u16),
+    PaddingLeft(u16),
     Margin(u16),
+    MarginTop(u16),
+    MarginRight(u16),
+    MarginBottom(u16),
+    MarginLeft(u16),
     Border(AnsiColor),
     BorderStyle(String),
     BorderColor(AnsiColor),
@@ -63,12 +71,20 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
             style.padding.bottom = *p;
             style.padding.left = *p;
         }
+        Declaration::PaddingTop(p) => style.padding.top = *p,
+        Declaration::PaddingRight(p) => style.padding.right = *p,
+        Declaration::PaddingBottom(p) => style.padding.bottom = *p,
+        Declaration::PaddingLeft(p) => style.padding.left = *p,
         Declaration::Margin(m) => {
             style.margin.top = *m;
             style.margin.right = *m;
             style.margin.bottom = *m;
             style.margin.left = *m;
         }
+        Declaration::MarginTop(m) => style.margin.top = *m,
+        Declaration::MarginRight(m) => style.margin.right = *m,
+        Declaration::MarginBottom(m) => style.margin.bottom = *m,
+        Declaration::MarginLeft(m) => style.margin.left = *m,
         Declaration::Border(color) => {
             if let Some(ref mut border) = style.border {
                 border.fg = *color;
@@ -167,7 +183,15 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
             _ => Some(Declaration::JustifyContent(JustifyContent::FlexStart)),
         },
         "padding" => Some(Declaration::Padding(value.trim().parse().unwrap_or(0))),
+        "padding-top" => Some(Declaration::PaddingTop(value.trim().parse().unwrap_or(0))),
+        "padding-right" => Some(Declaration::PaddingRight(value.trim().parse().unwrap_or(0))),
+        "padding-bottom" => Some(Declaration::PaddingBottom(value.trim().parse().unwrap_or(0))),
+        "padding-left" => Some(Declaration::PaddingLeft(value.trim().parse().unwrap_or(0))),
         "margin" => Some(Declaration::Margin(value.trim().parse().unwrap_or(0))),
+        "margin-top" => Some(Declaration::MarginTop(value.trim().parse().unwrap_or(0))),
+        "margin-right" => Some(Declaration::MarginRight(value.trim().parse().unwrap_or(0))),
+        "margin-bottom" => Some(Declaration::MarginBottom(value.trim().parse().unwrap_or(0))),
+        "margin-left" => Some(Declaration::MarginLeft(value.trim().parse().unwrap_or(0))),
         "border" => Some(Declaration::Border(parse_color(value.trim()))),
         "border-style" => Some(Declaration::BorderStyle(value.trim().to_string())),
         "border-color" => Some(Declaration::BorderColor(parse_color(value.trim()))),
@@ -230,5 +254,31 @@ mod tests {
         let border = style.border.unwrap();
         assert_eq!(border.chars.top_left, '╭');
         assert_eq!(border.fg, AnsiColor::TrueColor(122, 162, 247));
+    }
+
+    #[test]
+    fn test_individual_padding_margin_parsing() {
+        let input = "
+            padding-left: 2;
+            padding-top: 1;
+            margin-bottom: 3;
+            margin-right: 4;
+        ";
+        let decls = parse_inline_tcss(input).unwrap();
+        assert_eq!(decls.len(), 4);
+        
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for decl in &decls {
+            apply_declaration(&mut style, decl);
+        }
+        
+        assert_eq!(style.padding.left, 2);
+        assert_eq!(style.padding.top, 1);
+        assert_eq!(style.padding.right, 0);
+        assert_eq!(style.padding.bottom, 0);
+        assert_eq!(style.margin.bottom, 3);
+        assert_eq!(style.margin.right, 4);
+        assert_eq!(style.margin.left, 0);
+        assert_eq!(style.margin.top, 0);
     }
 }

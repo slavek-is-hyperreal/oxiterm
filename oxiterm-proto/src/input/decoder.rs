@@ -76,6 +76,12 @@ impl InputStateMachine {
         self.utf8_buf.clear();
     }
 
+    pub fn sgr_timeout_guard(&mut self) {
+        if self.state != State::Idle && self.last_activity.elapsed() > std::time::Duration::from_millis(200) {
+            self.reset();
+        }
+    }
+
     pub fn feed_slice(&mut self, data: &[u8]) -> Vec<InputEvent> {
         let mut events = Vec::new();
         for &b in data {
@@ -88,6 +94,7 @@ impl InputStateMachine {
 
     /// S6-18: feed step, panic-free
     pub fn feed(&mut self, byte: u8) -> Option<InputEvent> {
+        self.sgr_timeout_guard();
         self.last_activity = Instant::now();
         
         match self.state {
@@ -323,5 +330,28 @@ mod tests {
         let ev6 = sm.feed(0xc5); // Another start byte instead of continuation -> invalid
         assert!(ev6.is_none());
         assert!(sm.utf8_buf.is_empty()); // Should clear immediately
+    }
+
+    #[test]
+    fn test_sgr_timeout_guard() {
+        let mut sm = InputStateMachine::new();
+        
+        // Feed partial escape sequence
+        sm.feed(0x1b); // ESC
+        sm.feed(b'['); // [
+        assert_eq!(sm.state, State::Csi);
+        
+        // Wait for timeout (e.g. 250ms)
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        
+        // Feed next character - should trigger sgr_timeout_guard, resetting state to Idle
+        // and treating the new character 'a' as normal input
+        let ev = sm.feed(b'a');
+        assert_eq!(sm.state, State::Idle);
+        if let Some(InputEvent::KeyPress(ke)) = ev {
+            assert_eq!(ke.codepoint, 'a');
+        } else {
+            panic!("Expected KeyEvent 'a' after timeout reset");
+        }
     }
 }

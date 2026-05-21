@@ -74,7 +74,9 @@ impl OxiTermConfig {
         if let Ok(password) = std::env::var("OXITERM_PASSWORD") {
             config.server.password = Some(password);
         }
-        // ... more env overrides as needed
+        if let Ok(no_auth) = std::env::var("OXITERM_NO_AUTH") {
+            config.server.no_auth = no_auth == "true" || no_auth == "1";
+        }
         config.validate()?;
         Ok(config)
     }

@@ -117,12 +117,15 @@ impl StateManager {
             }
             "clear" => {
                 let default_val = match self.store.get(key) {
-                    Some(StateValue::Int(_)) => StateValue::Int(0),
-                    Some(StateValue::Str(_)) => StateValue::Str(String::new()),
-                    Some(StateValue::Bool(_)) => StateValue::Bool(false),
-                    Some(StateValue::List(_)) | None => StateValue::List(Vec::new()),
+                    Some(StateValue::Int(_)) => Some(StateValue::Int(0)),
+                    Some(StateValue::Str(_)) => Some(StateValue::Str(String::new())),
+                    Some(StateValue::Bool(_)) => Some(StateValue::Bool(false)),
+                    Some(StateValue::List(_)) => Some(StateValue::List(Vec::new())),
+                    None => None,
                 };
-                self.set(key.to_string(), default_val);
+                if let Some(val) = default_val {
+                    self.set(key.to_string(), val);
+                }
             }
             _ => {}
         }
@@ -203,5 +206,9 @@ mod tests {
         sm.apply_action("toggle:bool_val");
         sm.apply_action("clear:bool_val");
         assert_eq!(sm.get("bool_val"), Some(&StateValue::Bool(false)));
+
+        // Test clear on non-existent key (should be a no-op)
+        sm.apply_action("clear:non_existent_key");
+        assert_eq!(sm.get("non_existent_key"), None);
     }
 }

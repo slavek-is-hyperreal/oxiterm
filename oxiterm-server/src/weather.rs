@@ -60,6 +60,7 @@ pub fn fetch_krakow() -> anyhow::Result<WeatherData> {
     let url = "https://api.open-meteo.com/v1/forecast?latitude=50.06&longitude=19.94&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,winddirection_10m,relative_humidity_2m,precipitation,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=Europe%2FWarsaw&forecast_days=7";
     
     let resp: OpenMeteoResponse = ureq::get(url)
+        .timeout(std::time::Duration::from_secs(5))
         .call()?
         .into_json()?;
 

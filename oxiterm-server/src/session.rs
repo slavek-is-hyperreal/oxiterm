@@ -325,6 +325,12 @@ impl EventLoop {
         // BUG-C03 Fix: Use a RAII guard to ensure cleanup is ALWAYS sent
         let _cleanup_guard = TerminalCleanupGuard { output_tx: self.output_tx.clone() };
 
+        {
+            let mut state = self.session.state.write();
+            Self::setup_state_subscriptions(&self.doc, &mut *state);
+            Self::inject_initial_state(&mut self.doc, &*state);
+        }
+
         // Initial clear screen and scrollback
         let mut initial_clear = Vec::new();
         // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
@@ -372,6 +378,7 @@ impl EventLoop {
                 loop {
                     match rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
                         Ok(event) => {
+                            *self.session.last_activity.write() = std::time::Instant::now();
                             match event {
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);

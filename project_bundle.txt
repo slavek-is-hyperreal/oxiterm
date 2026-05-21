@@ -1,11 +1,12 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: sob, 9 maj 2026, 16:49:52 CEST
+GENERATED: pią, 22 maj 2026, 00:33:14 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
 --------------------------------------------------------------------------------
 .
+├── authorized_keys
 ├── bugs.md
 ├── bundle_code.sh
 ├── Cargo.lock
@@ -21,10 +22,9 @@ GENERATED: sob, 9 maj 2026, 16:49:52 CEST
 ├── examples
 │   ├── counter.thtml
 │   ├── hello.thtml
+│   ├── showcase.thtml
 │   └── todo.thtml
 ├── host_key
-├── oxiterm_bundle_2026-05-06_21-15.txt
-├── oxiterm_bundle_2026-05-06_21-16.txt
 ├── oxiterm-cli
 │   ├── Cargo.toml
 │   └── src
@@ -122,7 +122,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 2222)]
         port: u16,
         /// Listen address
-        #[arg(short, long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "0.0.0.0")]
         host: String,
         /// Disable authentication (for development)
         #[arg(long)]
@@ -143,7 +143,12 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
     let cli = Cli::parse();
 
     match cli.command {
@@ -344,6 +349,12 @@ impl InputStateMachine {
         self.utf8_buf.clear();
     }
 
+    pub fn sgr_timeout_guard(&mut self) {
+        if self.state != State::Idle && self.last_activity.elapsed() > std::time::Duration::from_millis(200) {
+            self.reset();
+        }
+    }
+
     pub fn feed_slice(&mut self, data: &[u8]) -> Vec<InputEvent> {
         let mut events = Vec::new();
         for &b in data {
@@ -356,6 +367,7 @@ impl InputStateMachine {
 
     /// S6-18: feed step, panic-free
     pub fn feed(&mut self, byte: u8) -> Option<InputEvent> {
+        self.sgr_timeout_guard();
         self.last_activity = Instant::now();
         
         match self.state {
@@ -368,23 +380,43 @@ impl InputStateMachine {
                     // XON/XOFF handled directly in ReactorThread
                     None
                 } else if byte >= 0x80 {
-                    // BUG-UTF8-01: Handle multi-byte UTF-8
+                    // Check if this is the start of a sequence
+                    if self.utf8_buf.is_empty() {
+                        let expected_len = if (0xc2..=0xdf).contains(&byte) {
+                            2
+                        } else if (0xe0..=0xef).contains(&byte) {
+                            3
+                        } else if (0xf0..=0xf4).contains(&byte) {
+                            4
+                        } else {
+                            0
+                        };
+                        if expected_len == 0 {
+                            // Invalid UTF-8 start byte: discard to prevent state leak
+                            return None;
+                        }
+                    }
+
                     self.utf8_buf.push(byte);
-                    if let Ok(s) = std::str::from_utf8(&self.utf8_buf) {
-                        let cp = s.chars().next().unwrap();
-                        self.utf8_buf.clear();
-                        Some(InputEvent::KeyPress(KeyEvent {
-                            codepoint: cp,
-                            modifiers: KeyModifiers::default(),
-                            kind: KeyKind::Press,
-                        }))
-                    } else if self.utf8_buf.len() >= 4 {
-                        self.utf8_buf.clear();
-                        None
-                    } else {
-                        None
+                    match std::str::from_utf8(&self.utf8_buf) {
+                        Ok(s) => {
+                            let cp = s.chars().next().unwrap();
+                            self.utf8_buf.clear();
+                            Some(InputEvent::KeyPress(KeyEvent {
+                                codepoint: cp,
+                                modifiers: KeyModifiers::default(),
+                                kind: KeyKind::Press,
+                            }))
+                        }
+                        Err(e) => {
+                            if e.error_len().is_some() || self.utf8_buf.len() >= 4 {
+                                self.utf8_buf.clear();
+                            }
+                            None
+                        }
                     }
                 } else {
+                    self.utf8_buf.clear();
                     Some(InputEvent::KeyPress(KeyEvent {
                         codepoint: byte as char,
                         modifiers: KeyModifiers::default(),
@@ -530,6 +562,73 @@ impl InputStateMachine {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_utf8_decoding_and_state_leaks() {
+        let mut sm = InputStateMachine::new();
+
+        // 1. Decodes valid UTF-8 sequence (e.g. 'ł' which is 0xc5, 0x82)
+        let ev1 = sm.feed(0xc5);
+        assert!(ev1.is_none());
+        let ev2 = sm.feed(0x82);
+        if let Some(InputEvent::KeyPress(ke)) = ev2 {
+            assert_eq!(ke.codepoint, 'ł');
+        } else {
+            panic!("Expected KeyEvent");
+        }
+
+        // 2. Reject invalid UTF-8 start byte immediately to prevent leak
+        let ev_invalid = sm.feed(0x80); // Invalid start byte
+        assert!(ev_invalid.is_none());
+        assert!(sm.utf8_buf.is_empty()); // Should not leak / store this byte
+
+        // 3. Incomplete followed by ASCII char boundary reset
+        let ev3 = sm.feed(0xc5); // Incomplete ł
+        assert!(ev3.is_none());
+        assert_eq!(sm.utf8_buf.len(), 1);
+        let ev4 = sm.feed(0x61); // ASCII 'a'
+        assert_eq!(sm.utf8_buf.len(), 0); // Should be cleared!
+        if let Some(InputEvent::KeyPress(ke)) = ev4 {
+            assert_eq!(ke.codepoint, 'a');
+        } else {
+            panic!("Expected KeyEvent 'a'");
+        }
+
+        // 4. Incomplete followed by invalid continuation byte clears buffer
+        let ev5 = sm.feed(0xc5); // Incomplete ł
+        assert!(ev5.is_none());
+        let ev6 = sm.feed(0xc5); // Another start byte instead of continuation -> invalid
+        assert!(ev6.is_none());
+        assert!(sm.utf8_buf.is_empty()); // Should clear immediately
+    }
+
+    #[test]
+    fn test_sgr_timeout_guard() {
+        let mut sm = InputStateMachine::new();
+        
+        // Feed partial escape sequence
+        sm.feed(0x1b); // ESC
+        sm.feed(b'['); // [
+        assert_eq!(sm.state, State::Csi);
+        
+        // Wait for timeout (e.g. 250ms)
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        
+        // Feed next character - should trigger sgr_timeout_guard, resetting state to Idle
+        // and treating the new character 'a' as normal input
+        let ev = sm.feed(b'a');
+        assert_eq!(sm.state, State::Idle);
+        if let Some(InputEvent::KeyPress(ke)) = ev {
+            assert_eq!(ke.codepoint, 'a');
+        } else {
+            panic!("Expected KeyEvent 'a' after timeout reset");
+        }
+    }
+}
+
 --- END OF FILE: ./oxiterm-proto/src/input/decoder.rs ---
 
 --- FILE: ./oxiterm-proto/src/input/mod.rs ---
@@ -648,10 +747,10 @@ pub enum FlexDirection {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub enum AlignItems {
-    #[default]
     FlexStart,
     FlexEnd,
     Center,
+    #[default]
     Stretch,
 }
 
@@ -691,9 +790,8 @@ pub struct BorderChars {
     pub bot_right: char,
 }
 
-impl Default for BorderChars {
-    fn default() -> Self {
-        // Standard Unicode Box Drawing
+impl BorderChars {
+    pub fn single() -> Self {
         Self {
             top_left: '┌',
             top: '─',
@@ -704,6 +802,38 @@ impl Default for BorderChars {
             bot: '─',
             bot_right: '┘',
         }
+    }
+
+    pub fn rounded() -> Self {
+        Self {
+            top_left: '╭',
+            top: '─',
+            top_right: '╮',
+            left: '│',
+            right: '│',
+            bot_left: '╰',
+            bot: '─',
+            bot_right: '╯',
+        }
+    }
+
+    pub fn double() -> Self {
+        Self {
+            top_left: '╔',
+            top: '═',
+            top_right: '╗',
+            left: '║',
+            right: '║',
+            bot_left: '╚',
+            bot: '═',
+            bot_right: '╝',
+        }
+    }
+}
+
+impl Default for BorderChars {
+    fn default() -> Self {
+        Self::single()
     }
 }
 
@@ -975,7 +1105,7 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    pub fn compute(&mut self, doc: &mut THTMLDocument) -> anyhow::Result<LayoutResult> {
+    pub fn compute(&mut self, doc: &mut THTMLDocument, term_width: u16, term_height: u16) -> anyhow::Result<LayoutResult> {
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
         self.ensure_nodes_exist_recursive(doc, doc.root)?;
 
@@ -984,7 +1114,7 @@ impl LayoutEngine {
             if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
                 if let Some(node) = doc.arena.get(oxi_id) {
                     // Update style
-                    let style = self.map_style(&node.style);
+                    let style = self.map_style(node);
                     self.taffy.set_style(taffy_id, style)?;
 
                     // Update children
@@ -1005,27 +1135,34 @@ impl LayoutEngine {
 
         // Step 3: Compute layout
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
-        let width = doc.arena.get(doc.root).and_then(|n| n.style.width).unwrap_or(80) as f32;
-        let height = doc.arena.get(doc.root).and_then(|n| n.style.height).unwrap_or(24) as f32;
+        
+        let mut root_w = term_width;
+        let mut root_h = term_height;
+
+        if let Some(root_node) = doc.arena.get(doc.root) {
+            let mut style = self.map_style(root_node);
+            if let Some(w) = root_node.style.width {
+                root_w = w;
+            } else {
+                style.size.width = taffy::style::Dimension::Length(term_width as f32);
+            }
+            if let Some(h) = root_node.style.height {
+                root_h = h;
+            } else {
+                style.size.height = taffy::style::Dimension::Length(term_height as f32);
+            }
+            self.taffy.set_style(root_taffy_id, style)?;
+        }
 
         let available_space = Size {
-            width: AvailableSpace::Definite(width),
-            height: AvailableSpace::Definite(height),
+            width: AvailableSpace::Definite(root_w as f32),
+            height: AvailableSpace::Definite(root_h as f32),
         };
 
         self.taffy.compute_layout(root_taffy_id, available_space)?;
         
         let mut nodes = HashMap::new();
-        for (&oxi_id, &taffy_id) in &self.node_map {
-            let layout = self.taffy.layout(taffy_id)
-                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
-            nodes.insert(oxi_id, OxiRect {
-                x: layout.location.x.round() as u16,
-                y: layout.location.y.round() as u16,
-                width: layout.size.width.round() as u16,
-                height: layout.size.height.round() as u16,
-            });
-        }
+        self.flatten_layout_recursive(doc, doc.root, 0, 0, &mut nodes)?;
 
         // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
@@ -1033,6 +1170,42 @@ impl LayoutEngine {
         let result = LayoutResult { nodes };
         self.last_layout = Some(result.clone());
         Ok(result)
+    }
+
+    fn flatten_layout_recursive(
+        &self,
+        doc: &THTMLDocument,
+        oxi_id: OxiNodeId,
+        parent_x: u16,
+        parent_y: u16,
+        nodes: &mut HashMap<OxiNodeId, OxiRect>,
+    ) -> anyhow::Result<()> {
+        if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
+            let layout = self.taffy.layout(taffy_id)
+                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
+            
+            let rect_x = layout.location.x.round() as u16;
+            let rect_y = layout.location.y.round() as u16;
+            let width = layout.size.width.round() as u16;
+            let height = layout.size.height.round() as u16;
+            
+            let abs_x = parent_x + rect_x;
+            let abs_y = parent_y + rect_y;
+            
+            nodes.insert(oxi_id, OxiRect {
+                x: abs_x,
+                y: abs_y,
+                width,
+                height,
+            });
+
+            if let Some(node) = doc.arena.get(oxi_id) {
+                for &child_id in &node.children {
+                    self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
@@ -1069,14 +1242,34 @@ impl LayoutEngine {
             children.push(self.ensure_nodes_exist_recursive(doc, child_id)?);
         }
 
-        let style = self.map_style(&node.style);
+        let style = self.map_style(node);
         let taffy_id = self.taffy.new_with_children(style, &children)?;
         
         self.node_map.insert(oxi_id, taffy_id);
         Ok(taffy_id)
     }
 
-    fn map_style(&self, style: &oxiterm_proto::style::ComputedStyle) -> Style {
+    fn map_style(&self, node: &oxiterm_proto::dom::Node) -> Style {
+        let style = &node.style;
+        let mut width = style.width;
+        let mut height = style.height;
+
+        if node.tag == oxiterm_proto::dom::NodeTag::Text {
+            if let Some(text) = &node.text {
+                if width.is_none() {
+                    let calculated_width = text.lines()
+                        .map(|line| line.chars().map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16).sum())
+                        .max()
+                        .unwrap_or(0);
+                    width = Some(calculated_width);
+                }
+                if height.is_none() {
+                    let calculated_height = text.lines().count() as u16;
+                    height = Some(calculated_height.max(1));
+                }
+            }
+        }
+
         Style {
             display: Display::Flex,
             flex_direction: match style.flex_direction {
@@ -1097,8 +1290,8 @@ impl LayoutEngine {
                 oxiterm_proto::style::JustifyContent::SpaceAround => JustifyContent::SpaceAround,
             }),
             size: Size {
-                width: style.width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
-                height: style.height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
+                width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
+                height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
             },
             padding: Rect {
                 left: LengthPercentage::Length(style.padding.left as f32),
@@ -1111,6 +1304,21 @@ impl LayoutEngine {
                 right: LengthPercentage::Length(style.margin.right as f32).into(),
                 top: LengthPercentage::Length(style.margin.top as f32).into(),
                 bottom: LengthPercentage::Length(style.margin.bottom as f32).into(),
+            },
+            border: if style.border.is_some() {
+                Rect {
+                    left: LengthPercentage::Length(1.0),
+                    right: LengthPercentage::Length(1.0),
+                    top: LengthPercentage::Length(1.0),
+                    bottom: LengthPercentage::Length(1.0),
+                }
+            } else {
+                Rect {
+                    left: LengthPercentage::Length(0.0),
+                    right: LengthPercentage::Length(0.0),
+                    top: LengthPercentage::Length(0.0),
+                    bottom: LengthPercentage::Length(0.0),
+                }
             },
             ..Default::default()
         }
@@ -1134,7 +1342,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        let result = engine.compute(&mut doc).unwrap();
+        let result = engine.compute(&mut doc, 80, 24).unwrap();
         let rect = result.nodes.get(&child_id).unwrap();
         assert_eq!(rect.width, 20);
         assert_eq!(rect.height, 10);
@@ -1152,12 +1360,56 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        engine.compute(&mut doc).unwrap();
+        engine.compute(&mut doc, 80, 24).unwrap();
         
         // Inside
         assert_eq!(engine.hit_test(6, 1), Some(child_id));
         // Outside
         assert_eq!(engine.hit_test(1, 1), Some(doc.root));
+    }
+
+    #[test]
+    fn test_hit_test_nested() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut parent = Node::new(NodeTag::Box);
+        parent.style.width = Some(20);
+        parent.style.height = Some(20);
+        parent.style.margin.left = 10;
+        let parent_id = doc.arena.alloc(parent);
+        doc.append_child(doc.root, parent_id).unwrap();
+
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(5);
+        child.style.height = Some(5);
+        child.style.margin.left = 5;
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(parent_id, child_id).unwrap();
+        
+        engine.compute(&mut doc, 80, 24).unwrap();
+        
+        // Child absolute coordinate: parent.left (10) + child.left (5) = 15.
+        // Inside nested child (e.g. x = 16, y = 1)
+        assert_eq!(engine.hit_test(16, 1), Some(child_id));
+        // Outside child but inside parent (e.g. x = 11, y = 1)
+        assert_eq!(engine.hit_test(11, 1), Some(parent_id));
+    }
+
+    #[test]
+    fn test_text_node_intrinsic_size() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("Hello\nWorld!".to_string());
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+        
+        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let rect = result.nodes.get(&node_id).unwrap();
+        assert_eq!(rect.width, 6);
+        assert_eq!(rect.height, 2);
     }
 }
 
@@ -1195,6 +1447,24 @@ impl Rect {
 #[derive(Debug, Clone)]
 pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
+}
+
+impl LayoutResult {
+    pub fn get_centering_offset(&self, doc: &crate::document::THTMLDocument, view_w: u16, view_h: u16) -> (u16, u16) {
+        let target_node_id = if let Some(root_node) = doc.get_node(doc.root) {
+            root_node.children.first().copied().unwrap_or(doc.root)
+        } else {
+            doc.root
+        };
+
+        if let Some(rect) = self.nodes.get(&target_node_id) {
+            let ox = if view_w > rect.width { (view_w - rect.width) / 2 } else { 0 };
+            let oy = if view_h > rect.height { (view_h - rect.height) / 2 } else { 0 };
+            (ox, oy)
+        } else {
+            (0, 0)
+        }
+    }
 }
 
 pub struct HitTester<'a> {
@@ -1262,14 +1532,13 @@ pub use thtml::{THTMLParser, sanitize_style_raw};
 use anyhow::Result;
 use oxiterm_proto::style::{AnsiColor, FlexDirection, AlignItems, JustifyContent};
 use nom::{
-    bytes::complete::{take_until, take_while1},
+    bytes::complete::take_while1,
     character::complete::{multispace0, char as nom_char},
     sequence::{delimited, tuple, preceded},
     IResult,
     branch::alt,
     combinator::{map, opt},
     multi::many0,
-    error::Error,
 };
 
 #[derive(Debug, Clone)]
@@ -1289,7 +1558,18 @@ pub enum Declaration {
     AlignItems(AlignItems),
     JustifyContent(JustifyContent),
     Padding(u16),
+    PaddingTop(u16),
+    PaddingRight(u16),
+    PaddingBottom(u16),
+    PaddingLeft(u16),
     Margin(u16),
+    MarginTop(u16),
+    MarginRight(u16),
+    MarginBottom(u16),
+    MarginLeft(u16),
+    Border(AnsiColor),
+    BorderStyle(String),
+    BorderColor(AnsiColor),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1322,11 +1602,54 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
             style.padding.bottom = *p;
             style.padding.left = *p;
         }
+        Declaration::PaddingTop(p) => style.padding.top = *p,
+        Declaration::PaddingRight(p) => style.padding.right = *p,
+        Declaration::PaddingBottom(p) => style.padding.bottom = *p,
+        Declaration::PaddingLeft(p) => style.padding.left = *p,
         Declaration::Margin(m) => {
             style.margin.top = *m;
             style.margin.right = *m;
             style.margin.bottom = *m;
             style.margin.left = *m;
+        }
+        Declaration::MarginTop(m) => style.margin.top = *m,
+        Declaration::MarginRight(m) => style.margin.right = *m,
+        Declaration::MarginBottom(m) => style.margin.bottom = *m,
+        Declaration::MarginLeft(m) => style.margin.left = *m,
+        Declaration::Border(color) => {
+            if let Some(ref mut border) = style.border {
+                border.fg = *color;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: *color,
+                    chars: oxiterm_proto::style::BorderChars::default(),
+                });
+            }
+        }
+        Declaration::BorderColor(color) => {
+            if let Some(ref mut border) = style.border {
+                border.fg = *color;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: *color,
+                    chars: oxiterm_proto::style::BorderChars::default(),
+                });
+            }
+        }
+        Declaration::BorderStyle(style_name) => {
+            let chars = match style_name.as_str() {
+                "double" => oxiterm_proto::style::BorderChars::double(),
+                "rounded" => oxiterm_proto::style::BorderChars::rounded(),
+                _ => oxiterm_proto::style::BorderChars::single(),
+            };
+            if let Some(ref mut border) = style.border {
+                border.chars = chars;
+            } else {
+                style.border = Some(oxiterm_proto::style::BorderStyle {
+                    fg: oxiterm_proto::style::AnsiColor::Reset,
+                    chars,
+                });
+            }
         }
     }
 }
@@ -1355,47 +1678,55 @@ fn parse_declarations(input: &str) -> IResult<&str, Vec<Declaration>> {
         parse_declaration,
         opt(nom_char(';')),
         multispace0,
-    )))(input).map(|(i, v)| (i, v.into_iter().map(|(_, d, _, _)| d).collect()))
+    )))(input).map(|(i, v)| (i, v.into_iter().filter_map(|(_, d, _, _)| d).collect()))
 }
 
-fn parse_declaration(input: &str) -> IResult<&str, Declaration> {
+fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     let (input, key) = take_while1(|c: char| c.is_alphanumeric() || c == '-')(input)?;
     let (input, _) = multispace0(input)?;
     let (input, _) = nom_char(':')(input)?;
     let (input, _) = multispace0(input)?;
     
-    // Take value until ; or end of input
-    let (input, value) = if let Ok(res) = take_until::<&str, &str, Error<&str>>(";")(input) {
-        res
-    } else {
-        ( "", input ) // Use the rest of the input
-    };
-    
+    // Take value until ; or } or end of input
+    let end_idx = input.find(|c| c == ';' || c == '}').unwrap_or(input.len());
+    let (value, input) = input.split_at(end_idx);
+
     let decl = match key {
-        "fg" | "color" => Declaration::Fg(parse_color(value.trim())),
-        "bg" | "background-color" => Declaration::Bg(parse_color(value.trim())),
-        "width" => Declaration::Width(value.trim().parse().unwrap_or(0)),
-        "height" => Declaration::Height(value.trim().parse().unwrap_or(0)),
+        "fg" | "color" => Some(Declaration::Fg(parse_color(value.trim()))),
+        "bg" | "background-color" => Some(Declaration::Bg(parse_color(value.trim()))),
+        "width" => Some(Declaration::Width(value.trim().parse().unwrap_or(0))),
+        "height" => Some(Declaration::Height(value.trim().parse().unwrap_or(0))),
         "flex-direction" => match value.trim() {
-            "column" => Declaration::FlexDirection(FlexDirection::Column),
-            _ => Declaration::FlexDirection(FlexDirection::Row),
+            "column" => Some(Declaration::FlexDirection(FlexDirection::Column)),
+            _ => Some(Declaration::FlexDirection(FlexDirection::Row)),
         },
         "align-items" => match value.trim() {
-            "flex-end" => Declaration::AlignItems(AlignItems::FlexEnd),
-            "center" => Declaration::AlignItems(AlignItems::Center),
-            "stretch" => Declaration::AlignItems(AlignItems::Stretch),
-            _ => Declaration::AlignItems(AlignItems::FlexStart),
+            "flex-end" => Some(Declaration::AlignItems(AlignItems::FlexEnd)),
+            "center" => Some(Declaration::AlignItems(AlignItems::Center)),
+            "stretch" => Some(Declaration::AlignItems(AlignItems::Stretch)),
+            _ => Some(Declaration::AlignItems(AlignItems::FlexStart)),
         },
         "justify-content" => match value.trim() {
-            "flex-end" => Declaration::JustifyContent(JustifyContent::FlexEnd),
-            "center" => Declaration::JustifyContent(JustifyContent::Center),
-            "space-between" => Declaration::JustifyContent(JustifyContent::SpaceBetween),
-            "space-around" => Declaration::JustifyContent(JustifyContent::SpaceAround),
-            _ => Declaration::JustifyContent(JustifyContent::FlexStart),
+            "flex-end" => Some(Declaration::JustifyContent(JustifyContent::FlexEnd)),
+            "center" => Some(Declaration::JustifyContent(JustifyContent::Center)),
+            "space-between" => Some(Declaration::JustifyContent(JustifyContent::SpaceBetween)),
+            "space-around" => Some(Declaration::JustifyContent(JustifyContent::SpaceAround)),
+            _ => Some(Declaration::JustifyContent(JustifyContent::FlexStart)),
         },
-        "padding" => Declaration::Padding(value.trim().parse().unwrap_or(0)),
-        "margin" => Declaration::Margin(value.trim().parse().unwrap_or(0)),
-        _ => return Err(nom::Err::Error(Error::new(input, nom::error::ErrorKind::Tag))),
+        "padding" => Some(Declaration::Padding(value.trim().parse().unwrap_or(0))),
+        "padding-top" => Some(Declaration::PaddingTop(value.trim().parse().unwrap_or(0))),
+        "padding-right" => Some(Declaration::PaddingRight(value.trim().parse().unwrap_or(0))),
+        "padding-bottom" => Some(Declaration::PaddingBottom(value.trim().parse().unwrap_or(0))),
+        "padding-left" => Some(Declaration::PaddingLeft(value.trim().parse().unwrap_or(0))),
+        "margin" => Some(Declaration::Margin(value.trim().parse().unwrap_or(0))),
+        "margin-top" => Some(Declaration::MarginTop(value.trim().parse().unwrap_or(0))),
+        "margin-right" => Some(Declaration::MarginRight(value.trim().parse().unwrap_or(0))),
+        "margin-bottom" => Some(Declaration::MarginBottom(value.trim().parse().unwrap_or(0))),
+        "margin-left" => Some(Declaration::MarginLeft(value.trim().parse().unwrap_or(0))),
+        "border" => Some(Declaration::Border(parse_color(value.trim()))),
+        "border-style" => Some(Declaration::BorderStyle(value.trim().to_string())),
+        "border-color" => Some(Declaration::BorderColor(parse_color(value.trim()))),
+        _ => None,
     };
     
     Ok((input, decl))
@@ -1431,6 +1762,56 @@ fn parse_color(value: &str) -> AnsiColor {
         return AnsiColor::Color256(n);
     }
     AnsiColor::Reset
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_border_parsing() {
+        let input = "
+            border-style: rounded;
+            border-color: #7aa2f7;
+        ";
+        let decls = parse_inline_tcss(input).unwrap();
+        assert_eq!(decls.len(), 2);
+        
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for decl in &decls {
+            apply_declaration(&mut style, decl);
+        }
+        
+        let border = style.border.unwrap();
+        assert_eq!(border.chars.top_left, '╭');
+        assert_eq!(border.fg, AnsiColor::TrueColor(122, 162, 247));
+    }
+
+    #[test]
+    fn test_individual_padding_margin_parsing() {
+        let input = "
+            padding-left: 2;
+            padding-top: 1;
+            margin-bottom: 3;
+            margin-right: 4;
+        ";
+        let decls = parse_inline_tcss(input).unwrap();
+        assert_eq!(decls.len(), 4);
+        
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for decl in &decls {
+            apply_declaration(&mut style, decl);
+        }
+        
+        assert_eq!(style.padding.left, 2);
+        assert_eq!(style.padding.top, 1);
+        assert_eq!(style.padding.right, 0);
+        assert_eq!(style.padding.bottom, 0);
+        assert_eq!(style.margin.bottom, 3);
+        assert_eq!(style.margin.right, 4);
+        assert_eq!(style.margin.left, 0);
+        assert_eq!(style.margin.top, 0);
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/parser/tcss.rs ---
@@ -1751,6 +2132,23 @@ mod tests {
         // Bg color should be blue (TrueColor(0, 0, 255))
         assert_eq!(box_node.style.bg, oxiterm_proto::style::AnsiColor::TrueColor(0, 0, 255));
     }
+
+    #[test]
+    fn test_parse_style_missing_semicolon() {
+        // Test inline style without trailing semicolon
+        let input = r#"<box style="fg: red">Styled</box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let box_node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
+
+        // Test stylesheet parsing block without trailing semicolon
+        let css = ".myclass { fg: green }";
+        let stylesheet = crate::parser::tcss::parse_tcss(css).unwrap();
+        assert_eq!(stylesheet.rules.len(), 1);
+        let (_selector, decls) = &stylesheet.rules[0];
+        assert_eq!(decls.len(), 1);
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/parser/thtml.rs ---
@@ -1885,11 +2283,15 @@ impl DiffEngine {
         let mut cur_y: Option<u16> = None;
 
         for y in 0..next.height {
-            for x in 0..next.width {
+            let mut x = 0;
+            while x < next.width {
                 let idx = y as usize * next.width as usize + x as usize;
                 let next_cell = &next.cells[idx];
                 let prev_cell = prev.cells.get(idx);
                 
+                let char_w = crate::render::unicode::UnicodeWidthCache::get().width(next_cell.ch) as u16;
+                let char_w = if char_w == 0 { 1 } else { char_w };
+
                 if Some(next_cell) != prev_cell {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
@@ -1919,12 +2321,13 @@ impl DiffEngine {
                     commands.push(AnsiCommand::WriteChar(next_cell.ch));
                     
                     // Update tracked position
-                    cur_x = Some(x + 1);
+                    cur_x = Some(x + char_w);
                     if cur_x.unwrap() >= next.width {
                         cur_x = Some(0);
                         cur_y = Some(y + 1);
                     }
                 }
+                x += char_w;
             }
         }
         
@@ -2020,6 +2423,24 @@ mod tests {
         // MoveCursor + SetColor + WriteChar
         assert_eq!(cmds.len(), 3);
         assert!(matches!(cmds[1], AnsiCommand::SetColor { .. }));
+    }
+
+    #[test]
+    fn test_diff_wide_character() {
+        let prev = CellBuffer::new(10, 1);
+        let mut next = CellBuffer::new(10, 1);
+        next.cells[0].ch = '🚀'; // Width 2
+        next.cells[2].ch = 'A'; // Width 1
+        
+        let cmds = DiffEngine::diff(&prev, &next);
+        
+        // 1. MoveCursor(0, 0)
+        // 2. WriteChar('🚀')
+        // 3. WriteChar('A') (Should NOT have MoveCursor because cursor naturally advanced to x=2)
+        assert_eq!(cmds.len(), 3);
+        assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
+        assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));
+        assert!(matches!(cmds[2], AnsiCommand::WriteChar('A')));
     }
 }
 
@@ -2124,8 +2545,19 @@ impl Renderer {
             }
         }
         
-        // 2. Rekurencyjne rysowanie drzewa DOM
-        Self::render_recursive(doc, layout, buffer, doc.root, 0, 0);
+        // 2. Rekurencyjne rysowanie drzewa DOM z centrowaniem korzenia, jeśli ma sztywną mniejszą wielkość
+        let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
+
+        Self::render_recursive(
+            doc,
+            layout,
+            buffer,
+            doc.root,
+            offset_x,
+            offset_y,
+            oxiterm_proto::style::AnsiColor::Color256(15),
+            oxiterm_proto::style::AnsiColor::Color256(0),
+        );
     }
 
     fn render_recursive(
@@ -2135,25 +2567,118 @@ impl Renderer {
         node_id: NodeId,
         parent_x: u16,
         parent_y: u16,
+        inherited_fg: oxiterm_proto::style::AnsiColor,
+        inherited_bg: oxiterm_proto::style::AnsiColor,
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
             let abs_x = parent_x + rect.x;
             let abs_y = parent_y + rect.y;
 
-            let bg = node.style.bg;
-            let fg = node.style.fg;
+            let resolved_fg = match node.style.fg {
+                oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
+                c => c,
+            };
+            let resolved_bg = match node.style.bg {
+                oxiterm_proto::style::AnsiColor::Reset => inherited_bg,
+                c => c,
+            };
 
+            // Draw background
             for y in 0..rect.height {
                 for x in 0..rect.width {
                     buffer.set(abs_x + x, abs_y + y, Cell {
                         ch: ' ',
-                        fg,
-                        bg,
+                        fg: resolved_fg,
+                        bg: resolved_bg,
                         ..Default::default()
                     });
                 }
             }
+
+            // Draw border if defined
+            if let Some(border) = &node.style.border {
+                let border_fg = match border.fg {
+                    oxiterm_proto::style::AnsiColor::Reset => resolved_fg,
+                    c => c,
+                };
+                
+                if rect.width > 0 && rect.height > 0 {
+                    // Corners
+                    buffer.set(abs_x, abs_y, Cell {
+                        ch: border.chars.top_left,
+                        fg: border_fg,
+                        bg: resolved_bg,
+                        ..Default::default()
+                    });
+                    if rect.width > 1 {
+                        buffer.set(abs_x + rect.width - 1, abs_y, Cell {
+                            ch: border.chars.top_right,
+                            fg: border_fg,
+                            bg: resolved_bg,
+                            ..Default::default()
+                        });
+                    }
+                    if rect.height > 1 {
+                        buffer.set(abs_x, abs_y + rect.height - 1, Cell {
+                            ch: border.chars.bot_left,
+                            fg: border_fg,
+                            bg: resolved_bg,
+                            ..Default::default()
+                        });
+                    }
+                    if rect.width > 1 && rect.height > 1 {
+                        buffer.set(abs_x + rect.width - 1, abs_y + rect.height - 1, Cell {
+                            ch: border.chars.bot_right,
+                            fg: border_fg,
+                            bg: resolved_bg,
+                            ..Default::default()
+                        });
+                    }
+
+                    // Horizontal borders
+                    for x in 1..rect.width.saturating_sub(1) {
+                        buffer.set(abs_x + x, abs_y, Cell {
+                            ch: border.chars.top,
+                            fg: border_fg,
+                            bg: resolved_bg,
+                            ..Default::default()
+                        });
+                        if rect.height > 1 {
+                            buffer.set(abs_x + x, abs_y + rect.height - 1, Cell {
+                                ch: border.chars.bot,
+                                fg: border_fg,
+                                bg: resolved_bg,
+                                ..Default::default()
+                            });
+                        }
+                    }
+
+                    // Vertical borders
+                    for y in 1..rect.height.saturating_sub(1) {
+                        buffer.set(abs_x, abs_y + y, Cell {
+                            ch: border.chars.left,
+                            fg: border_fg,
+                            bg: resolved_bg,
+                            ..Default::default()
+                        });
+                        if rect.width > 1 {
+                            buffer.set(abs_x + rect.width - 1, abs_y + y, Cell {
+                                ch: border.chars.right,
+                                fg: border_fg,
+                                bg: resolved_bg,
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+
+            let has_border = node.style.border.is_some();
+            let content_x = if has_border { abs_x + 1 } else { abs_x };
+            let content_y = if has_border { abs_y + 1 } else { abs_y };
+            let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
+            let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
 
             match &node.tag {
                 NodeTag::Text => {
@@ -2165,25 +2690,39 @@ impl Renderer {
                                 cx = 0;
                                 cy += 1;
                             } else {
-                                if cx < rect.width && cy < rect.height {
-                                    buffer.set(abs_x + cx, abs_y + cy, Cell {
-                                        ch,
-                                        fg,
-                                        bg,
-                                        ..Default::default()
-                                    });
+                                let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
+                                if char_w > 0 {
+                                    if cx < content_w && cy < content_h {
+                                        buffer.set(content_x + cx, content_y + cy, Cell {
+                                            ch,
+                                            fg: resolved_fg,
+                                            bg: resolved_bg,
+                                            ..Default::default()
+                                        });
+                                        // Fill continuation cells with styled spaces
+                                        for i in 1..char_w {
+                                            if cx + i < content_w {
+                                                buffer.set(content_x + cx + i, content_y + cy, Cell {
+                                                    ch: ' ',
+                                                    fg: resolved_fg,
+                                                    bg: resolved_bg,
+                                                    ..Default::default()
+                                                });
+                                            }
+                                        }
+                                    }
+                                    cx += char_w;
                                 }
-                                cx += 1;
                             }
                         }
                     }
                 }
                 NodeTag::Input => {
-                    for x in 0..rect.width {
-                        buffer.set(abs_x + x, abs_y, Cell {
+                    for x in 0..content_w {
+                        buffer.set(content_x + x, content_y, Cell {
                             ch: '_',
-                            fg,
-                            bg,
+                            fg: resolved_fg,
+                            bg: resolved_bg,
                             ..Default::default()
                         });
                     }
@@ -2192,9 +2731,102 @@ impl Renderer {
             }
 
             for &child_id in &node.children {
-                Self::render_recursive(doc, layout, buffer, child_id, abs_x, abs_y);
+                Self::render_recursive(
+                    doc,
+                    layout,
+                    buffer,
+                    child_id,
+                    parent_x,
+                    parent_y,
+                    resolved_fg,
+                    resolved_bg,
+                );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::engine::LayoutEngine;
+    use oxiterm_proto::dom::{Node, NodeTag};
+    use oxiterm_proto::style::{AnsiColor, BorderStyle, BorderChars};
+
+    #[test]
+    fn test_border_and_transparency_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut parent = Node::new(NodeTag::Box);
+        parent.style.width = Some(5);
+        parent.style.height = Some(3);
+        parent.style.bg = AnsiColor::TrueColor(10, 20, 30);
+        parent.style.border = Some(BorderStyle {
+            fg: AnsiColor::TrueColor(100, 100, 100),
+            chars: BorderChars::default(),
+        });
+        
+        let mut child = Node::new(NodeTag::Text);
+        child.text = Some("A".to_string());
+        child.style.fg = AnsiColor::Reset;
+        child.style.width = Some(1);
+        child.style.height = Some(1);
+        
+        let parent_id = doc.arena.alloc(parent);
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(parent_id, child_id).unwrap();
+        doc.append_child(doc.root, parent_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 5, 3).unwrap();
+
+        let mut buffer = CellBuffer::new(5, 3);
+        Renderer::render_node(&doc, &layout, &mut buffer);
+
+        // Check top-left corner border character '┌'
+        let tl_idx = buffer.flat_idx(0, 0).unwrap();
+        let tl_cell = &buffer.cells[tl_idx];
+        assert_eq!(tl_cell.ch, '┌');
+        assert_eq!(tl_cell.fg, AnsiColor::TrueColor(100, 100, 100));
+        assert_eq!(tl_cell.bg, AnsiColor::TrueColor(10, 20, 30));
+
+        // Check offset child text character 'A' at (1, 1) inside border box
+        let content_idx = buffer.flat_idx(1, 1).unwrap();
+        let content_cell = &buffer.cells[content_idx];
+        assert_eq!(content_cell.ch, 'A');
+        assert_eq!(content_cell.bg, AnsiColor::TrueColor(10, 20, 30)); // Inherited bg
+    }
+
+    #[test]
+    fn test_wide_character_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("🚀A".to_string()); // Rocket (width 2) + A (width 1)
+        text_node.style.width = Some(5);
+        text_node.style.height = Some(1);
+        text_node.style.bg = AnsiColor::TrueColor(5, 5, 5);
+        
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 5, 1).unwrap();
+
+        let mut buffer = CellBuffer::new(5, 1);
+        Renderer::render_node(&doc, &layout, &mut buffer);
+
+        // Check index 0: contains '🚀'
+        assert_eq!(buffer.cells[0].ch, '🚀');
+        assert_eq!(buffer.cells[0].bg, AnsiColor::TrueColor(5, 5, 5));
+
+        // Check index 1: contains ' ' (continuation cell filled with styled space)
+        assert_eq!(buffer.cells[1].ch, ' ');
+        assert_eq!(buffer.cells[1].bg, AnsiColor::TrueColor(5, 5, 5));
+
+        // Check index 2: contains 'A' (advanced correctly by 2 cells)
+        assert_eq!(buffer.cells[2].ch, 'A');
+        assert_eq!(buffer.cells[2].bg, AnsiColor::TrueColor(5, 5, 5));
     }
 }
 
@@ -2550,7 +3182,9 @@ impl OxiTermConfig {
         if let Ok(password) = std::env::var("OXITERM_PASSWORD") {
             config.server.password = Some(password);
         }
-        // ... more env overrides as needed
+        if let Ok(no_auth) = std::env::var("OXITERM_NO_AUTH") {
+            config.server.no_auth = no_auth == "true" || no_auth == "1";
+        }
         config.validate()?;
         Ok(config)
     }
@@ -2918,9 +3552,10 @@ pub struct FrameRateLimiter {
 
 impl FrameRateLimiter {
     pub fn new(fps: u32) -> Self {
+        let min_interval = Duration::from_secs_f32(1.0 / fps as f32);
         Self {
-            last_frame: Instant::now(),
-            min_interval: Duration::from_secs_f32(1.0 / fps as f32),
+            last_frame: Instant::now() - min_interval,
+            min_interval,
         }
     }
 
@@ -3050,6 +3685,12 @@ pub struct ClientSession {
     pub state: RwLock<crate::state::StateManager>,
 }
 
+impl ClientSession {
+    pub fn close(&self) {
+        self.event_rx.lock().close();
+    }
+}
+
 impl SessionRegistry {
     pub fn new(prometheus_registry: Arc<prometheus::Registry>) -> Self {
         Self {
@@ -3097,7 +3738,9 @@ impl SessionRegistry {
     }
 
     pub fn remove_session(&self, id: SessionId) {
-        self.sessions.write().remove(&id);
+        if let Some(session) = self.sessions.write().remove(&id) {
+            session.close();
+        }
     }
 
     pub fn broadcast_input_event(&self, event: InputEvent) {
@@ -3150,6 +3793,10 @@ impl Drop for TerminalCleanupGuard {
         let mut cleanup = Vec::new();
         cleanup.extend_from_slice(b"\x1b[?2026l"); // ESU
         cleanup.extend_from_slice(b"\x1b[?25h");   // Show Cursor
+        cleanup.extend_from_slice(b"\x1b[?1000l"); // Disable Standard Mouse Tracking
+        cleanup.extend_from_slice(b"\x1b[?1003l"); // Disable Any-event Mouse Tracking
+        cleanup.extend_from_slice(b"\x1b[?1006l"); // Disable SGR Mouse Mode
+        cleanup.extend_from_slice(b"\x1b[=0u");     // Disable Kitty Keyboard Protocol
         cleanup.extend_from_slice(b"\x1b[?1049l"); // Disable Alt Buffer
         let _ = self.output_tx.try_send(cleanup);
     }
@@ -3219,9 +3866,45 @@ impl EventLoop {
         }
     }
 
+    fn find_htmx_target_path(doc: &THTMLDocument, current: NodeId, target: NodeId, path: &mut Vec<NodeId>) -> bool {
+        path.push(current);
+        if current == target {
+            return true;
+        }
+        if let Some(node) = doc.get_node(current) {
+            for &child in &node.children {
+                if Self::find_htmx_target_path(doc, child, target, path) {
+                    return true;
+                }
+            }
+        }
+        path.pop();
+        false
+    }
+
+    fn get_htmx_node_and_target(doc: &THTMLDocument, node_id: NodeId) -> Option<(NodeId, String)> {
+        let mut path = Vec::new();
+        if Self::find_htmx_target_path(doc, doc.root, node_id, &mut path) {
+            for &id in path.iter().rev() {
+                if let Some(node) = doc.get_node(id) {
+                    if let Some(ref htmx) = node.attrs.event_htmx {
+                        return Some((id, htmx.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn run(&mut self) {
         // BUG-C03 Fix: Use a RAII guard to ensure cleanup is ALWAYS sent
         let _cleanup_guard = TerminalCleanupGuard { output_tx: self.output_tx.clone() };
+
+        {
+            let mut state = self.session.state.write();
+            Self::setup_state_subscriptions(&self.doc, &mut *state);
+            Self::inject_initial_state(&mut self.doc, &*state);
+        }
 
         // Initial clear screen and scrollback
         let mut initial_clear = Vec::new();
@@ -3258,144 +3941,200 @@ impl EventLoop {
                         let dims = *self.session.dims.read();
                         let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                         self.doc = new_doc;
+                        self.layout_engine.reset_nodes();
                         needs_render = true;
                     }
                 }
             }
 
+            let mut disconnected = false;
             {
                 let mut rx_lock = self.session.event_rx.lock();
-                while let Ok(event) = rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
-                    match event {
-                        InputEvent::Resize { cols, rows } => {
-                            info!("Reactor notified resize to {}x{}", cols, rows);
-                            // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
-                            // to avoid double allocation. We just signal that a render might be needed.
-                            needs_render = true;
-                        }
-                        InputEvent::Reload => {
-                            if let Some(ref path) = self.source_path {
-                                match crate::loader::load_thtml_file(path) {
-                                    Ok(mut new_doc) => {
-                                        info!("Hot Reload successful for session {}", self.session.id);
-                                        let mut state = self.session.state.write();
-                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                        Self::inject_initial_state(&mut new_doc, &*state);
-                                        self.doc = new_doc;
-                                        needs_render = true;
-                                    }
-                                    Err(e) => {
-                                        warn!("Hot Reload failed for session {}: {}", self.session.id, e);
-                                        // TODO: Show error overlay in TUI
+                loop {
+                    match rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
+                        Ok(event) => {
+                            *self.session.last_activity.write() = std::time::Instant::now();
+                            match event {
+                                InputEvent::Resize { cols, rows } => {
+                                    info!("Reactor notified resize to {}x{}", cols, rows);
+                                    // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
+                                    // to avoid double allocation. We just signal that a render might be needed.
+                                    needs_render = true;
+                                }
+                                InputEvent::Reload => {
+                                    if let Some(ref path) = self.source_path {
+                                        match crate::loader::load_thtml_file(path) {
+                                            Ok(mut new_doc) => {
+                                                info!("Hot Reload successful for session {}", self.session.id);
+                                                let mut state = self.session.state.write();
+                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                Self::inject_initial_state(&mut new_doc, &*state);
+                                                self.doc = new_doc;
+                                                self.layout_engine.reset_nodes();
+                                                needs_render = true;
+                                            }
+                                            Err(e) => {
+                                                warn!("Hot Reload failed for session {}: {}", self.session.id, e);
+                                                // TODO: Show error overlay in TUI
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
-                        InputEvent::KeyPress(key) => {
-                            if key.codepoint == 'q' || key.codepoint == 'Q' {
-                                info!("Quit requested via keyboard: {}", key.codepoint);
-                                return;
-                            }
+                                InputEvent::KeyPress(key) => {
+                                    if key.codepoint == 'q' || key.codepoint == 'Q' {
+                                        info!("Quit requested via keyboard: {}", key.codepoint);
+                                        disconnected = true;
+                                        break;
+                                    }
 
-                            // Group 1-9 for quick navigation (S6-nav)
-                            if ('1'..='9').contains(&key.codepoint) || key.codepoint == '\t' || key.codepoint == 'r' || key.codepoint == 'R' {
-                                if let Some(ref mut app) = self.weather_app {
-                                    if key.codepoint == 'r' || key.codepoint == 'R' {
-                                        if !app.loading {
-                                            if let Some(ref tx) = self.weather_tx {
-                                                app.loading = true;
-                                                let tx_clone = tx.clone();
-                                                std::thread::spawn(move || {
-                                                    let res = crate::weather::fetch_krakow()
-                                                        .map_err(|e| e.to_string());
-                                                    let _ = tx_clone.send(res);
-                                                });
+                                    // Group 1-9 for quick navigation (S6-nav)
+                                    if ('1'..='9').contains(&key.codepoint) || key.codepoint == '\t' || key.codepoint == 'r' || key.codepoint == 'R' {
+                                        if let Some(ref mut app) = self.weather_app {
+                                            if key.codepoint == 'r' || key.codepoint == 'R' {
+                                                if !app.loading {
+                                                    if let Some(ref tx) = self.weather_tx {
+                                                        app.loading = true;
+                                                        let tx_clone = tx.clone();
+                                                        std::thread::spawn(move || {
+                                                            let res = crate::weather::fetch_krakow()
+                                                                .map_err(|e| e.to_string());
+                                                            let _ = tx_clone.send(res);
+                                                        });
+                                                        needs_render = true;
+                                                    }
+                                                }
+                                            } else if app.handle_key(key.codepoint) {
+                                                info!("WeatherApp handled key: {}", key.codepoint);
+                                                let dims = *self.session.dims.read();
+                                                let (new_doc, _) = app.build_document(dims.cols, dims.rows);
+                                                self.doc = new_doc;
+                                                self.layout_engine.reset_nodes();
                                                 needs_render = true;
                                             }
                                         }
-                                    } else if app.handle_key(key.codepoint) {
-                                        info!("WeatherApp handled key: {}", key.codepoint);
-                                        let dims = *self.session.dims.read();
-                                        let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                                        self.doc = new_doc;
+                                    } else {
+                                        let mut echo = self.session.predictive_echo.write();
+                                        echo.buffer.push(key.codepoint);
                                         needs_render = true;
                                     }
                                 }
-                            }
+                                InputEvent::MouseEvent(mut mouse) => {
+                                    let dims = *self.session.dims.read();
+                                    info!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
+                                    if let Some(layout) = &self.layout_engine.last_layout {
+                                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                                        info!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
+                                        mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
+                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1);
+                                        info!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
+                                    } else {
+                                        warn!("No last layout found!");
+                                    }
+                                    self.pending_mouse = Some(mouse.clone());
+                                    
+                                    // SC-05: Handle HTMX navigation
+                                    if mouse.action == oxiterm_proto::input::MouseAction::Press {
+                                        // Find node at coordinates
+                                        if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
+                                            info!("Hit test found node: {:?}", node_id);
+                                            if let Some(node) = self.doc.get_node(node_id) {
+                                                info!("Node details: tag={:?}, attrs={:?}", node.tag, node.attrs);
+                                            }
+                                            if let Some((target_node_id, htmx_target)) = Self::get_htmx_node_and_target(&self.doc, node_id) {
+                                                info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
+                                                if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
+                                                    // BUG-SEC-01: Path Traversal prevention
+                                                    let base_dir = self.source_path.as_ref()
+                                                        .and_then(|p| p.parent())
+                                                        .map(|p| p.to_path_buf())
+                                                        .unwrap_or_else(|| std::env::current_dir().unwrap());
+                                                    
+                                                    let mut filename = htmx_target.to_string();
+                                                    if !filename.ends_with(".thtml") {
+                                                        filename.push_str(".thtml");
+                                                    }
+                                                    
+                                                    let new_path = base_dir.join(filename);
+                                                    
+                                                    let is_safe = (|| -> Option<bool> {
+                                                        let canonical_base = base_dir.canonicalize().ok()?;
+                                                        let canonical_target = new_path.canonicalize().ok()?;
+                                                        Some(canonical_target.starts_with(canonical_base))
+                                                    })().unwrap_or(false);
 
-                            let mut echo = self.session.predictive_echo.write();
-                            echo.buffer.push(key.codepoint);
-                            needs_render = true;
-                        }
-                        InputEvent::MouseEvent(mouse) => {
-                            self.pending_mouse = Some(mouse.clone());
-                            
-                            // SC-05: Handle HTMX navigation
-                            if mouse.action == oxiterm_proto::input::MouseAction::Press {
-                                // Find node at coordinates
-                                if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
-                                    if let Some(node) = self.doc.get_node(node_id) {
-                                        if let Some(ref htmx_target) = node.attrs.event_htmx {
-                                            info!("HTMX Navigation: {}", htmx_target);
-                                            if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                // BUG-SEC-01: Path Traversal prevention
-                                                let base_dir = self.source_path.as_ref()
-                                                    .and_then(|p| p.parent())
-                                                    .map(|p| p.to_path_buf())
-                                                    .unwrap_or_else(|| std::env::current_dir().unwrap());
-                                                
-                                                let mut filename = htmx_target.to_string();
-                                                if !filename.ends_with(".thtml") {
-                                                    filename.push_str(".thtml");
-                                                }
-                                                
-                                                let new_path = base_dir.join(filename);
-                                                
-                                                let is_safe = (|| -> Option<bool> {
-                                                    let canonical_base = base_dir.canonicalize().ok()?;
-                                                    let canonical_target = new_path.canonicalize().ok()?;
-                                                    Some(canonical_target.starts_with(canonical_base))
-                                                })().unwrap_or(false);
-
-                                                if is_safe {
-                                                    if let Ok(mut new_doc) = crate::loader::load_thtml_file(&new_path) {
-                                                        let mut state = self.session.state.write();
-                                                        Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                                        Self::inject_initial_state(&mut new_doc, &*state);
-                                                        self.doc = new_doc;
-                                                        self.source_path = Some(new_path);
+                                                    if is_safe {
+                                                        match crate::loader::load_thtml_file(&new_path) {
+                                                            Ok(mut new_doc) => {
+                                                                let mut state = self.session.state.write();
+                                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                                Self::inject_initial_state(&mut new_doc, &*state);
+                                                                self.doc = new_doc;
+                                                                self.layout_engine.reset_nodes();
+                                                                self.source_path = Some(new_path);
+                                                            }
+                                                            Err(e) => {
+                                                                warn!("Failed to load THTML file {:?}: {}", new_path, e);
+                                                            }
+                                                        }
+                                                    } else {
+                                                        warn!("Blocked Path Traversal attempt to: {:?}", new_path);
                                                     }
                                                 } else {
-                                                    warn!("Blocked Path Traversal attempt to: {:?}", new_path);
+                                                    // Handle general HTMX action (inc, dec, toggle, set, etc.)
+                                                    self.session.state.write().apply_action(&htmx_target);
                                                 }
                                             } else {
-                                                // Handle general HTMX action (inc, dec, toggle, set, etc.)
-                                                self.session.state.write().apply_action(htmx_target);
-                                                needs_render = true;
+                                                info!("No HTMX target found for node {:?}", node_id);
                                             }
+                                        } else {
+                                            info!("Hit test returned None");
                                         }
                                     }
-                                }
-                            }
 
-                            needs_render = true;
+                                    needs_render = true;
+                                }
+                                InputEvent::CapabilityResponse(raw) => {
+                                    info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
+                                    self.session.terminal_profile.write().parse_da1_response(&raw);
+                                }
+                                InputEvent::Xoff => { self.output_paused = true; }
+                                InputEvent::Xon => { self.output_paused = false; needs_render = true; }
+                                InputEvent::Refresh => { needs_render = true; }
+                                _ => {}
+                            }
                         }
-                        InputEvent::CapabilityResponse(raw) => {
-                            info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
-                            self.session.terminal_profile.write().parse_da1_response(&raw);
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            break;
                         }
-                        InputEvent::Xoff => { self.output_paused = true; }
-                        InputEvent::Xon => { self.output_paused = false; needs_render = true; }
-                        InputEvent::Refresh => { needs_render = true; }
-                        _ => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                            info!("Event loop receiver disconnected. Exiting run loop.");
+                            disconnected = true;
+                            break;
+                        }
                     }
                 }
+            }
+
+            if disconnected {
+                return;
             }
 
             if let Some(dims) = self.session.resize_debouncer.write().poll() {
                 *self.session.dims.write() = dims;
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
                 info!("Resized session {} to {:?}", self.session.id, dims);
+
+                if let Some(ref mut app) = self.weather_app {
+                    let (new_doc, _) = app.build_document(dims.cols, dims.rows);
+                    self.doc = new_doc;
+                    self.layout_engine.reset_nodes();
+                }
+
+                // Clear physical screen and cursor to home to match clean front buffer
+                let mut clear_seq = Vec::new();
+                clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
+                let _ = self.output_tx.try_send(clear_seq);
+
                 needs_render = true;
             }
 
@@ -3403,7 +4142,8 @@ impl EventLoop {
                 // Sync reactive state before render
                 Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
 
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc) {
+                let dims = *self.session.dims.read();
+                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
@@ -3414,11 +4154,13 @@ impl EventLoop {
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();
                     if !echo.buffer.is_empty() {
-                        let (mut cursor_x, mut cursor_y) = (0, 0);
+                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+
+                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y);
                         if let Some(node_id) = echo.active_node {
                             if let Some(rect) = layout.nodes.get(&node_id) {
-                                cursor_x = rect.x;
-                                cursor_y = rect.y;
+                                cursor_x = rect.x + offset_x;
+                                cursor_y = rect.y + offset_y;
                             }
                         }
 
@@ -3489,7 +4231,13 @@ impl AuthorizedKeys {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            if let Ok(key) = russh_keys::parse_public_key_base64(line) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let base64_str = if parts.len() >= 2 {
+                parts[1]
+            } else {
+                line
+            };
+            if let Ok(key) = russh_keys::parse_public_key_base64(base64_str) {
                 keys.push(key);
             }
         }
@@ -3498,6 +4246,22 @@ impl AuthorizedKeys {
 
     pub fn verify(&self, key: &key::PublicKey) -> bool {
         self.keys.contains(key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_parse_key() {
+        let line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ/vG24eD+1GRR4GAfJ25RUpeo5GcPV8RmPY7r/RznqC slavekm@slavekm-desktop";
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let base64_str = if parts.len() >= 2 {
+            parts[1]
+        } else {
+            line
+        };
+        let res = russh_keys::parse_public_key_base64(base64_str);
+        assert!(res.is_ok(), "Failed to parse standard key: {:?}", res);
     }
 }
 
@@ -3614,7 +4378,31 @@ pub async fn run_server(
             }
             crate::ratelimit::RateResult::Throttle(delay) => {
                 warn!("Throttling {peer_addr} for {delay:?}");
-                tokio::time::sleep(delay).await;
+                let russh_config_ref = ssh_config.clone();
+                let handler = OxiServer {
+                    config: config.clone(),
+                    registry: registry.clone(),
+                    auth_keys: auth_keys.clone(),
+                    rate_limiter: rate_limiter.clone(),
+                    peer_addr,
+                    channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+                    initial_document: initial_document.clone(),
+                    source_path: source_path.clone(),
+                };
+                let session_registry = registry.clone();
+                let session_channels = handler.channels.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
+                        warn!("SSH session error for {peer_addr}: {e:?}");
+                    }
+                    // QUAL-006: Ensure all sessions are removed even on abrupt disconnect
+                    let mut channels = session_channels.lock();
+                    for (_, sid) in channels.drain() {
+                        info!("Cleanup: Removing session {sid} from registry");
+                        session_registry.remove_session(sid);
+                    }
+                });
             }
         }
     }
@@ -3954,7 +4742,6 @@ impl Handler for OxiServer {
                     cols: u16::try_from(width).unwrap_or(u16::MAX),
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
-                *session.dims.write() = new_dims;
                 session.resize_debouncer.write().push(new_dims);
                 // BUG-H03: Use ReactorMessage::Resize instead of empty Vec
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
@@ -3979,6 +4766,7 @@ impl Handler for OxiServer {
 
     async fn data(&mut self, channel: ChannelId, data: &[u8], _session: &mut Session) -> Result<(), Self::Error> {
         let sid = self.channels.lock().get(&channel).copied();
+        info!("SSH Data received on channel {:?}: len={}, bytes={:?}", channel, data.len(), data);
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
                 // Send raw data to RRT
@@ -4112,7 +4900,16 @@ impl StateManager {
                 }
             }
             "clear" => {
-                self.set(key.to_string(), StateValue::List(Vec::new()));
+                let default_val = match self.store.get(key) {
+                    Some(StateValue::Int(_)) => Some(StateValue::Int(0)),
+                    Some(StateValue::Str(_)) => Some(StateValue::Str(String::new())),
+                    Some(StateValue::Bool(_)) => Some(StateValue::Bool(false)),
+                    Some(StateValue::List(_)) => Some(StateValue::List(Vec::new())),
+                    None => None,
+                };
+                if let Some(val) = default_val {
+                    self.set(key.to_string(), val);
+                }
             }
             _ => {}
         }
@@ -4180,6 +4977,23 @@ mod tests {
         if let Some(StateValue::List(l)) = sm.get("items") {
             assert!(l.is_empty());
         }
+
+        // Test clear on other types (string, int, bool)
+        sm.apply_action("set:str_val=hello");
+        sm.apply_action("clear:str_val");
+        assert_eq!(sm.get("str_val"), Some(&StateValue::Str(String::new())));
+
+        sm.apply_action("inc:int_val");
+        sm.apply_action("clear:int_val");
+        assert_eq!(sm.get("int_val"), Some(&StateValue::Int(0)));
+
+        sm.apply_action("toggle:bool_val");
+        sm.apply_action("clear:bool_val");
+        assert_eq!(sm.get("bool_val"), Some(&StateValue::Bool(false)));
+
+        // Test clear on non-existent key (should be a no-op)
+        sm.apply_action("clear:non_existent_key");
+        assert_eq!(sm.get("non_existent_key"), None);
     }
 }
 
@@ -4472,6 +5286,7 @@ pub fn fetch_krakow() -> anyhow::Result<WeatherData> {
     let url = "https://api.open-meteo.com/v1/forecast?latitude=50.06&longitude=19.94&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,winddirection_10m,relative_humidity_2m,precipitation,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=Europe%2FWarsaw&forecast_days=7";
     
     let resp: OpenMeteoResponse = ureq::get(url)
+        .timeout(std::time::Duration::from_secs(5))
         .call()?
         .into_json()?;
 
@@ -4986,9 +5801,111 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
     <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #f7768e;" event-htmx="counter.thtml">
         <text style="color: #e0af68;">Click here to see the Counter demo</text>
     </box>
+    <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #7aa2f7;" event-htmx="showcase.thtml">
+        <text style="color: #38bdf8;">Click here to see the Showcase demo</text>
+    </box>
 </box>
 
 --- END OF FILE: ./examples/hello.thtml ---
+
+--- FILE: ./examples/showcase.thtml ---
+<box style="flex-direction: column; width: 90; height: 32; background-color: #0f172a;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
+        <text style="color: #38bdf8; font-weight: bold;">🧪 OxiTerm Edge-Case & Showcase Page</text>
+        <box style="background-color: #334155; padding: 0.5; border: #38bdf8;" event-htmx="hello.thtml">
+            <text style="color: #ffffff; font-weight: bold;">[ BACK TO HOME ]</text>
+        </box>
+    </box>
+
+    <!-- Main Body: Two Rows -->
+    <box style="flex-direction: column; flex: 1; padding: 1;">
+        <!-- Row 1: Standard Components -->
+        <box style="flex-direction: row; height: 12; margin-bottom: 1;">
+            <!-- Panel 1: Borders & Padding -->
+            <box style="width: 28; height: 11; border-style: rounded; border-color: #ef4444; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #ef4444; font-weight: bold;">Borders & Padding</text>
+                <box style="background-color: #f97316; height: 2; justify-content: center; align-items: center;">
+                    <text style="color: #ffffff;">Solid Box</text>
+                </box>
+                <box style="background-color: transparent; border-style: single; border-color: #e2e8f0; height: 2; justify-content: center; align-items: center;">
+                    <text style="color: #38bdf8;">Transparent</text>
+                </box>
+            </box>
+
+            <!-- Panel 2: Wide Unicode & Text -->
+            <box style="width: 28; height: 11; border-style: double; border-color: #3b82f6; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #3b82f6; font-weight: bold;">Wide Chars & Text</text>
+                <text style="color: #10b981;">Wide: [🚀][🌧️][☀️][A]</text>
+                <text style="color: #f43f5e;">Multiline Text:
+Line 1 of text
+Line 2 of text</text>
+            </box>
+
+            <!-- Panel 3: Interactive Inputs -->
+            <box style="width: 28; height: 11; border-style: single; border-color: #10b981; flex-direction: column; justify-content: space-around; align-items: center; padding: 1;">
+                <text style="color: #10b981; font-weight: bold;">Inputs & Actions</text>
+                <input style="color: #38bdf8; width: 20; height: 1;" />
+                <box style="flex-direction: row; justify-content: space-between; width: 22;">
+                    <button style="background-color: #e11d48; padding: 1; border: #ffffff;" event-htmx="dec:showcase_counter">
+                        <text style="color: #ffffff; font-weight: bold;"> - </text>
+                    </button>
+                    <box style="justify-content: center; align-items: center; width: 8; border: #ffffff;">
+                        <text style="color: #ffffff; font-weight: bold;" bind-state="showcase_counter">0</text>
+                    </box>
+                    <button style="background-color: #059669; padding: 1; border: #ffffff;" event-htmx="inc:showcase_counter">
+                        <text style="color: #ffffff; font-weight: bold;"> + </text>
+                    </button>
+                </box>
+            </box>
+        </box>
+
+        <!-- Row 2: Edge Cases & Robot Stress Tests -->
+        <box style="flex-direction: row; height: 12;">
+            <!-- Panel 4: CSS Parser & Text Overflow Edge Cases -->
+            <box style="width: 42; height: 11; border-style: rounded; border-color: #eab308; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
+                <text style="color: #eab308; font-weight: bold;">CSS Parser & Overflow Edge Cases</text>
+                <!-- Invalid styles: color hex, width, font weight, trailing junk -->
+                <box style="color:   #xyz ;   width:   abc  ;;   padding: 1.5; background-color: invalid_color;">
+                    <text style="color: #xyz; font-weight: invalid;">Style Fallbacks: OK</text>
+                </box>
+                <!-- Extremely long text element to test clipping / bounds overflow -->
+                <text style="color: #f59e0b;">LongWord: Supercalifragilisticexpialidocious</text>
+                <!-- Missing bind-state -->
+                <text style="color: #a855f7;">Missing state bind: [<text bind-state="missing_var">DEFAULT</text>]</text>
+            </box>
+
+            <!-- Panel 5: Small Borders, Nesting & Zero Width -->
+            <box style="width: 42; height: 11; border-style: double; border-color: #ec4899; flex-direction: column; justify-content: space-around; padding: 1;">
+                <text style="color: #ec4899; font-weight: bold;">Borders, Nesting & Zero Width</text>
+                <box style="flex-direction: row; justify-content: space-between; align-items: center;">
+                    <!-- Tiny Bordered Boxes -->
+                    <box style="width: 1; height: 1; border: #ef4444; margin-right: 1;"></box>
+                    <box style="width: 2; height: 2; border: #3b82f6; margin-right: 1;"></box>
+                    <!-- Deeply Nested Border Offset Logic -->
+                    <box style="border: #10b981; padding: 1; width: 10; height: 5;">
+                        <box style="border: #ef4444; padding: 1; width: 6; height: 3;">
+                            <box style="border: #3b82f6; width: 2; height: 1; background-color: #3b82f6;"></box>
+                        </box>
+                    </box>
+                    <!-- Zero Width Characters / Modifiers & Empty blocks -->
+                    <box style="flex-direction: column; align-items: flex-start;">
+                        <text style="color: #a855f7;">ZeroW: A​B️C</text>
+                        <text style="color: #6366f1;">Spaces: [      ]</text>
+                        <text></text>
+                    </box>
+                </box>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; background-color: #1e293b; justify-content: center;">
+        <text style="color: #64748b;">Use mouse clicks to increment counter. Press [Q] to exit</text>
+    </box>
+</box>
+
+--- END OF FILE: ./examples/showcase.thtml ---
 
 --- FILE: ./examples/todo.thtml ---
 <box style="flex-direction: column; width: 80; height: 24; background-color: #111111; padding: 2;">
