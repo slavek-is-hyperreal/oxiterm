@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::process::{Command, Stdio, Child};
+use std::io::Read;
+use std::thread;
+use std::time::Instant;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 pub struct CacheKey {
@@ -145,5 +149,113 @@ impl SvgCache {
         let arc_tree = Arc::new(tree);
         lock.insert(path.to_path_buf(), Arc::clone(&arc_tree));
         Ok(arc_tree)
+    }
+}
+
+pub struct VideoPlayer {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub frame_buffer: Arc<Mutex<Option<Vec<u8>>>>,
+    pub child: Child,
+    pub last_accessed: Instant,
+}
+
+impl Drop for VideoPlayer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
+pub struct VideoPlayerRegistry {
+    players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
+}
+
+impl VideoPlayerRegistry {
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<VideoPlayerRegistry> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
+            players: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Vec<u8>> {
+        let mut players = self.players.lock().unwrap();
+        let now = Instant::now();
+
+        // 1. Clean up stale players (inactivity > 5 seconds)
+        players.retain(|_, player| {
+            if now.duration_since(player.last_accessed) > std::time::Duration::from_secs(5) {
+                false
+            } else {
+                true
+            }
+        });
+
+        // 2. Lookup or create player
+        let key = (path.to_path_buf(), width, height, fps);
+        if !players.contains_key(&key) {
+            if let Some(player) = Self::spawn_player(path, width, height, fps) {
+                players.insert(key.clone(), player);
+            } else {
+                return None;
+            }
+        }
+
+        if let Some(player) = players.get_mut(&key) {
+            player.last_accessed = now;
+            player.frame_buffer.lock().unwrap().clone()
+        } else {
+            None
+        }
+    }
+
+    fn spawn_player(path: &Path, width: u32, height: u32, fps: u32) -> Option<VideoPlayer> {
+        let child = Command::new("ffmpeg")
+            .args(&[
+                "-stream_loop", "-1", // loop input infinitely
+                "-i", &path.to_string_lossy(),
+                "-r", &fps.to_string(), // output frame rate
+                "-vf", &format!("scale={}:{}", width, height),
+                "-f", "image2pipe",
+                "-pix_fmt", "rgba",
+                "-vcodec", "rawvideo",
+                "-"
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+
+        match child {
+            Ok(mut child) => {
+                let mut stdout = child.stdout.take().unwrap();
+                let frame_buffer = Arc::new(Mutex::new(None));
+                let frame_buffer_clone = Arc::clone(&frame_buffer);
+                let frame_size = (width * height * 4) as usize;
+
+                thread::spawn(move || {
+                    let mut buf = vec![0u8; frame_size];
+                    loop {
+                        if stdout.read_exact(&mut buf).is_err() {
+                            break;
+                        }
+                        *frame_buffer_clone.lock().unwrap() = Some(buf.clone());
+                    }
+                });
+
+                Some(VideoPlayer {
+                    width,
+                    height,
+                    fps,
+                    frame_buffer,
+                    child,
+                    last_accessed: Instant::now(),
+                })
+            }
+            Err(e) => {
+                tracing::warn!("Failed to spawn ffmpeg for video {:?}: {:?}", path, e);
+                None
+            }
+        }
     }
 }

@@ -9,6 +9,7 @@ pub enum NodeTag {
     Input,
     Button,
     Img,
+    Video,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

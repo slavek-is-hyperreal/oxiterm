@@ -225,6 +225,18 @@ impl Renderer {
                         base_dir,
                     );
                 }
+                NodeTag::Video => {
+                    Self::render_vid(
+                        node,
+                        content_x,
+                        content_y,
+                        content_w,
+                        content_h,
+                        buffer,
+                        profile,
+                        base_dir,
+                    );
+                }
                 _ => {}
             }
 
@@ -658,6 +670,110 @@ impl Renderer {
             }
         }
     }
+
+    fn render_vid(
+        node: &oxiterm_proto::dom::Node,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
+        let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
+            for dy in 0..height {
+                for dx in 0..width {
+                    let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
+                        '*'
+                    } else {
+                        ' '
+                    };
+                    buffer.set(abs_x + dx, abs_y + dy, Cell {
+                        ch,
+                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                        ..Default::default()
+                    });
+                }
+            }
+            let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
+            let display_name = format!("[Video: {}]", name);
+            let len = display_name.chars().count() as u16;
+            if width > len + 2 && height > 2 {
+                let start_x = abs_x + (width - len) / 2;
+                let start_y = abs_y + height / 2;
+                for (i, c) in display_name.chars().enumerate() {
+                    buffer.set(start_x + i as u16, start_y, Cell {
+                        ch: c,
+                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                        ..Default::default()
+                    });
+                }
+            }
+        };
+
+        if let Some(ref src) = node.attrs.src {
+            let resolved_path = if let Some(base) = base_dir {
+                base.join(src)
+            } else {
+                std::path::PathBuf::from(src)
+            };
+
+            let pixel_w = width as u32 * 10;
+            let pixel_h = height as u32 * 20;
+            if pixel_w == 0 || pixel_h == 0 {
+                return;
+            }
+
+            let fps = if profile.supports_kitty_gfx {
+                30
+            } else if profile.supports_sixel {
+                10
+            } else {
+                2
+            };
+
+            let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
+
+            if let Some(raw_rgba) = frame {
+                if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, raw_rgba) {
+                    if profile.supports_kitty_gfx {
+                        let payload = super::kitty::KittyImageManager::transmit_image(pixel_w, pixel_h, &img);
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else if profile.supports_sixel {
+                        let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&sixel_payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else {
+                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                    }
+                    return;
+                }
+            }
+            draw_fallback(&resolved_path, buffer);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -764,6 +880,29 @@ mod tests {
         // Since the file is non-existent, it should render the fallback border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
         assert_eq!(buffer.cells[5].ch, '*');
+    }
+
+    #[test]
+    fn test_video_fallback_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut vid_node = Node::new(NodeTag::Video);
+        vid_node.attrs.src = Some("nonexistent_video.mp4".to_string());
+        vid_node.style.width = Some(15);
+        vid_node.style.height = Some(5);
+        
+        let node_id = doc.arena.alloc(vid_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 15, 5).unwrap();
+
+        let mut buffer = CellBuffer::new(15, 5);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+
+        // Falling back should draw border of '*'
+        assert_eq!(buffer.cells[0].ch, '*');
+        assert_eq!(buffer.cells[14].ch, '*');
     }
 }
 

@@ -677,6 +677,10 @@ impl EventLoop {
                                 return true;
                             }
                         }
+                    } else if node.tag == oxiterm_proto::dom::NodeTag::Video {
+                        if node.attrs.src.is_some() {
+                            return true;
+                        }
                     }
                 }
             }

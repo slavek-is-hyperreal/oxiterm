@@ -2,28 +2,19 @@
     <!-- Header -->
     <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
         <text style="color: #38bdf8; font-weight: bold;">OxiTerm Counter Demo</text>
-        <box style="background-color: #334155; padding: 0.5; border: #38bdf8;" event-htmx="hello.thtml">
-            <text style="color: #ffffff; font-weight: bold;">[ Back to Home ]</text>
-        </box>
+        <text style="color: #94a3b8;" event-htmx="hello.thtml">[ Back to Home ]</text>
     </box>
 
     <!-- Main Content -->
     <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column;">
         <text style="color: #94a3b8; margin-bottom: 1;">Current Value:</text>
-        <box style="padding: 2; border-style: double; border-color: #f59e0b; margin-bottom: 1;">
+        <box style="padding: 2; border-style: double; border-color: #f59e0b;">
             <text style="color: #ffffff; font-size: 200%; font-weight: bold;" bind-state="counter">0</text>
         </box>
         
-        <box style="flex-direction: row; justify-content: space-between; width: 22;">
-            <button style="background-color: #e11d48; padding: 1; border: #ffffff;" event-htmx="dec:counter">
-                <text style="color: #ffffff; font-weight: bold;"> - </text>
-            </button>
-            <box style="justify-content: center; align-items: center; width: 8; border: #ffffff;">
-                <text style="color: #ffffff; font-weight: bold;" bind-state="counter">0</text>
-            </box>
-            <button style="background-color: #059669; padding: 1; border: #ffffff;" event-htmx="inc:counter">
-                <text style="color: #ffffff; font-weight: bold;"> + </text>
-            </button>
+        <box class="controls">
+            <button class="btn" event-htmx="dec:counter">-</button>
+            <button class="btn" event-htmx="inc:counter">+</button>
         </box>
     </box>
 

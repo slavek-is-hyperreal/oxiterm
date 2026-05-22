@@ -110,7 +110,9 @@ impl THTMLParser {
         let (input, tag_name) = context("Tag name", parse_tag_name)(input)?;
         let (input, attrs) = context("Attributes", parse_attributes)(input)?;
         
+        let (input, _) = multispace0(input)?;
         let (input, self_closing) = opt(nom_char('/'))(input)?;
+        let (input, _) = multispace0(input)?;
         let (input, _) = context("Closing bracket", nom_char('>'))(input)?;
         
         if self_closing.is_some() {
@@ -187,6 +189,7 @@ fn tag_name_to_str(tag: NodeTag) -> &'static str {
         NodeTag::Input => "input",
         NodeTag::Button => "button",
         NodeTag::Img => "img",
+        NodeTag::Video => "video",
     }
 }
 
@@ -198,6 +201,7 @@ fn parse_tag_name(input: &str) -> ParseResult<'_, NodeTag> {
         map(tag("input"), |_| NodeTag::Input),
         map(tag("button"), |_| NodeTag::Button),
         map(tag("img"), |_| NodeTag::Img),
+        map(tag("video"), |_| NodeTag::Video),
     ))(input)
 }
 
@@ -260,6 +264,34 @@ mod tests {
         let text_id = box_node.children[0];
         let text_node = doc.get_node(text_id).unwrap();
         assert_eq!(text_node.text, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_parse_image() {
+        let input = r#"<img src="logo.png" style="width: 32; height: 16;" />"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.children.len(), 1);
+        let img_id = root.children[0];
+        let img_node = doc.get_node(img_id).unwrap();
+        assert_eq!(img_node.tag, NodeTag::Img);
+        assert_eq!(img_node.attrs.src, Some("logo.png".to_string()));
+        assert_eq!(img_node.style.width, Some(32));
+        assert_eq!(img_node.style.height, Some(16));
+    }
+
+    #[test]
+    fn test_parse_video() {
+        let input = r#"<video src="clip.mp4" style="width: 40; height: 20;" />"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.children.len(), 1);
+        let vid_id = root.children[0];
+        let vid_node = doc.get_node(vid_id).unwrap();
+        assert_eq!(vid_node.tag, NodeTag::Video);
+        assert_eq!(vid_node.attrs.src, Some("clip.mp4".to_string()));
+        assert_eq!(vid_node.style.width, Some(40));
+        assert_eq!(vid_node.style.height, Some(20));
     }
 
     #[test]
