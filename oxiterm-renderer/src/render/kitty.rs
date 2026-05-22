@@ -13,8 +13,8 @@ impl KittyImageManager {
         for (i, chunk) in chunks.enumerate() {
             let m = if i == count - 1 { 0 } else { 1 };
             if i == 0 {
-                // f=32 -> 32-bit RGBA, s=width, v=height, m=more
-                let header = format!("\x1b_Gf=32,s={},v={},m={};", width, height, m);
+                // a=T -> Transmit and display, f=32 -> 32-bit RGBA, s=width, v=height, m=more
+                let header = format!("\x1b_Ga=T,f=32,s={},v={},m={};", width, height, m);
                 output.extend_from_slice(header.as_bytes());
             } else {
                 let header = format!("\x1b_Gm={};", m);

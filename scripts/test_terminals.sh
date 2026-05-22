@@ -71,19 +71,19 @@ for term in "${TERMINALS[@]}"; do
         # Spawn terminal connecting to localhost:8022
         case $term in
             xterm)
-                xterm -geometry 80x24 -title "OxiTerm-Test-xterm" -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost" &
+                xterm -geometry 100x36 -title "OxiTerm-Test-xterm" -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost" &
                 TERM_PID=$!
                 ;;
             alacritty)
-                alacritty -o "window.dimensions.columns=80" -o "window.dimensions.lines=24" --title "OxiTerm-Test-alacritty" -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
+                alacritty -o "window.dimensions.columns=100" -o "window.dimensions.lines=36" --title "OxiTerm-Test-alacritty" -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
                 TERM_PID=$!
                 ;;
             kitty)
-                kitty -o remember_window_size=no -o initial_window_width=80c -o initial_window_height=24c --title "OxiTerm-Test-kitty" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
+                kitty -o remember_window_size=no -o initial_window_width=100c -o initial_window_height=36c --title "OxiTerm-Test-kitty" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
                 TERM_PID=$!
                 ;;
             gnome-terminal)
-                gnome-terminal --geometry=80x24 --title="OxiTerm-Test-gnome-terminal" -- ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
+                gnome-terminal --geometry=100x36 --title="OxiTerm-Test-gnome-terminal" -- ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 8022 localhost &
                 TERM_PID=$!
                 ;;
         esac
@@ -121,7 +121,7 @@ for term in "${TERMINALS[@]}"; do
         sleep 2
 
         # Capture screenshots
-        if [ "$page_name" = "vector_demo" ]; then
+        if [ "$page_name" = "vector_demo" ] || [ "$page_name" = "video_demo" ]; then
             echo "Capturing 5 animated frames for $term ($page_name)..."
             for frame in {1..5}; do
                 scrot -u "test_screenshots/${term}_${page_name}_frame_${frame}.png"

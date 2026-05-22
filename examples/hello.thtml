@@ -31,11 +31,15 @@
             </box>
         </box>
 
-        <!-- Vector & Animation row -->
-        <box style="flex-direction: row; justify-content: center; width: 70; margin-top: 1;">
-            <box style="width: 70; padding: 1; background-color: #24283b; border-style: rounded; border-color: #bb9af7; flex-direction: column; align-items: center;" event-htmx="vector_demo.thtml">
-                <text style="color: #bb9af7; font-weight: bold;">🎨 Vector & Animation Demo</text>
-                <text style="color: #565f89; margin-top: 0.5;">SVG rendering, Lottie loops, and Rive interactive toggles</text>
+        <!-- Vector & Animation / Video row -->
+        <box style="flex-direction: row; justify-content: space-between; width: 70; margin-top: 1;">
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #bb9af7; flex-direction: column; align-items: center;" event-htmx="vector_demo.thtml">
+                <text style="color: #bb9af7; font-weight: bold;">🎨 Vector & Animation</text>
+                <text style="color: #565f89; margin-top: 0.5;">SVG, Lottie & Rive</text>
+            </box>
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #f5c2e7; flex-direction: column; align-items: center;" event-htmx="video_demo.thtml">
+                <text style="color: #f5c2e7; font-weight: bold;">🎬 Video Stream</text>
+                <text style="color: #565f89; margin-top: 0.5;">60 FPS MP4 decoding</text>
             </box>
         </box>
     </box>

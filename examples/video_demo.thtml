@@ -1,0 +1,44 @@
+<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #f5c2e7; padding: 1;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
+        <text style="color: #cdd6f4; font-weight: bold;">🎬 OxiTerm High-Performance Video Streaming</text>
+        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #f5c2e7;" event-htmx="hello.thtml">
+            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
+        </box>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
+        <!-- Left Side: Video Player -->
+        <box style="flex: 1; border-style: rounded; border-color: #f5c2e7; justify-content: center; align-items: center; background-color: #000000; overflow: hidden;">
+            <!-- Renders the video file -->
+            <video src="clip.mp4" style="width: 44; height: 22;" />
+        </box>
+
+        <!-- Right Side: Statistics & Controls -->
+        <box style="width: 32; flex-direction: column; gap: 1;">
+            <!-- Player Stats Box -->
+            <box style="height: 11; border-style: rounded; border-color: #89b4fa; flex-direction: column; padding: 1; justify-content: space-around;">
+                <text style="color: #89b4fa; font-weight: bold;">📊 Engine Pipeline</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Decoding: FFmpeg-compatible</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Speed: up to 60 FPS</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Target Size: 44 x 22 cells</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Frame delta-updates active</text>
+            </box>
+
+            <!-- Render Fallbacks Box -->
+            <box style="height: 11; border-style: rounded; border-color: #e0af68; flex-direction: column; padding: 1; justify-content: space-around;">
+                <text style="color: #e0af68; font-weight: bold;">🛡️ Graphics Fallbacks</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Kitty Gfx Protocol (high-res)</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Sixel Codec (medium-res)</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Half-Block Unicode (ASCII/TUI)</text>
+                <text style="color: #a6adc8; font-size: 75%; font-style: italic;">Adaptive auto-detection</text>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
+        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    </box>
+</box>
