@@ -1,0 +1,23 @@
+[package]
+name = "oxiterm-web"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { path = "../oxiterm-renderer" }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "CanvasRenderingContext2d",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "TextMetrics",
+  "Window",
+]

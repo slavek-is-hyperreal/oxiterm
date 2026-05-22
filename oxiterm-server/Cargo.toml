@@ -24,3 +24,7 @@ http-body-util = { workspace = true }
 hyper-util = { workspace = true }
 async-trait = { workspace = true }
 ureq = { version = "2", features = ["json"] }
+tokio-tungstenite = { version = "0.21", optional = true }
+
+[features]
+web = ["dep:tokio-tungstenite"]

@@ -63,6 +63,12 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Start Web/WebSocket server
+    let web_host = config.server.host.clone();
+    let web_port = config.server.web_port;
+    let web_registry = registry.clone();
+    oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
+
     // Start SSH server
     let ssh_config = config.clone();
     let ssh_registry = registry.clone();

@@ -9,7 +9,6 @@ pub use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_renderer::layout::engine::LayoutEngine;
 use oxiterm_renderer::render::buffer::DoubleBuffer;
 use oxiterm_renderer::render::renderer::Renderer;
-use oxiterm_renderer::render::emitter::SyncedEmitter;
 
 pub type SessionId = usize;
 
@@ -193,27 +192,54 @@ impl SessionRegistry {
     }
 }
 
-pub struct EventLoop {
-    pub session: Arc<ClientSession>,
-    pub event_bus: Arc<crate::events::EventBus>,
-    pub doc: THTMLDocument,
-    pub layout_engine: LayoutEngine,
-    pub buffer: DoubleBuffer,
-    pub output_paused: bool,
-    pub output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
-    pub frame_limiter: crate::ratelimit::FrameRateLimiter,
-    pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
-    pub source_path: Option<std::path::PathBuf>,
-    pub weather_app: Option<crate::weather_app::WeatherApp>,
-    pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
-    pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
-}
-
-struct TerminalCleanupGuard {
+pub struct AnsiFrameSink {
     output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
 }
 
-impl Drop for TerminalCleanupGuard {
+impl AnsiFrameSink {
+    pub fn new(output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>) -> Self {
+        Self { output_tx }
+    }
+}
+
+impl oxiterm_renderer::FrameSink for AnsiFrameSink {
+    fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
+        let commands = oxiterm_renderer::DiffEngine::diff(front, back);
+        if commands.is_empty() {
+            return Ok(false);
+        }
+
+        let mut out = Vec::new();
+        // BSU: CSI ? 2026 h
+        out.extend_from_slice(b"\x1b[?2026h");
+        
+        let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+        out.extend_from_slice(&bytes);
+        
+        // ESU: CSI ? 2026 l
+        out.extend_from_slice(b"\x1b[?2026l");
+        
+        let _ = self.output_tx.try_send(out);
+        Ok(true)
+    }
+
+    fn setup(&mut self) -> anyhow::Result<()> {
+        let mut initial_clear = Vec::new();
+        // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
+        initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
+        let _ = self.output_tx.try_send(initial_clear);
+        Ok(())
+    }
+
+    fn clear_screen(&mut self) -> anyhow::Result<()> {
+        let mut clear_seq = Vec::new();
+        clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
+        let _ = self.output_tx.try_send(clear_seq);
+        Ok(())
+    }
+}
+
+impl Drop for AnsiFrameSink {
     fn drop(&mut self) {
         let mut cleanup = Vec::new();
         cleanup.extend_from_slice(b"\x1b[?2026l"); // ESU
@@ -227,6 +253,23 @@ impl Drop for TerminalCleanupGuard {
     }
 }
 
+pub struct EventLoop {
+    pub session: Arc<ClientSession>,
+    pub event_bus: Arc<crate::events::EventBus>,
+    pub doc: THTMLDocument,
+    pub layout_engine: LayoutEngine,
+    pub buffer: DoubleBuffer,
+    pub output_paused: bool,
+    pub output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
+    pub frame_sink: Box<dyn oxiterm_renderer::FrameSink>,
+    pub frame_limiter: crate::ratelimit::FrameRateLimiter,
+    pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
+    pub source_path: Option<std::path::PathBuf>,
+    pub weather_app: Option<crate::weather_app::WeatherApp>,
+    pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
+    pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
+}
+
 impl EventLoop {
     pub fn new(
         session: Arc<ClientSession>, 
@@ -235,6 +278,7 @@ impl EventLoop {
         doc: THTMLDocument,
     ) -> Self {
         let dims = *session.dims.read();
+        let frame_sink = Box::new(AnsiFrameSink::new(output_tx.clone()));
         
         Self { 
             session, 
@@ -244,6 +288,7 @@ impl EventLoop {
             buffer: DoubleBuffer::new(dims.cols, dims.rows),
             output_paused: false,
             output_tx,
+            frame_sink,
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
             pending_mouse: None,
             source_path: None,
@@ -322,9 +367,6 @@ impl EventLoop {
     }
 
     pub fn run(&mut self) {
-        // BUG-C03 Fix: Use a RAII guard to ensure cleanup is ALWAYS sent
-        let _cleanup_guard = TerminalCleanupGuard { output_tx: self.output_tx.clone() };
-
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -332,10 +374,7 @@ impl EventLoop {
         }
 
         // Initial clear screen and scrollback
-        let mut initial_clear = Vec::new();
-        // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
-        initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
-        let _ = self.output_tx.try_send(initial_clear);
+        let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
         loop {
@@ -556,9 +595,7 @@ impl EventLoop {
                 }
 
                 // Clear physical screen and cursor to home to match clean front buffer
-                let mut clear_seq = Vec::new();
-                clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
-                let _ = self.output_tx.try_send(clear_seq);
+                let _ = self.frame_sink.clear_screen();
 
                 needs_render = true;
             }
@@ -601,13 +638,9 @@ impl EventLoop {
                         }
                     }
                     
-                    let mut out = Vec::new();
-                    if SyncedEmitter::emit_frame(&mut out, &self.buffer.front, &self.buffer.back).is_ok() {
-                        if !out.is_empty() {
-                            let _ = self.output_tx.try_send(out);
-                            self.buffer.swap();
-                            self.frame_limiter.record_frame();
-                        }
+                    if let Ok(true) = self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back) {
+                        self.buffer.swap();
+                        self.frame_limiter.record_frame();
                     }
                 }
             }

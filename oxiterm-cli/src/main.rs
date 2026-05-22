@@ -29,12 +29,18 @@ enum Commands {
         /// Disable authentication (for development)
         #[arg(long)]
         no_auth: bool,
+        /// Web port to listen on
+        #[arg(long, default_value_t = 8080)]
+        web_port: u16,
     },
     /// Run the built-in weather dashboard demo
     Demo {
         /// Port to listen on
         #[arg(short, long, default_value_t = 2222)]
         port: u16,
+        /// Web port to listen on
+        #[arg(long, default_value_t = 8080)]
+        web_port: u16,
     },
     /// Validate a .thtml file for syntax errors
     Check {
@@ -54,14 +60,15 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { file, port, host, no_auth } => {
-            info!("Serving {} on {}:{}", file, host, port);
+        Commands::Serve { file, port, host, no_auth, web_port } => {
+            info!("Serving {} on {}:{} (web on port {})", file, host, port, web_port);
             
             let doc = oxiterm_server::loader::load_thtml_file(&file)?;
             
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.host = host;
             config.server.port = port;
+            config.server.web_port = web_port;
             if no_auth {
                 config.server.no_auth = true;
             }
@@ -91,17 +98,28 @@ async fn main() -> Result<()> {
                 let _ = debouncer;
             });
 
+            // Start Web/WebSocket server
+            let web_host = config.server.host.clone();
+            let web_registry = registry.clone();
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, Some(doc.clone()), Some(file_path_clone.clone()));
+
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, Some(doc), Some(file_path_clone)).await?;
         }
-        Commands::Demo { port } => {
-            info!("Starting built-in weather demo on port {}", port);
+        Commands::Demo { port, web_port } => {
+            info!("Starting built-in weather demo on port {} (web on port {})", port, web_port);
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.port = port;
+            config.server.web_port = web_port;
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
+            // Start Web/WebSocket server
+            let web_host = config.server.host.clone();
+            let web_registry = registry.clone();
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
+
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, None, None).await?;
         }
         Commands::Check { file } => {

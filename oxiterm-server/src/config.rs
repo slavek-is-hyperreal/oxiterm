@@ -16,6 +16,7 @@ pub struct ServerConfig {
     pub host_key_path: PathBuf,
     pub password: Option<String>,
     pub no_auth: bool,
+    pub web_port: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -39,6 +40,7 @@ impl Default for OxiTermConfig {
                 host_key_path: PathBuf::from("host_key"),
                 password: None,
                 no_auth: false,
+                web_port: 8080,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -76,6 +78,9 @@ impl OxiTermConfig {
         }
         if let Ok(no_auth) = std::env::var("OXITERM_NO_AUTH") {
             config.server.no_auth = no_auth == "true" || no_auth == "1";
+        }
+        if let Ok(web_port) = std::env::var("OXITERM_WEB_PORT") {
+            config.server.web_port = web_port.parse()?;
         }
         config.validate()?;
         Ok(config)

@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
 taffy = { workspace = true }
-ratatui = { workspace = true }
 serde = { workspace = true }
 nom = { workspace = true }
 regex = { workspace = true }

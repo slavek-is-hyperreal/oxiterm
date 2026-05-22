@@ -129,6 +129,156 @@ impl DiffEngine {
             AnsiColor::Reset => if is_fg { "\x1b[39m".to_string() } else { "\x1b[49m".to_string() },
         }
     }
+
+    pub fn encode_binary(commands: &[AnsiCommand]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        for cmd in commands {
+            match cmd {
+                AnsiCommand::MoveCursor(x, y) => {
+                    buf.push(0x01);
+                    buf.extend_from_slice(&x.to_le_bytes());
+                    buf.extend_from_slice(&y.to_le_bytes());
+                }
+                AnsiCommand::SetColor { fg, bg } => {
+                    buf.push(0x02);
+                    // Encode fg
+                    match fg {
+                        AnsiColor::Reset => {
+                            buf.push(0);
+                        }
+                        AnsiColor::TrueColor(r, g, b) => {
+                            buf.push(1);
+                            buf.push(*r);
+                            buf.push(*g);
+                            buf.push(*b);
+                        }
+                        AnsiColor::Color256(idx) => {
+                            buf.push(2);
+                            buf.push(*idx);
+                        }
+                    }
+                    // Encode bg
+                    match bg {
+                        AnsiColor::Reset => {
+                            buf.push(0);
+                        }
+                        AnsiColor::TrueColor(r, g, b) => {
+                            buf.push(1);
+                            buf.push(*r);
+                            buf.push(*g);
+                            buf.push(*b);
+                        }
+                        AnsiColor::Color256(idx) => {
+                            buf.push(2);
+                            buf.push(*idx);
+                        }
+                    }
+                }
+                AnsiCommand::WriteChar(ch) => {
+                    buf.push(0x03);
+                    buf.extend_from_slice(&(*ch as u32).to_le_bytes());
+                }
+                AnsiCommand::SetModifiers { bold, underline, italic } => {
+                    buf.push(0x04);
+                    let mut flags = 0u8;
+                    if *bold { flags |= 1; }
+                    if *underline { flags |= 2; }
+                    if *italic { flags |= 4; }
+                    buf.push(flags);
+                }
+                AnsiCommand::Reset => {
+                    buf.push(0x05);
+                }
+            }
+        }
+        buf
+    }
+
+    pub fn decode_binary(bytes: &[u8]) -> Result<Vec<AnsiCommand>, &'static str> {
+        let mut commands = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            let tag = bytes[i];
+            i += 1;
+            match tag {
+                0x01 => {
+                    if i + 4 > bytes.len() { return Err("Truncated MoveCursor"); }
+                    let x = u16::from_le_bytes([bytes[i], bytes[i+1]]);
+                    let y = u16::from_le_bytes([bytes[i+2], bytes[i+3]]);
+                    i += 4;
+                    commands.push(AnsiCommand::MoveCursor(x, y));
+                }
+                0x02 => {
+                    if i >= bytes.len() { return Err("Truncated SetColor fg type"); }
+                    let fg_type = bytes[i];
+                    i += 1;
+                    let fg = match fg_type {
+                        0 => AnsiColor::Reset,
+                        1 => {
+                            if i + 3 > bytes.len() { return Err("Truncated TrueColor fg"); }
+                            let r = bytes[i];
+                            let g = bytes[i+1];
+                            let b = bytes[i+2];
+                            i += 3;
+                            AnsiColor::TrueColor(r, g, b)
+                        }
+                        2 => {
+                            if i >= bytes.len() { return Err("Truncated Color256 fg"); }
+                            let idx = bytes[i];
+                            i += 1;
+                            AnsiColor::Color256(idx)
+                        }
+                        _ => return Err("Invalid fg type"),
+                    };
+
+                    if i >= bytes.len() { return Err("Truncated SetColor bg type"); }
+                    let bg_type = bytes[i];
+                    i += 1;
+                    let bg = match bg_type {
+                        0 => AnsiColor::Reset,
+                        1 => {
+                            if i + 3 > bytes.len() { return Err("Truncated TrueColor bg"); }
+                            let r = bytes[i];
+                            let g = bytes[i+1];
+                            let b = bytes[i+2];
+                            i += 3;
+                            AnsiColor::TrueColor(r, g, b)
+                        }
+                        2 => {
+                            if i >= bytes.len() { return Err("Truncated Color256 bg"); }
+                            let idx = bytes[i];
+                            i += 1;
+                            AnsiColor::Color256(idx)
+                        }
+                        _ => return Err("Invalid bg type"),
+                    };
+
+                    commands.push(AnsiCommand::SetColor { fg, bg });
+                }
+                0x03 => {
+                    if i + 4 > bytes.len() { return Err("Truncated WriteChar"); }
+                    let val = u32::from_le_bytes([bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]]);
+                    i += 4;
+                    let ch = char::from_u32(val).ok_or("Invalid char value")?;
+                    commands.push(AnsiCommand::WriteChar(ch));
+                }
+                0x04 => {
+                    if i >= bytes.len() { return Err("Truncated SetModifiers"); }
+                    let flags = bytes[i];
+                    i += 1;
+                    let bold = (flags & 1) != 0;
+                    let underline = (flags & 2) != 0;
+                    let italic = (flags & 4) != 0;
+                    commands.push(AnsiCommand::SetModifiers { bold, underline, italic });
+                }
+                0x05 => {
+                    commands.push(AnsiCommand::Reset);
+                }
+                _ => return Err("Invalid tag"),
+            }
+        }
+        Ok(commands)
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -183,5 +333,27 @@ mod tests {
         assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
         assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));
         assert!(matches!(cmds[2], AnsiCommand::WriteChar('A')));
+    }
+
+    #[test]
+    fn test_binary_serialization() {
+        let original = vec![
+            AnsiCommand::MoveCursor(10, 20),
+            AnsiCommand::SetColor {
+                fg: AnsiColor::TrueColor(1, 2, 3),
+                bg: AnsiColor::Color256(42),
+            },
+            AnsiCommand::WriteChar('X'),
+            AnsiCommand::SetModifiers {
+                bold: true,
+                underline: false,
+                italic: true,
+            },
+            AnsiCommand::Reset,
+        ];
+
+        let encoded = DiffEngine::encode_binary(&original);
+        let decoded = DiffEngine::decode_binary(&encoded).expect("Decoding failed");
+        assert_eq!(original, decoded);
     }
 }

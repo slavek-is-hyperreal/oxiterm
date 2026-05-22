@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OxiTerm Web Console</title>
+    <!-- Modern Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #020617 0%, #0f172a 100%);
+            --accent-glow: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 60%);
+            --glass-bg: rgba(15, 23, 42, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --status-connected: #10b981;
+            --status-connecting: #f59e0b;
+            --status-disconnected: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            color: #f1f5f9;
+        }
+
+        /* Animated glowing background */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--accent-glow);
+            pointer-events: none;
+            z-index: 0;
+            animation: pulse-glow 8s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            0% { opacity: 0.6; transform: scale(1.0); }
+            100% { opacity: 1.0; transform: scale(1.1); }
+        }
+
+        /* Glassmorphic main window container */
+        .window {
+            z-index: 10;
+            width: 90vw;
+            max-width: 1000px;
+            height: 80vh;
+            max-height: 700px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                        0 0 40px rgba(99, 102, 241, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* Premium Title Bar */
+        .title-bar {
+            height: 48px;
+            padding: 0 16px;
+            background: rgba(30, 41, 59, 0.4);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* OSX-style Mock Control Buttons */
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .ctrl-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .ctrl-close { background: #ef4444; }
+        .ctrl-min { background: #f59e0b; }
+        .ctrl-max { background: #10b981; }
+
+        /* Window Title */
+        .title {
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            color: #94a3b8;
+            font-family: 'JetBrains Mono', monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Status Indicator Component */
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--status-connecting);
+            box-shadow: 0 0 8px var(--status-connecting);
+        }
+
+        .status-dot.connected {
+            background-color: var(--status-connected);
+            box-shadow: 0 0 8px var(--status-connected);
+            animation: pulse-emerald 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background-color: var(--status-disconnected);
+            box-shadow: 0 0 8px var(--status-disconnected);
+        }
+
+        @keyframes pulse-emerald {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* Terminal Canvas Container */
+        .terminal-container {
+            flex: 1;
+            position: relative;
+            background: #0f172a;
+            padding: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            cursor: text;
+            outline: none;
+        }
+
+        /* Full-screen Loading Overlay */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #090d16;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: opacity 0.5s ease, visibility 0.5s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(99, 102, 241, 0.1);
+            border-top: 4px solid #6366f1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .overlay-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="window-controls">
+                <span class="ctrl-btn ctrl-close"></span>
+                <span class="ctrl-btn ctrl-min"></span>
+                <span class="ctrl-btn ctrl-max"></span>
+            </div>
+            <div class="title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
+                OxiTerm Web Console
+            </div>
+            <div class="status-badge">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">Connecting</span>
+            </div>
+        </div>
+        
+        <div class="terminal-container" id="terminal-container">
+            <div class="overlay" id="loading-overlay">
+                <div class="spinner"></div>
+                <div class="overlay-text">Establishing connection...</div>
+            </div>
+            <canvas id="terminal-canvas" tabindex="0"></canvas>
+        </div>
+    </div>
+
+    <!-- WASM Entry Module -->
+    <script type="module">
+        import init, { WebTerminal } from "./oxiterm_web.js";
+
+        const canvas = document.getElementById("terminal-canvas");
+        const container = document.getElementById("terminal-container");
+        const overlay = document.getElementById("loading-overlay");
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+
+        let socket = null;
+        let term = null;
+        let charWidth = 0;
+        let charHeight = 0;
+        let currentCols = 0;
+        let currentRows = 0;
+
+        async function start() {
+            // 1. Initialize WASM module
+            await init();
+
+            // 2. Measure dimensions using a temporary terminal
+            term = new WebTerminal(canvas, "16px monospace", 20.0);
+            [charWidth, charHeight] = term.get_char_dimensions();
+
+            // 3. Connect WebSocket
+            const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            
+            socket = new WebSocket(wsUrl);
+            socket.binaryType = "arraybuffer";
+
+            socket.onopen = () => {
+                statusDot.className = "status-dot connected";
+                statusText.innerText = "Connected";
+                overlay.classList.add("hidden");
+                canvas.focus();
+                
+                // Perform initial resize setup
+                resizeTerminal();
+            };
+
+            socket.onclose = () => {
+                statusDot.className = "status-dot disconnected";
+                statusText.innerText = "Disconnected";
+                overlay.classList.remove("hidden");
+                document.querySelector(".overlay-text").innerText = "Connection lost. Reconnecting...";
+                setTimeout(start, 3000);
+            };
+
+            socket.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    const bytes = new Uint8Array(event.data);
+                    term.draw_commands(bytes);
+                }
+            };
+
+            // 4. Input Capture: Keydown
+            canvas.addEventListener("keydown", (e) => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+                let codepoint = 0;
+                let shift = e.shiftKey;
+                let ctrl = e.ctrlKey;
+                let alt = e.altKey;
+
+                if (e.key.length === 1) {
+                    codepoint = e.key.charCodeAt(0);
+                } else {
+                    // Translate special keys
+                    switch (e.key) {
+                        case "Backspace": codepoint = 8; break;
+                        case "Tab":       codepoint = 9; break;
+                        case "Enter":     codepoint = 13; break;
+                        case "Escape":    codepoint = 27; break;
+                        case "Delete":    codepoint = 127; break;
+                        // Arrows map to standard VT sequences but encoded as VT escape or customized?
+                        // Wait, since oxiterm-proto decodes normal byte sequences, we could send VT sequences
+                        // as a series of individual keypresses or customize!
+                        // Let's send normal ANSI escape keypresses:
+                        case "ArrowUp":    sendString("\x1b[A"); return;
+                        case "ArrowDown":  sendString("\x1b[B"); return;
+                        case "ArrowRight": sendString("\x1b[C"); return;
+                        case "ArrowLeft":  sendString("\x1b[D"); return;
+                        default: return; // Ignore other specials
+                    }
+                }
+
+                if (codepoint > 0) {
+                    e.preventDefault();
+                    sendKeyPress(codepoint, shift, ctrl, alt);
+                }
+            });
+
+            // 5. Input Capture: Mouse
+            canvas.addEventListener("mousedown", (e) => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                const col = Math.floor(clickX / charWidth);
+                const row = Math.floor(clickY / charHeight);
+
+                let button = 5; // None
+                if (e.button === 0) button = 0; // Left
+                if (e.button === 1) button = 1; // Middle
+                if (e.button === 2) button = 2; // Right
+
+                e.preventDefault();
+                canvas.focus();
+                sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey); // Press
+            });
+
+            canvas.addEventListener("mouseup", (e) => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                const col = Math.floor(clickX / charWidth);
+                const row = Math.floor(clickY / charHeight);
+
+                let button = 5; // None
+                if (e.button === 0) button = 0; // Left
+                if (e.button === 1) button = 1; // Middle
+                if (e.button === 2) button = 2; // Right
+
+                e.preventDefault();
+                sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey); // Release
+            });
+
+            // 6. Resize Observer
+            const resizeObserver = new ResizeObserver(() => {
+                resizeTerminal();
+            });
+            resizeObserver.observe(container);
+        }
+
+        function resizeTerminal() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+            const width = container.clientWidth - 16; // accounting for padding
+            const height = container.clientHeight - 16;
+
+            const cols = Math.floor(width / charWidth);
+            const rows = Math.floor(height / charHeight);
+
+            if (cols !== currentCols || rows !== currentRows) {
+                currentCols = cols;
+                currentRows = rows;
+
+                canvas.width = cols * charWidth;
+                canvas.height = rows * charHeight;
+
+                term.clear(cols, rows);
+
+                // Send resize message: [0x10, cols_low, cols_high, rows_low, rows_high]
+                const buf = new Uint8Array(5);
+                buf[0] = 0x10;
+                buf[1] = cols & 0xff;
+                buf[2] = (cols >> 8) & 0xff;
+                buf[3] = rows & 0xff;
+                buf[4] = (rows >> 8) & 0xff;
+                socket.send(buf);
+            }
+        }
+
+        function sendKeyPress(codepoint, shift, ctrl, alt) {
+            const buf = new Uint8Array(6);
+            buf[0] = 0x01;
+            buf[1] = codepoint & 0xff;
+            buf[2] = (codepoint >> 8) & 0xff;
+            buf[3] = (codepoint >> 16) & 0xff;
+            buf[4] = (codepoint >> 24) & 0xff;
+            let flags = 0;
+            if (shift) flags |= 1;
+            if (ctrl) flags |= 2;
+            if (alt) flags |= 4;
+            buf[5] = flags;
+            socket.send(buf);
+        }
+
+        function sendMouseEvent(col, row, button, action, shift, ctrl, alt) {
+            const buf = new Uint8Array(8);
+            buf[0] = 0x02;
+            buf[1] = col & 0xff;
+            buf[2] = (col >> 8) & 0xff;
+            buf[3] = row & 0xff;
+            buf[4] = (row >> 8) & 0xff;
+            buf[5] = button;
+            buf[6] = action;
+            let flags = 0;
+            if (shift) flags |= 1;
+            if (ctrl) flags |= 2;
+            if (alt) flags |= 4;
+            buf[7] = flags;
+            socket.send(buf);
+        }
+
+        function sendString(str) {
+            for (let i = 0; i < str.length; i++) {
+                sendKeyPress(str.charCodeAt(i), false, false, false);
+            }
+        }
+
+        start();
+    </script>
+</body>
+</html>

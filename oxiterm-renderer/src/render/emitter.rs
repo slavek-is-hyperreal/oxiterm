@@ -1,30 +1,15 @@
-use std::io::Write;
 use anyhow::Result;
-use crate::render::diff::DiffEngine;
 use crate::render::buffer::CellBuffer;
 
-/// S5-13: `SyncedEmitter`
-/// A wrapper for `DiffEngine` that ensures BSU/ESU (Begin/End Synchronized Update)
-/// are sent around every frame to prevent tearing.
-pub struct SyncedEmitter;
+pub trait FrameSink: Send {
+    /// Compares front and back buffers, sends any frame update to the sink,
+    /// and returns Ok(true) if a frame was actually transmitted (i.e. diff was non-empty).
+    fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> Result<bool>;
 
-impl SyncedEmitter {
-    pub fn emit_frame(writer: &mut impl Write, prev: &CellBuffer, next: &CellBuffer) -> Result<()> {
-        let commands = DiffEngine::diff(prev, next);
-        if commands.is_empty() {
-            return Ok(());
-        }
+    /// Perform any initial environment configuration/setup for the sink.
+    fn setup(&mut self) -> Result<()> { Ok(()) }
 
-        // BSU: CSI ? 2026 h
-        writer.write_all(b"\x1b[?2026h")?;
-        
-        let bytes = DiffEngine::encode_ansi(&commands);
-        writer.write_all(&bytes)?;
-        
-        // ESU: CSI ? 2026 l
-        writer.write_all(b"\x1b[?2026l")?;
-        
-        writer.flush()?;
-        Ok(())
-    }
+    /// Clears the physical display area.
+    fn clear_screen(&mut self) -> Result<()> { Ok(()) }
 }
+
