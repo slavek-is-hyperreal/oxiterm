@@ -14,7 +14,7 @@ The UI is represented as a tree of **Nodes**. Each node has a `NodeTag` and a `S
 | `Box` | Container for other nodes. Supports Flexbox layout. | `<div>` |
 | `Text` | Displays string content. Supports wrapping. | `<span>` / `<p>` |
 | `Input` | Designated area for predictive echo and user typing. | `<input>` |
-| `Image` | Placeholder for future Sixel/Kitty graphics support. | `<img>` |
+| `Image` | Displays high-fidelity SVG graphics, Lottie spinners, and Rive toggles. | `<img>` |
 
 ### 2. TCSS (Terminal CSS)
 Styling is done via the `Style` struct attached to each `Node`.
@@ -103,6 +103,12 @@ To provide a lag-free experience on high-latency connections:
 1. Create an `Input` node in your layout.
 2. Return its `NodeId` from `build_document`.
 3. OxiTerm will automatically position the user's typed characters at that location.
+
+### Vector Graphics & Animations
+OxiTerm allows embedding scalable graphics directly into layout hierarchies:
+1. **Static SVG**: Declare static vector files (e.g. `<img src="mascot.svg" style="width: 32; height: 16;" />`). They are automatically scaled to the tag's target cell-to-pixel bounds and rendered via `resvg`.
+2. **Lottie Animations**: Use the `.json` extension (e.g. `<img src="loader.json" style="width: 12; height: 6;" />`). Active animations trigger a 15 FPS redraw frame ticking loop.
+3. **Interactive Rive Widgets**: Use the `.riv` extension (e.g. `<img src="toggle.riv" style="width: 24; height: 6;" />`). They support relative sub-cell hover and click event coordinates.
 
 ---
 

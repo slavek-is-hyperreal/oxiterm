@@ -7,7 +7,7 @@ THTML is a subset of HTML optimized for the character grid.
 - `<text>`: Text content with wrapping support.
 - `<input>`: Text input field.
 - `<button>`: Interactive button.
-- `<img>`: Graphic element (Sixel or Kitty protocol).
+- `<img>`: Graphic element. Supports SVG (`.svg`), Lottie (`.json`), and interactive Rive (`.riv`) formats. Rasterized natively using `resvg` and `tiny-skia` before protocol transmission.
 
 ## 2. TCSS (Terminal CSS)
 TCSS provides styling for THTML elements.
@@ -32,6 +32,11 @@ Communication is handled by a custom `russh` server.
 
 ## 5. Resilience & Optimization
 - **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
+- **Vector Rendering Engine**: Multi-tier pipeline using `resvg` for static SVGs, and procedural generators for Lottie loading spinners (.json) and interactive Rive toggles (.riv).
+- **Asset Caching System**: Dual cache structures: `SvgCache` storing once-parsed `usvg::Tree` structures, and `AssetCache` storing resolution-keyed Sixel/Kitty graphic byte streams to bypass redundant rendering cycles.
+- **Ticking Animation Loop**: Dynamically adjusts event loop timeout to `66ms` (15 FPS) when Lottie or Rive sources are present in the DOM, returning to a low-overhead `5ms` sleep state when idle.
+- **Client-Relative Mouse Mapping**: Translates terminal cell grid coordinates to relative canvas offsets inside Rive interactives, driving hover and click toggle animations.
+- **Fast Sixel Encoder**: Uses a pre-allocated static 256-color palette to quantize raw RGBA pixel data rapidly, avoiding CPU-heavy palette searches.
 - **Predictive Local Echo**: Mitigation for high-latency connections.
 - **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
 - **Backpressure**: Frame dropping to prevent memory exhaustion during slow rendering.
