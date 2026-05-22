@@ -69,7 +69,7 @@ impl WebTerminal {
                     self.italic = italic;
                 }
                 AnsiCommand::WriteChar(ch) => {
-                    let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
+                    let w = oxiterm_renderer::render::unicode::UnicodeWidthCache::get().width(ch);
                     let w = if w == 0 { 1 } else { w } as u16;
                     self.draw_cell(self.cx, self.cy, ch, w);
                     self.cx += w;

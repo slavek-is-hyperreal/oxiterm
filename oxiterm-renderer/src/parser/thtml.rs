@@ -36,15 +36,33 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .collect()
 }
 
+pub fn extract_style_block(html: &str) -> (String, String) {
+    let re = regex::Regex::new(r"(?is)<style\b[^>]*>(.*?)</style>").unwrap();
+    let mut style_content = String::new();
+    
+    for cap in re.captures_iter(html) {
+        if let Some(m) = cap.get(1) {
+            if !style_content.is_empty() {
+                style_content.push('\n');
+            }
+            style_content.push_str(m.as_str());
+        }
+    }
+    
+    let cleaned_html = re.replace_all(html, "").to_string();
+    (cleaned_html, style_content)
+}
+
 pub struct THTMLParser;
 
 type ParseResult<'a, T> = IResult<&'a str, T, VerboseError<&'a str>>;
 
 impl THTMLParser {
     pub fn parse(input: &str) -> Result<THTMLDocument> {
+        let (cleaned_html, style_content) = extract_style_block(input);
         let mut doc = THTMLDocument::new();
         
-        let (_, nodes) = Self::parse_nodes(input)
+        let (_, nodes) = Self::parse_nodes(&cleaned_html)
             .map_err(|e| anyhow!("THTML Parse Error at: {}", match e {
                 nom::Err::Error(ve) | nom::Err::Failure(ve) => {
                     let mut err_msg = String::new();
@@ -60,6 +78,12 @@ impl THTMLParser {
         let root_id = doc.root;
         for node in nodes {
             Self::insert_node_recursive(&mut doc, root_id, node)?;
+        }
+        
+        if !style_content.trim().is_empty() {
+            if let Ok(stylesheet) = crate::parser::tcss::parse_tcss(&style_content) {
+                crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
+            }
         }
         
         Ok(doc)
@@ -216,6 +240,9 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "src" => attrs.src = Some(value),
             "event-htmx" => attrs.event_htmx = Some(value),
             "bind-state" => attrs.bind_state = Some(value),
+            "alt" => attrs.alt = Some(value),
+            "placeholder" => attrs.placeholder = Some(value),
+            "name" => attrs.name = Some(value),
             _ => {}
         }
         input = rem;
@@ -361,5 +388,24 @@ mod tests {
         assert_eq!(stylesheet.rules.len(), 1);
         let (_selector, decls) = &stylesheet.rules[0];
         assert_eq!(decls.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_style_block() {
+        let input = "
+            <style>
+                .btn { fg: red; }
+            </style>
+            <box class=\"btn\">Hello</box>
+            <style type=\"text/css\">
+                #main { bg: blue; }
+            </style>
+        ";
+        let (cleaned, styles) = extract_style_block(input);
+        assert!(!cleaned.contains("<style>"));
+        assert!(!cleaned.contains("</style>"));
+        assert!(cleaned.contains("<box class=\"btn\">Hello</box>"));
+        assert!(styles.contains(".btn { fg: red; }"));
+        assert!(styles.contains("#main { bg: blue; }"));
     }
 }

@@ -233,6 +233,66 @@ fn parse_color(value: &str) -> AnsiColor {
     AnsiColor::Reset
 }
 
+pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &StyleSheet) {
+    for (_id, node) in doc.arena.iter_mut() {
+        let tag_name = match node.tag {
+            oxiterm_proto::dom::NodeTag::Screen => "screen",
+            oxiterm_proto::dom::NodeTag::Box => "box",
+            oxiterm_proto::dom::NodeTag::Text => "text",
+            oxiterm_proto::dom::NodeTag::Input => "input",
+            oxiterm_proto::dom::NodeTag::Button => "button",
+            oxiterm_proto::dom::NodeTag::Img => "img",
+            oxiterm_proto::dom::NodeTag::Video => "video",
+        };
+
+        let mut new_style = oxiterm_proto::style::ComputedStyle::default();
+
+        // 1. Tag rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Tag(ref t) = selector {
+                if t.to_lowercase() == tag_name {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 2. Class rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Class(ref c) = selector {
+                if node.attrs.class.contains(c) {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 3. Id rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Id(ref id) = selector {
+                if node.attrs.id.as_deref() == Some(id) {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 4. Inline styles (overwriting stylesheet styles)
+        if let Some(ref style_str) = node.attrs.style_raw {
+            if let Ok(decls) = parse_inline_tcss(style_str) {
+                for decl in decls {
+                    apply_declaration(&mut new_style, &decl);
+                }
+            }
+        }
+
+        node.style = new_style;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +340,31 @@ mod tests {
         assert_eq!(style.margin.right, 4);
         assert_eq!(style.margin.left, 0);
         assert_eq!(style.margin.top, 0);
+    }
+
+    #[test]
+    fn test_apply_styles_cascading() {
+        let mut doc = crate::document::THTMLDocument::new();
+        let mut btn = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Button);
+        btn.attrs.id = Some("submit".to_string());
+        btn.attrs.class = vec!["btn".to_string(), "primary".to_string()];
+        btn.attrs.style_raw = Some("fg: red".to_string());
+        
+        let root = doc.root;
+        let btn_id = doc.arena.alloc(btn);
+        doc.append_child(root, btn_id).unwrap();
+
+        let tcss = "
+            button { width: 10; }
+            .btn { width: 20; fg: yellow; bg: blue; }
+            #submit { bg: magenta; }
+        ";
+        let stylesheet = parse_tcss(tcss).unwrap();
+        apply_styles(&mut doc, &stylesheet);
+
+        let final_btn = doc.arena.get(btn_id).unwrap();
+        assert_eq!(final_btn.style.width, Some(20));
+        assert_eq!(final_btn.style.bg, AnsiColor::TrueColor(255, 0, 255));
+        assert_eq!(final_btn.style.fg, AnsiColor::TrueColor(255, 0, 0));
     }
 }

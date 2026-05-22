@@ -263,6 +263,17 @@ impl Drop for AnsiFrameSink {
     }
 }
 
+struct ChannelWriter(crate::backpressure::BoundedFrameChannel<Vec<u8>>);
+impl std::io::Write for ChannelWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = self.0.try_send(buf.to_vec());
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 pub struct EventLoop {
     pub session: Arc<ClientSession>,
     pub event_bus: Arc<crate::events::EventBus>,
@@ -278,6 +289,7 @@ pub struct EventLoop {
     pub weather_app: Option<crate::weather_app::WeatherApp>,
     pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
     pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
+    pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
 }
 
 impl EventLoop {
@@ -288,7 +300,20 @@ impl EventLoop {
         doc: THTMLDocument,
     ) -> Self {
         let dims = *session.dims.read();
-        let frame_sink = Box::new(AnsiFrameSink::new(output_tx.clone()));
+        
+        let args: Vec<String> = std::env::args().collect();
+        let mut dbus_bridge = None;
+        let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if oxiterm_a11y::detect_a11y_mode(&args) {
+            let writer = ChannelWriter(output_tx.clone());
+            let mut bridge = oxiterm_a11y::DBusBridge::new();
+            if let Ok(addr) = oxiterm_a11y::DBusBridge::read_dbus_address() {
+                let _ = bridge.open_tunnel(std::path::Path::new("/tmp/dbus-local"), std::path::Path::new(&addr));
+            }
+            dbus_bridge = Some(bridge);
+            Box::new(oxiterm_a11y::LinearFrameSink::new(writer))
+        } else {
+            Box::new(AnsiFrameSink::new(output_tx.clone()))
+        };
         
         Self { 
             session, 
@@ -305,6 +330,7 @@ impl EventLoop {
             weather_app: None,
             weather_rx: None,
             weather_tx: None,
+            dbus_bridge,
         }
     }
 
@@ -630,6 +656,14 @@ impl EventLoop {
 
                 let dims = *self.session.dims.read();
                 if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
+                    if let Some(ref mut bridge) = self.dbus_bridge {
+                        let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
+                        let _ = bridge.register_at_spi(&tree);
+                        if let Some(active_id) = self.session.predictive_echo.read().active_node {
+                            let _ = bridge.update_focus(active_id, &tree);
+                        }
+                    }
+
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
@@ -664,6 +698,7 @@ impl EventLoop {
                         }
                     }
                     
+                    let _ = self.frame_sink.update_document(&self.doc);
                     if let Ok(true) = self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back) {
                         self.buffer.swap();
                         self.frame_limiter.record_frame();

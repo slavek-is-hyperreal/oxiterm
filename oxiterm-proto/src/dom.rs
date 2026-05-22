@@ -12,7 +12,7 @@ pub enum NodeTag {
     Video,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct NodeAttributes {
     pub id: Option<String>,
     pub class: Vec<String>,
@@ -20,6 +20,9 @@ pub struct NodeAttributes {
     pub src: Option<String>,
     pub event_htmx: Option<String>,
     pub bind_state: Option<String>,
+    pub alt: Option<String>,
+    pub placeholder: Option<String>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

@@ -184,6 +184,8 @@ impl DiffEngine {
                 AnsiCommand::WriteChar(ch) => {
                     buf.push(0x03);
                     buf.extend_from_slice(&(*ch as u32).to_le_bytes());
+                    let width = crate::render::unicode::UnicodeWidthCache::get().width(*ch);
+                    buf.push(if width == 0 { 1 } else { width });
                 }
                 AnsiCommand::SetModifiers { bold, underline, italic } => {
                     buf.push(0x04);
@@ -263,9 +265,11 @@ impl DiffEngine {
                     commands.push(AnsiCommand::SetColor { fg, bg });
                 }
                 0x03 => {
-                    if i + 4 > bytes.len() { return Err("Truncated WriteChar"); }
+                    if i + 5 > bytes.len() { return Err("Truncated WriteChar"); }
                     let val = u32::from_le_bytes([bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]]);
                     i += 4;
+                    let _width = bytes[i];
+                    i += 1;
                     let ch = char::from_u32(val).ok_or("Invalid char value")?;
                     commands.push(AnsiCommand::WriteChar(ch));
                 }
