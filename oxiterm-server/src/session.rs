@@ -630,7 +630,7 @@ impl EventLoop {
                     }
 
                     let profile = self.session.terminal_profile.read().clone();
-                    let base_dir = self.source_path.as_deref();
+                    let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
                     Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
                     
                     // S5-21: PredictiveEcho overlay
