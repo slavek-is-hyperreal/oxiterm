@@ -1,4 +1,4 @@
-<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #bb9af7; padding: 1;">
+<box style="flex-direction: column; width: 96; height: 32; background-color: #11111b; border-style: rounded; border-color: #bb9af7; padding: 1;">
     <!-- Header -->
     <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
         <text style="color: #cdd6f4; font-weight: bold;">🎨 OxiTerm Vector Graphics & Interactive Animation</text>

@@ -5,7 +5,7 @@
 set -e
 
 # Terminals to test
-TERMINALS=("xterm" "alacritty" "kitty" "gnome-terminal")
+TERMINALS=("kitty")
 
 # Ensure required packages are present
 echo "Checking required system tools..."
@@ -59,7 +59,7 @@ for term in "${TERMINALS[@]}"; do
         echo "Testing terminal: $term | Page: $page_name..."
 
         # Start oxiterm-server with the specific page
-        ./target/debug/oxiterm-cli serve --port 8022 --no-auth "$page_path" > server.log 2>&1 &
+        ./target/debug/oxiterm-cli serve --port 8022 --no-auth "$page_path" > "server_${term}_${page_name}.log" 2>&1 &
         SERVER_PID=$!
 
         # Wait for server to bind

@@ -25,12 +25,19 @@ pub struct CacheValue {
     pub format: GraphicFormat,
 }
 
+pub struct SafeAnimation {
+    pub anim: rlottie::Animation,
+}
+unsafe impl Send for SafeAnimation {}
+unsafe impl Sync for SafeAnimation {}
+
 pub struct PlaybackState {
     pub start_time: std::time::Instant,
     pub hover: bool,
     pub click_active: bool,
     pub click_coord: Option<(u16, u16)>,
     pub toggled: bool,
+    pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
 }
 
 pub struct PlaybackRegistry {
@@ -54,6 +61,7 @@ impl PlaybackRegistry {
                 click_active: state.click_active,
                 click_coord: state.click_coord,
                 toggled: state.toggled,
+                lottie_animation: state.lottie_animation.clone(),
             };
         }
         let state = PlaybackState {
@@ -62,6 +70,7 @@ impl PlaybackRegistry {
             click_active: false,
             click_coord: None,
             toggled: false,
+            lottie_animation: None,
         };
         lock.insert(path.to_path_buf(), PlaybackState {
             start_time: state.start_time,
@@ -69,8 +78,31 @@ impl PlaybackRegistry {
             click_active: state.click_active,
             click_coord: state.click_coord,
             toggled: state.toggled,
+            lottie_animation: None,
         });
         state
+    }
+
+    pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
+        let mut lock = self.states.lock().unwrap();
+        let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
+            start_time: std::time::Instant::now(),
+            hover: false,
+            click_active: false,
+            click_coord: None,
+            toggled: false,
+            lottie_animation: None,
+        });
+        if state.lottie_animation.is_none() {
+            if let Some(anim) = rlottie::Animation::from_file(path) {
+                state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+            } else if let Ok(data_str) = std::fs::read_to_string(path) {
+                if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
+                    state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+                }
+            }
+        }
+        state.lottie_animation.clone()
     }
 
     pub fn set_hover(&self, path: &Path, hover: bool) {
@@ -164,8 +196,10 @@ pub struct VideoPlayer {
 impl Drop for VideoPlayer {
     fn drop(&mut self) {
         let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
+
 
 pub struct VideoPlayerRegistry {
     players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
@@ -257,5 +291,10 @@ impl VideoPlayerRegistry {
                 None
             }
         }
+    }
+
+    pub fn cleanup(&self) {
+        let mut players = self.players.lock().unwrap();
+        players.clear();
     }
 }

@@ -374,8 +374,20 @@ impl Renderer {
             let mut frame_idx = None;
             if is_lottie {
                 let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
-                let elapsed = playback.start_time.elapsed();
-                frame_idx = Some(((elapsed.as_millis() * 15) / 1000) as usize % 30);
+                if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                    let lock = safe_anim.lock().unwrap();
+                    let total_frames = lock.anim.totalframe();
+                    let fps = lock.anim.framerate();
+                    if total_frames > 0 {
+                        let fps = if fps > 0.0 { fps } else { 30.0 };
+                        let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
+                        frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                    } else {
+                        frame_idx = Some(0);
+                    }
+                } else {
+                    frame_idx = Some(0);
+                }
             } else if is_rive {
                 let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
                 let mut bits = 0;
@@ -452,47 +464,35 @@ impl Renderer {
                     Ok(Self::pixmap_to_rgba_image(pixmap))
                 })()
             } else if is_lottie {
-                // Procedural Lottie Loader animation
+                // Native Lottie Rendering using rlottie
                 (|| -> anyhow::Result<image::RgbaImage> {
-                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                    
-                    let center_x = pixel_w as f32 / 2.0;
-                    let center_y = pixel_h as f32 / 2.0;
-                    let radius = (pixel_w.min(pixel_h) as f32 / 2.0) - 10.0;
-                    
-                    let mut paint = resvg::tiny_skia::Paint::default();
-                    paint.anti_alias = true;
-                    
-                    let grad = resvg::tiny_skia::LinearGradient::new(
-                        resvg::tiny_skia::Point::from_xy(0.0, 0.0),
-                        resvg::tiny_skia::Point::from_xy(pixel_w as f32, pixel_h as f32),
-                        vec![
-                            resvg::tiny_skia::GradientStop::new(0.0, resvg::tiny_skia::Color::from_rgba8(0, 240, 255, 255)),
-                            resvg::tiny_skia::GradientStop::new(1.0, resvg::tiny_skia::Color::from_rgba8(0, 80, 255, 255)),
-                        ],
-                        resvg::tiny_skia::SpreadMode::Pad,
-                        resvg::tiny_skia::Transform::identity(),
-                    ).unwrap();
-                    paint.shader = grad;
-                    
-                    let idx = frame_idx.unwrap_or(0);
-                    let angle_offset = (idx as f32 / 30.0) * 2.0 * std::f32::consts::PI;
-                    
-                    for i in 0..8 {
-                        let angle = angle_offset + (i as f32 / 8.0) * 2.0 * std::f32::consts::PI;
-                        let size_factor = i as f32 / 8.0;
-                        let dot_radius = 3.0 + size_factor * 6.0;
-                        let dx = center_x + angle.cos() * radius;
-                        let dy = center_y + angle.sin() * radius;
+                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                        let mut lock = safe_anim.lock().unwrap();
+                        let size = rlottie::Size {
+                            width: pixel_w as usize,
+                            height: pixel_h as usize,
+                        };
+                        let mut surface = rlottie::Surface::new(size);
                         
-                        let mut dp = resvg::tiny_skia::PathBuilder::new();
-                        dp.push_circle(dx, dy, dot_radius);
-                        if let Some(path) = dp.finish() {
-                            pixmap.fill_path(&path, &paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
+                        let total_frames = lock.anim.totalframe();
+                        let frame = frame_idx.unwrap_or(0);
+                        let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                        
+                        lock.anim.render(frame_to_render, &mut surface);
+                        
+                        let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
+                        for pixel in surface.data() {
+                            rgba_data.push(pixel.r);
+                            rgba_data.push(pixel.g);
+                            rgba_data.push(pixel.b);
+                            rgba_data.push(pixel.a);
                         }
+                        
+                        image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
+                    } else {
+                        Err(anyhow::anyhow!("Lottie animation not loaded"))
                     }
-                    Ok(Self::pixmap_to_rgba_image(pixmap))
                 })()
             } else if is_rive {
                 // Procedural Rive Toggle Button widget
@@ -577,18 +577,26 @@ impl Renderer {
                 })()
             } else {
                 // Standard image rendering
-                image::open(&resolved_path)
+                image::ImageReader::open(&resolved_path)
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .and_then(|r| r.with_guessed_format().map_err(|e| anyhow::anyhow!("{}", e)))
+                    .and_then(|r| r.decode().map_err(|e| anyhow::anyhow!("{}", e)))
                     .map(|img| {
                         let rgba = img.to_rgba8();
                         image::imageops::resize(&rgba, pixel_w, pixel_h, image::imageops::FilterType::Triangle)
                     })
-                    .map_err(|e| anyhow::anyhow!("{}", e))
             };
 
             match img_result {
                 Ok(img) => {
                     if profile.supports_kitty_gfx {
-                        let payload = super::kitty::KittyImageManager::transmit_image(pixel_w, pixel_h, &img);
+                        let payload = super::kitty::KittyImageManager::transmit_image(
+                            pixel_w,
+                            pixel_h,
+                            width as u32,
+                            height as u32,
+                            &img,
+                        );
                         
                         // Insert into cache
                         AssetCache::get().insert(
@@ -738,7 +746,13 @@ impl Renderer {
             if let Some(raw_rgba) = frame {
                 if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, raw_rgba) {
                     if profile.supports_kitty_gfx {
-                        let payload = super::kitty::KittyImageManager::transmit_image(pixel_w, pixel_h, &img);
+                        let payload = super::kitty::KittyImageManager::transmit_image(
+                            pixel_w,
+                            pixel_h,
+                            width as u32,
+                            height as u32,
+                            &img,
+                        );
                         let mut cmd = Vec::new();
                         cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
                         cmd.extend_from_slice(&payload);

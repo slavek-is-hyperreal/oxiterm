@@ -14,8 +14,8 @@ pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
 /// S6-01: Send test APC sequence to probe Kitty Graphics support
 pub fn probe_kitty_graphics(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Sending Kitty Graphics probe to channel {:?}", channel);
-    // Send a query check command: query support for graphics
-    session.data(channel, b"\x1b_Gi=31,a=q;\x1b\\".to_vec().into());
+    // Send a query check command: query support for graphics using a 1x1 dummy pixel
+    session.data(channel, b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\".to_vec().into());
     Ok(())
 }
 

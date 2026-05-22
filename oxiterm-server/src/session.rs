@@ -162,8 +162,14 @@ impl SessionRegistry {
     }
 
     pub fn remove_session(&self, id: SessionId) {
+        let count_before = self.sessions.read().len();
         if let Some(session) = self.sessions.write().remove(&id) {
             session.close();
+        }
+        let count_after = self.sessions.read().len();
+        if count_after == 0 && count_before > 0 {
+            info!("No active sessions remaining. Cleaning up video players.");
+            oxiterm_renderer::render::cache::VideoPlayerRegistry::get().cleanup();
         }
     }
 
