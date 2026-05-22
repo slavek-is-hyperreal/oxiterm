@@ -31,6 +31,7 @@ pub struct SafeAnimation {
 unsafe impl Send for SafeAnimation {}
 unsafe impl Sync for SafeAnimation {}
 
+#[derive(Clone)]
 pub struct PlaybackState {
     pub start_time: std::time::Instant,
     pub hover: bool,
@@ -55,14 +56,7 @@ impl PlaybackRegistry {
     pub fn get_or_create(&self, path: &Path) -> PlaybackState {
         let mut lock = self.states.lock().unwrap();
         if let Some(state) = lock.get(path) {
-            return PlaybackState {
-                start_time: state.start_time,
-                hover: state.hover,
-                click_active: state.click_active,
-                click_coord: state.click_coord,
-                toggled: state.toggled,
-                lottie_animation: state.lottie_animation.clone(),
-            };
+            return state.clone();
         }
         let state = PlaybackState {
             start_time: std::time::Instant::now(),
@@ -72,14 +66,7 @@ impl PlaybackRegistry {
             toggled: false,
             lottie_animation: None,
         };
-        lock.insert(path.to_path_buf(), PlaybackState {
-            start_time: state.start_time,
-            hover: state.hover,
-            click_active: state.click_active,
-            click_coord: state.click_coord,
-            toggled: state.toggled,
-            lottie_animation: None,
-        });
+        lock.insert(path.to_path_buf(), state.clone());
         state
     }
 
@@ -93,10 +80,9 @@ impl PlaybackRegistry {
             toggled: false,
             lottie_animation: None,
         });
+
         if state.lottie_animation.is_none() {
-            if let Some(anim) = rlottie::Animation::from_file(path) {
-                state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
-            } else if let Ok(data_str) = std::fs::read_to_string(path) {
+            if let Ok(data_str) = std::fs::read_to_string(path) {
                 if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
                     state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
                 }
@@ -143,6 +129,11 @@ impl AssetCache {
 
     pub fn insert(&self, key: CacheKey, value: CacheValue) {
         let mut lock = self.cache.lock().unwrap();
+        if lock.len() >= 100 {
+            if let Some(k) = lock.keys().next().cloned() {
+                lock.remove(&k);
+            }
+        }
         lock.insert(key, value);
     }
 }
@@ -179,6 +170,11 @@ impl SvgCache {
             .map_err(|e| anyhow::anyhow!("SVG parse error: {:?}", e))?;
         
         let arc_tree = Arc::new(tree);
+        if lock.len() >= 20 {
+            if let Some(k) = lock.keys().next().cloned() {
+                lock.remove(&k);
+            }
+        }
         lock.insert(path.to_path_buf(), Arc::clone(&arc_tree));
         Ok(arc_tree)
     }
@@ -188,7 +184,7 @@ pub struct VideoPlayer {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    pub frame_buffer: Arc<Mutex<Option<Vec<u8>>>>,
+    pub frame_buffer: Arc<Mutex<Option<Arc<Vec<u8>>>>>,
     pub child: Child,
     pub last_accessed: Instant,
 }
@@ -213,7 +209,19 @@ impl VideoPlayerRegistry {
         })
     }
 
-    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Vec<u8>> {
+    pub fn is_ffmpeg_available() -> bool {
+        static AVAILABLE: OnceLock<bool> = OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            Command::new("ffmpeg")
+                .arg("-version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+        })
+    }
+
+    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Arc<Vec<u8>>> {
         let mut players = self.players.lock().unwrap();
         let now = Instant::now();
 
@@ -268,12 +276,12 @@ impl VideoPlayerRegistry {
                 let frame_size = (width * height * 4) as usize;
 
                 thread::spawn(move || {
-                    let mut buf = vec![0u8; frame_size];
                     loop {
+                        let mut buf = vec![0u8; frame_size];
                         if stdout.read_exact(&mut buf).is_err() {
                             break;
                         }
-                        *frame_buffer_clone.lock().unwrap() = Some(buf.clone());
+                        *frame_buffer_clone.lock().unwrap() = Some(Arc::new(buf));
                     }
                 });
 

@@ -87,7 +87,7 @@ pub mod web_impl {
         initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         source_path: Option<std::path::PathBuf>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; 8192];
         let n = stream.peek(&mut buf).await?;
         let header = String::from_utf8_lossy(&buf[..n]);
 
@@ -96,13 +96,20 @@ pub mod web_impl {
             handle_websocket(ws_stream, registry, initial_doc, source_path).await?;
         } else {
             let mut stream = stream;
-            let mut read_buf = [0u8; 1024];
-            let _ = stream.readable().await;
-            let read_bytes = match stream.try_read(&mut read_buf) {
-                Ok(0) => return Ok(()),
-                Ok(n) => n,
-                Err(_) => return Ok(()),
-            };
+            let mut read_buf = vec![0u8; 8192];
+            let mut read_bytes = 0;
+            use tokio::io::AsyncReadExt;
+            loop {
+                let n = stream.read(&mut read_buf[read_bytes..]).await?;
+                if n == 0 {
+                    break;
+                }
+                read_bytes += n;
+                let s = String::from_utf8_lossy(&read_buf[..read_bytes]);
+                if s.contains("\r\n\r\n") || read_bytes >= 8192 {
+                    break;
+                }
+            }
             let request = String::from_utf8_lossy(&read_buf[..read_bytes]);
             let path = request.split_whitespace().nth(1).unwrap_or("/");
 
@@ -121,13 +128,32 @@ pub mod web_impl {
                 }
             };
 
+            let accepts_gzip = request.to_lowercase().contains("accept-encoding: gzip")
+                || request.to_lowercase().contains("accept-encoding: *")
+                || request.contains("Accept-Encoding: gzip");
+
+            let mut response_body = body.to_vec();
+            let mut content_encoding = "";
+            if accepts_gzip && status == "200 OK" {
+                use flate2::write::GzEncoder;
+                use flate2::Compression;
+                use std::io::Write;
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                if encoder.write_all(body).is_ok() {
+                    if let Ok(compressed) = encoder.finish() {
+                        response_body = compressed;
+                        content_encoding = "Content-Encoding: gzip\r\n";
+                    }
+                }
+            }
+
             use tokio::io::AsyncWriteExt;
             let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                status, mime, body.len()
+                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+                status, mime, response_body.len(), content_encoding
             );
             stream.write_all(response.as_bytes()).await?;
-            stream.write_all(body).await?;
+            stream.write_all(&response_body).await?;
             stream.flush().await?;
         }
         Ok(())
@@ -285,8 +311,8 @@ pub mod web_impl {
                         if bytes.len() >= 5 {
                             let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
                             let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
-                            // Trigger dynamic resize
-                            *client_session.dims.write() = PtyDimensions { cols, rows };
+                            // Trigger dynamic resize via debouncer to prevent double-allocation/drift
+                            client_session.resize_debouncer.write().push(PtyDimensions { cols, rows });
                             let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
                         }
                     }

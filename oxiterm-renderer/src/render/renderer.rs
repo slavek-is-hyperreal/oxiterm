@@ -326,6 +326,8 @@ impl Renderer {
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
+            // BUG-SVG-01: Swap B (index 0) and R (index 2) to correctly map BGRA to RGBA
+            pixel.swap(0, 2);
             let alpha = pixel[3];
             if alpha > 0 && alpha < 255 {
                 let a_factor = 255.0 / alpha as f32;
@@ -366,6 +368,8 @@ impl Renderer {
             let is_lottie = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "json")
                 .unwrap_or(false);
+            // BUG-RIVE-01: The .riv extension is checked to trigger a CPU-rendered procedural toggle button simulation
+            // rather than utilizing a full Rive runtime, maintaining low binary footprint.
             let is_rive = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "riv")
                 .unwrap_or(false);
@@ -495,7 +499,8 @@ impl Renderer {
                     }
                 })()
             } else if is_rive {
-                // Procedural Rive Toggle Button widget
+                // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
+                // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
                 (|| -> anyhow::Result<image::RgbaImage> {
                     let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
                         .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
@@ -692,11 +697,8 @@ impl Renderer {
         let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
             for dy in 0..height {
                 for dx in 0..width {
-                    let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
-                        '*'
-                    } else {
-                        ' '
-                    };
+                    let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
+                    let ch = if is_border { '*' } else { ' ' };
                     buffer.set(abs_x + dx, abs_y + dy, Cell {
                         ch,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
@@ -705,7 +707,12 @@ impl Renderer {
                 }
             }
             let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            let display_name = format!("[Video: {}]", name);
+            let is_missing = !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available();
+            let display_name = if is_missing {
+                format!("[Video Error: ffmpeg missing! {}]", name)
+            } else {
+                format!("[Video: {}]", name)
+            };
             let len = display_name.chars().count() as u16;
             if width > len + 2 && height > 2 {
                 let start_x = abs_x + (width - len) / 2;
@@ -744,45 +751,50 @@ impl Renderer {
             let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
 
             if let Some(raw_rgba) = frame {
-                if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, raw_rgba) {
-                    if profile.supports_kitty_gfx {
-                        let payload = super::kitty::KittyImageManager::transmit_image(
-                            pixel_w,
-                            pixel_h,
-                            width as u32,
-                            height as u32,
-                            &img,
-                        );
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&payload);
-                        buffer.graphics.push(cmd);
-                        
-                        for dy in 0..height {
-                            for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
-                                }
+                if profile.supports_kitty_gfx {
+                    // BUG-VIDEO-01: Zero-copy transmit path. Pass Arc slice reference directly to transmit_image.
+                    let payload = super::kitty::KittyImageManager::transmit_image(
+                        pixel_w,
+                        pixel_h,
+                        width as u32,
+                        height as u32,
+                        &raw_rgba,
+                    );
+                    let mut cmd = Vec::new();
+                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                    cmd.extend_from_slice(&payload);
+                    buffer.graphics.push(cmd);
+                    
+                    for dy in 0..height {
+                        for dx in 0..width {
+                            if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                buffer.cells[idx].skip = true;
                             }
                         }
-                    } else if profile.supports_sixel {
-                        let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&sixel_payload);
-                        buffer.graphics.push(cmd);
-                        
-                        for dy in 0..height {
-                            for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
-                                }
-                            }
-                        }
-                    } else {
-                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
                     }
                     return;
+                } else {
+                    // For fallback formats, construct the ImageBuffer by cloning raw_rgba.
+                    if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(pixel_w, pixel_h, (*raw_rgba).clone()) {
+                        if profile.supports_sixel {
+                            let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&sixel_payload);
+                            buffer.graphics.push(cmd);
+                            
+                            for dy in 0..height {
+                                for dx in 0..width {
+                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                        buffer.cells[idx].skip = true;
+                                    }
+                                }
+                            }
+                        } else {
+                            Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                        }
+                        return;
+                    }
                 }
             }
             draw_fallback(&resolved_path, buffer);

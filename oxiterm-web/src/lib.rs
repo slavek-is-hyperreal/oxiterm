@@ -17,6 +17,7 @@ pub struct WebTerminal {
     bold: bool,
     underline: bool,
     italic: bool,
+    base_font: String,
 }
 
 #[wasm_bindgen]
@@ -45,6 +46,7 @@ impl WebTerminal {
             bold: false,
             underline: false,
             italic: false,
+            base_font: font.to_string(),
         })
     }
 
@@ -67,8 +69,10 @@ impl WebTerminal {
                     self.italic = italic;
                 }
                 AnsiCommand::WriteChar(ch) => {
-                    self.draw_cell(self.cx, self.cy, ch);
-                    self.cx += 1;
+                    let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
+                    let w = if w == 0 { 1 } else { w } as u16;
+                    self.draw_cell(self.cx, self.cy, ch, w);
+                    self.cx += w;
                 }
                 AnsiCommand::Reset => {
                     self.fg = AnsiColor::Reset;
@@ -101,30 +105,28 @@ impl WebTerminal {
 }
 
 impl WebTerminal {
-    fn draw_cell(&self, col: u16, row: u16, ch: char) {
+    fn draw_cell(&self, col: u16, row: u16, ch: char, width_cells: u16) {
         let x = col as f64 * self.char_width;
         let y = row as f64 * self.char_height;
+        let cell_w = self.char_width * width_cells as f64;
 
         // 1. Draw Background
         let bg_str = get_color_str(&self.bg, false);
         self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
-        self.ctx.fill_rect(x, y, self.char_width, self.char_height);
+        self.ctx.fill_rect(x, y, cell_w, self.char_height);
 
         if ch == ' ' || ch == '\0' {
             return;
         }
 
-        // 2. Set Font styling (bold, italic)
-        let font_style = if self.bold && self.italic {
-            "bold italic 16px monospace"
-        } else if self.bold {
-            "bold 16px monospace"
-        } else if self.italic {
-            "italic 16px monospace"
-        } else {
-            "16px monospace"
-        };
-        self.ctx.set_font(font_style);
+        // 2. Set Font styling (bold, italic) using base_font
+        let font_style = format!(
+            "{}{}{}",
+            if self.bold { "bold " } else { "" },
+            if self.italic { "italic " } else { "" },
+            self.base_font
+        );
+        self.ctx.set_font(&font_style);
 
         // 3. Draw Foreground Text
         let fg_str = get_color_str(&self.fg, true);
@@ -135,7 +137,7 @@ impl WebTerminal {
 
         // 4. Draw Underline
         if self.underline {
-            self.ctx.fill_rect(x, y + self.char_height - 2.0, self.char_width, 2.0);
+            self.ctx.fill_rect(x, y + self.char_height - 2.0, cell_w, 2.0);
         }
     }
 }

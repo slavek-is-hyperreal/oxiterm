@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: pią, 22 maj 2026, 00:33:14 CEST
+GENERATED: pią, 22 maj 2026, 23:51:16 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -20,10 +20,18 @@ GENERATED: pią, 22 maj 2026, 00:33:14 CEST
 │   ├── DEVELOPMENT_GUIDE.md
 │   └── SPRINT_REPORTS.md
 ├── examples
+│   ├── clip.mp4
 │   ├── counter.thtml
 │   ├── hello.thtml
+│   ├── image_demo.thtml
+│   ├── loader.json
+│   ├── logo.jpg
+│   ├── mascot.svg
 │   ├── showcase.thtml
-│   └── todo.thtml
+│   ├── todo.thtml
+│   ├── toggle.riv
+│   ├── vector_demo.thtml
+│   └── video_demo.thtml
 ├── host_key
 ├── oxiterm-cli
 │   ├── Cargo.toml
@@ -40,28 +48,39 @@ GENERATED: pią, 22 maj 2026, 00:33:14 CEST
 │       └── style.rs
 ├── oxiterm-renderer
 │   ├── Cargo.toml
-│   └── src
-│       ├── arena.rs
-│       ├── document.rs
-│       ├── layout
-│       │   ├── engine.rs
-│       │   ├── mod.rs
-│       │   └── types.rs
-│       ├── lib.rs
-│       ├── parser
-│       │   ├── mod.rs
-│       │   ├── tcss.rs
-│       │   └── thtml.rs
-│       └── render
-│           ├── buffer.rs
-│           ├── diff.rs
-│           ├── emitter.rs
-│           ├── kitty.rs
-│           ├── mod.rs
-│           ├── renderer.rs
-│           ├── sixel.rs
-│           └── unicode.rs
+│   ├── src
+│   │   ├── arena.rs
+│   │   ├── document.rs
+│   │   ├── layout
+│   │   │   ├── engine.rs
+│   │   │   ├── mod.rs
+│   │   │   └── types.rs
+│   │   ├── lib.rs
+│   │   ├── parser
+│   │   │   ├── mod.rs
+│   │   │   ├── tcss.rs
+│   │   │   └── thtml.rs
+│   │   └── render
+│   │       ├── buffer.rs
+│   │       ├── cache.rs
+│   │       ├── diff.rs
+│   │       ├── emitter.rs
+│   │       ├── kitty.rs
+│   │       ├── mod.rs
+│   │       ├── renderer.rs
+│   │       ├── sixel.rs
+│   │       └── unicode.rs
+│   └── tests
+│       └── test_rlottie.rs
 ├── oxiterm-server
+│   ├── assets
+│   │   ├── index.html
+│   │   └── pkg
+│   │       ├── oxiterm_web_bg.wasm
+│   │       ├── oxiterm_web_bg.wasm.d.ts
+│   │       ├── oxiterm_web.d.ts
+│   │       ├── oxiterm_web.js
+│   │       └── package.json
 │   ├── Cargo.toml
 │   └── src
 │       ├── backpressure.rs
@@ -81,16 +100,51 @@ GENERATED: pią, 22 maj 2026, 00:33:14 CEST
 │       │   └── server.rs
 │       ├── state.rs
 │       ├── weather_app.rs
-│       └── weather.rs
+│       ├── weather.rs
+│       └── web.rs
+├── oxiterm-web
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
 ├── project_bundle.txt
 ├── README.md
 ├── rust-toolchain.toml
+├── scripts
+│   └── test_terminals.sh
+├── server_kitty_counter.log
+├── server_kitty_hello.log
+├── server_kitty_image_demo.log
+├── server_kitty_showcase.log
+├── server_kitty_todo.log
+├── server_kitty_vector_demo.log
+├── server_kitty_video_demo.log
+├── server.log
+├── server_xterm_counter.log
+├── server_xterm_hello.log
+├── server_xterm_image_demo.log
+├── server_xterm_showcase.log
 ├── setup_demo.sh
 ├── Specyfikacja Terminal+ Amendment.md
 ├── task.md
-└── Terminalowy HTML_CSS_ Nowy Mainframe.md
+├── Terminalowy HTML_CSS_ Nowy Mainframe.md
+└── test_screenshots
+    ├── kitty_counter.png
+    ├── kitty_hello.png
+    ├── kitty_image_demo.png
+    ├── kitty_showcase.png
+    ├── kitty_todo.png
+    ├── kitty_vector_demo_frame_1.png
+    ├── kitty_vector_demo_frame_2.png
+    ├── kitty_vector_demo_frame_3.png
+    ├── kitty_vector_demo_frame_4.png
+    ├── kitty_vector_demo_frame_5.png
+    ├── kitty_video_demo_frame_1.png
+    ├── kitty_video_demo_frame_2.png
+    ├── kitty_video_demo_frame_3.png
+    ├── kitty_video_demo_frame_4.png
+    └── kitty_video_demo_frame_5.png
 
-17 directories, 67 files
+24 directories, 114 files
 
 === RUST SOURCE FILES (.rs) ===
 --------------------------------------------------------------------------------
@@ -127,12 +181,18 @@ enum Commands {
         /// Disable authentication (for development)
         #[arg(long)]
         no_auth: bool,
+        /// Web port to listen on
+        #[arg(long, default_value_t = 8080)]
+        web_port: u16,
     },
     /// Run the built-in weather dashboard demo
     Demo {
         /// Port to listen on
         #[arg(short, long, default_value_t = 2222)]
         port: u16,
+        /// Web port to listen on
+        #[arg(long, default_value_t = 8080)]
+        web_port: u16,
     },
     /// Validate a .thtml file for syntax errors
     Check {
@@ -152,14 +212,15 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { file, port, host, no_auth } => {
-            info!("Serving {} on {}:{}", file, host, port);
+        Commands::Serve { file, port, host, no_auth, web_port } => {
+            info!("Serving {} on {}:{} (web on port {})", file, host, port, web_port);
             
             let doc = oxiterm_server::loader::load_thtml_file(&file)?;
             
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.host = host;
             config.server.port = port;
+            config.server.web_port = web_port;
             if no_auth {
                 config.server.no_auth = true;
             }
@@ -189,17 +250,28 @@ async fn main() -> Result<()> {
                 let _ = debouncer;
             });
 
+            // Start Web/WebSocket server
+            let web_host = config.server.host.clone();
+            let web_registry = registry.clone();
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, Some(doc.clone()), Some(file_path_clone.clone()));
+
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, Some(doc), Some(file_path_clone)).await?;
         }
-        Commands::Demo { port } => {
-            info!("Starting built-in weather demo on port {}", port);
+        Commands::Demo { port, web_port } => {
+            info!("Starting built-in weather demo on port {} (web on port {})", port, web_port);
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.port = port;
+            config.server.web_port = web_port;
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
+            // Start Web/WebSocket server
+            let web_host = config.server.host.clone();
+            let web_registry = registry.clone();
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
+
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, None, None).await?;
         }
         Commands::Check { file } => {
@@ -231,6 +303,7 @@ pub enum NodeTag {
     Input,
     Button,
     Img,
+    Video,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -279,7 +352,10 @@ pub enum State {
     Idle,
     Escaped,
     Csi,
+    Apc,
+    ApcEscaped,
 }
+
 
 #[derive(Debug)]
 pub struct OverflowError;
@@ -432,6 +508,9 @@ impl InputStateMachine {
                 if byte == b'[' {
                     self.state = State::Csi;
                     None
+                } else if byte == b'_' {
+                    self.state = State::Apc;
+                    None
                 } else {
                     let data = self.buffer.as_slice().to_vec();
                     self.reset();
@@ -479,6 +558,38 @@ impl InputStateMachine {
                     None
                 }
             }
+            State::Apc => {
+                if self.buffer.push(byte).is_err() {
+                    self.reset();
+                    return None;
+                }
+                if byte == 0x1b {
+                    self.state = State::ApcEscaped;
+                }
+                None
+            }
+            State::ApcEscaped => {
+                if self.buffer.push(byte).is_err() {
+                    self.reset();
+                    return None;
+                }
+                if byte == b'\\' {
+                    let data = self.buffer.as_slice().to_vec();
+                    self.reset();
+                    if data.starts_with(&[0x1b, b'_', b'G']) {
+                        Some(InputEvent::CapabilityResponse(data))
+                    } else {
+                        Some(InputEvent::Unknown(data))
+                    }
+                } else if byte == 0x1b {
+                    // Stay in ApcEscaped
+                    None
+                } else {
+                    self.state = State::Apc;
+                    None
+                }
+            }
+
         }
     }
 
@@ -708,7 +819,7 @@ pub mod style;
 pub mod input;
 
 pub use dom::{Node, NodeId, NodeTag, NodeAttributes};
-pub use style::{AnsiColor, ComputedStyle, BorderStyle, BorderChars};
+pub use style::{AnsiColor, ComputedStyle, BorderStyle, BorderChars, ColorDepth, TerminalProfile};
 pub use input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseInput, MouseButton, MouseAction};
 
 --- END OF FILE: ./oxiterm-proto/src/lib.rs ---
@@ -836,6 +947,45 @@ impl Default for BorderChars {
         Self::single()
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ColorDepth {
+    #[default]
+    TrueColor,
+    Color256,
+    Color16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TerminalProfile {
+    pub supports_kitty_kbd: bool,
+    pub supports_kitty_gfx: bool,
+    pub supports_sixel: bool,
+    pub supports_sgr_mouse: bool,
+    pub color_depth: ColorDepth,
+}
+
+impl TerminalProfile {
+    pub fn parse_da1_response(&mut self, response: &[u8]) {
+        let s = String::from_utf8_lossy(response);
+        tracing::debug!("Parsing DA1 response: {}", s);
+        if s.starts_with("\x1b_G") {
+            if s.contains("OK") {
+                self.supports_kitty_gfx = true;
+            }
+        } else {
+            if s.contains("?64") || s.contains("?62") || s.contains("?63") || s.contains("?65") {
+                self.supports_sgr_mouse = true;
+                self.color_depth = ColorDepth::TrueColor;
+            }
+            if s.contains(";4;") || s.contains(";4c") {
+                self.supports_sixel = true;
+            }
+        }
+    }
+}
+
+
 
 --- END OF FILE: ./oxiterm-proto/src/style.rs ---
 
@@ -1515,6 +1665,7 @@ pub use arena::NodeArena;
 pub use document::THTMLDocument;
 pub use render::buffer::{CellBuffer, DoubleBuffer};
 pub use render::diff::{DiffEngine, AnsiCommand};
+pub use render::emitter::FrameSink;
 pub use layout::types::{HitTester, LayoutResult, Rect};
 pub use layout::engine::LayoutEngine;
 
@@ -1929,7 +2080,9 @@ impl THTMLParser {
         let (input, tag_name) = context("Tag name", parse_tag_name)(input)?;
         let (input, attrs) = context("Attributes", parse_attributes)(input)?;
         
+        let (input, _) = multispace0(input)?;
         let (input, self_closing) = opt(nom_char('/'))(input)?;
+        let (input, _) = multispace0(input)?;
         let (input, _) = context("Closing bracket", nom_char('>'))(input)?;
         
         if self_closing.is_some() {
@@ -2006,6 +2159,7 @@ fn tag_name_to_str(tag: NodeTag) -> &'static str {
         NodeTag::Input => "input",
         NodeTag::Button => "button",
         NodeTag::Img => "img",
+        NodeTag::Video => "video",
     }
 }
 
@@ -2017,6 +2171,7 @@ fn parse_tag_name(input: &str) -> ParseResult<'_, NodeTag> {
         map(tag("input"), |_| NodeTag::Input),
         map(tag("button"), |_| NodeTag::Button),
         map(tag("img"), |_| NodeTag::Img),
+        map(tag("video"), |_| NodeTag::Video),
     ))(input)
 }
 
@@ -2079,6 +2234,34 @@ mod tests {
         let text_id = box_node.children[0];
         let text_node = doc.get_node(text_id).unwrap();
         assert_eq!(text_node.text, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_parse_image() {
+        let input = r#"<img src="logo.png" style="width: 32; height: 16;" />"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.children.len(), 1);
+        let img_id = root.children[0];
+        let img_node = doc.get_node(img_id).unwrap();
+        assert_eq!(img_node.tag, NodeTag::Img);
+        assert_eq!(img_node.attrs.src, Some("logo.png".to_string()));
+        assert_eq!(img_node.style.width, Some(32));
+        assert_eq!(img_node.style.height, Some(16));
+    }
+
+    #[test]
+    fn test_parse_video() {
+        let input = r#"<video src="clip.mp4" style="width: 40; height: 20;" />"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        assert_eq!(root.children.len(), 1);
+        let vid_id = root.children[0];
+        let vid_node = doc.get_node(vid_id).unwrap();
+        assert_eq!(vid_node.tag, NodeTag::Video);
+        assert_eq!(vid_node.attrs.src, Some("clip.mp4".to_string()));
+        assert_eq!(vid_node.style.width, Some(40));
+        assert_eq!(vid_node.style.height, Some(20));
     }
 
     #[test]
@@ -2164,6 +2347,7 @@ pub struct Cell {
     pub bold: bool,
     pub underline: bool,
     pub italic: bool,
+    pub skip: bool,
 }
 
 impl Default for Cell {
@@ -2175,6 +2359,7 @@ impl Default for Cell {
             bold: false,
             underline: false,
             italic: false,
+            skip: false,
         }
     }
 }
@@ -2183,6 +2368,7 @@ pub struct CellBuffer {
     pub cells: Vec<Cell>,
     pub width: u16,
     pub height: u16,
+    pub graphics: Vec<Vec<u8>>,
 }
 
 impl CellBuffer {
@@ -2192,6 +2378,7 @@ impl CellBuffer {
             cells: vec![Cell::default(); size],
             width,
             height,
+            graphics: Vec::new(),
         }
     }
 
@@ -2211,8 +2398,10 @@ impl CellBuffer {
 
     pub fn clear(&mut self) {
         self.cells.fill(Cell::default());
+        self.graphics.clear();
     }
 }
+
 
 pub struct DoubleBuffer {
     pub front: CellBuffer,
@@ -2255,6 +2444,310 @@ mod tests {
 
 --- END OF FILE: ./oxiterm-renderer/src/render/buffer.rs ---
 
+--- FILE: ./oxiterm-renderer/src/render/cache.rs ---
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::process::{Command, Stdio, Child};
+use std::io::Read;
+use std::thread;
+use std::time::Instant;
+
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+pub struct CacheKey {
+    pub path: PathBuf,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub frame_idx: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub enum GraphicFormat {
+    Sixel(Vec<u8>),
+    Kitty(Vec<u8>),
+}
+
+#[derive(Clone, Debug)]
+pub struct CacheValue {
+    pub format: GraphicFormat,
+}
+
+pub struct SafeAnimation {
+    pub anim: rlottie::Animation,
+}
+unsafe impl Send for SafeAnimation {}
+unsafe impl Sync for SafeAnimation {}
+
+pub struct PlaybackState {
+    pub start_time: std::time::Instant,
+    pub hover: bool,
+    pub click_active: bool,
+    pub click_coord: Option<(u16, u16)>,
+    pub toggled: bool,
+    pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
+}
+
+pub struct PlaybackRegistry {
+    states: Mutex<HashMap<PathBuf, PlaybackState>>,
+}
+
+impl PlaybackRegistry {
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<PlaybackRegistry> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
+            states: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn get_or_create(&self, path: &Path) -> PlaybackState {
+        let mut lock = self.states.lock().unwrap();
+        if let Some(state) = lock.get(path) {
+            return PlaybackState {
+                start_time: state.start_time,
+                hover: state.hover,
+                click_active: state.click_active,
+                click_coord: state.click_coord,
+                toggled: state.toggled,
+                lottie_animation: state.lottie_animation.clone(),
+            };
+        }
+        let state = PlaybackState {
+            start_time: std::time::Instant::now(),
+            hover: false,
+            click_active: false,
+            click_coord: None,
+            toggled: false,
+            lottie_animation: None,
+        };
+        lock.insert(path.to_path_buf(), PlaybackState {
+            start_time: state.start_time,
+            hover: state.hover,
+            click_active: state.click_active,
+            click_coord: state.click_coord,
+            toggled: state.toggled,
+            lottie_animation: None,
+        });
+        state
+    }
+
+    pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
+        let mut lock = self.states.lock().unwrap();
+        let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
+            start_time: std::time::Instant::now(),
+            hover: false,
+            click_active: false,
+            click_coord: None,
+            toggled: false,
+            lottie_animation: None,
+        });
+        if state.lottie_animation.is_none() {
+            if let Some(anim) = rlottie::Animation::from_file(path) {
+                state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+            } else if let Ok(data_str) = std::fs::read_to_string(path) {
+                if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
+                    state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+                }
+            }
+        }
+        state.lottie_animation.clone()
+    }
+
+    pub fn set_hover(&self, path: &Path, hover: bool) {
+        let mut lock = self.states.lock().unwrap();
+        if let Some(state) = lock.get_mut(path) {
+            state.hover = hover;
+        }
+    }
+
+    pub fn set_click(&self, path: &Path, active: bool, coord: Option<(u16, u16)>) {
+        let mut lock = self.states.lock().unwrap();
+        if let Some(state) = lock.get_mut(path) {
+            state.click_active = active;
+            state.click_coord = coord;
+            if active {
+                state.toggled = !state.toggled;
+            }
+        }
+    }
+}
+
+pub struct AssetCache {
+    cache: Mutex<HashMap<CacheKey, CacheValue>>,
+}
+
+impl AssetCache {
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<AssetCache> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
+            cache: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn lookup(&self, key: &CacheKey) -> Option<CacheValue> {
+        let lock = self.cache.lock().unwrap();
+        lock.get(key).cloned()
+    }
+
+    pub fn insert(&self, key: CacheKey, value: CacheValue) {
+        let mut lock = self.cache.lock().unwrap();
+        lock.insert(key, value);
+    }
+}
+
+pub struct SvgCache {
+    trees: Mutex<HashMap<PathBuf, Arc<resvg::usvg::Tree>>>,
+}
+
+impl SvgCache {
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<SvgCache> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
+            trees: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn get_or_load(&self, path: &Path) -> anyhow::Result<Arc<resvg::usvg::Tree>> {
+        let mut lock = self.trees.lock().unwrap();
+        if let Some(tree) = lock.get(path) {
+            return Ok(Arc::clone(tree));
+        }
+
+        let content = std::fs::read(path)?;
+        
+        let mut fontdb = resvg::usvg::fontdb::Database::new();
+        fontdb.load_system_fonts();
+        
+        let opt = resvg::usvg::Options {
+            fontdb: Arc::new(fontdb),
+            ..Default::default()
+        };
+        
+        let tree = resvg::usvg::Tree::from_data(&content, &opt)
+            .map_err(|e| anyhow::anyhow!("SVG parse error: {:?}", e))?;
+        
+        let arc_tree = Arc::new(tree);
+        lock.insert(path.to_path_buf(), Arc::clone(&arc_tree));
+        Ok(arc_tree)
+    }
+}
+
+pub struct VideoPlayer {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub frame_buffer: Arc<Mutex<Option<Vec<u8>>>>,
+    pub child: Child,
+    pub last_accessed: Instant,
+}
+
+impl Drop for VideoPlayer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+
+pub struct VideoPlayerRegistry {
+    players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
+}
+
+impl VideoPlayerRegistry {
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<VideoPlayerRegistry> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
+            players: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Vec<u8>> {
+        let mut players = self.players.lock().unwrap();
+        let now = Instant::now();
+
+        // 1. Clean up stale players (inactivity > 5 seconds)
+        players.retain(|_, player| {
+            if now.duration_since(player.last_accessed) > std::time::Duration::from_secs(5) {
+                false
+            } else {
+                true
+            }
+        });
+
+        // 2. Lookup or create player
+        let key = (path.to_path_buf(), width, height, fps);
+        if !players.contains_key(&key) {
+            if let Some(player) = Self::spawn_player(path, width, height, fps) {
+                players.insert(key.clone(), player);
+            } else {
+                return None;
+            }
+        }
+
+        if let Some(player) = players.get_mut(&key) {
+            player.last_accessed = now;
+            player.frame_buffer.lock().unwrap().clone()
+        } else {
+            None
+        }
+    }
+
+    fn spawn_player(path: &Path, width: u32, height: u32, fps: u32) -> Option<VideoPlayer> {
+        let child = Command::new("ffmpeg")
+            .args(&[
+                "-stream_loop", "-1", // loop input infinitely
+                "-i", &path.to_string_lossy(),
+                "-r", &fps.to_string(), // output frame rate
+                "-vf", &format!("scale={}:{}", width, height),
+                "-f", "image2pipe",
+                "-pix_fmt", "rgba",
+                "-vcodec", "rawvideo",
+                "-"
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+
+        match child {
+            Ok(mut child) => {
+                let mut stdout = child.stdout.take().unwrap();
+                let frame_buffer = Arc::new(Mutex::new(None));
+                let frame_buffer_clone = Arc::clone(&frame_buffer);
+                let frame_size = (width * height * 4) as usize;
+
+                thread::spawn(move || {
+                    let mut buf = vec![0u8; frame_size];
+                    loop {
+                        if stdout.read_exact(&mut buf).is_err() {
+                            break;
+                        }
+                        *frame_buffer_clone.lock().unwrap() = Some(buf.clone());
+                    }
+                });
+
+                Some(VideoPlayer {
+                    width,
+                    height,
+                    fps,
+                    frame_buffer,
+                    child,
+                    last_accessed: Instant::now(),
+                })
+            }
+            Err(e) => {
+                tracing::warn!("Failed to spawn ffmpeg for video {:?}: {:?}", path, e);
+                None
+            }
+        }
+    }
+
+    pub fn cleanup(&self) {
+        let mut players = self.players.lock().unwrap();
+        players.clear();
+    }
+}
+
+--- END OF FILE: ./oxiterm-renderer/src/render/cache.rs ---
+
 --- FILE: ./oxiterm-renderer/src/render/diff.rs ---
 use crate::render::buffer::CellBuffer;
 use oxiterm_proto::style::AnsiColor;
@@ -2287,11 +2780,18 @@ impl DiffEngine {
             while x < next.width {
                 let idx = y as usize * next.width as usize + x as usize;
                 let next_cell = &next.cells[idx];
-                let prev_cell = prev.cells.get(idx);
                 
                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(next_cell.ch) as u16;
                 let char_w = if char_w == 0 { 1 } else { char_w };
 
+                if next_cell.skip {
+                    cur_x = None;
+                    cur_y = None;
+                    x += char_w;
+                    continue;
+                }
+
+                let prev_cell = prev.cells.get(idx);
                 if Some(next_cell) != prev_cell {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
@@ -2387,6 +2887,156 @@ impl DiffEngine {
             AnsiColor::Reset => if is_fg { "\x1b[39m".to_string() } else { "\x1b[49m".to_string() },
         }
     }
+
+    pub fn encode_binary(commands: &[AnsiCommand]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        for cmd in commands {
+            match cmd {
+                AnsiCommand::MoveCursor(x, y) => {
+                    buf.push(0x01);
+                    buf.extend_from_slice(&x.to_le_bytes());
+                    buf.extend_from_slice(&y.to_le_bytes());
+                }
+                AnsiCommand::SetColor { fg, bg } => {
+                    buf.push(0x02);
+                    // Encode fg
+                    match fg {
+                        AnsiColor::Reset => {
+                            buf.push(0);
+                        }
+                        AnsiColor::TrueColor(r, g, b) => {
+                            buf.push(1);
+                            buf.push(*r);
+                            buf.push(*g);
+                            buf.push(*b);
+                        }
+                        AnsiColor::Color256(idx) => {
+                            buf.push(2);
+                            buf.push(*idx);
+                        }
+                    }
+                    // Encode bg
+                    match bg {
+                        AnsiColor::Reset => {
+                            buf.push(0);
+                        }
+                        AnsiColor::TrueColor(r, g, b) => {
+                            buf.push(1);
+                            buf.push(*r);
+                            buf.push(*g);
+                            buf.push(*b);
+                        }
+                        AnsiColor::Color256(idx) => {
+                            buf.push(2);
+                            buf.push(*idx);
+                        }
+                    }
+                }
+                AnsiCommand::WriteChar(ch) => {
+                    buf.push(0x03);
+                    buf.extend_from_slice(&(*ch as u32).to_le_bytes());
+                }
+                AnsiCommand::SetModifiers { bold, underline, italic } => {
+                    buf.push(0x04);
+                    let mut flags = 0u8;
+                    if *bold { flags |= 1; }
+                    if *underline { flags |= 2; }
+                    if *italic { flags |= 4; }
+                    buf.push(flags);
+                }
+                AnsiCommand::Reset => {
+                    buf.push(0x05);
+                }
+            }
+        }
+        buf
+    }
+
+    pub fn decode_binary(bytes: &[u8]) -> Result<Vec<AnsiCommand>, &'static str> {
+        let mut commands = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            let tag = bytes[i];
+            i += 1;
+            match tag {
+                0x01 => {
+                    if i + 4 > bytes.len() { return Err("Truncated MoveCursor"); }
+                    let x = u16::from_le_bytes([bytes[i], bytes[i+1]]);
+                    let y = u16::from_le_bytes([bytes[i+2], bytes[i+3]]);
+                    i += 4;
+                    commands.push(AnsiCommand::MoveCursor(x, y));
+                }
+                0x02 => {
+                    if i >= bytes.len() { return Err("Truncated SetColor fg type"); }
+                    let fg_type = bytes[i];
+                    i += 1;
+                    let fg = match fg_type {
+                        0 => AnsiColor::Reset,
+                        1 => {
+                            if i + 3 > bytes.len() { return Err("Truncated TrueColor fg"); }
+                            let r = bytes[i];
+                            let g = bytes[i+1];
+                            let b = bytes[i+2];
+                            i += 3;
+                            AnsiColor::TrueColor(r, g, b)
+                        }
+                        2 => {
+                            if i >= bytes.len() { return Err("Truncated Color256 fg"); }
+                            let idx = bytes[i];
+                            i += 1;
+                            AnsiColor::Color256(idx)
+                        }
+                        _ => return Err("Invalid fg type"),
+                    };
+
+                    if i >= bytes.len() { return Err("Truncated SetColor bg type"); }
+                    let bg_type = bytes[i];
+                    i += 1;
+                    let bg = match bg_type {
+                        0 => AnsiColor::Reset,
+                        1 => {
+                            if i + 3 > bytes.len() { return Err("Truncated TrueColor bg"); }
+                            let r = bytes[i];
+                            let g = bytes[i+1];
+                            let b = bytes[i+2];
+                            i += 3;
+                            AnsiColor::TrueColor(r, g, b)
+                        }
+                        2 => {
+                            if i >= bytes.len() { return Err("Truncated Color256 bg"); }
+                            let idx = bytes[i];
+                            i += 1;
+                            AnsiColor::Color256(idx)
+                        }
+                        _ => return Err("Invalid bg type"),
+                    };
+
+                    commands.push(AnsiCommand::SetColor { fg, bg });
+                }
+                0x03 => {
+                    if i + 4 > bytes.len() { return Err("Truncated WriteChar"); }
+                    let val = u32::from_le_bytes([bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]]);
+                    i += 4;
+                    let ch = char::from_u32(val).ok_or("Invalid char value")?;
+                    commands.push(AnsiCommand::WriteChar(ch));
+                }
+                0x04 => {
+                    if i >= bytes.len() { return Err("Truncated SetModifiers"); }
+                    let flags = bytes[i];
+                    i += 1;
+                    let bold = (flags & 1) != 0;
+                    let underline = (flags & 2) != 0;
+                    let italic = (flags & 4) != 0;
+                    commands.push(AnsiCommand::SetModifiers { bold, underline, italic });
+                }
+                0x05 => {
+                    commands.push(AnsiCommand::Reset);
+                }
+                _ => return Err("Invalid tag"),
+            }
+        }
+        Ok(commands)
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -2442,41 +3092,48 @@ mod tests {
         assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));
         assert!(matches!(cmds[2], AnsiCommand::WriteChar('A')));
     }
+
+    #[test]
+    fn test_binary_serialization() {
+        let original = vec![
+            AnsiCommand::MoveCursor(10, 20),
+            AnsiCommand::SetColor {
+                fg: AnsiColor::TrueColor(1, 2, 3),
+                bg: AnsiColor::Color256(42),
+            },
+            AnsiCommand::WriteChar('X'),
+            AnsiCommand::SetModifiers {
+                bold: true,
+                underline: false,
+                italic: true,
+            },
+            AnsiCommand::Reset,
+        ];
+
+        let encoded = DiffEngine::encode_binary(&original);
+        let decoded = DiffEngine::decode_binary(&encoded).expect("Decoding failed");
+        assert_eq!(original, decoded);
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/render/diff.rs ---
 
 --- FILE: ./oxiterm-renderer/src/render/emitter.rs ---
-use std::io::Write;
 use anyhow::Result;
-use crate::render::diff::DiffEngine;
 use crate::render::buffer::CellBuffer;
 
-/// S5-13: `SyncedEmitter`
-/// A wrapper for `DiffEngine` that ensures BSU/ESU (Begin/End Synchronized Update)
-/// are sent around every frame to prevent tearing.
-pub struct SyncedEmitter;
+pub trait FrameSink: Send {
+    /// Compares front and back buffers, sends any frame update to the sink,
+    /// and returns Ok(true) if a frame was actually transmitted (i.e. diff was non-empty).
+    fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> Result<bool>;
 
-impl SyncedEmitter {
-    pub fn emit_frame(writer: &mut impl Write, prev: &CellBuffer, next: &CellBuffer) -> Result<()> {
-        let commands = DiffEngine::diff(prev, next);
-        if commands.is_empty() {
-            return Ok(());
-        }
+    /// Perform any initial environment configuration/setup for the sink.
+    fn setup(&mut self) -> Result<()> { Ok(()) }
 
-        // BSU: CSI ? 2026 h
-        writer.write_all(b"\x1b[?2026h")?;
-        
-        let bytes = DiffEngine::encode_ansi(&commands);
-        writer.write_all(&bytes)?;
-        
-        // ESU: CSI ? 2026 l
-        writer.write_all(b"\x1b[?2026l")?;
-        
-        writer.flush()?;
-        Ok(())
-    }
+    /// Clears the physical display area.
+    fn clear_screen(&mut self) -> Result<()> { Ok(()) }
 }
+
 
 --- END OF FILE: ./oxiterm-renderer/src/render/emitter.rs ---
 
@@ -2486,8 +3143,56 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 pub struct KittyImageManager;
 
 impl KittyImageManager {
-    /// OxiTerm S6-04: Transmit 32-bit RGBA image via Kitty Graphics Protocol with Base64 Chunking
-    pub fn transmit_image(width: u32, height: u32, rgba_data: &[u8]) -> Vec<u8> {
+    /// OxiTerm S6-04: Transmit PNG compressed image via Kitty Graphics Protocol with Base64 Chunking and Cell Sizing
+    pub fn transmit_image(
+        pixel_w: u32,
+        pixel_h: u32,
+        cols: u32,
+        rows: u32,
+        rgba_data: &[u8],
+    ) -> Vec<u8> {
+        // Compress RGBA to PNG
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        use image::ImageEncoder;
+        if encoder.write_image(
+            rgba_data,
+            pixel_w,
+            pixel_h,
+            image::ExtendedColorType::Rgba8,
+        ).is_ok() {
+            let b64 = STANDARD.encode(&png_bytes);
+            let chunks = b64.as_bytes().chunks(4096);
+            let count = chunks.len();
+
+            let mut output = Vec::new();
+            for (i, chunk) in chunks.enumerate() {
+                let m = if i == count - 1 { 0 } else { 1 };
+                if i == 0 {
+                    // a=T -> Transmit and display, f=100 -> PNG, c=cols, r=rows, m=more
+                    let header = format!("\x1b_Ga=T,f=100,c={},r={},m={};", cols, rows, m);
+                    output.extend_from_slice(header.as_bytes());
+                } else {
+                    let header = format!("\x1b_Gm={};", m);
+                    output.extend_from_slice(header.as_bytes());
+                }
+                output.extend_from_slice(chunk);
+                output.extend_from_slice(b"\x1b\\");
+            }
+            return output;
+        }
+
+        // Fallback to uncompressed transmission if PNG encoding fails
+        Self::transmit_image_rgba(pixel_w, pixel_h, cols, rows, rgba_data)
+    }
+
+    fn transmit_image_rgba(
+        pixel_w: u32,
+        pixel_h: u32,
+        cols: u32,
+        rows: u32,
+        rgba_data: &[u8],
+    ) -> Vec<u8> {
         let b64 = STANDARD.encode(rgba_data);
         let chunks = b64.as_bytes().chunks(4096);
         let count = chunks.len();
@@ -2496,8 +3201,7 @@ impl KittyImageManager {
         for (i, chunk) in chunks.enumerate() {
             let m = if i == count - 1 { 0 } else { 1 };
             if i == 0 {
-                // f=32 -> 32-bit RGBA, s=width, v=height, m=more
-                let header = format!("\x1b_Gf=32,s={},v={},m={};", width, height, m);
+                let header = format!("\x1b_Ga=T,f=32,s={},v={},c={},r={},m={};", pixel_w, pixel_h, cols, rows, m);
                 output.extend_from_slice(header.as_bytes());
             } else {
                 let header = format!("\x1b_Gm={};", m);
@@ -2520,6 +3224,8 @@ pub mod emitter;
 pub mod renderer;
 pub mod kitty;
 pub mod sixel;
+pub mod cache;
+
 
 --- END OF FILE: ./oxiterm-renderer/src/render/mod.rs ---
 
@@ -2528,11 +3234,19 @@ use crate::document::THTMLDocument;
 use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
 use oxiterm_proto::dom::{NodeTag, NodeId};
+use oxiterm_proto::style::TerminalProfile;
+use std::path::Path;
 
 pub struct Renderer;
 
 impl Renderer {
-    pub fn render_node(doc: &THTMLDocument, layout: &LayoutResult, buffer: &mut CellBuffer) {
+    pub fn render_node(
+        doc: &THTMLDocument,
+        layout: &LayoutResult,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
         // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
         for y in 0..buffer.height {
             for x in 0..buffer.width {
@@ -2557,6 +3271,8 @@ impl Renderer {
             offset_y,
             oxiterm_proto::style::AnsiColor::Color256(15),
             oxiterm_proto::style::AnsiColor::Color256(0),
+            profile,
+            base_dir,
         );
     }
 
@@ -2569,6 +3285,8 @@ impl Renderer {
         parent_y: u16,
         inherited_fg: oxiterm_proto::style::AnsiColor,
         inherited_bg: oxiterm_proto::style::AnsiColor,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
@@ -2727,6 +3445,30 @@ impl Renderer {
                         });
                     }
                 }
+                NodeTag::Img => {
+                    Self::render_img(
+                        node,
+                        content_x,
+                        content_y,
+                        content_w,
+                        content_h,
+                        buffer,
+                        profile,
+                        base_dir,
+                    );
+                }
+                NodeTag::Video => {
+                    Self::render_vid(
+                        node,
+                        content_x,
+                        content_y,
+                        content_w,
+                        content_h,
+                        buffer,
+                        profile,
+                        base_dir,
+                    );
+                }
                 _ => {}
             }
 
@@ -2740,8 +3482,542 @@ impl Renderer {
                     parent_y,
                     resolved_fg,
                     resolved_bg,
+                    profile,
+                    base_dir,
                 );
             }
+        }
+    }
+
+    fn unicode_block_fallback(
+        img: &image::RgbaImage,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buf: &mut CellBuffer,
+    ) {
+        let target_w = width as u32;
+        let target_h = (height as u32) * 2;
+        if target_w == 0 || target_h == 0 {
+            return;
+        }
+        let resized = image::imageops::resize(
+            img,
+            target_w,
+            target_h,
+            image::imageops::FilterType::Nearest,
+        );
+
+        for y in 0..height {
+            for x in 0..width {
+                let top_px = resized.get_pixel(x as u32, 2 * y as u32);
+                let bot_px = resized.get_pixel(x as u32, 2 * y as u32 + 1);
+
+                let top_color = if top_px[3] >= 128 {
+                    oxiterm_proto::style::AnsiColor::TrueColor(top_px[0], top_px[1], top_px[2])
+                } else {
+                    oxiterm_proto::style::AnsiColor::Reset
+                };
+
+                let bot_color = if bot_px[3] >= 128 {
+                    oxiterm_proto::style::AnsiColor::TrueColor(bot_px[0], bot_px[1], bot_px[2])
+                } else {
+                    oxiterm_proto::style::AnsiColor::Reset
+                };
+
+                let (ch, fg, bg) = match (top_color, bot_color) {
+                    (oxiterm_proto::style::AnsiColor::Reset, oxiterm_proto::style::AnsiColor::Reset) => {
+                        (' ', oxiterm_proto::style::AnsiColor::Reset, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (top, oxiterm_proto::style::AnsiColor::Reset) => {
+                        ('▀', top, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (oxiterm_proto::style::AnsiColor::Reset, bot) => {
+                        ('▄', bot, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (top, bot) => {
+                        if top == bot {
+                            ('█', top, oxiterm_proto::style::AnsiColor::Reset)
+                        } else {
+                            ('▀', top, bot)
+                        }
+                    }
+                };
+
+                buf.set(abs_x + x, abs_y + y, Cell {
+                    ch,
+                    fg,
+                    bg,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
+        let mut rgba_data = pixmap.data().to_vec();
+        for pixel in rgba_data.chunks_exact_mut(4) {
+            let alpha = pixel[3];
+            if alpha > 0 && alpha < 255 {
+                let a_factor = 255.0 / alpha as f32;
+                pixel[0] = (pixel[0] as f32 * a_factor).min(255.0) as u8;
+                pixel[1] = (pixel[1] as f32 * a_factor).min(255.0) as u8;
+                pixel[2] = (pixel[2] as f32 * a_factor).min(255.0) as u8;
+            }
+        }
+        image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixmap.width(), pixmap.height(), rgba_data).unwrap()
+    }
+
+    fn render_img(
+        node: &oxiterm_proto::dom::Node,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
+        if let Some(ref src) = node.attrs.src {
+            let resolved_path = if let Some(base) = base_dir {
+                base.join(src)
+            } else {
+                std::path::PathBuf::from(src)
+            };
+            
+            let pixel_w = width as u32 * 10;
+            let pixel_h = height as u32 * 20;
+            if pixel_w == 0 || pixel_h == 0 {
+                return;
+            }
+
+            let is_svg = resolved_path.extension()
+                .map(|ext| ext.to_string_lossy().to_lowercase() == "svg")
+                .unwrap_or(false);
+            let is_lottie = resolved_path.extension()
+                .map(|ext| ext.to_string_lossy().to_lowercase() == "json")
+                .unwrap_or(false);
+            let is_rive = resolved_path.extension()
+                .map(|ext| ext.to_string_lossy().to_lowercase() == "riv")
+                .unwrap_or(false);
+
+            // Fetch playback state if animation
+            let mut frame_idx = None;
+            if is_lottie {
+                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                    let lock = safe_anim.lock().unwrap();
+                    let total_frames = lock.anim.totalframe();
+                    let fps = lock.anim.framerate();
+                    if total_frames > 0 {
+                        let fps = if fps > 0.0 { fps } else { 30.0 };
+                        let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
+                        frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                    } else {
+                        frame_idx = Some(0);
+                    }
+                } else {
+                    frame_idx = Some(0);
+                }
+            } else if is_rive {
+                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                let mut bits = 0;
+                if playback.hover { bits |= 1; }
+                if playback.click_active { bits |= 2; }
+                if playback.toggled { bits |= 4; }
+                frame_idx = Some(bits);
+            }
+
+            // 1. Look up in AssetCache
+            use crate::render::cache::{AssetCache, CacheKey, CacheValue, GraphicFormat};
+            let cache_key = CacheKey {
+                path: resolved_path.clone(),
+                width_px: pixel_w,
+                height_px: pixel_h,
+                frame_idx,
+            };
+
+            let cached = AssetCache::get().lookup(&cache_key);
+
+            let render_bytes = if let Some(cv) = cached {
+                match cv.format {
+                    GraphicFormat::Sixel(bytes) => {
+                        if profile.supports_sixel {
+                            Some(bytes)
+                        } else {
+                            None
+                        }
+                    }
+                    GraphicFormat::Kitty(bytes) => {
+                        if profile.supports_kitty_gfx {
+                            Some(bytes)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some(bytes) = render_bytes {
+                // Cache hit! Put sequence on screen
+                let mut cmd = Vec::new();
+                cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                cmd.extend_from_slice(&bytes);
+                buffer.graphics.push(cmd);
+                
+                for dy in 0..height {
+                    for dx in 0..width {
+                        if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                            buffer.cells[idx].skip = true;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 2. Cache miss. Render from scratch
+            let img_result = if is_svg {
+                // SVG rendering via resvg + tiny-skia
+                (|| -> anyhow::Result<image::RgbaImage> {
+                    use crate::render::cache::SvgCache;
+                    let tree = SvgCache::get().get_or_load(&resolved_path)?;
+                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                    
+                    let size = tree.size();
+                    let scale_x = pixel_w as f32 / size.width();
+                    let scale_y = pixel_h as f32 / size.height();
+                    let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
+                    
+                    resvg::render(&tree, transform, &mut pixmap.as_mut());
+                    Ok(Self::pixmap_to_rgba_image(pixmap))
+                })()
+            } else if is_lottie {
+                // Native Lottie Rendering using rlottie
+                (|| -> anyhow::Result<image::RgbaImage> {
+                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                        let mut lock = safe_anim.lock().unwrap();
+                        let size = rlottie::Size {
+                            width: pixel_w as usize,
+                            height: pixel_h as usize,
+                        };
+                        let mut surface = rlottie::Surface::new(size);
+                        
+                        let total_frames = lock.anim.totalframe();
+                        let frame = frame_idx.unwrap_or(0);
+                        let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                        
+                        lock.anim.render(frame_to_render, &mut surface);
+                        
+                        let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
+                        for pixel in surface.data() {
+                            rgba_data.push(pixel.r);
+                            rgba_data.push(pixel.g);
+                            rgba_data.push(pixel.b);
+                            rgba_data.push(pixel.a);
+                        }
+                        
+                        image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
+                    } else {
+                        Err(anyhow::anyhow!("Lottie animation not loaded"))
+                    }
+                })()
+            } else if is_rive {
+                // Procedural Rive Toggle Button widget
+                (|| -> anyhow::Result<image::RgbaImage> {
+                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                    
+                    let bits = frame_idx.unwrap_or(0);
+                    let hover = (bits & 1) != 0;
+                    let click_active = (bits & 2) != 0;
+                    let toggled = (bits & 4) != 0;
+                    
+                    let pad = 6.0;
+                    let rect_w = pixel_w as f32 - pad * 2.0;
+                    let rect_h = pixel_h as f32 - pad * 2.0;
+                    
+                    let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
+                        .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
+                    let mut pb = resvg::tiny_skia::PathBuilder::new();
+                    pb.push_rect(rect);
+                    let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
+                    
+                    // Track background
+                    let mut bg_paint = resvg::tiny_skia::Paint::default();
+                    bg_paint.anti_alias = true;
+                    
+                    let bg_color = if toggled {
+                        resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
+                    } else if hover {
+                        resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
+                    } else {
+                        resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
+                    };
+                    bg_paint.set_color(bg_color);
+                    
+                    pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
+                    
+                    // Outline border
+                    let mut border_paint = resvg::tiny_skia::Paint::default();
+                    border_paint.anti_alias = true;
+                    
+                    let border_color = if click_active {
+                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                    } else if hover {
+                        resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
+                    } else {
+                        resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
+                    };
+                    border_paint.set_color(border_color);
+                    
+                    let mut stroke = resvg::tiny_skia::Stroke::default();
+                    stroke.width = 3.0;
+                    
+                    pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
+
+                    // Sliding knob
+                    let mut knob_paint = resvg::tiny_skia::Paint::default();
+                    knob_paint.anti_alias = true;
+                    
+                    let knob_color = if click_active {
+                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                    } else {
+                        resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
+                    };
+                    knob_paint.set_color(knob_color);
+                    
+                    let knob_radius = rect_h / 2.0 - 4.0;
+                    let knob_x = if toggled {
+                        pixel_w as f32 - pad - knob_radius - 4.0
+                    } else {
+                        pad + knob_radius + 4.0
+                    };
+                    let knob_y = pixel_h as f32 / 2.0;
+                    
+                    let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
+                    knob_builder.push_circle(knob_x, knob_y, knob_radius);
+                    if let Some(knob_path) = knob_builder.finish() {
+                        pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
+                    }
+                    
+                    Ok(Self::pixmap_to_rgba_image(pixmap))
+                })()
+            } else {
+                // Standard image rendering
+                image::ImageReader::open(&resolved_path)
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .and_then(|r| r.with_guessed_format().map_err(|e| anyhow::anyhow!("{}", e)))
+                    .and_then(|r| r.decode().map_err(|e| anyhow::anyhow!("{}", e)))
+                    .map(|img| {
+                        let rgba = img.to_rgba8();
+                        image::imageops::resize(&rgba, pixel_w, pixel_h, image::imageops::FilterType::Triangle)
+                    })
+            };
+
+            match img_result {
+                Ok(img) => {
+                    if profile.supports_kitty_gfx {
+                        let payload = super::kitty::KittyImageManager::transmit_image(
+                            pixel_w,
+                            pixel_h,
+                            width as u32,
+                            height as u32,
+                            &img,
+                        );
+                        
+                        // Insert into cache
+                        AssetCache::get().insert(
+                            cache_key,
+                            CacheValue {
+                                format: GraphicFormat::Kitty(payload.clone()),
+                            },
+                        );
+
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else if profile.supports_sixel {
+                        let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
+                        
+                        // Insert into cache
+                        AssetCache::get().insert(
+                            cache_key,
+                            CacheValue {
+                                format: GraphicFormat::Sixel(sixel_payload.clone()),
+                            },
+                        );
+
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&sixel_payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else {
+                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to render image from {:?}: {}", resolved_path, e);
+                    for dy in 0..height {
+                        for dx in 0..width {
+                            let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
+                                '*'
+                            } else {
+                                ' '
+                            };
+                            buffer.set(abs_x + dx, abs_y + dy, Cell {
+                                ch,
+                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
+                    let len = name.chars().count() as u16;
+                    if width > len + 2 && height > 2 {
+                        let start_x = abs_x + (width - len) / 2;
+                        let start_y = abs_y + height / 2;
+                        for (i, c) in name.chars().enumerate() {
+                            buffer.set(start_x + i as u16, start_y, Cell {
+                                ch: c,
+                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_vid(
+        node: &oxiterm_proto::dom::Node,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
+        let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
+            for dy in 0..height {
+                for dx in 0..width {
+                    let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
+                        '*'
+                    } else {
+                        ' '
+                    };
+                    buffer.set(abs_x + dx, abs_y + dy, Cell {
+                        ch,
+                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                        ..Default::default()
+                    });
+                }
+            }
+            let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
+            let display_name = format!("[Video: {}]", name);
+            let len = display_name.chars().count() as u16;
+            if width > len + 2 && height > 2 {
+                let start_x = abs_x + (width - len) / 2;
+                let start_y = abs_y + height / 2;
+                for (i, c) in display_name.chars().enumerate() {
+                    buffer.set(start_x + i as u16, start_y, Cell {
+                        ch: c,
+                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                        ..Default::default()
+                    });
+                }
+            }
+        };
+
+        if let Some(ref src) = node.attrs.src {
+            let resolved_path = if let Some(base) = base_dir {
+                base.join(src)
+            } else {
+                std::path::PathBuf::from(src)
+            };
+
+            let pixel_w = width as u32 * 10;
+            let pixel_h = height as u32 * 20;
+            if pixel_w == 0 || pixel_h == 0 {
+                return;
+            }
+
+            let fps = if profile.supports_kitty_gfx {
+                30
+            } else if profile.supports_sixel {
+                10
+            } else {
+                2
+            };
+
+            let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
+
+            if let Some(raw_rgba) = frame {
+                if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, raw_rgba) {
+                    if profile.supports_kitty_gfx {
+                        let payload = super::kitty::KittyImageManager::transmit_image(
+                            pixel_w,
+                            pixel_h,
+                            width as u32,
+                            height as u32,
+                            &img,
+                        );
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else if profile.supports_sixel {
+                        let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&sixel_payload);
+                        buffer.graphics.push(cmd);
+                        
+                        for dy in 0..height {
+                            for dx in 0..width {
+                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                    buffer.cells[idx].skip = true;
+                                }
+                            }
+                        }
+                    } else {
+                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                    }
+                    return;
+                }
+            }
+            draw_fallback(&resolved_path, buffer);
         }
     }
 }
@@ -2781,7 +4057,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 3).unwrap();
 
         let mut buffer = CellBuffer::new(5, 3);
-        Renderer::render_node(&doc, &layout, &mut buffer);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
 
         // Check top-left corner border character '┌'
         let tl_idx = buffer.flat_idx(0, 0).unwrap();
@@ -2814,7 +4090,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 1).unwrap();
 
         let mut buffer = CellBuffer::new(5, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
 
         // Check index 0: contains '🚀'
         assert_eq!(buffer.cells[0].ch, '🚀');
@@ -2828,31 +4104,372 @@ mod tests {
         assert_eq!(buffer.cells[2].ch, 'A');
         assert_eq!(buffer.cells[2].bg, AnsiColor::TrueColor(5, 5, 5));
     }
+
+    #[test]
+    fn test_image_fallback_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut img_node = Node::new(NodeTag::Img);
+        img_node.attrs.src = Some("nonexistent_test_image.png".to_string());
+        img_node.style.width = Some(6);
+        img_node.style.height = Some(4);
+        
+        let node_id = doc.arena.alloc(img_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 6, 4).unwrap();
+
+        let mut buffer = CellBuffer::new(6, 4);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+
+        // Since the file is non-existent, it should render the fallback border of '*'
+        assert_eq!(buffer.cells[0].ch, '*');
+        assert_eq!(buffer.cells[5].ch, '*');
+    }
+
+    #[test]
+    fn test_video_fallback_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut vid_node = Node::new(NodeTag::Video);
+        vid_node.attrs.src = Some("nonexistent_video.mp4".to_string());
+        vid_node.style.width = Some(15);
+        vid_node.style.height = Some(5);
+        
+        let node_id = doc.arena.alloc(vid_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 15, 5).unwrap();
+
+        let mut buffer = CellBuffer::new(15, 5);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+
+        // Falling back should draw border of '*'
+        assert_eq!(buffer.cells[0].ch, '*');
+        assert_eq!(buffer.cells[14].ch, '*');
+    }
 }
+
 
 --- END OF FILE: ./oxiterm-renderer/src/render/renderer.rs ---
 
 --- FILE: ./oxiterm-renderer/src/render/sixel.rs ---
+use std::collections::HashMap;
+use image::RgbaImage;
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
 pub struct SixelCodec;
 
 impl SixelCodec {
-    /// OxiTerm S6-10: Kodek Sixel z RLE (Run-Length Encoding) jako fallback dla starszych terminali
-    pub fn encode_image(width: u32, height: u32, _rgba_data: &[u8]) -> Vec<u8> {
+    /// OxiTerm S6-10: Convert image to Sixel stream with quantization
+    pub fn encode_sixel(img: &RgbaImage, palette_size: u16) -> Vec<u8> {
+        let width = img.width();
+        let height = img.height();
+        
+        // 1. Color Quantization: count colors and select the top palette_size colors
+        let mut color_counts: HashMap<Rgb, usize> = HashMap::new();
+        for pixel in img.pixels() {
+            if pixel[3] >= 128 {
+                let rgb = Rgb {
+                    r: pixel[0],
+                    g: pixel[1],
+                    b: pixel[2],
+                };
+                *color_counts.entry(rgb).or_insert(0) += 1;
+            }
+        }
+        
+        let mut colors: Vec<(Rgb, usize)> = color_counts.into_iter().collect();
+        colors.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        let mut palette: Vec<Rgb> = colors
+            .into_iter()
+            .take(palette_size as usize)
+            .map(|x| x.0)
+            .collect();
+            
+        if palette.is_empty() {
+            palette.push(Rgb { r: 0, g: 0, b: 0 });
+        }
+        
+        // Helper to find index of closest palette color
+        let get_color_index = |r: u8, g: u8, b: u8, a: u8| -> Option<usize> {
+            if a < 128 {
+                return None;
+            }
+            let mut best_idx = 0;
+            let mut min_dist = u32::MAX;
+            for (i, pal_rgb) in palette.iter().enumerate() {
+                let dr = r as i32 - pal_rgb.r as i32;
+                let dg = g as i32 - pal_rgb.g as i32;
+                let db = b as i32 - pal_rgb.b as i32;
+                let dist = (dr * dr + dg * dg + db * db) as u32;
+                if dist == 0 {
+                    return Some(i);
+                }
+                if dist < min_dist {
+                    min_dist = dist;
+                    best_idx = i;
+                }
+            }
+            Some(best_idx)
+        };
+        
+        // 2. Format Sixel stream
         let mut output = Vec::new();
+        
         // DCS P q " 1 ; 1 ; width ; height
         let header = format!("\x1bPq\"1;1;{};{}", width, height);
         output.extend_from_slice(header.as_bytes());
         
-        // Prost(y) kwantyzator w RLE dla celów prototypu
-        // Rzeczywista implementacja wymagałaby konwersji RGBA->HLS i generowania pasków (sixel bands)
-        output.extend_from_slice(b"#0;2;0;0;0"); // Register color 0 as black
-        output.extend_from_slice(b"!100~"); // RLE: repeat character '~' (6 full pixels) 100 times
+        // Define color palette in percentages (0..100)
+        for (i, color) in palette.iter().enumerate() {
+            let r_pct = (color.r as u32 * 100) / 255;
+            let g_pct = (color.g as u32 * 100) / 255;
+            let b_pct = (color.b as u32 * 100) / 255;
+            let color_def = format!("#{};2;{};{};{}", i, r_pct, g_pct, b_pct);
+            output.extend_from_slice(color_def.as_bytes());
+        }
         
-        // ESU / ST terminator
+        // Encode image in Sixel bands (6 pixels high)
+        let num_bands = (height + 5) / 6;
+        for band_idx in 0..num_bands {
+            let y_start = band_idx * 6;
+            
+            // Loop through each color in the palette to output its sixels for this band
+            let mut band_has_colors = false;
+            for color_idx in 0..palette.len() {
+                let mut char_row = Vec::with_capacity(width as usize);
+                let mut color_present_in_band = false;
+                
+                for x in 0..width {
+                    let mut sixel_val = 0u8;
+                    for bit_idx in 0..6 {
+                        let y = y_start + bit_idx;
+                        if y < height {
+                            let pixel = img.get_pixel(x, y);
+                            if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                                if idx == color_idx {
+                                    sixel_val |= 1 << bit_idx;
+                                    color_present_in_band = true;
+                                }
+                            }
+                        }
+                    }
+                    char_row.push(63 + sixel_val);
+                }
+                
+                // Only write the color stream if it actually has set bits in this band
+                if color_present_in_band {
+                    band_has_colors = true;
+                    // Select color index
+                    output.extend_from_slice(format!("#{}", color_idx).as_bytes());
+                    // Compress and write character row
+                    let compressed = Self::sixel_rle_compress(&char_row);
+                    output.extend_from_slice(&compressed);
+                    // Carriage return to beginning of line
+                    output.push(b'$');
+                }
+            }
+            
+            // Move to next band
+            if band_has_colors {
+                // Replace the last carriage return with newline command
+                if output.last() == Some(&b'$') {
+                    output.pop();
+                }
+            }
+            output.push(b'-');
+        }
+        
+        // End of sequence (ST)
         output.extend_from_slice(b"\x1b\\");
         output
     }
+
+    pub fn encode_sixel_static(img: &RgbaImage) -> Vec<u8> {
+        let width = img.width();
+        let height = img.height();
+
+        let get_color_index = |r: u8, g: u8, b: u8, a: u8| -> Option<usize> {
+            if a < 128 {
+                return None;
+            }
+            // Check if gray
+            let dr_g = (r as i32 - g as i32).abs();
+            let dg_b = (g as i32 - b as i32).abs();
+            let dr_b = (r as i32 - b as i32).abs();
+            if dr_g < 8 && dg_b < 8 && dr_b < 8 {
+                let gray_val = (r as u32 + g as u32 + b as u32) / 3;
+                let g_idx = (gray_val * 23 / 255) as usize;
+                return Some(216 + g_idx);
+            }
+            
+            let cr = ((r as u32 * 5) + 127) / 255;
+            let cg = ((g as u32 * 5) + 127) / 255;
+            let cb = ((b as u32 * 5) + 127) / 255;
+            Some((cr * 36 + cg * 6 + cb) as usize)
+        };
+
+        let mut output = Vec::new();
+        let header = format!("\x1bPq\"1;1;{};{}", width, height);
+        output.extend_from_slice(header.as_bytes());
+
+        // Define 6x6x6 color cube
+        for r in 0..6 {
+            for g in 0..6 {
+                for b in 0..6 {
+                    let idx = r * 36 + g * 6 + b;
+                    let r_pct = r * 20;
+                    let g_pct = g * 20;
+                    let b_pct = b * 20;
+                    let color_def = format!("#{};2;{};{};{}", idx, r_pct, g_pct, b_pct);
+                    output.extend_from_slice(color_def.as_bytes());
+                }
+            }
+        }
+
+        // Define grays
+        for g_idx in 0..24 {
+            let idx = 216 + g_idx;
+            let pct = g_idx * 100 / 23;
+            let color_def = format!("#{};2;{};{};{}", idx, pct, pct, pct);
+            output.extend_from_slice(color_def.as_bytes());
+        }
+
+        // Encode image in Sixel bands (6 pixels high)
+        let num_bands = (height + 5) / 6;
+        for band_idx in 0..num_bands {
+            let y_start = band_idx * 6;
+            let mut band_has_colors = false;
+            
+            // Scan used colors in the band to avoid checking all 240 colors
+            let mut used_colors = std::collections::HashSet::new();
+            for x in 0..width {
+                for bit_idx in 0..6 {
+                    let y = y_start + bit_idx;
+                    if y < height {
+                        let pixel = img.get_pixel(x, y);
+                        if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                            used_colors.insert(idx);
+                        }
+                    }
+                }
+            }
+            
+            for &color_idx in &used_colors {
+                let mut char_row = Vec::with_capacity(width as usize);
+                let mut color_present_in_band = false;
+                
+                for x in 0..width {
+                    let mut sixel_val = 0u8;
+                    for bit_idx in 0..6 {
+                        let y = y_start + bit_idx;
+                        if y < height {
+                            let pixel = img.get_pixel(x, y);
+                            if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                                if idx == color_idx {
+                                    sixel_val |= 1 << bit_idx;
+                                    color_present_in_band = true;
+                                }
+                            }
+                        }
+                    }
+                    char_row.push(63 + sixel_val);
+                }
+                
+                if color_present_in_band {
+                    band_has_colors = true;
+                    output.extend_from_slice(format!("#{}", color_idx).as_bytes());
+                    let compressed = Self::sixel_rle_compress(&char_row);
+                    output.extend_from_slice(&compressed);
+                    output.push(b'$');
+                }
+            }
+            
+            if band_has_colors {
+                if output.last() == Some(&b'$') {
+                    output.pop();
+                }
+            }
+            output.push(b'-');
+        }
+        
+        output.extend_from_slice(b"\x1b\\");
+        output
+    }
+
+    /// OxiTerm S6-11: Sixel Run-Length Encoding compression
+    pub fn sixel_rle_compress(data: &[u8]) -> Vec<u8> {
+        let mut compressed = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let ch = data[i];
+            let mut count = 1;
+            while i + count < data.len() && data[i + count] == ch {
+                count += 1;
+            }
+            if count >= 3 {
+                compressed.extend_from_slice(format!("!{}", count).as_bytes());
+                compressed.push(ch);
+            } else {
+                for _ in 0..count {
+                    compressed.push(ch);
+                }
+            }
+            i += count;
+        }
+        compressed
+    }
+
+    /// Old entrypoint wrapper for backwards compatibility
+    pub fn encode_image(width: u32, height: u32, rgba_data: &[u8]) -> Vec<u8> {
+        if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, rgba_data.to_vec()) {
+            Self::encode_sixel(&img, 256)
+        } else {
+            Vec::new()
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sixel_rle_compress() {
+        let input = b"AAAAABBBCC";
+        let compressed = SixelCodec::sixel_rle_compress(input);
+        // "AAAAA" -> "!5A", "BBB" -> "!3B", "CC" -> "CC"
+        assert_eq!(compressed, b"!5A!3BCC");
+    }
+
+    #[test]
+    fn test_encode_sixel_basic() {
+        // Create a 2x2 red image
+        let mut img = RgbaImage::new(2, 2);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgba([255, 0, 0, 255]);
+        }
+        let encoded = SixelCodec::encode_sixel(&img, 256);
+        
+        let s = String::from_utf8_lossy(&encoded);
+        // Check Sixel header and ST terminator
+        assert!(s.starts_with("\x1bPq\"1;1;2;2"));
+        assert!(s.ends_with("\x1b\\"));
+        // Check that red is defined (#0;2;100;0;0)
+        assert!(s.contains("#0;2;100;0;0"));
+    }
+}
+
 
 --- END OF FILE: ./oxiterm-renderer/src/render/sixel.rs ---
 
@@ -2920,6 +4537,28 @@ mod tests {
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/render/unicode.rs ---
+
+--- FILE: ./oxiterm-renderer/tests/test_rlottie.rs ---
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_rlottie_api() {
+        let anim_opt = rlottie::Animation::from_data(String::new(), String::new(), String::new());
+        if let Some(mut anim) = anim_opt {
+            let size = anim.size();
+            let mut surface = rlottie::Surface::new(size);
+            anim.render(0, &mut surface);
+            for pixel in surface.data() {
+                let _r = pixel.r;
+                let _g = pixel.g;
+                let _b = pixel.b;
+                let _a = pixel.a;
+            }
+        }
+    }
+}
+
+--- END OF FILE: ./oxiterm-renderer/tests/test_rlottie.rs ---
 
 --- FILE: ./oxiterm-server/src/backpressure.rs ---
 use std::collections::VecDeque;
@@ -3124,6 +4763,7 @@ pub struct ServerConfig {
     pub host_key_path: PathBuf,
     pub password: Option<String>,
     pub no_auth: bool,
+    pub web_port: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -3147,6 +4787,7 @@ impl Default for OxiTermConfig {
                 host_key_path: PathBuf::from("host_key"),
                 password: None,
                 no_auth: false,
+                web_port: 8080,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -3184,6 +4825,9 @@ impl OxiTermConfig {
         }
         if let Ok(no_auth) = std::env::var("OXITERM_NO_AUTH") {
             config.server.no_auth = no_auth == "true" || no_auth == "1";
+        }
+        if let Ok(web_port) = std::env::var("OXITERM_WEB_PORT") {
+            config.server.web_port = web_port.parse()?;
         }
         config.validate()?;
         Ok(config)
@@ -3290,6 +4934,7 @@ pub mod loader;
 pub mod weather;
 pub mod weather_app;
 pub mod state;
+pub mod web;
 
 pub use config::OxiTermConfig;
 pub use metrics::SessionMetrics;
@@ -3384,6 +5029,12 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
+
+    // Start Web/WebSocket server
+    let web_host = config.server.host.clone();
+    let web_port = config.server.web_port;
+    let web_registry = registry.clone();
+    oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
 
     // Start SSH server
     let ssh_config = config.clone();
@@ -3584,7 +5235,6 @@ pub use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_renderer::layout::engine::LayoutEngine;
 use oxiterm_renderer::render::buffer::DoubleBuffer;
 use oxiterm_renderer::render::renderer::Renderer;
-use oxiterm_renderer::render::emitter::SyncedEmitter;
 
 pub type SessionId = usize;
 
@@ -3738,8 +5388,14 @@ impl SessionRegistry {
     }
 
     pub fn remove_session(&self, id: SessionId) {
+        let count_before = self.sessions.read().len();
         if let Some(session) = self.sessions.write().remove(&id) {
             session.close();
+        }
+        let count_after = self.sessions.read().len();
+        if count_after == 0 && count_before > 0 {
+            info!("No active sessions remaining. Cleaning up video players.");
+            oxiterm_renderer::render::cache::VideoPlayerRegistry::get().cleanup();
         }
     }
 
@@ -3768,27 +5424,58 @@ impl SessionRegistry {
     }
 }
 
-pub struct EventLoop {
-    pub session: Arc<ClientSession>,
-    pub event_bus: Arc<crate::events::EventBus>,
-    pub doc: THTMLDocument,
-    pub layout_engine: LayoutEngine,
-    pub buffer: DoubleBuffer,
-    pub output_paused: bool,
-    pub output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
-    pub frame_limiter: crate::ratelimit::FrameRateLimiter,
-    pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
-    pub source_path: Option<std::path::PathBuf>,
-    pub weather_app: Option<crate::weather_app::WeatherApp>,
-    pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
-    pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
-}
-
-struct TerminalCleanupGuard {
+pub struct AnsiFrameSink {
     output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
 }
 
-impl Drop for TerminalCleanupGuard {
+impl AnsiFrameSink {
+    pub fn new(output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>) -> Self {
+        Self { output_tx }
+    }
+}
+
+impl oxiterm_renderer::FrameSink for AnsiFrameSink {
+    fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
+        let commands = oxiterm_renderer::DiffEngine::diff(front, back);
+        if commands.is_empty() && back.graphics.is_empty() {
+            return Ok(false);
+        }
+
+        let mut out = Vec::new();
+        // BSU: CSI ? 2026 h
+        out.extend_from_slice(b"\x1b[?2026h");
+        
+        let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+        out.extend_from_slice(&bytes);
+        
+        for g in &back.graphics {
+            out.extend_from_slice(g);
+        }
+        
+        // ESU: CSI ? 2026 l
+        out.extend_from_slice(b"\x1b[?2026l");
+        
+        let _ = self.output_tx.try_send(out);
+        Ok(true)
+    }
+
+    fn setup(&mut self) -> anyhow::Result<()> {
+        let mut initial_clear = Vec::new();
+        // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
+        initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
+        let _ = self.output_tx.try_send(initial_clear);
+        Ok(())
+    }
+
+    fn clear_screen(&mut self) -> anyhow::Result<()> {
+        let mut clear_seq = Vec::new();
+        clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
+        let _ = self.output_tx.try_send(clear_seq);
+        Ok(())
+    }
+}
+
+impl Drop for AnsiFrameSink {
     fn drop(&mut self) {
         let mut cleanup = Vec::new();
         cleanup.extend_from_slice(b"\x1b[?2026l"); // ESU
@@ -3802,6 +5489,23 @@ impl Drop for TerminalCleanupGuard {
     }
 }
 
+pub struct EventLoop {
+    pub session: Arc<ClientSession>,
+    pub event_bus: Arc<crate::events::EventBus>,
+    pub doc: THTMLDocument,
+    pub layout_engine: LayoutEngine,
+    pub buffer: DoubleBuffer,
+    pub output_paused: bool,
+    pub output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
+    pub frame_sink: Box<dyn oxiterm_renderer::FrameSink>,
+    pub frame_limiter: crate::ratelimit::FrameRateLimiter,
+    pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
+    pub source_path: Option<std::path::PathBuf>,
+    pub weather_app: Option<crate::weather_app::WeatherApp>,
+    pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
+    pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
+}
+
 impl EventLoop {
     pub fn new(
         session: Arc<ClientSession>, 
@@ -3810,6 +5514,7 @@ impl EventLoop {
         doc: THTMLDocument,
     ) -> Self {
         let dims = *session.dims.read();
+        let frame_sink = Box::new(AnsiFrameSink::new(output_tx.clone()));
         
         Self { 
             session, 
@@ -3819,6 +5524,7 @@ impl EventLoop {
             buffer: DoubleBuffer::new(dims.cols, dims.rows),
             output_paused: false,
             output_tx,
+            frame_sink,
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
             pending_mouse: None,
             source_path: None,
@@ -3897,9 +5603,6 @@ impl EventLoop {
     }
 
     pub fn run(&mut self) {
-        // BUG-C03 Fix: Use a RAII guard to ensure cleanup is ALWAYS sent
-        let _cleanup_guard = TerminalCleanupGuard { output_tx: self.output_tx.clone() };
-
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -3907,10 +5610,7 @@ impl EventLoop {
         }
 
         // Initial clear screen and scrollback
-        let mut initial_clear = Vec::new();
-        // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
-        initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
-        let _ = self.output_tx.try_send(initial_clear);
+        let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
         loop {
@@ -3947,11 +5647,18 @@ impl EventLoop {
                 }
             }
 
+            let has_animations = self.has_active_animations();
+            let sleep_dur = if has_animations {
+                std::time::Duration::from_millis(66)
+            } else {
+                std::time::Duration::from_millis(5)
+            };
+
             let mut disconnected = false;
             {
                 let mut rx_lock = self.session.event_rx.lock();
                 loop {
-                    match rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
+                    match rx_lock.recv_timeout(sleep_dur) {
                         Ok(event) => {
                             *self.session.last_activity.write() = std::time::Instant::now();
                             match event {
@@ -4030,6 +5737,10 @@ impl EventLoop {
                                     } else {
                                         warn!("No last layout found!");
                                     }
+                                    
+                                    // Handle hover and click coordinates mapping for Rive animations
+                                    self.update_interactive_animations(&mouse);
+
                                     self.pending_mouse = Some(mouse.clone());
                                     
                                     // SC-05: Handle HTMX navigation
@@ -4104,6 +5815,9 @@ impl EventLoop {
                             }
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            if has_animations {
+                                needs_render = true;
+                            }
                             break;
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
@@ -4131,9 +5845,7 @@ impl EventLoop {
                 }
 
                 // Clear physical screen and cursor to home to match clean front buffer
-                let mut clear_seq = Vec::new();
-                clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
-                let _ = self.output_tx.try_send(clear_seq);
+                let _ = self.frame_sink.clear_screen();
 
                 needs_render = true;
             }
@@ -4149,7 +5861,9 @@ impl EventLoop {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
                     }
 
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back);
+                    let profile = self.session.terminal_profile.read().clone();
+                    let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
+                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
                     
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();
@@ -4176,12 +5890,62 @@ impl EventLoop {
                         }
                     }
                     
-                    let mut out = Vec::new();
-                    if SyncedEmitter::emit_frame(&mut out, &self.buffer.front, &self.buffer.back).is_ok() {
-                        if !out.is_empty() {
-                            let _ = self.output_tx.try_send(out);
-                            self.buffer.swap();
-                            self.frame_limiter.record_frame();
+                    if let Ok(true) = self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back) {
+                        self.buffer.swap();
+                        self.frame_limiter.record_frame();
+                    }
+                }
+            }
+        }
+    }
+
+    fn has_active_animations(&self) -> bool {
+        if let Some(ref layout) = self.layout_engine.last_layout {
+            for node_id in layout.nodes.keys() {
+                if let Some(node) = self.doc.get_node(*node_id) {
+                    if node.tag == oxiterm_proto::dom::NodeTag::Img {
+                        if let Some(ref src) = node.attrs.src {
+                            if src.ends_with(".json") || src.ends_with(".riv") {
+                                return true;
+                            }
+                        }
+                    } else if node.tag == oxiterm_proto::dom::NodeTag::Video {
+                        if node.attrs.src.is_some() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn update_interactive_animations(&self, mouse: &oxiterm_proto::input::MouseInput) {
+        if let Some(ref layout) = self.layout_engine.last_layout {
+            for (node_id, rect) in &layout.nodes {
+                if let Some(node) = self.doc.get_node(*node_id) {
+                    if node.tag == oxiterm_proto::dom::NodeTag::Img {
+                        if let Some(ref src) = node.attrs.src {
+                            if src.ends_with(".riv") {
+                                let is_inside = mouse.col >= rect.x
+                                    && mouse.col < rect.x + rect.width
+                                    && mouse.row >= rect.y
+                                    && mouse.row < rect.y + rect.height;
+                                
+                                let resolved_path = if let Some(ref base) = self.source_path.as_ref().and_then(|p| p.parent()) {
+                                    base.join(src)
+                                } else {
+                                    std::path::PathBuf::from(src)
+                                };
+                                
+                                let registry = oxiterm_renderer::render::cache::PlaybackRegistry::get();
+                                registry.set_hover(&resolved_path, is_inside);
+                                if is_inside && mouse.action == oxiterm_proto::input::MouseAction::Press {
+                                    registry.set_click(&resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
+                                } else if mouse.action == oxiterm_proto::input::MouseAction::Release {
+                                    registry.set_click(&resolved_path, false, None);
+                                }
+                            }
                         }
                     }
                 }
@@ -4189,6 +5953,7 @@ impl EventLoop {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -4411,42 +6176,12 @@ pub async fn run_server(
 --- END OF FILE: ./oxiterm-server/src/ssh/mod.rs ---
 
 --- FILE: ./oxiterm-server/src/ssh/negotiator.rs ---
-// Removed unused std::io::Write
 use anyhow::Result;
 use tracing::debug;
 use russh::server::Session;
 use russh::ChannelId;
 
-#[derive(Debug, Clone, Default)]
-pub struct TerminalProfile {
-    pub supports_kitty_kbd: bool,
-    pub supports_kitty_gfx: bool,
-    pub supports_sgr_mouse: bool,
-    pub color_depth: ColorDepth,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColorDepth {
-    #[default]
-    TrueColor,
-    Color256,
-    Color16,
-}
-
-impl TerminalProfile {
-    pub fn parse_da1_response(&mut self, response: &[u8]) {
-        let s = String::from_utf8_lossy(response);
-        debug!("Parsing DA1 response: {}", s);
-        if s.contains("?64") || s.contains("?62") {
-            // Level 4 or Level 2 terminal
-            self.supports_sgr_mouse = true;
-            self.color_depth = ColorDepth::TrueColor;
-        }
-        if s.contains(";4;") || s.contains(";4c") {
-            self.supports_kitty_gfx = true; // Sixel/Graphics support
-        }
-    }
-}
+pub use oxiterm_proto::style::{TerminalProfile, ColorDepth};
 
 pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Sending DA1 query to channel {:?}", channel);
@@ -4454,9 +6189,27 @@ pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
     Ok(())
 }
 
+/// S6-01: Send test APC sequence to probe Kitty Graphics support
+pub fn probe_kitty_graphics(channel: ChannelId, session: &mut Session) -> Result<()> {
+    debug!("Sending Kitty Graphics probe to channel {:?}", channel);
+    // Send a query check command: query support for graphics using a 1x1 dummy pixel
+    session.data(channel, b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\".to_vec().into());
+    Ok(())
+}
+
+/// S6-02: Recognize OK response from emulator for Kitty Graphics
+pub fn parse_kitty_ack(buf: &[u8]) -> bool {
+    let s = String::from_utf8_lossy(buf);
+    s.starts_with("\x1b_G") && s.contains("OK")
+}
+
+/// S6-03: Check if terminal profile supports Sixel
+pub fn probe_sixel_support(profile: &TerminalProfile) -> bool {
+    profile.supports_sixel
+}
+
 pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling Kitty Keyboard Protocol on channel {:?}", channel);
-    // CSI = 1 u: Enable all features
     session.data(channel, b"\x1b[=1u".to_vec().into());
     Ok(())
 }
@@ -4464,7 +6217,7 @@ pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Resul
 pub fn enable_sgr_mouse(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling SGR Mouse Protocol on channel {:?}", channel);
     session.data(channel, b"\x1b[?1006h".to_vec().into());
-    session.data(channel, b"\x1b[?1000h".to_vec().into()); // Standard mouse tracking
+    session.data(channel, b"\x1b[?1000h".to_vec().into());
     Ok(())
 }
 
@@ -4478,7 +6231,6 @@ pub fn send_esu(channel: ChannelId, session: &mut Session) -> Result<()> {
     Ok(())
 }
 
-/// S5-26: Send Unicode version OSC (for VTM compliance).
 pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, version: u8) -> Result<()> {
     let osc = format!("\x1b]52;u;{version}\x1b\\");
     session.data(channel, osc.into_bytes().into());
@@ -4487,11 +6239,59 @@ pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, versi
 
 pub fn negotiate_capabilities(channel: ChannelId, session: &mut Session) -> Result<()> {
     send_da1_query(channel, session)?;
-    // We don't wait here because this is async and event-driven.
-    // The response will be caught by the EventLoop.
-    // We can also pro-actively enable common features.
+    probe_kitty_graphics(channel, session)?;
     enable_sgr_mouse(channel, session)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_xterm_da1() {
+        let mut profile = TerminalProfile::default();
+        // Typical XTerm response
+        profile.parse_da1_response(b"\x1b[?64;1;2;6;9;15;22c");
+        assert!(profile.supports_sgr_mouse);
+        assert_eq!(profile.color_depth, ColorDepth::TrueColor);
+        assert!(!profile.supports_sixel);
+        assert!(!profile.supports_kitty_gfx);
+    }
+
+    #[test]
+    fn test_iterm2_da1() {
+        let mut profile = TerminalProfile::default();
+        // iTerm2 responds with Sixel support (contains ";4;")
+        profile.parse_da1_response(b"\x1b[?63;1;2;4;10;15;22c");
+        assert!(profile.supports_sgr_mouse);
+        assert!(profile.supports_sixel);
+        assert!(!profile.supports_kitty_gfx);
+    }
+
+    #[test]
+    fn test_wezterm_da1() {
+        let mut profile = TerminalProfile::default();
+        // WezTerm typical DA1
+        profile.parse_da1_response(b"\x1b[?65;1;9c");
+        assert!(profile.supports_sgr_mouse);
+        assert!(!profile.supports_sixel);
+    }
+
+    #[test]
+    fn test_dec_vt340_da1() {
+        let mut profile = TerminalProfile::default();
+        profile.parse_da1_response(b"\x1b[?63;1;2;4c");
+        assert!(profile.supports_sixel);
+    }
+
+    #[test]
+    fn test_kitty_graphics_apc_ack() {
+        let mut profile = TerminalProfile::default();
+        profile.parse_da1_response(b"\x1b_Gi=31;OK\x1b\\");
+        assert!(profile.supports_kitty_gfx);
+        assert!(parse_kitty_ack(b"\x1b_Gi=31;OK\x1b\\"));
+    }
 }
 
 --- END OF FILE: ./oxiterm-server/src/ssh/negotiator.rs ---
@@ -5351,6 +7151,524 @@ pub fn weather_description(code: u8) -> &'static str {
 
 --- END OF FILE: ./oxiterm-server/src/weather.rs ---
 
+--- FILE: ./oxiterm-server/src/web.rs ---
+#[cfg(feature = "web")]
+pub mod web_impl {
+    use std::sync::Arc;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::tungstenite::Message;
+    use futures::{StreamExt, SinkExt};
+    use tracing::{info, warn, error};
+    use crate::session::{SessionRegistry, PtyDimensions, EventLoop};
+    use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction};
+    use oxiterm_renderer::FrameSink;
+    use oxiterm_renderer::CellBuffer;
+    use oxiterm_renderer::DiffEngine;
+
+    // Load assets at compile time.
+    const HTML_ASSET: &[u8] = include_bytes!("../assets/index.html");
+    const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
+    const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
+
+    pub struct WsFrameSink {
+        frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    }
+
+    impl WsFrameSink {
+        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>) -> Self {
+            Self { frame_tx }
+        }
+    }
+
+    impl FrameSink for WsFrameSink {
+        fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            let commands = DiffEngine::diff(front, back);
+            if commands.is_empty() {
+                return Ok(false);
+            }
+            let bytes = DiffEngine::encode_binary(&commands);
+            let _ = self.frame_tx.try_send(bytes);
+            Ok(true)
+        }
+    }
+
+    pub fn start_web_server(
+        host: String,
+        port: u16,
+        registry: Arc<SessionRegistry>,
+        initial_doc: Option<oxiterm_renderer::THTMLDocument>,
+        source_path: Option<std::path::PathBuf>,
+    ) {
+        tokio::spawn(async move {
+            let addr = format!("{}:{}", host, port);
+            let listener = match TcpListener::bind(&addr).await {
+                Ok(l) => {
+                    info!("Web/WS server listening on http://{}", addr);
+                    l
+                }
+                Err(e) => {
+                    error!("Failed to bind web server to {}: {:?}", addr, e);
+                    return;
+                }
+            };
+
+            loop {
+                let (stream, _) = match listener.accept().await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        warn!("Web accept error: {:?}", e);
+                        continue;
+                    }
+                };
+
+                let registry = registry.clone();
+                let initial_doc = initial_doc.clone();
+                let source_path = source_path.clone();
+
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection(stream, registry, initial_doc, source_path).await {
+                        warn!("Web connection handling error: {:?}", e);
+                    }
+                });
+            }
+        });
+    }
+
+    async fn handle_connection(
+        stream: tokio::net::TcpStream,
+        registry: Arc<SessionRegistry>,
+        initial_doc: Option<oxiterm_renderer::THTMLDocument>,
+        source_path: Option<std::path::PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut buf = [0u8; 1024];
+        let n = stream.peek(&mut buf).await?;
+        let header = String::from_utf8_lossy(&buf[..n]);
+
+        if header.contains("Upgrade: websocket") || header.contains("upgrade: websocket") {
+            let ws_stream = accept_async(stream).await?;
+            handle_websocket(ws_stream, registry, initial_doc, source_path).await?;
+        } else {
+            let mut stream = stream;
+            let mut read_buf = [0u8; 1024];
+            let _ = stream.readable().await;
+            let read_bytes = match stream.try_read(&mut read_buf) {
+                Ok(0) => return Ok(()),
+                Ok(n) => n,
+                Err(_) => return Ok(()),
+            };
+            let request = String::from_utf8_lossy(&read_buf[..read_bytes]);
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+
+            let (status, mime, body) = match path {
+                "/" | "/index.html" => {
+                    ("200 OK", "text/html", HTML_ASSET)
+                }
+                "/oxiterm_web.js" => {
+                    ("200 OK", "application/javascript", JS_ASSET)
+                }
+                "/oxiterm_web_bg.wasm" => {
+                    ("200 OK", "application/wasm", WASM_ASSET)
+                }
+                _ => {
+                    ("404 NOT FOUND", "text/plain", b"Not Found" as &[u8])
+                }
+            };
+
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                status, mime, body.len()
+            );
+            stream.write_all(response.as_bytes()).await?;
+            stream.write_all(body).await?;
+            stream.flush().await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_websocket(
+        ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+        registry: Arc<SessionRegistry>,
+        initial_doc: Option<oxiterm_renderer::THTMLDocument>,
+        source_path: Option<std::path::PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let client_session = match registry.create_session() {
+            Some(s) => s,
+            None => {
+                warn!("Rejecting WS connection: session registry full");
+                return Ok(());
+            }
+        };
+
+        info!("Created Web/WS session {}", client_session.id);
+        let (ws_write, mut ws_read) = ws_stream.split();
+        let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+
+        let session_id = client_session.id;
+        let registry_clone = registry.clone();
+        tokio::spawn(async move {
+            let mut ws_write = ws_write;
+            while let Some(bytes) = frame_rx.recv().await {
+                if let Err(e) = ws_write.send(Message::Binary(bytes)).await {
+                    warn!("WS send error for session {}: {:?}", session_id, e);
+                    break;
+                }
+            }
+            info!("WS writer task terminated, removing session {}", session_id);
+            registry_clone.remove_session(session_id);
+        });
+
+        let frame_sink = Box::new(WsFrameSink::new(frame_tx));
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        
+        let mut app_opt = None;
+        let dims = *client_session.dims.read();
+        let (doc, input_id) = if let Some(ref initial) = initial_doc {
+            (initial.clone(), None)
+        } else {
+            let app = tokio::task::spawn_blocking(|| {
+                let mut a = crate::weather_app::WeatherApp::new();
+                a.refresh();
+                a
+            }).await.unwrap();
+            let (d, id) = app.build_document(dims.cols, dims.rows);
+            app_opt = Some(app);
+            (d, id)
+        };
+
+        client_session.predictive_echo.write().active_node = input_id;
+
+        let (weather_tx, weather_rx) = std::sync::mpsc::channel();
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc);
+        event_loop.frame_sink = frame_sink;
+        event_loop.weather_app = app_opt;
+        event_loop.source_path = source_path;
+        event_loop.weather_tx = Some(weather_tx);
+        event_loop.weather_rx = Some(weather_rx);
+
+        std::thread::spawn(move || {
+            event_loop.run();
+        });
+
+        while let Some(msg_res) = ws_read.next().await {
+            let msg = match msg_res {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("WS read error for session {}: {:?}", client_session.id, e);
+                    break;
+                }
+            };
+
+            if msg.is_close() {
+                break;
+            }
+
+            if let Message::Binary(bytes) = msg {
+                if bytes.is_empty() {
+                    continue;
+                }
+
+                let tag = bytes[0];
+                match tag {
+                    0x01 => {
+                        if bytes.len() >= 6 {
+                            let val = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+                            if let Some(codepoint) = char::from_u32(val) {
+                                let flags = bytes[5];
+                                let shift = (flags & 1) != 0;
+                                let ctrl = (flags & 2) != 0;
+                                let alt = (flags & 4) != 0;
+                                let key_event = KeyEvent {
+                                    codepoint,
+                                    modifiers: KeyModifiers {
+                                        shift,
+                                        ctrl,
+                                        alt,
+                                        ..Default::default()
+                                    },
+                                    kind: KeyKind::Press,
+                                };
+                                let _ = client_session.event_tx.try_send(InputEvent::KeyPress(key_event));
+                            }
+                        }
+                    }
+                    0x02 => {
+                        if bytes.len() >= 8 {
+                            let col = u16::from_le_bytes([bytes[1], bytes[2]]);
+                            let row = u16::from_le_bytes([bytes[3], bytes[4]]);
+                            let button_byte = bytes[5];
+                            let action_byte = bytes[6];
+                            let flags = bytes[7];
+
+                            let button = match button_byte {
+                                0 => MouseButton::Left,
+                                1 => MouseButton::Middle,
+                                2 => MouseButton::Right,
+                                3 => MouseButton::WheelUp,
+                                4 => MouseButton::WheelDown,
+                                _ => MouseButton::None,
+                            };
+
+                            let action = match action_byte {
+                                0 => MouseAction::Press,
+                                1 => MouseAction::Release,
+                                _ => MouseAction::Move,
+                            };
+
+                            let shift = (flags & 1) != 0;
+                            let ctrl = (flags & 2) != 0;
+                            let alt = (flags & 4) != 0;
+
+                            let mouse_event = MouseInput {
+                                col,
+                                row,
+                                button,
+                                action,
+                                modifiers: KeyModifiers {
+                                    shift,
+                                    ctrl,
+                                    alt,
+                                    ..Default::default()
+                                },
+                            };
+                            let _ = client_session.event_tx.try_send(InputEvent::MouseEvent(mouse_event));
+                        }
+                    }
+                    0x10 => {
+                        if bytes.len() >= 5 {
+                            let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
+                            let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
+                            // Trigger dynamic resize
+                            *client_session.dims.write() = PtyDimensions { cols, rows };
+                            let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "web"))]
+pub mod web_impl {
+    use std::sync::Arc;
+    use crate::session::SessionRegistry;
+
+    pub fn start_web_server(
+        _host: String,
+        _port: u16,
+        _registry: Arc<SessionRegistry>,
+        _initial_doc: Option<oxiterm_renderer::THTMLDocument>,
+        _source_path: Option<std::path::PathBuf>,
+    ) {
+        // Noop when compile feature "web" is disabled
+    }
+}
+
+--- END OF FILE: ./oxiterm-server/src/web.rs ---
+
+--- FILE: ./oxiterm-web/src/lib.rs ---
+use wasm_bindgen::prelude::*;
+use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d};
+use oxiterm_proto::style::AnsiColor;
+use oxiterm_renderer::render::diff::AnsiCommand;
+use oxiterm_renderer::DiffEngine;
+
+#[wasm_bindgen]
+pub struct WebTerminal {
+    _canvas: HtmlCanvasElement,
+    ctx: CanvasRenderingContext2d,
+    char_width: f64,
+    char_height: f64,
+    cx: u16,
+    cy: u16,
+    fg: AnsiColor,
+    bg: AnsiColor,
+    bold: bool,
+    underline: bool,
+    italic: bool,
+}
+
+#[wasm_bindgen]
+impl WebTerminal {
+    #[wasm_bindgen(constructor)]
+    pub fn new(canvas: HtmlCanvasElement, font: &str, line_height: f64) -> Result<WebTerminal, JsValue> {
+        let ctx = canvas
+            .get_context("2d")?
+            .ok_or_else(|| JsValue::from_str("Failed to get 2d context"))?
+            .dyn_into::<CanvasRenderingContext2d>()?;
+
+        ctx.set_font(font);
+        let metrics = ctx.measure_text("M")?;
+        let char_width = metrics.width();
+        let char_height = line_height;
+
+        Ok(WebTerminal {
+            _canvas: canvas,
+            ctx,
+            char_width,
+            char_height,
+            cx: 0,
+            cy: 0,
+            fg: AnsiColor::Reset,
+            bg: AnsiColor::Reset,
+            bold: false,
+            underline: false,
+            italic: false,
+        })
+    }
+
+    #[wasm_bindgen]
+    pub fn draw_commands(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let commands = DiffEngine::decode_binary(bytes).map_err(|e| e.to_string())?;
+        for cmd in commands {
+            match cmd {
+                AnsiCommand::MoveCursor(x, y) => {
+                    self.cx = x;
+                    self.cy = y;
+                }
+                AnsiCommand::SetColor { fg, bg } => {
+                    self.fg = fg;
+                    self.bg = bg;
+                }
+                AnsiCommand::SetModifiers { bold, underline, italic } => {
+                    self.bold = bold;
+                    self.underline = underline;
+                    self.italic = italic;
+                }
+                AnsiCommand::WriteChar(ch) => {
+                    self.draw_cell(self.cx, self.cy, ch);
+                    self.cx += 1;
+                }
+                AnsiCommand::Reset => {
+                    self.fg = AnsiColor::Reset;
+                    self.bg = AnsiColor::Reset;
+                    self.bold = false;
+                    self.underline = false;
+                    self.italic = false;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn clear(&self, cols: u16, rows: u16) {
+        let bg_str = get_color_str(&AnsiColor::Reset, false);
+        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
+        self.ctx.fill_rect(
+            0.0,
+            0.0,
+            cols as f64 * self.char_width,
+            rows as f64 * self.char_height,
+        );
+    }
+
+    #[wasm_bindgen]
+    pub fn get_char_dimensions(&self) -> Vec<f64> {
+        vec![self.char_width, self.char_height]
+    }
+}
+
+impl WebTerminal {
+    fn draw_cell(&self, col: u16, row: u16, ch: char) {
+        let x = col as f64 * self.char_width;
+        let y = row as f64 * self.char_height;
+
+        // 1. Draw Background
+        let bg_str = get_color_str(&self.bg, false);
+        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
+        self.ctx.fill_rect(x, y, self.char_width, self.char_height);
+
+        if ch == ' ' || ch == '\0' {
+            return;
+        }
+
+        // 2. Set Font styling (bold, italic)
+        let font_style = if self.bold && self.italic {
+            "bold italic 16px monospace"
+        } else if self.bold {
+            "bold 16px monospace"
+        } else if self.italic {
+            "italic 16px monospace"
+        } else {
+            "16px monospace"
+        };
+        self.ctx.set_font(font_style);
+
+        // 3. Draw Foreground Text
+        let fg_str = get_color_str(&self.fg, true);
+        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&fg_str));
+        self.ctx.set_text_baseline("top");
+        let ch_str = ch.to_string();
+        let _ = self.ctx.fill_text(&ch_str, x, y);
+
+        // 4. Draw Underline
+        if self.underline {
+            self.ctx.fill_rect(x, y + self.char_height - 2.0, self.char_width, 2.0);
+        }
+    }
+}
+
+fn get_color_str(color: &AnsiColor, is_fg: bool) -> String {
+    match color {
+        AnsiColor::Reset => {
+            if is_fg {
+                "#f1f5f9".to_string()
+            } else {
+                "#0f172a".to_string()
+            }
+        }
+        AnsiColor::TrueColor(r, g, b) => {
+            format!("rgb({},{},{})", r, g, b)
+        }
+        AnsiColor::Color256(idx) => {
+            let (r, g, b) = ansi_256_to_rgb(*idx);
+            format!("rgb({},{},{})", r, g, b)
+        }
+    }
+}
+
+fn ansi_256_to_rgb(idx: u8) -> (u8, u8, u8) {
+    if idx < 16 {
+        let palette = [
+            (15, 23, 42),     // 0: Black (slate-900 override)
+            (239, 68, 68),    // 1: Red (red-500)
+            (34, 197, 94),    // 2: Green (green-500)
+            (234, 179, 8),    // 3: Yellow (yellow-500)
+            (59, 130, 246),   // 4: Blue (blue-500)
+            (168, 85, 247),   // 5: Magenta (purple-500)
+            (6, 182, 212),    // 6: Cyan (cyan-500)
+            (241, 245, 249),  // 7: White (slate-100)
+            (100, 116, 139),  // 8: Bright Black (slate-500)
+            (248, 113, 113),  // 9: Bright Red (red-400)
+            (74, 222, 128),   // 10: Bright Green (green-400)
+            (253, 224, 71),   // 11: Bright Yellow (yellow-300)
+            (96, 165, 250),   // 12: Bright Blue (blue-400)
+            (192, 132, 252),  // 13: Bright Magenta (purple-400)
+            (34, 211, 238),   // 14: Bright Cyan (cyan-400)
+            (255, 255, 255),  // 15: Bright White
+        ];
+        palette[idx as usize]
+    } else if idx < 232 {
+        let val = idx - 16;
+        let r = (val / 36) % 6;
+        let g = (val / 6) % 6;
+        let b = val % 6;
+        let steps = [0, 95, 135, 175, 223, 255];
+        (steps[r as usize], steps[g as usize], steps[b as usize])
+    } else {
+        let level = 8 + (idx - 232) * 10;
+        (level, level, level)
+    }
+}
+
+--- END OF FILE: ./oxiterm-web/src/lib.rs ---
+
 === IMPORTANT PROJECT FILES (Cargo.toml, .thtml, .md) ===
 --------------------------------------------------------------------------------
 
@@ -5416,6 +7734,7 @@ members = [
     "oxiterm-proto",
     "oxiterm-renderer",
     "oxiterm-cli",
+    "oxiterm-web",
 ]
 resolver = "2"
 
@@ -5448,6 +7767,24 @@ unicode-width = "0.2"
 --- FILE: ./CHANGELOG.md ---
 # Changelog
 
+## [0.3.0] — 2026-05-22
+
+### 🎨 Vector Graphics & Interactive Animations
+- **High-Fidelity SVG Rendering**: Integrated `resvg` and `tiny-skia` for rendering SVG vectors.
+- **Lottie & Rive Procedural Rendering**:
+  - Implemented procedural vector loading spinner animation for `.json` Lottie loops.
+  - Implemented procedural Rive toggle switch reacting dynamically to hover and click coordinates.
+- **Playback Registry & Event Loop Ticking**:
+  - Designed `PlaybackRegistry` to track active animation states, timelines, and hover/click variables.
+  - Updated the event loop to scale timeout from `5ms` to `66ms` (15 FPS) during active animations.
+- **Interactive Mouse Mapping**: Automated cell-relative mapping for click and hover events within layout bounds.
+- **Fast Sixel Encoder**: Pre-allocated 256-color palette quantization in Sixel codec to optimize rendering performance.
+- **Caching Layer**: Implemented thread-safe `SvgCache` and resolution-indexed `AssetCache`.
+
+### 🚀 Examples & Integration
+- **Vector Demo Showcase**: Added `vector_demo.thtml`, `mascot.svg`, `loader.json`, and `toggle.riv` to `examples/`.
+- **Linked Dashboard**: Updated default `hello.thtml` page to link to the new Vector & Animation Demo page.
+
 ## [0.2.0] — 2026-05-09
 
 ### 🚀 Major Architecture Upgrade
@@ -5471,7 +7808,8 @@ unicode-width = "0.2"
 - **Optimized Release**: Binned binaries are now significantly smaller and faster.
 
 ---
-*OxiTerm v0.2.0 marks the transition from a prototype to a production-ready TUI framework.*
+*OxiTerm v0.3.0 introduces vector capabilities and interactive animations to terminal dashboards.*
+
 
 --- END OF FILE: ./CHANGELOG.md ---
 
@@ -5485,7 +7823,7 @@ THTML is a subset of HTML optimized for the character grid.
 - `<text>`: Text content with wrapping support.
 - `<input>`: Text input field.
 - `<button>`: Interactive button.
-- `<img>`: Graphic element (Sixel or Kitty protocol).
+- `<img>`: Graphic element. Supports SVG (`.svg`), Lottie (`.json`), and interactive Rive (`.riv`) formats. Rasterized natively using `resvg` and `tiny-skia` before protocol transmission.
 
 ## 2. TCSS (Terminal CSS)
 TCSS provides styling for THTML elements.
@@ -5510,6 +7848,11 @@ Communication is handled by a custom `russh` server.
 
 ## 5. Resilience & Optimization
 - **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
+- **Vector Rendering Engine**: Multi-tier pipeline using `resvg` for static SVGs, and procedural generators for Lottie loading spinners (.json) and interactive Rive toggles (.riv).
+- **Asset Caching System**: Dual cache structures: `SvgCache` storing once-parsed `usvg::Tree` structures, and `AssetCache` storing resolution-keyed Sixel/Kitty graphic byte streams to bypass redundant rendering cycles.
+- **Ticking Animation Loop**: Dynamically adjusts event loop timeout to `66ms` (15 FPS) when Lottie or Rive sources are present in the DOM, returning to a low-overhead `5ms` sleep state when idle.
+- **Client-Relative Mouse Mapping**: Translates terminal cell grid coordinates to relative canvas offsets inside Rive interactives, driving hover and click toggle animations.
+- **Fast Sixel Encoder**: Uses a pre-allocated static 256-color palette to quantize raw RGBA pixel data rapidly, avoiding CPU-heavy palette searches.
 - **Predictive Local Echo**: Mitigation for high-latency connections.
 - **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
 - **Backpressure**: Frame dropping to prevent memory exhaustion during slow rendering.
@@ -5576,6 +7919,28 @@ For the best experience, run the server with the `--release` flag. This enables 
 ## 🔒 Security
 The demo uses a configurable password for SSH access. Ensure you set the `OXITERM_PASSWORD` environment variable before starting the server.
 
+---
+
+## 🎨 Vector & Animation Showcase Demo
+
+Alongside the programmatic weather app, OxiTerm provides a dedicated layout-driven vector graphics showcase demo.
+
+### 🚀 Running the Showcase
+To launch the THTML dashboard that hosts the vector showcase, run:
+```bash
+cargo run --bin oxiterm-cli -- serve examples/hello.thtml --port 2222
+```
+Then connect via:
+```bash
+ssh localhost -p 2222
+```
+
+### 💎 Showcase Elements
+Once connected, navigate to the **🎨 Vector & Animation Demo** card. It displays:
+1. **Rive Interactive Widget (`toggle.riv`)**: A custom interactive slider toggle. Hovering and clicking with mouse input dynamically triggers the slide translation animation.
+2. **Lottie Vector Spinner (`loader.json`)**: An active vector loader spinner. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
+3. **SVG Vector Mascot (`mascot.svg`)**: A high-fidelity rasterized SVG graphic drawing the OxiTerm rust mascot, cached and rendered via `resvg`.
+
 --- END OF FILE: ./docs/DEMO.md ---
 
 --- FILE: ./docs/DEVELOPMENT_GUIDE.md ---
@@ -5595,7 +7960,7 @@ The UI is represented as a tree of **Nodes**. Each node has a `NodeTag` and a `S
 | `Box` | Container for other nodes. Supports Flexbox layout. | `<div>` |
 | `Text` | Displays string content. Supports wrapping. | `<span>` / `<p>` |
 | `Input` | Designated area for predictive echo and user typing. | `<input>` |
-| `Image` | Placeholder for future Sixel/Kitty graphics support. | `<img>` |
+| `Image` | Displays high-fidelity SVG graphics, Lottie spinners, and Rive toggles. | `<img>` |
 
 ### 2. TCSS (Terminal CSS)
 Styling is done via the `Style` struct attached to each `Node`.
@@ -5685,6 +8050,12 @@ To provide a lag-free experience on high-latency connections:
 2. Return its `NodeId` from `build_document`.
 3. OxiTerm will automatically position the user's typed characters at that location.
 
+### Vector Graphics & Animations
+OxiTerm allows embedding scalable graphics directly into layout hierarchies:
+1. **Static SVG**: Declare static vector files (e.g. `<img src="mascot.svg" style="width: 32; height: 16;" />`). They are automatically scaled to the tag's target cell-to-pixel bounds and rendered via `resvg`.
+2. **Lottie Animations**: Use the `.json` extension (e.g. `<img src="loader.json" style="width: 12; height: 6;" />`). Active animations trigger a 15 FPS redraw frame ticking loop.
+3. **Interactive Rive Widgets**: Use the `.riv` extension (e.g. `<img src="toggle.riv" style="width: 24; height: 6;" />`). They support relative sub-cell hover and click event coordinates.
+
 ---
 
 ## 🎨 Color Reference
@@ -5756,6 +8127,17 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 - **SGR Timeout**: Guard against incomplete escape sequences in `InputDecoder`.
 - **CI Stabilization**: Resolved all strict clippy lints and satisfied CI requirements.
 
+## Sprint 6: Vector Graphics & Interactive Animations
+**Status: Completed**
+
+### Accomplishments:
+- **Scalable Vector Graphics (SVG)**: Integrated `resvg` and `tiny-skia` to render high-fidelity vector images onto cell grids.
+- **Dynamic Lottie Frame Ticking**: Implemented procedural loaders (.json) with automatically scaled 15 FPS event loop ticking during active playback.
+- **Rive State Interaction**: Integrated custom procedural slider switches (.riv) reacting to client-side hover and click coordinates.
+- **Dual-Tier Asset Caches**: Built thread-safe `SvgCache` (OnceLock parsed trees) and size/frame-keyed `AssetCache` mapping to Sixel and Kitty protocols.
+- **Static Quantizer Optimization**: Overhauled Sixel compression using a pre-allocated 256-color palette to minimize runtime CPU/memory overhead.
+- **Interactive Showcase Integration**: Created a multi-card layout demo linking SVG, Lottie, and Rive components into the default dashboard.
+
 --- END OF FILE: ./docs/SPRINT_REPORTS.md ---
 
 --- FILE: ./examples/counter.thtml ---
@@ -5788,25 +8170,85 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 --- END OF FILE: ./examples/counter.thtml ---
 
 --- FILE: ./examples/hello.thtml ---
-<box style="flex-direction: column; justify-content: center; align-items: center; width: 80; height: 24; background-color: #1a1b26;">
-    <box style="padding: 1; border-style: double; border-color: #7aa2f7;">
-        <text style="color: #bb9af7; font-weight: bold;">Welcome to OxiTerm!</text>
+<box style="flex-direction: column; justify-content: center; align-items: center; width: 84; height: 32; background-color: #1a1b26; border-style: rounded; border-color: #7aa2f7; padding: 1;">
+    <box style="padding-left: 2; padding-right: 2; padding-top: 0.5; padding-bottom: 0.5; border-style: double; border-color: #bb9af7; margin-bottom: 1;">
+        <text style="color: #bb9af7; font-weight: bold; font-size: 150%;">🚀 Welcome to OxiTerm Dashboard 🚀</text>
     </box>
-    <box style="margin-top: 1;">
-        <text style="color: #9ece6a;">This is a standalone THTML application.</text>
+    
+    <box style="margin-bottom: 2;">
+        <text style="color: #9ece6a;">Build full TUI applications using THTML and TCSS</text>
     </box>
-    <box style="margin-top: 2; padding: 1; background-color: #414868; border-style: rounded;">
-        <text style="color: #ffffff;">Press [Q] to exit</text>
+
+    <!-- Navigation Cards Grid -->
+    <box style="flex-direction: column; gap: 1; width: 70; margin-bottom: 2;">
+        <box style="flex-direction: row; justify-content: space-between; width: 70;">
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #f7768e; flex-direction: column; align-items: center;" event-htmx="counter.thtml">
+                <text style="color: #e0af68; font-weight: bold;">🔢 Counter Demo</text>
+                <text style="color: #565f89; margin-top: 0.5;">Interactive state binding</text>
+            </box>
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #9ece6a; flex-direction: column; align-items: center;" event-htmx="todo.thtml">
+                <text style="color: #73daca; font-weight: bold;">📝 Tasks Demo</text>
+                <text style="color: #565f89; margin-top: 0.5;">To-do list tracker</text>
+            </box>
+        </box>
+
+        <box style="flex-direction: row; justify-content: space-between; width: 70; margin-top: 1;">
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #ff9e64; flex-direction: column; align-items: center;" event-htmx="image_demo.thtml">
+                <text style="color: #ff9e64; font-weight: bold;">🖼️ Graphics Demo</text>
+                <text style="color: #565f89; margin-top: 0.5;">Sixel & Kitty image engine</text>
+            </box>
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #7aa2f7; flex-direction: column; align-items: center;" event-htmx="showcase.thtml">
+                <text style="color: #38bdf8; font-weight: bold;">🧪 Layout Showcase</text>
+                <text style="color: #565f89; margin-top: 0.5;">Edge-cases & stress tests</text>
+            </box>
+        </box>
+
+        <!-- Vector & Animation / Video row -->
+        <box style="flex-direction: row; justify-content: space-between; width: 70; margin-top: 1;">
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #bb9af7; flex-direction: column; align-items: center;" event-htmx="vector_demo.thtml">
+                <text style="color: #bb9af7; font-weight: bold;">🎨 Vector & Animation</text>
+                <text style="color: #565f89; margin-top: 0.5;">SVG, Lottie & Rive</text>
+            </box>
+            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #f5c2e7; flex-direction: column; align-items: center;" event-htmx="video_demo.thtml">
+                <text style="color: #f5c2e7; font-weight: bold;">🎬 Video Stream</text>
+                <text style="color: #565f89; margin-top: 0.5;">60 FPS MP4 decoding</text>
+            </box>
+        </box>
     </box>
-    <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #f7768e;" event-htmx="counter.thtml">
-        <text style="color: #e0af68;">Click here to see the Counter demo</text>
-    </box>
-    <box style="margin-top: 1; padding: 0.5; background-color: #24283b; border-style: single; border-color: #7aa2f7;" event-htmx="showcase.thtml">
-        <text style="color: #38bdf8;">Click here to see the Showcase demo</text>
+
+    <box style="height: 1; justify-content: center; width: 70; border-top: #414868;">
+        <text style="color: #565f89;">Press [Q] to quit session</text>
     </box>
 </box>
 
 --- END OF FILE: ./examples/hello.thtml ---
+
+--- FILE: ./examples/image_demo.thtml ---
+<box style="flex-direction: column; width: 80; height: 28; background-color: #1a1b26; border-style: rounded; border-color: #7aa2f7; padding: 1;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #24283b; border-style: single; border-color: #414868; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
+        <text style="color: #ff9e64; font-weight: bold;">🖼️ OxiTerm Graphics & Image Engine</text>
+        <box style="background-color: #414868; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #7aa2f7;" event-htmx="hello.thtml">
+            <text style="color: #ffffff; font-weight: bold;">[ Back to Home ]</text>
+        </box>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column; margin-top: 1;">
+        <img src="logo.png" style="width: 32; height: 16;" />
+        <box style="margin-top: 1; justify-content: center; align-items: center;">
+            <text style="color: #9ece6a; font-weight: bold;">Rust Crab Mascot</text>
+            <text style="color: #565f89; margin-top: 0.5;">Auto-negotiates Kitty Graphics, Sixel, or Unicode Half-Blocks</text>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; justify-content: center; border-top: #414868; padding-top: 0.5;">
+        <text style="color: #565f89;">Powered by OxiTerm image engine</text>
+    </box>
+</box>
+
+--- END OF FILE: ./examples/image_demo.thtml ---
 
 --- FILE: ./examples/showcase.thtml ---
 <box style="flex-direction: column; width: 90; height: 32; background-color: #0f172a;">
@@ -5945,6 +8387,105 @@ Line 2 of text</text>
 
 --- END OF FILE: ./examples/todo.thtml ---
 
+--- FILE: ./examples/vector_demo.thtml ---
+<box style="flex-direction: column; width: 96; height: 32; background-color: #11111b; border-style: rounded; border-color: #bb9af7; padding: 1;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
+        <text style="color: #cdd6f4; font-weight: bold;">🎨 OxiTerm Vector Graphics & Interactive Animation</text>
+        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #bb9af7;" event-htmx="hello.thtml">
+            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
+        </box>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
+        <!-- Left Side: Interactive Widgets (Rive & Lottie) -->
+        <box style="flex-direction: column; width: 40; gap: 1;">
+            <!-- Rive Interactive Widget -->
+            <box style="height: 12; border-style: rounded; border-color: #a6e3a1; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #a6e3a1; font-weight: bold;">🎮 Rive Interactive State-Machine</text>
+                <img src="toggle.riv" style="width: 24; height: 6;" />
+                <text style="color: #89b4fa; font-style: italic; font-size: 80%;">Hover & Click to toggle state</text>
+            </box>
+
+            <!-- Lottie Vector Loop -->
+            <box style="height: 11; border-style: rounded; border-color: #f9e2af; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #f9e2af; font-weight: bold;">⏳ Lottie Vector Spinner</text>
+                <img src="loader.json" style="width: 12; height: 6;" />
+                <text style="color: #a6adc8; font-size: 80%;">Ticks 15 FPS via event-loop sleep</text>
+            </box>
+        </box>
+
+        <!-- Right Side: SVG Static & Dynamic rendering -->
+        <box style="flex-direction: column; flex: 1; gap: 1;">
+            <box style="flex: 1; border-style: rounded; border-color: #f38ba8; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #f38ba8; font-weight: bold;">🖼️ Scalable Vector Graphics (SVG)</text>
+                <!-- SVG Image rendered via resvg and tiny-skia -->
+                <img src="mascot.svg" style="width: 32; height: 16;" />
+                <box style="flex-direction: column; align-items: center;">
+                    <text style="color: #cdd6f4; font-size: 90%;">High-fidelity vector rasterization</text>
+                    <text style="color: #585b70; font-size: 80%;">Fully cached & hardware encoded via Sixel/Kitty</text>
+                </box>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
+        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    </box>
+</box>
+
+--- END OF FILE: ./examples/vector_demo.thtml ---
+
+--- FILE: ./examples/video_demo.thtml ---
+<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #f5c2e7; padding: 1;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
+        <text style="color: #cdd6f4; font-weight: bold;">🎬 OxiTerm High-Performance Video Streaming</text>
+        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #f5c2e7;" event-htmx="hello.thtml">
+            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
+        </box>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
+        <!-- Left Side: Video Player -->
+        <box style="flex: 1; border-style: rounded; border-color: #f5c2e7; justify-content: center; align-items: center; background-color: #000000; overflow: hidden;">
+            <!-- Renders the video file -->
+            <video src="clip.mp4" style="width: 44; height: 22;" />
+        </box>
+
+        <!-- Right Side: Statistics & Controls -->
+        <box style="width: 32; flex-direction: column; gap: 1;">
+            <!-- Player Stats Box -->
+            <box style="height: 11; border-style: rounded; border-color: #89b4fa; flex-direction: column; padding: 1; justify-content: space-around;">
+                <text style="color: #89b4fa; font-weight: bold;">📊 Engine Pipeline</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Decoding: FFmpeg-compatible</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Speed: up to 60 FPS</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Target Size: 44 x 22 cells</text>
+                <text style="color: #cdd6f4; font-size: 90%;">• Frame delta-updates active</text>
+            </box>
+
+            <!-- Render Fallbacks Box -->
+            <box style="height: 11; border-style: rounded; border-color: #e0af68; flex-direction: column; padding: 1; justify-content: space-around;">
+                <text style="color: #e0af68; font-weight: bold;">🛡️ Graphics Fallbacks</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Kitty Gfx Protocol (high-res)</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Sixel Codec (medium-res)</text>
+                <text style="color: #cdd6f4; font-size: 80%;">- Half-Block Unicode (ASCII/TUI)</text>
+                <text style="color: #a6adc8; font-size: 75%; font-style: italic;">Adaptive auto-detection</text>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
+        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    </box>
+</box>
+
+--- END OF FILE: ./examples/video_demo.thtml ---
+
 --- FILE: ./oxiterm-cli/Cargo.toml ---
 [package]
 name = "oxiterm-cli"
@@ -5976,6 +8517,8 @@ edition = "2021"
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+tracing = { workspace = true }
+
 
 --- END OF FILE: ./oxiterm-proto/Cargo.toml ---
 
@@ -5988,7 +8531,6 @@ edition = "2021"
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
 taffy = { workspace = true }
-ratatui = { workspace = true }
 serde = { workspace = true }
 nom = { workspace = true }
 regex = { workspace = true }
@@ -5997,6 +8539,13 @@ tracing = { workspace = true }
 unicode-width = { workspace = true }
 parking_lot = { workspace = true }
 base64 = "0.22.1"
+image = "0.25"
+resvg = "0.47"
+rlottie = "0.5.4"
+
+
+
+
 
 --- END OF FILE: ./oxiterm-renderer/Cargo.toml ---
 
@@ -6027,8 +8576,39 @@ http-body-util = { workspace = true }
 hyper-util = { workspace = true }
 async-trait = { workspace = true }
 ureq = { version = "2", features = ["json"] }
+tokio-tungstenite = { version = "0.21", optional = true }
+
+[features]
+web = ["dep:tokio-tungstenite"]
 
 --- END OF FILE: ./oxiterm-server/Cargo.toml ---
+
+--- FILE: ./oxiterm-web/Cargo.toml ---
+[package]
+name = "oxiterm-web"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { path = "../oxiterm-renderer" }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "CanvasRenderingContext2d",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "TextMetrics",
+  "Window",
+]
+
+--- END OF FILE: ./oxiterm-web/Cargo.toml ---
 
 --- FILE: ./README.md ---
 # 🚀 OxiTerm — Build TUI like a Website
@@ -6054,6 +8634,9 @@ ssh localhost -p 2222
 ```
 
 ### 💎 Key Features
+- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and interactive Rive (.riv) widgets.
+- **Auto-Negotiated Rendering**: Dynamic detection of terminal capabilities (Kitty Graphics Protocol, Sixel, Unicode half-blocks) with automatic fallbacks.
+- **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside Rive canvas nodes.
 - **Bounded Backpressure**: Secure `BoundedFrameChannel` architecture prevents memory exhaustion.
 - **PUA-B Unicode Stabilization**: Pixel-perfect layouts across different terminal emulators.
 - **Predictive Echo**: Zero-latency feedback for keyboard input.
@@ -6064,6 +8647,7 @@ ssh localhost -p 2222
 <box style="background-color: #1e293b; padding: 2;">
   <text style="color: #38bdf8; font-weight: bold;">Counter: <text bind-state="count">0</text></text>
   <button event-htmx="inc:count">[ + ] Increment</button>
+  <img src="mascot.svg" style="width: 20; height: 10;" />
 </box>
 ```
 
