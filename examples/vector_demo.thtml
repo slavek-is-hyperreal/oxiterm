@@ -1,0 +1,47 @@
+<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #bb9af7; padding: 1;">
+    <!-- Header -->
+    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
+        <text style="color: #cdd6f4; font-weight: bold;">🎨 OxiTerm Vector Graphics & Interactive Animation</text>
+        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #bb9af7;" event-htmx="hello.thtml">
+            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
+        </box>
+    </box>
+
+    <!-- Main Content -->
+    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
+        <!-- Left Side: Interactive Widgets (Rive & Lottie) -->
+        <box style="flex-direction: column; width: 40; gap: 1;">
+            <!-- Rive Interactive Widget -->
+            <box style="height: 12; border-style: rounded; border-color: #a6e3a1; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #a6e3a1; font-weight: bold;">🎮 Rive Interactive State-Machine</text>
+                <img src="toggle.riv" style="width: 24; height: 6;" />
+                <text style="color: #89b4fa; font-style: italic; font-size: 80%;">Hover & Click to toggle state</text>
+            </box>
+
+            <!-- Lottie Vector Loop -->
+            <box style="height: 11; border-style: rounded; border-color: #f9e2af; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #f9e2af; font-weight: bold;">⏳ Lottie Vector Spinner</text>
+                <img src="loader.json" style="width: 12; height: 6;" />
+                <text style="color: #a6adc8; font-size: 80%;">Ticks 15 FPS via event-loop sleep</text>
+            </box>
+        </box>
+
+        <!-- Right Side: SVG Static & Dynamic rendering -->
+        <box style="flex-direction: column; flex: 1; gap: 1;">
+            <box style="flex: 1; border-style: rounded; border-color: #f38ba8; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
+                <text style="color: #f38ba8; font-weight: bold;">🖼️ Scalable Vector Graphics (SVG)</text>
+                <!-- SVG Image rendered via resvg and tiny-skia -->
+                <img src="mascot.svg" style="width: 32; height: 16;" />
+                <box style="flex-direction: column; align-items: center;">
+                    <text style="color: #cdd6f4; font-size: 90%;">High-fidelity vector rasterization</text>
+                    <text style="color: #585b70; font-size: 80%;">Fully cached & hardware encoded via Sixel/Kitty</text>
+                </box>
+            </box>
+        </box>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
+        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    </box>
+</box>

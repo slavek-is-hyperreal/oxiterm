@@ -415,11 +415,18 @@ impl EventLoop {
                 }
             }
 
+            let has_animations = self.has_active_animations();
+            let sleep_dur = if has_animations {
+                std::time::Duration::from_millis(66)
+            } else {
+                std::time::Duration::from_millis(5)
+            };
+
             let mut disconnected = false;
             {
                 let mut rx_lock = self.session.event_rx.lock();
                 loop {
-                    match rx_lock.recv_timeout(std::time::Duration::from_millis(5)) {
+                    match rx_lock.recv_timeout(sleep_dur) {
                         Ok(event) => {
                             *self.session.last_activity.write() = std::time::Instant::now();
                             match event {
@@ -498,6 +505,10 @@ impl EventLoop {
                                     } else {
                                         warn!("No last layout found!");
                                     }
+                                    
+                                    // Handle hover and click coordinates mapping for Rive animations
+                                    self.update_interactive_animations(&mouse);
+
                                     self.pending_mouse = Some(mouse.clone());
                                     
                                     // SC-05: Handle HTMX navigation
@@ -572,6 +583,9 @@ impl EventLoop {
                             }
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            if has_animations {
+                                needs_render = true;
+                            }
                             break;
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
@@ -652,7 +666,58 @@ impl EventLoop {
             }
         }
     }
+
+    fn has_active_animations(&self) -> bool {
+        if let Some(ref layout) = self.layout_engine.last_layout {
+            for node_id in layout.nodes.keys() {
+                if let Some(node) = self.doc.get_node(*node_id) {
+                    if node.tag == oxiterm_proto::dom::NodeTag::Img {
+                        if let Some(ref src) = node.attrs.src {
+                            if src.ends_with(".json") || src.ends_with(".riv") {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn update_interactive_animations(&self, mouse: &oxiterm_proto::input::MouseInput) {
+        if let Some(ref layout) = self.layout_engine.last_layout {
+            for (node_id, rect) in &layout.nodes {
+                if let Some(node) = self.doc.get_node(*node_id) {
+                    if node.tag == oxiterm_proto::dom::NodeTag::Img {
+                        if let Some(ref src) = node.attrs.src {
+                            if src.ends_with(".riv") {
+                                let is_inside = mouse.col >= rect.x
+                                    && mouse.col < rect.x + rect.width
+                                    && mouse.row >= rect.y
+                                    && mouse.row < rect.y + rect.height;
+                                
+                                let resolved_path = if let Some(ref base) = self.source_path.as_ref().and_then(|p| p.parent()) {
+                                    base.join(src)
+                                } else {
+                                    std::path::PathBuf::from(src)
+                                };
+                                
+                                let registry = oxiterm_renderer::render::cache::PlaybackRegistry::get();
+                                registry.set_hover(&resolved_path, is_inside);
+                                if is_inside && mouse.action == oxiterm_proto::input::MouseAction::Press {
+                                    registry.set_click(&resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
+                                } else if mouse.action == oxiterm_proto::input::MouseAction::Release {
+                                    registry.set_click(&resolved_path, false, None);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

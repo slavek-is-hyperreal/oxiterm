@@ -15,4 +15,7 @@ unicode-width = { workspace = true }
 parking_lot = { workspace = true }
 base64 = "0.22.1"
 image = "0.25"
+resvg = "0.47"
+
+
 

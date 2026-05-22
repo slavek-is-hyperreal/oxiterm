@@ -5,3 +5,5 @@ pub mod emitter;
 pub mod renderer;
 pub mod kitty;
 pub mod sixel;
+pub mod cache;
+

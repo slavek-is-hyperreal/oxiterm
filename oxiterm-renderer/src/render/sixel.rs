@@ -137,6 +137,118 @@ impl SixelCodec {
         output
     }
 
+    pub fn encode_sixel_static(img: &RgbaImage) -> Vec<u8> {
+        let width = img.width();
+        let height = img.height();
+
+        let get_color_index = |r: u8, g: u8, b: u8, a: u8| -> Option<usize> {
+            if a < 128 {
+                return None;
+            }
+            // Check if gray
+            let dr_g = (r as i32 - g as i32).abs();
+            let dg_b = (g as i32 - b as i32).abs();
+            let dr_b = (r as i32 - b as i32).abs();
+            if dr_g < 8 && dg_b < 8 && dr_b < 8 {
+                let gray_val = (r as u32 + g as u32 + b as u32) / 3;
+                let g_idx = (gray_val * 23 / 255) as usize;
+                return Some(216 + g_idx);
+            }
+            
+            let cr = ((r as u32 * 5) + 127) / 255;
+            let cg = ((g as u32 * 5) + 127) / 255;
+            let cb = ((b as u32 * 5) + 127) / 255;
+            Some((cr * 36 + cg * 6 + cb) as usize)
+        };
+
+        let mut output = Vec::new();
+        let header = format!("\x1bPq\"1;1;{};{}", width, height);
+        output.extend_from_slice(header.as_bytes());
+
+        // Define 6x6x6 color cube
+        for r in 0..6 {
+            for g in 0..6 {
+                for b in 0..6 {
+                    let idx = r * 36 + g * 6 + b;
+                    let r_pct = r * 20;
+                    let g_pct = g * 20;
+                    let b_pct = b * 20;
+                    let color_def = format!("#{};2;{};{};{}", idx, r_pct, g_pct, b_pct);
+                    output.extend_from_slice(color_def.as_bytes());
+                }
+            }
+        }
+
+        // Define grays
+        for g_idx in 0..24 {
+            let idx = 216 + g_idx;
+            let pct = g_idx * 100 / 23;
+            let color_def = format!("#{};2;{};{};{}", idx, pct, pct, pct);
+            output.extend_from_slice(color_def.as_bytes());
+        }
+
+        // Encode image in Sixel bands (6 pixels high)
+        let num_bands = (height + 5) / 6;
+        for band_idx in 0..num_bands {
+            let y_start = band_idx * 6;
+            let mut band_has_colors = false;
+            
+            // Scan used colors in the band to avoid checking all 240 colors
+            let mut used_colors = std::collections::HashSet::new();
+            for x in 0..width {
+                for bit_idx in 0..6 {
+                    let y = y_start + bit_idx;
+                    if y < height {
+                        let pixel = img.get_pixel(x, y);
+                        if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                            used_colors.insert(idx);
+                        }
+                    }
+                }
+            }
+            
+            for &color_idx in &used_colors {
+                let mut char_row = Vec::with_capacity(width as usize);
+                let mut color_present_in_band = false;
+                
+                for x in 0..width {
+                    let mut sixel_val = 0u8;
+                    for bit_idx in 0..6 {
+                        let y = y_start + bit_idx;
+                        if y < height {
+                            let pixel = img.get_pixel(x, y);
+                            if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                                if idx == color_idx {
+                                    sixel_val |= 1 << bit_idx;
+                                    color_present_in_band = true;
+                                }
+                            }
+                        }
+                    }
+                    char_row.push(63 + sixel_val);
+                }
+                
+                if color_present_in_band {
+                    band_has_colors = true;
+                    output.extend_from_slice(format!("#{}", color_idx).as_bytes());
+                    let compressed = Self::sixel_rle_compress(&char_row);
+                    output.extend_from_slice(&compressed);
+                    output.push(b'$');
+                }
+            }
+            
+            if band_has_colors {
+                if output.last() == Some(&b'$') {
+                    output.pop();
+                }
+            }
+            output.push(b'-');
+        }
+        
+        output.extend_from_slice(b"\x1b\\");
+        output
+    }
+
     /// OxiTerm S6-11: Sixel Run-Length Encoding compression
     pub fn sixel_rle_compress(data: &[u8]) -> Vec<u8> {
         let mut compressed = Vec::new();
