@@ -120,3 +120,42 @@ impl Default for BorderChars {
         Self::single()
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ColorDepth {
+    #[default]
+    TrueColor,
+    Color256,
+    Color16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TerminalProfile {
+    pub supports_kitty_kbd: bool,
+    pub supports_kitty_gfx: bool,
+    pub supports_sixel: bool,
+    pub supports_sgr_mouse: bool,
+    pub color_depth: ColorDepth,
+}
+
+impl TerminalProfile {
+    pub fn parse_da1_response(&mut self, response: &[u8]) {
+        let s = String::from_utf8_lossy(response);
+        tracing::debug!("Parsing DA1 response: {}", s);
+        if s.starts_with("\x1b_G") {
+            if s.contains("OK") {
+                self.supports_kitty_gfx = true;
+            }
+        } else {
+            if s.contains("?64") || s.contains("?62") || s.contains("?63") || s.contains("?65") {
+                self.supports_sgr_mouse = true;
+                self.color_depth = ColorDepth::TrueColor;
+            }
+            if s.contains(";4;") || s.contains(";4c") {
+                self.supports_sixel = true;
+            }
+        }
+    }
+}
+
+

@@ -1,39 +1,9 @@
-// Removed unused std::io::Write
 use anyhow::Result;
 use tracing::debug;
 use russh::server::Session;
 use russh::ChannelId;
 
-#[derive(Debug, Clone, Default)]
-pub struct TerminalProfile {
-    pub supports_kitty_kbd: bool,
-    pub supports_kitty_gfx: bool,
-    pub supports_sgr_mouse: bool,
-    pub color_depth: ColorDepth,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColorDepth {
-    #[default]
-    TrueColor,
-    Color256,
-    Color16,
-}
-
-impl TerminalProfile {
-    pub fn parse_da1_response(&mut self, response: &[u8]) {
-        let s = String::from_utf8_lossy(response);
-        debug!("Parsing DA1 response: {}", s);
-        if s.contains("?64") || s.contains("?62") {
-            // Level 4 or Level 2 terminal
-            self.supports_sgr_mouse = true;
-            self.color_depth = ColorDepth::TrueColor;
-        }
-        if s.contains(";4;") || s.contains(";4c") {
-            self.supports_kitty_gfx = true; // Sixel/Graphics support
-        }
-    }
-}
+pub use oxiterm_proto::style::{TerminalProfile, ColorDepth};
 
 pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Sending DA1 query to channel {:?}", channel);
@@ -41,9 +11,27 @@ pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
     Ok(())
 }
 
+/// S6-01: Send test APC sequence to probe Kitty Graphics support
+pub fn probe_kitty_graphics(channel: ChannelId, session: &mut Session) -> Result<()> {
+    debug!("Sending Kitty Graphics probe to channel {:?}", channel);
+    // Send a query check command: query support for graphics
+    session.data(channel, b"\x1b_Gi=31,a=q;\x1b\\".to_vec().into());
+    Ok(())
+}
+
+/// S6-02: Recognize OK response from emulator for Kitty Graphics
+pub fn parse_kitty_ack(buf: &[u8]) -> bool {
+    let s = String::from_utf8_lossy(buf);
+    s.starts_with("\x1b_G") && s.contains("OK")
+}
+
+/// S6-03: Check if terminal profile supports Sixel
+pub fn probe_sixel_support(profile: &TerminalProfile) -> bool {
+    profile.supports_sixel
+}
+
 pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling Kitty Keyboard Protocol on channel {:?}", channel);
-    // CSI = 1 u: Enable all features
     session.data(channel, b"\x1b[=1u".to_vec().into());
     Ok(())
 }
@@ -51,7 +39,7 @@ pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Resul
 pub fn enable_sgr_mouse(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling SGR Mouse Protocol on channel {:?}", channel);
     session.data(channel, b"\x1b[?1006h".to_vec().into());
-    session.data(channel, b"\x1b[?1000h".to_vec().into()); // Standard mouse tracking
+    session.data(channel, b"\x1b[?1000h".to_vec().into());
     Ok(())
 }
 
@@ -65,7 +53,6 @@ pub fn send_esu(channel: ChannelId, session: &mut Session) -> Result<()> {
     Ok(())
 }
 
-/// S5-26: Send Unicode version OSC (for VTM compliance).
 pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, version: u8) -> Result<()> {
     let osc = format!("\x1b]52;u;{version}\x1b\\");
     session.data(channel, osc.into_bytes().into());
@@ -74,9 +61,57 @@ pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, versi
 
 pub fn negotiate_capabilities(channel: ChannelId, session: &mut Session) -> Result<()> {
     send_da1_query(channel, session)?;
-    // We don't wait here because this is async and event-driven.
-    // The response will be caught by the EventLoop.
-    // We can also pro-actively enable common features.
+    probe_kitty_graphics(channel, session)?;
     enable_sgr_mouse(channel, session)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_xterm_da1() {
+        let mut profile = TerminalProfile::default();
+        // Typical XTerm response
+        profile.parse_da1_response(b"\x1b[?64;1;2;6;9;15;22c");
+        assert!(profile.supports_sgr_mouse);
+        assert_eq!(profile.color_depth, ColorDepth::TrueColor);
+        assert!(!profile.supports_sixel);
+        assert!(!profile.supports_kitty_gfx);
+    }
+
+    #[test]
+    fn test_iterm2_da1() {
+        let mut profile = TerminalProfile::default();
+        // iTerm2 responds with Sixel support (contains ";4;")
+        profile.parse_da1_response(b"\x1b[?63;1;2;4;10;15;22c");
+        assert!(profile.supports_sgr_mouse);
+        assert!(profile.supports_sixel);
+        assert!(!profile.supports_kitty_gfx);
+    }
+
+    #[test]
+    fn test_wezterm_da1() {
+        let mut profile = TerminalProfile::default();
+        // WezTerm typical DA1
+        profile.parse_da1_response(b"\x1b[?65;1;9c");
+        assert!(profile.supports_sgr_mouse);
+        assert!(!profile.supports_sixel);
+    }
+
+    #[test]
+    fn test_dec_vt340_da1() {
+        let mut profile = TerminalProfile::default();
+        profile.parse_da1_response(b"\x1b[?63;1;2;4c");
+        assert!(profile.supports_sixel);
+    }
+
+    #[test]
+    fn test_kitty_graphics_apc_ack() {
+        let mut profile = TerminalProfile::default();
+        profile.parse_da1_response(b"\x1b_Gi=31;OK\x1b\\");
+        assert!(profile.supports_kitty_gfx);
+        assert!(parse_kitty_ack(b"\x1b_Gi=31;OK\x1b\\"));
+    }
 }

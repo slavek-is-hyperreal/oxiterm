@@ -2,11 +2,19 @@ use crate::document::THTMLDocument;
 use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
 use oxiterm_proto::dom::{NodeTag, NodeId};
+use oxiterm_proto::style::TerminalProfile;
+use std::path::Path;
 
 pub struct Renderer;
 
 impl Renderer {
-    pub fn render_node(doc: &THTMLDocument, layout: &LayoutResult, buffer: &mut CellBuffer) {
+    pub fn render_node(
+        doc: &THTMLDocument,
+        layout: &LayoutResult,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
         // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
         for y in 0..buffer.height {
             for x in 0..buffer.width {
@@ -31,6 +39,8 @@ impl Renderer {
             offset_y,
             oxiterm_proto::style::AnsiColor::Color256(15),
             oxiterm_proto::style::AnsiColor::Color256(0),
+            profile,
+            base_dir,
         );
     }
 
@@ -43,6 +53,8 @@ impl Renderer {
         parent_y: u16,
         inherited_fg: oxiterm_proto::style::AnsiColor,
         inherited_bg: oxiterm_proto::style::AnsiColor,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
@@ -201,6 +213,18 @@ impl Renderer {
                         });
                     }
                 }
+                NodeTag::Img => {
+                    Self::render_img(
+                        node,
+                        content_x,
+                        content_y,
+                        content_w,
+                        content_h,
+                        buffer,
+                        profile,
+                        base_dir,
+                    );
+                }
                 _ => {}
             }
 
@@ -214,7 +238,174 @@ impl Renderer {
                     parent_y,
                     resolved_fg,
                     resolved_bg,
+                    profile,
+                    base_dir,
                 );
+            }
+        }
+    }
+
+    fn unicode_block_fallback(
+        img: &image::RgbaImage,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buf: &mut CellBuffer,
+    ) {
+        let target_w = width as u32;
+        let target_h = (height as u32) * 2;
+        if target_w == 0 || target_h == 0 {
+            return;
+        }
+        let resized = image::imageops::resize(
+            img,
+            target_w,
+            target_h,
+            image::imageops::FilterType::Nearest,
+        );
+
+        for y in 0..height {
+            for x in 0..width {
+                let top_px = resized.get_pixel(x as u32, 2 * y as u32);
+                let bot_px = resized.get_pixel(x as u32, 2 * y as u32 + 1);
+
+                let top_color = if top_px[3] >= 128 {
+                    oxiterm_proto::style::AnsiColor::TrueColor(top_px[0], top_px[1], top_px[2])
+                } else {
+                    oxiterm_proto::style::AnsiColor::Reset
+                };
+
+                let bot_color = if bot_px[3] >= 128 {
+                    oxiterm_proto::style::AnsiColor::TrueColor(bot_px[0], bot_px[1], bot_px[2])
+                } else {
+                    oxiterm_proto::style::AnsiColor::Reset
+                };
+
+                let (ch, fg, bg) = match (top_color, bot_color) {
+                    (oxiterm_proto::style::AnsiColor::Reset, oxiterm_proto::style::AnsiColor::Reset) => {
+                        (' ', oxiterm_proto::style::AnsiColor::Reset, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (top, oxiterm_proto::style::AnsiColor::Reset) => {
+                        ('▀', top, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (oxiterm_proto::style::AnsiColor::Reset, bot) => {
+                        ('▄', bot, oxiterm_proto::style::AnsiColor::Reset)
+                    }
+                    (top, bot) => {
+                        if top == bot {
+                            ('█', top, oxiterm_proto::style::AnsiColor::Reset)
+                        } else {
+                            ('▀', top, bot)
+                        }
+                    }
+                };
+
+                buf.set(abs_x + x, abs_y + y, Cell {
+                    ch,
+                    fg,
+                    bg,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    fn render_img(
+        node: &oxiterm_proto::dom::Node,
+        abs_x: u16,
+        abs_y: u16,
+        width: u16,
+        height: u16,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+    ) {
+        if let Some(ref src) = node.attrs.src {
+            let resolved_path = if let Some(base) = base_dir {
+                base.join(src)
+            } else {
+                std::path::PathBuf::from(src)
+            };
+            
+            match image::open(&resolved_path) {
+                Ok(img) => {
+                    let img = img.to_rgba8();
+                    
+                    if profile.supports_kitty_gfx {
+                        let pixel_w = width as u32 * 10;
+                        let pixel_h = height as u32 * 20;
+                        if pixel_w > 0 && pixel_h > 0 {
+                            let resized = image::imageops::resize(&img, pixel_w, pixel_h, image::imageops::FilterType::Triangle);
+                            let payload = super::kitty::KittyImageManager::transmit_image(pixel_w, pixel_h, &resized);
+                            
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&payload);
+                            buffer.graphics.push(cmd);
+                            
+                            for dy in 0..height {
+                                for dx in 0..width {
+                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                        buffer.cells[idx].skip = true;
+                                    }
+                                }
+                            }
+                        }
+                    } else if profile.supports_sixel {
+                        let pixel_w = width as u32 * 10;
+                        let pixel_h = height as u32 * 20;
+                        if pixel_w > 0 && pixel_h > 0 {
+                            let resized = image::imageops::resize(&img, pixel_w, pixel_h, image::imageops::FilterType::Triangle);
+                            let sixel_payload = super::sixel::SixelCodec::encode_sixel(&resized, 256);
+                            
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&sixel_payload);
+                            buffer.graphics.push(cmd);
+                            
+                            for dy in 0..height {
+                                for dx in 0..width {
+                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                        buffer.cells[idx].skip = true;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load image from {:?}: {}", resolved_path, e);
+                    for dy in 0..height {
+                        for dx in 0..width {
+                            let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
+                                '*'
+                            } else {
+                                ' '
+                            };
+                            buffer.set(abs_x + dx, abs_y + dy, Cell {
+                                ch,
+                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
+                    let len = name.chars().count() as u16;
+                    if width > len + 2 && height > 2 {
+                        let start_x = abs_x + (width - len) / 2;
+                        let start_y = abs_y + height / 2;
+                        for (i, c) in name.chars().enumerate() {
+                            buffer.set(start_x + i as u16, start_y, Cell {
+                                ch: c,
+                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
             }
         }
     }
@@ -255,7 +446,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 3).unwrap();
 
         let mut buffer = CellBuffer::new(5, 3);
-        Renderer::render_node(&doc, &layout, &mut buffer);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
 
         // Check top-left corner border character '┌'
         let tl_idx = buffer.flat_idx(0, 0).unwrap();
@@ -288,7 +479,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 1).unwrap();
 
         let mut buffer = CellBuffer::new(5, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
 
         // Check index 0: contains '🚀'
         assert_eq!(buffer.cells[0].ch, '🚀');
@@ -302,4 +493,28 @@ mod tests {
         assert_eq!(buffer.cells[2].ch, 'A');
         assert_eq!(buffer.cells[2].bg, AnsiColor::TrueColor(5, 5, 5));
     }
+
+    #[test]
+    fn test_image_fallback_rendering() {
+        let mut doc = THTMLDocument::new();
+        
+        let mut img_node = Node::new(NodeTag::Img);
+        img_node.attrs.src = Some("nonexistent_test_image.png".to_string());
+        img_node.style.width = Some(6);
+        img_node.style.height = Some(4);
+        
+        let node_id = doc.arena.alloc(img_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 6, 4).unwrap();
+
+        let mut buffer = CellBuffer::new(6, 4);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+
+        // Since the file is non-existent, it should render the fallback border of '*'
+        assert_eq!(buffer.cells[0].ch, '*');
+        assert_eq!(buffer.cells[5].ch, '*');
+    }
 }
+

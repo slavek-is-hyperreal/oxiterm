@@ -205,7 +205,7 @@ impl AnsiFrameSink {
 impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
         let commands = oxiterm_renderer::DiffEngine::diff(front, back);
-        if commands.is_empty() {
+        if commands.is_empty() && back.graphics.is_empty() {
             return Ok(false);
         }
 
@@ -215,6 +215,10 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         
         let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
         out.extend_from_slice(&bytes);
+        
+        for g in &back.graphics {
+            out.extend_from_slice(g);
+        }
         
         // ESU: CSI ? 2026 l
         out.extend_from_slice(b"\x1b[?2026l");
@@ -611,7 +615,9 @@ impl EventLoop {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
                     }
 
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back);
+                    let profile = self.session.terminal_profile.read().clone();
+                    let base_dir = self.source_path.as_deref();
+                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
                     
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();

@@ -8,6 +8,7 @@ pub struct Cell {
     pub bold: bool,
     pub underline: bool,
     pub italic: bool,
+    pub skip: bool,
 }
 
 impl Default for Cell {
@@ -19,6 +20,7 @@ impl Default for Cell {
             bold: false,
             underline: false,
             italic: false,
+            skip: false,
         }
     }
 }
@@ -27,6 +29,7 @@ pub struct CellBuffer {
     pub cells: Vec<Cell>,
     pub width: u16,
     pub height: u16,
+    pub graphics: Vec<Vec<u8>>,
 }
 
 impl CellBuffer {
@@ -36,6 +39,7 @@ impl CellBuffer {
             cells: vec![Cell::default(); size],
             width,
             height,
+            graphics: Vec::new(),
         }
     }
 
@@ -55,8 +59,10 @@ impl CellBuffer {
 
     pub fn clear(&mut self) {
         self.cells.fill(Cell::default());
+        self.graphics.clear();
     }
 }
+
 
 pub struct DoubleBuffer {
     pub front: CellBuffer,

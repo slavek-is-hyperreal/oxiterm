@@ -6,7 +6,10 @@ pub enum State {
     Idle,
     Escaped,
     Csi,
+    Apc,
+    ApcEscaped,
 }
+
 
 #[derive(Debug)]
 pub struct OverflowError;
@@ -159,6 +162,9 @@ impl InputStateMachine {
                 if byte == b'[' {
                     self.state = State::Csi;
                     None
+                } else if byte == b'_' {
+                    self.state = State::Apc;
+                    None
                 } else {
                     let data = self.buffer.as_slice().to_vec();
                     self.reset();
@@ -206,6 +212,38 @@ impl InputStateMachine {
                     None
                 }
             }
+            State::Apc => {
+                if self.buffer.push(byte).is_err() {
+                    self.reset();
+                    return None;
+                }
+                if byte == 0x1b {
+                    self.state = State::ApcEscaped;
+                }
+                None
+            }
+            State::ApcEscaped => {
+                if self.buffer.push(byte).is_err() {
+                    self.reset();
+                    return None;
+                }
+                if byte == b'\\' {
+                    let data = self.buffer.as_slice().to_vec();
+                    self.reset();
+                    if data.starts_with(&[0x1b, b'_', b'G']) {
+                        Some(InputEvent::CapabilityResponse(data))
+                    } else {
+                        Some(InputEvent::Unknown(data))
+                    }
+                } else if byte == 0x1b {
+                    // Stay in ApcEscaped
+                    None
+                } else {
+                    self.state = State::Apc;
+                    None
+                }
+            }
+
         }
     }
 

@@ -29,11 +29,18 @@ impl DiffEngine {
             while x < next.width {
                 let idx = y as usize * next.width as usize + x as usize;
                 let next_cell = &next.cells[idx];
-                let prev_cell = prev.cells.get(idx);
                 
                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(next_cell.ch) as u16;
                 let char_w = if char_w == 0 { 1 } else { char_w };
 
+                if next_cell.skip {
+                    cur_x = None;
+                    cur_y = None;
+                    x += char_w;
+                    continue;
+                }
+
+                let prev_cell = prev.cells.get(idx);
                 if Some(next_cell) != prev_cell {
                     // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {

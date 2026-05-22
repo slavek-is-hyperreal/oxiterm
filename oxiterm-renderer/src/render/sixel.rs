@@ -1,20 +1,202 @@
+use std::collections::HashMap;
+use image::RgbaImage;
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
 pub struct SixelCodec;
 
 impl SixelCodec {
-    /// OxiTerm S6-10: Kodek Sixel z RLE (Run-Length Encoding) jako fallback dla starszych terminali
-    pub fn encode_image(width: u32, height: u32, _rgba_data: &[u8]) -> Vec<u8> {
+    /// OxiTerm S6-10: Convert image to Sixel stream with quantization
+    pub fn encode_sixel(img: &RgbaImage, palette_size: u16) -> Vec<u8> {
+        let width = img.width();
+        let height = img.height();
+        
+        // 1. Color Quantization: count colors and select the top palette_size colors
+        let mut color_counts: HashMap<Rgb, usize> = HashMap::new();
+        for pixel in img.pixels() {
+            if pixel[3] >= 128 {
+                let rgb = Rgb {
+                    r: pixel[0],
+                    g: pixel[1],
+                    b: pixel[2],
+                };
+                *color_counts.entry(rgb).or_insert(0) += 1;
+            }
+        }
+        
+        let mut colors: Vec<(Rgb, usize)> = color_counts.into_iter().collect();
+        colors.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        let mut palette: Vec<Rgb> = colors
+            .into_iter()
+            .take(palette_size as usize)
+            .map(|x| x.0)
+            .collect();
+            
+        if palette.is_empty() {
+            palette.push(Rgb { r: 0, g: 0, b: 0 });
+        }
+        
+        // Helper to find index of closest palette color
+        let get_color_index = |r: u8, g: u8, b: u8, a: u8| -> Option<usize> {
+            if a < 128 {
+                return None;
+            }
+            let mut best_idx = 0;
+            let mut min_dist = u32::MAX;
+            for (i, pal_rgb) in palette.iter().enumerate() {
+                let dr = r as i32 - pal_rgb.r as i32;
+                let dg = g as i32 - pal_rgb.g as i32;
+                let db = b as i32 - pal_rgb.b as i32;
+                let dist = (dr * dr + dg * dg + db * db) as u32;
+                if dist == 0 {
+                    return Some(i);
+                }
+                if dist < min_dist {
+                    min_dist = dist;
+                    best_idx = i;
+                }
+            }
+            Some(best_idx)
+        };
+        
+        // 2. Format Sixel stream
         let mut output = Vec::new();
+        
         // DCS P q " 1 ; 1 ; width ; height
         let header = format!("\x1bPq\"1;1;{};{}", width, height);
         output.extend_from_slice(header.as_bytes());
         
-        // Prost(y) kwantyzator w RLE dla celów prototypu
-        // Rzeczywista implementacja wymagałaby konwersji RGBA->HLS i generowania pasków (sixel bands)
-        output.extend_from_slice(b"#0;2;0;0;0"); // Register color 0 as black
-        output.extend_from_slice(b"!100~"); // RLE: repeat character '~' (6 full pixels) 100 times
+        // Define color palette in percentages (0..100)
+        for (i, color) in palette.iter().enumerate() {
+            let r_pct = (color.r as u32 * 100) / 255;
+            let g_pct = (color.g as u32 * 100) / 255;
+            let b_pct = (color.b as u32 * 100) / 255;
+            let color_def = format!("#{};2;{};{};{}", i, r_pct, g_pct, b_pct);
+            output.extend_from_slice(color_def.as_bytes());
+        }
         
-        // ESU / ST terminator
+        // Encode image in Sixel bands (6 pixels high)
+        let num_bands = (height + 5) / 6;
+        for band_idx in 0..num_bands {
+            let y_start = band_idx * 6;
+            
+            // Loop through each color in the palette to output its sixels for this band
+            let mut band_has_colors = false;
+            for color_idx in 0..palette.len() {
+                let mut char_row = Vec::with_capacity(width as usize);
+                let mut color_present_in_band = false;
+                
+                for x in 0..width {
+                    let mut sixel_val = 0u8;
+                    for bit_idx in 0..6 {
+                        let y = y_start + bit_idx;
+                        if y < height {
+                            let pixel = img.get_pixel(x, y);
+                            if let Some(idx) = get_color_index(pixel[0], pixel[1], pixel[2], pixel[3]) {
+                                if idx == color_idx {
+                                    sixel_val |= 1 << bit_idx;
+                                    color_present_in_band = true;
+                                }
+                            }
+                        }
+                    }
+                    char_row.push(63 + sixel_val);
+                }
+                
+                // Only write the color stream if it actually has set bits in this band
+                if color_present_in_band {
+                    band_has_colors = true;
+                    // Select color index
+                    output.extend_from_slice(format!("#{}", color_idx).as_bytes());
+                    // Compress and write character row
+                    let compressed = Self::sixel_rle_compress(&char_row);
+                    output.extend_from_slice(&compressed);
+                    // Carriage return to beginning of line
+                    output.push(b'$');
+                }
+            }
+            
+            // Move to next band
+            if band_has_colors {
+                // Replace the last carriage return with newline command
+                if output.last() == Some(&b'$') {
+                    output.pop();
+                }
+            }
+            output.push(b'-');
+        }
+        
+        // End of sequence (ST)
         output.extend_from_slice(b"\x1b\\");
         output
     }
+
+    /// OxiTerm S6-11: Sixel Run-Length Encoding compression
+    pub fn sixel_rle_compress(data: &[u8]) -> Vec<u8> {
+        let mut compressed = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let ch = data[i];
+            let mut count = 1;
+            while i + count < data.len() && data[i + count] == ch {
+                count += 1;
+            }
+            if count >= 3 {
+                compressed.extend_from_slice(format!("!{}", count).as_bytes());
+                compressed.push(ch);
+            } else {
+                for _ in 0..count {
+                    compressed.push(ch);
+                }
+            }
+            i += count;
+        }
+        compressed
+    }
+
+    /// Old entrypoint wrapper for backwards compatibility
+    pub fn encode_image(width: u32, height: u32, rgba_data: &[u8]) -> Vec<u8> {
+        if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, rgba_data.to_vec()) {
+            Self::encode_sixel(&img, 256)
+        } else {
+            Vec::new()
+        }
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sixel_rle_compress() {
+        let input = b"AAAAABBBCC";
+        let compressed = SixelCodec::sixel_rle_compress(input);
+        // "AAAAA" -> "!5A", "BBB" -> "!3B", "CC" -> "CC"
+        assert_eq!(compressed, b"!5A!3BCC");
+    }
+
+    #[test]
+    fn test_encode_sixel_basic() {
+        // Create a 2x2 red image
+        let mut img = RgbaImage::new(2, 2);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgba([255, 0, 0, 255]);
+        }
+        let encoded = SixelCodec::encode_sixel(&img, 256);
+        
+        let s = String::from_utf8_lossy(&encoded);
+        // Check Sixel header and ST terminator
+        assert!(s.starts_with("\x1bPq\"1;1;2;2"));
+        assert!(s.ends_with("\x1b\\"));
+        // Check that red is defined (#0;2;100;0;0)
+        assert!(s.contains("#0;2;100;0;0"));
+    }
+}
+
