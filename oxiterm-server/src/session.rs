@@ -298,12 +298,12 @@ impl EventLoop {
         event_bus: Arc<crate::events::EventBus>, 
         output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
         doc: THTMLDocument,
+        a11y_mode: bool,
     ) -> Self {
         let dims = *session.dims.read();
         
-        let args: Vec<String> = std::env::args().collect();
         let mut dbus_bridge = None;
-        let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if oxiterm_a11y::detect_a11y_mode(&args) {
+        let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if a11y_mode {
             let writer = ChannelWriter(output_tx.clone());
             let mut bridge = oxiterm_a11y::DBusBridge::new();
             if let Ok(addr) = oxiterm_a11y::DBusBridge::read_dbus_address() {

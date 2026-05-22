@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, RwLock, OnceLock};
 use std::process::{Command, Stdio, Child};
 use std::io::Read;
 use std::thread;
@@ -29,7 +29,9 @@ pub struct SafeAnimation {
     pub anim: rlottie::Animation,
 }
 unsafe impl Send for SafeAnimation {}
-unsafe impl Sync for SafeAnimation {}
+// NOTE: Sync is intentionally NOT implemented — SafeAnimation wraps a C FFI type
+// (rlottie::Animation) that relies on thread-local state. Access is always through
+// Arc<Mutex<SafeAnimation>>, which guarantees exclusive access per thread.
 
 #[derive(Clone)]
 pub struct PlaybackState {
@@ -110,49 +112,57 @@ impl PlaybackRegistry {
     }
 }
 
+/// FIFO-eviction asset cache. Insertion order is preserved via VecDeque;
+/// oldest entry is evicted when capacity is reached (capacity = 100).
 pub struct AssetCache {
-    cache: Mutex<HashMap<CacheKey, CacheValue>>,
+    cache: Mutex<VecDeque<(CacheKey, CacheValue)>>,
 }
 
 impl AssetCache {
+    const CAPACITY: usize = 100;
+
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<AssetCache> = OnceLock::new();
         INSTANCE.get_or_init(|| Self {
-            cache: Mutex::new(HashMap::new()),
+            cache: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn lookup(&self, key: &CacheKey) -> Option<CacheValue> {
         let lock = self.cache.lock().unwrap();
-        lock.get(key).cloned()
+        lock.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
     }
 
     pub fn insert(&self, key: CacheKey, value: CacheValue) {
         let mut lock = self.cache.lock().unwrap();
-        if lock.len() >= 100 {
-            if let Some(k) = lock.keys().next().cloned() {
-                lock.remove(&k);
-            }
+        // Remove existing entry with the same key (update in place would keep order, but
+        // re-inserting at the back is simpler and semantically correct for an asset cache).
+        lock.retain(|(k, _)| k != &key);
+        if lock.len() >= Self::CAPACITY {
+            lock.pop_front(); // FIFO eviction — remove the oldest entry
         }
-        lock.insert(key, value);
+        lock.push_back((key, value));
     }
 }
 
+/// FIFO-eviction SVG tree cache (capacity = 20).
 pub struct SvgCache {
-    trees: Mutex<HashMap<PathBuf, Arc<resvg::usvg::Tree>>>,
+    trees: Mutex<VecDeque<(PathBuf, Arc<resvg::usvg::Tree>)>>,
 }
 
 impl SvgCache {
+    const CAPACITY: usize = 20;
+
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<SvgCache> = OnceLock::new();
         INSTANCE.get_or_init(|| Self {
-            trees: Mutex::new(HashMap::new()),
+            trees: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn get_or_load(&self, path: &Path) -> anyhow::Result<Arc<resvg::usvg::Tree>> {
         let mut lock = self.trees.lock().unwrap();
-        if let Some(tree) = lock.get(path) {
+        if let Some((_, tree)) = lock.iter().find(|(p, _)| p == path) {
             return Ok(Arc::clone(tree));
         }
 
@@ -170,12 +180,10 @@ impl SvgCache {
             .map_err(|e| anyhow::anyhow!("SVG parse error: {:?}", e))?;
         
         let arc_tree = Arc::new(tree);
-        if lock.len() >= 20 {
-            if let Some(k) = lock.keys().next().cloned() {
-                lock.remove(&k);
-            }
+        if lock.len() >= Self::CAPACITY {
+            lock.pop_front(); // FIFO eviction
         }
-        lock.insert(path.to_path_buf(), Arc::clone(&arc_tree));
+        lock.push_back((path.to_path_buf(), Arc::clone(&arc_tree)));
         Ok(arc_tree)
     }
 }
@@ -184,7 +192,9 @@ pub struct VideoPlayer {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    pub frame_buffer: Arc<Mutex<Option<Arc<Vec<u8>>>>>,
+    /// RwLock instead of Mutex: the ffmpeg thread writes once per decoded frame,
+    /// while the renderer thread reads (potentially) many times per render cycle.
+    pub frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>>,
     pub child: Child,
     pub last_accessed: Instant,
 }
@@ -246,7 +256,7 @@ impl VideoPlayerRegistry {
 
         if let Some(player) = players.get_mut(&key) {
             player.last_accessed = now;
-            player.frame_buffer.lock().unwrap().clone()
+            player.frame_buffer.read().unwrap().clone()
         } else {
             None
         }
@@ -271,7 +281,7 @@ impl VideoPlayerRegistry {
         match child {
             Ok(mut child) => {
                 let mut stdout = child.stdout.take().unwrap();
-                let frame_buffer = Arc::new(Mutex::new(None));
+                let frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>> = Arc::new(RwLock::new(None));
                 let frame_buffer_clone = Arc::clone(&frame_buffer);
                 let frame_size = (width * height * 4) as usize;
 
@@ -281,7 +291,7 @@ impl VideoPlayerRegistry {
                         if stdout.read_exact(&mut buf).is_err() {
                             break;
                         }
-                        *frame_buffer_clone.lock().unwrap() = Some(Arc::new(buf));
+                        *frame_buffer_clone.write().unwrap() = Some(Arc::new(buf));
                     }
                 });
 

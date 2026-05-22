@@ -80,11 +80,11 @@ impl THTMLParser {
             Self::insert_node_recursive(&mut doc, root_id, node)?;
         }
         
-        if !style_content.trim().is_empty() {
-            if let Ok(stylesheet) = crate::parser::tcss::parse_tcss(&style_content) {
-                crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
-            }
-        }
+        // apply_styles is ALWAYS called (even when there is no <style> block) because
+        // insert_node_recursive no longer applies inline styles — apply_styles handles the
+        // full cascade (tag → class → id → inline) in a single unified pass.
+        let stylesheet = crate::parser::tcss::parse_tcss(&style_content).unwrap_or_default();
+        crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
         
         Ok(doc)
     }
@@ -94,15 +94,11 @@ impl THTMLParser {
         node.attrs = parsed.attrs;
         node.text = parsed.text;
         
-        // Apply inline styles if present
-        if let Some(ref style_str) = node.attrs.style_raw {
-            if let Ok(decls) = parse_inline_tcss(style_str) {
-                for decl in decls {
-                    apply_declaration(&mut node.style, &decl);
-                }
-            }
-        }
-        
+        // NOTE: Inline styles are NOT applied here. They are applied in THTMLParser::parse
+        // via apply_styles (which handles all selector levels including inline) for documents
+        // that have a <style> block. For plain documents (no <style>), apply_styles is also
+        // called with an empty stylesheet, so inline styles are always applied once — here
+        // we defer to that single pass to avoid double work.
         let node_id = doc.arena.alloc(node);
         doc.append_child(parent_id, node_id)?;
         

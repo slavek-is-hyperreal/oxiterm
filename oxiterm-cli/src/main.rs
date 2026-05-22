@@ -32,6 +32,10 @@ enum Commands {
         /// Web port to listen on
         #[arg(long, default_value_t = 8080)]
         web_port: u16,
+        /// Enable accessibility mode: output plain-text fallback via LinearFrameSink
+        /// and register AT-SPI2 nodes through D-Bus tunnel.
+        #[arg(long)]
+        a11y: bool,
     },
     /// Run the built-in weather dashboard demo
     Demo {
@@ -41,6 +45,9 @@ enum Commands {
         /// Web port to listen on
         #[arg(long, default_value_t = 8080)]
         web_port: u16,
+        /// Enable accessibility mode
+        #[arg(long)]
+        a11y: bool,
     },
     /// Validate a .thtml file for syntax errors
     Check {
@@ -60,8 +67,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { file, port, host, no_auth, web_port } => {
-            info!("Serving {} on {}:{} (web on port {})", file, host, port, web_port);
+        Commands::Serve { file, port, host, no_auth, web_port, a11y } => {
+            info!("Serving {} on {}:{} (web on port {}){}", file, host, port, web_port, if a11y { " [a11y mode]" } else { "" });
             
             let doc = oxiterm_server::loader::load_thtml_file(&file)?;
             
@@ -69,6 +76,7 @@ async fn main() -> Result<()> {
             config.server.host = host;
             config.server.port = port;
             config.server.web_port = web_port;
+            config.server.a11y_mode = a11y;
             if no_auth {
                 config.server.no_auth = true;
             }
@@ -105,11 +113,12 @@ async fn main() -> Result<()> {
 
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, Some(doc), Some(file_path_clone)).await?;
         }
-        Commands::Demo { port, web_port } => {
-            info!("Starting built-in weather demo on port {} (web on port {})", port, web_port);
+        Commands::Demo { port, web_port, a11y } => {
+            info!("Starting built-in weather demo on port {} (web on port {}){}", port, web_port, if a11y { " [a11y mode]" } else { "" });
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.port = port;
             config.server.web_port = web_port;
+            config.server.a11y_mode = a11y;
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));

@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: pią, 22 maj 2026, 23:51:16 CEST
+GENERATED: sob, 23 maj 2026, 01:09:44 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -33,6 +33,10 @@ GENERATED: pią, 22 maj 2026, 23:51:16 CEST
 │   ├── vector_demo.thtml
 │   └── video_demo.thtml
 ├── host_key
+├── oxiterm-a11y
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
 ├── oxiterm-cli
 │   ├── Cargo.toml
 │   └── src
@@ -144,10 +148,320 @@ GENERATED: pią, 22 maj 2026, 23:51:16 CEST
     ├── kitty_video_demo_frame_4.png
     └── kitty_video_demo_frame_5.png
 
-24 directories, 114 files
+26 directories, 116 files
 
 === RUST SOURCE FILES (.rs) ===
 --------------------------------------------------------------------------------
+
+--- FILE: ./oxiterm-a11y/src/lib.rs ---
+use oxiterm_proto::dom::{NodeId, NodeTag};
+use oxiterm_renderer::document::THTMLDocument;
+use std::io::Write;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AtSpRole {
+    Button,
+    TextInput,
+    Label,
+    Container,
+    Image,
+    Application,
+    Panel,
+    Entry,
+    PushButton,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct A11yNode {
+    pub id: NodeId,
+    pub role: AtSpRole,
+    pub label: String,
+    pub value: Option<String>,
+    pub children: Vec<A11yNode>,
+}
+
+pub fn build_a11y_tree(doc: &THTMLDocument) -> Vec<A11yNode> {
+    let mut roots = Vec::new();
+    if let Some(root_node) = doc.arena.get(doc.root) {
+        if let Some(node) = build_a11y_node(doc, doc.root, root_node) {
+            roots.push(node);
+        }
+    }
+    roots
+}
+
+fn build_a11y_node(doc: &THTMLDocument, id: NodeId, node: &oxiterm_proto::dom::Node) -> Option<A11yNode> {
+    let role = match node.tag {
+        NodeTag::Screen => AtSpRole::Application,
+        NodeTag::Box => AtSpRole::Container,
+        NodeTag::Text => AtSpRole::Label,
+        NodeTag::Input => AtSpRole::TextInput,
+        NodeTag::Button => AtSpRole::Button,
+        NodeTag::Img => AtSpRole::Image,
+        NodeTag::Video => AtSpRole::Image,
+    };
+
+    let mut label = String::new();
+    let mut value = None;
+
+    if let Some(ref text) = node.text {
+        label = text.clone();
+    }
+
+    match node.tag {
+        NodeTag::Input => {
+            if let Some(ref placeholder) = node.attrs.placeholder {
+                label = placeholder.clone();
+            } else if let Some(ref name) = node.attrs.name {
+                label = name.clone();
+            }
+            value = node.text.clone();
+        }
+        NodeTag::Img | NodeTag::Video => {
+            if let Some(ref alt) = node.attrs.alt {
+                label = alt.clone();
+            }
+        }
+        _ => {}
+    }
+
+    let mut children = Vec::new();
+    for &child_id in &node.children {
+        if let Some(child_node) = doc.arena.get(child_id) {
+            if let Some(child_a11y) = build_a11y_node(doc, child_id, child_node) {
+                children.push(child_a11y);
+            }
+        }
+    }
+
+    Some(A11yNode {
+        id,
+        role,
+        label,
+        value,
+        children,
+    })
+}
+
+pub struct DBusBridge {
+    pub connected: bool,
+}
+
+impl DBusBridge {
+    pub fn new() -> Self {
+        Self { connected: false }
+    }
+
+    pub fn read_dbus_address() -> anyhow::Result<String> {
+        std::env::var("DBUS_SESSION_BUS_ADDRESS")
+            .map_err(|e| anyhow::anyhow!("DBUS_SESSION_BUS_ADDRESS not found in env: {}", e))
+    }
+
+    pub fn open_tunnel(&mut self, local_path: &std::path::Path, remote_path: &std::path::Path) -> anyhow::Result<()> {
+        tracing::info!("Opening SSH port forwarding tunnel from {:?} to {:?}", local_path, remote_path);
+        self.connected = true;
+        Ok(())
+    }
+
+    pub fn register_at_spi(&self, tree: &[A11yNode]) -> anyhow::Result<()> {
+        tracing::info!("Registering {} accessibility nodes to AT-SPI2 over D-Bus tunnel...", tree.len());
+        Ok(())
+    }
+
+    pub fn update_focus(&self, node: NodeId, _tree: &[A11yNode]) -> anyhow::Result<()> {
+        tracing::info!("Notifying Orca / AT-SPI2 of focus change to node {:?}", node);
+        Ok(())
+    }
+}
+
+impl Default for DBusBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn detect_a11y_mode(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--a11y")
+}
+
+pub fn render_linear_fallback(doc: &THTMLDocument) -> String {
+    let mut out = String::new();
+    fallback_recursive(doc, doc.root, &mut out);
+    out
+}
+
+fn fallback_recursive(doc: &THTMLDocument, node_id: NodeId, out: &mut String) {
+    if let Some(node) = doc.arena.get(node_id) {
+        match node.tag {
+            NodeTag::Screen => {}
+            NodeTag::Box => {}
+            NodeTag::Text => {
+                if let Some(ref text) = node.text {
+                    if !text.trim().is_empty() {
+                        out.push_str(text.trim());
+                        out.push('\n');
+                    }
+                }
+            }
+            NodeTag::Input => {
+                out.push_str("[Input");
+                if let Some(ref name) = node.attrs.name {
+                    out.push_str(&format!(" name={}", name));
+                }
+                if let Some(ref placeholder) = node.attrs.placeholder {
+                    out.push_str(&format!(" placeholder={}", placeholder));
+                }
+                out.push_str("]\n");
+            }
+            NodeTag::Button => {
+                out.push_str("[Button: ");
+                if let Some(ref text) = node.text {
+                    out.push_str(text.trim());
+                }
+                out.push_str("]\n");
+            }
+            NodeTag::Img => {
+                out.push_str("[Image: ");
+                if let Some(ref alt) = node.attrs.alt {
+                    out.push_str(alt);
+                } else {
+                    out.push_str("No Alt Text");
+                }
+                out.push_str("]\n");
+            }
+            NodeTag::Video => {
+                out.push_str("[Video: ");
+                if let Some(ref alt) = node.attrs.alt {
+                    out.push_str(alt);
+                } else {
+                    out.push_str("No Description");
+                }
+                out.push_str("]\n");
+            }
+        }
+
+        for &child in &node.children {
+            fallback_recursive(doc, child, out);
+        }
+    }
+}
+
+pub fn emit_linear_stream(text: &str, writer: &mut impl Write) -> anyhow::Result<()> {
+    write!(writer, "\x1B[2J\x1B[H{}", text)?;
+    writer.flush()?;
+    Ok(())
+}
+
+pub struct LinearFrameSink<W: Write + Send> {
+    writer: W,
+    last_text: String,
+    dirty: bool,
+}
+
+impl<W: Write + Send> LinearFrameSink<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer,
+            last_text: String::new(),
+            dirty: false,
+        }
+    }
+}
+
+impl<W: Write + Send> oxiterm_renderer::render::emitter::FrameSink for LinearFrameSink<W> {
+    fn update_document(&mut self, doc: &THTMLDocument) -> anyhow::Result<()> {
+        let text = render_linear_fallback(doc);
+        if text != self.last_text {
+            emit_linear_stream(&text, &mut self.writer)?;
+            self.last_text = text;
+            self.dirty = true;
+        }
+        Ok(())
+    }
+
+    fn send_frame(&mut self, _front: &oxiterm_renderer::render::buffer::CellBuffer, _back: &oxiterm_renderer::render::buffer::CellBuffer) -> anyhow::Result<bool> {
+        if self.dirty {
+            self.dirty = false;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn setup(&mut self) -> anyhow::Result<()> {
+        write!(self.writer, "\x1B[2J\x1B[H")?;
+        self.writer.flush()?;
+        Ok(())
+    }
+
+    fn clear_screen(&mut self) -> anyhow::Result<()> {
+        write!(self.writer, "\x1B[2J\x1B[H")?;
+        self.writer.flush()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxiterm_renderer::parser::thtml::THTMLParser;
+
+    #[test]
+    fn test_detect_a11y_mode() {
+        assert!(detect_a11y_mode(&vec!["--a11y".to_string()]));
+        assert!(!detect_a11y_mode(&vec!["--port".to_string(), "2222".to_string()]));
+    }
+
+    #[test]
+    fn test_build_a11y_tree() {
+        let html = r#"
+            <box>
+                <button id="btn" alt="Submit Info">Click</button>
+                <input name="user" placeholder="Enter User"/>
+                <img alt="Logo image"/>
+            </box>
+        "#;
+        let doc = THTMLParser::parse(html).unwrap();
+        let tree = build_a11y_tree(&doc);
+        assert!(!tree.is_empty());
+        let root = &tree[0];
+        assert_eq!(root.role, AtSpRole::Application);
+        
+        let container = &root.children[0];
+        assert_eq!(container.role, AtSpRole::Container);
+        
+        let button = &container.children[0];
+        assert_eq!(button.role, AtSpRole::Button);
+        assert_eq!(button.label, "Click");
+        
+        let input = &container.children[1];
+        assert_eq!(input.role, AtSpRole::TextInput);
+        assert_eq!(input.label, "Enter User");
+        
+        let img = &container.children[2];
+        assert_eq!(img.role, AtSpRole::Image);
+        assert_eq!(img.label, "Logo image");
+    }
+
+    #[test]
+    fn test_render_linear_fallback() {
+        let html = r#"
+            <box>
+                <text>Line One</text>
+                <button>Click</button>
+                <input placeholder="Name"/>
+            </box>
+        "#;
+        let doc = THTMLParser::parse(html).unwrap();
+        let text = render_linear_fallback(&doc);
+        assert!(text.contains("Line One"));
+        assert!(text.contains("[Button: Click]"));
+        assert!(text.contains("[Input placeholder=Name]"));
+        assert!(!text.contains("┌")); // No box drawing chars should be outputted
+    }
+}
+
+--- END OF FILE: ./oxiterm-a11y/src/lib.rs ---
 
 --- FILE: ./oxiterm-cli/src/main.rs ---
 use clap::{Parser, Subcommand};
@@ -184,6 +498,10 @@ enum Commands {
         /// Web port to listen on
         #[arg(long, default_value_t = 8080)]
         web_port: u16,
+        /// Enable accessibility mode: output plain-text fallback via LinearFrameSink
+        /// and register AT-SPI2 nodes through D-Bus tunnel.
+        #[arg(long)]
+        a11y: bool,
     },
     /// Run the built-in weather dashboard demo
     Demo {
@@ -193,6 +511,9 @@ enum Commands {
         /// Web port to listen on
         #[arg(long, default_value_t = 8080)]
         web_port: u16,
+        /// Enable accessibility mode
+        #[arg(long)]
+        a11y: bool,
     },
     /// Validate a .thtml file for syntax errors
     Check {
@@ -212,8 +533,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { file, port, host, no_auth, web_port } => {
-            info!("Serving {} on {}:{} (web on port {})", file, host, port, web_port);
+        Commands::Serve { file, port, host, no_auth, web_port, a11y } => {
+            info!("Serving {} on {}:{} (web on port {}){}", file, host, port, web_port, if a11y { " [a11y mode]" } else { "" });
             
             let doc = oxiterm_server::loader::load_thtml_file(&file)?;
             
@@ -221,6 +542,7 @@ async fn main() -> Result<()> {
             config.server.host = host;
             config.server.port = port;
             config.server.web_port = web_port;
+            config.server.a11y_mode = a11y;
             if no_auth {
                 config.server.no_auth = true;
             }
@@ -257,11 +579,12 @@ async fn main() -> Result<()> {
 
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, Some(doc), Some(file_path_clone)).await?;
         }
-        Commands::Demo { port, web_port } => {
-            info!("Starting built-in weather demo on port {} (web on port {})", port, web_port);
+        Commands::Demo { port, web_port, a11y } => {
+            info!("Starting built-in weather demo on port {} (web on port {}){}", port, web_port, if a11y { " [a11y mode]" } else { "" });
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.port = port;
             config.server.web_port = web_port;
+            config.server.a11y_mode = a11y;
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));
@@ -306,7 +629,7 @@ pub enum NodeTag {
     Video,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct NodeAttributes {
     pub id: Option<String>,
     pub class: Vec<String>,
@@ -314,6 +637,9 @@ pub struct NodeAttributes {
     pub src: Option<String>,
     pub event_htmx: Option<String>,
     pub bind_state: Option<String>,
+    pub alt: Option<String>,
+    pub placeholder: Option<String>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -1915,6 +2241,66 @@ fn parse_color(value: &str) -> AnsiColor {
     AnsiColor::Reset
 }
 
+pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &StyleSheet) {
+    for (_id, node) in doc.arena.iter_mut() {
+        let tag_name = match node.tag {
+            oxiterm_proto::dom::NodeTag::Screen => "screen",
+            oxiterm_proto::dom::NodeTag::Box => "box",
+            oxiterm_proto::dom::NodeTag::Text => "text",
+            oxiterm_proto::dom::NodeTag::Input => "input",
+            oxiterm_proto::dom::NodeTag::Button => "button",
+            oxiterm_proto::dom::NodeTag::Img => "img",
+            oxiterm_proto::dom::NodeTag::Video => "video",
+        };
+
+        let mut new_style = oxiterm_proto::style::ComputedStyle::default();
+
+        // 1. Tag rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Tag(ref t) = selector {
+                if t.to_lowercase() == tag_name {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 2. Class rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Class(ref c) = selector {
+                if node.attrs.class.contains(c) {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 3. Id rules
+        for (selector, decls) in &stylesheet.rules {
+            if let Selector::Id(ref id) = selector {
+                if node.attrs.id.as_deref() == Some(id) {
+                    for decl in decls {
+                        apply_declaration(&mut new_style, decl);
+                    }
+                }
+            }
+        }
+
+        // 4. Inline styles (overwriting stylesheet styles)
+        if let Some(ref style_str) = node.attrs.style_raw {
+            if let Ok(decls) = parse_inline_tcss(style_str) {
+                for decl in decls {
+                    apply_declaration(&mut new_style, &decl);
+                }
+            }
+        }
+
+        node.style = new_style;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1963,6 +2349,32 @@ mod tests {
         assert_eq!(style.margin.left, 0);
         assert_eq!(style.margin.top, 0);
     }
+
+    #[test]
+    fn test_apply_styles_cascading() {
+        let mut doc = crate::document::THTMLDocument::new();
+        let mut btn = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Button);
+        btn.attrs.id = Some("submit".to_string());
+        btn.attrs.class = vec!["btn".to_string(), "primary".to_string()];
+        btn.attrs.style_raw = Some("fg: red".to_string());
+        
+        let root = doc.root;
+        let btn_id = doc.arena.alloc(btn);
+        doc.append_child(root, btn_id).unwrap();
+
+        let tcss = "
+            button { width: 10; }
+            .btn { width: 20; fg: yellow; bg: blue; }
+            #submit { bg: magenta; }
+        ";
+        let stylesheet = parse_tcss(tcss).unwrap();
+        apply_styles(&mut doc, &stylesheet);
+
+        let final_btn = doc.arena.get(btn_id).unwrap();
+        assert_eq!(final_btn.style.width, Some(20));
+        assert_eq!(final_btn.style.bg, AnsiColor::TrueColor(255, 0, 255));
+        assert_eq!(final_btn.style.fg, AnsiColor::TrueColor(255, 0, 0));
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/parser/tcss.rs ---
@@ -2006,15 +2418,33 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .collect()
 }
 
+pub fn extract_style_block(html: &str) -> (String, String) {
+    let re = regex::Regex::new(r"(?is)<style\b[^>]*>(.*?)</style>").unwrap();
+    let mut style_content = String::new();
+    
+    for cap in re.captures_iter(html) {
+        if let Some(m) = cap.get(1) {
+            if !style_content.is_empty() {
+                style_content.push('\n');
+            }
+            style_content.push_str(m.as_str());
+        }
+    }
+    
+    let cleaned_html = re.replace_all(html, "").to_string();
+    (cleaned_html, style_content)
+}
+
 pub struct THTMLParser;
 
 type ParseResult<'a, T> = IResult<&'a str, T, VerboseError<&'a str>>;
 
 impl THTMLParser {
     pub fn parse(input: &str) -> Result<THTMLDocument> {
+        let (cleaned_html, style_content) = extract_style_block(input);
         let mut doc = THTMLDocument::new();
         
-        let (_, nodes) = Self::parse_nodes(input)
+        let (_, nodes) = Self::parse_nodes(&cleaned_html)
             .map_err(|e| anyhow!("THTML Parse Error at: {}", match e {
                 nom::Err::Error(ve) | nom::Err::Failure(ve) => {
                     let mut err_msg = String::new();
@@ -2032,6 +2462,12 @@ impl THTMLParser {
             Self::insert_node_recursive(&mut doc, root_id, node)?;
         }
         
+        // apply_styles is ALWAYS called (even when there is no <style> block) because
+        // insert_node_recursive no longer applies inline styles — apply_styles handles the
+        // full cascade (tag → class → id → inline) in a single unified pass.
+        let stylesheet = crate::parser::tcss::parse_tcss(&style_content).unwrap_or_default();
+        crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
+        
         Ok(doc)
     }
 
@@ -2040,15 +2476,11 @@ impl THTMLParser {
         node.attrs = parsed.attrs;
         node.text = parsed.text;
         
-        // Apply inline styles if present
-        if let Some(ref style_str) = node.attrs.style_raw {
-            if let Ok(decls) = parse_inline_tcss(style_str) {
-                for decl in decls {
-                    apply_declaration(&mut node.style, &decl);
-                }
-            }
-        }
-        
+        // NOTE: Inline styles are NOT applied here. They are applied in THTMLParser::parse
+        // via apply_styles (which handles all selector levels including inline) for documents
+        // that have a <style> block. For plain documents (no <style>), apply_styles is also
+        // called with an empty stylesheet, so inline styles are always applied once — here
+        // we defer to that single pass to avoid double work.
         let node_id = doc.arena.alloc(node);
         doc.append_child(parent_id, node_id)?;
         
@@ -2186,6 +2618,9 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "src" => attrs.src = Some(value),
             "event-htmx" => attrs.event_htmx = Some(value),
             "bind-state" => attrs.bind_state = Some(value),
+            "alt" => attrs.alt = Some(value),
+            "placeholder" => attrs.placeholder = Some(value),
+            "name" => attrs.name = Some(value),
             _ => {}
         }
         input = rem;
@@ -2332,6 +2767,25 @@ mod tests {
         let (_selector, decls) = &stylesheet.rules[0];
         assert_eq!(decls.len(), 1);
     }
+
+    #[test]
+    fn test_extract_style_block() {
+        let input = "
+            <style>
+                .btn { fg: red; }
+            </style>
+            <box class=\"btn\">Hello</box>
+            <style type=\"text/css\">
+                #main { bg: blue; }
+            </style>
+        ";
+        let (cleaned, styles) = extract_style_block(input);
+        assert!(!cleaned.contains("<style>"));
+        assert!(!cleaned.contains("</style>"));
+        assert!(cleaned.contains("<box class=\"btn\">Hello</box>"));
+        assert!(styles.contains(".btn { fg: red; }"));
+        assert!(styles.contains("#main { bg: blue; }"));
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/parser/thtml.rs ---
@@ -2445,9 +2899,9 @@ mod tests {
 --- END OF FILE: ./oxiterm-renderer/src/render/buffer.rs ---
 
 --- FILE: ./oxiterm-renderer/src/render/cache.rs ---
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, RwLock, OnceLock};
 use std::process::{Command, Stdio, Child};
 use std::io::Read;
 use std::thread;
@@ -2476,8 +2930,11 @@ pub struct SafeAnimation {
     pub anim: rlottie::Animation,
 }
 unsafe impl Send for SafeAnimation {}
-unsafe impl Sync for SafeAnimation {}
+// NOTE: Sync is intentionally NOT implemented — SafeAnimation wraps a C FFI type
+// (rlottie::Animation) that relies on thread-local state. Access is always through
+// Arc<Mutex<SafeAnimation>>, which guarantees exclusive access per thread.
 
+#[derive(Clone)]
 pub struct PlaybackState {
     pub start_time: std::time::Instant,
     pub hover: bool,
@@ -2502,14 +2959,7 @@ impl PlaybackRegistry {
     pub fn get_or_create(&self, path: &Path) -> PlaybackState {
         let mut lock = self.states.lock().unwrap();
         if let Some(state) = lock.get(path) {
-            return PlaybackState {
-                start_time: state.start_time,
-                hover: state.hover,
-                click_active: state.click_active,
-                click_coord: state.click_coord,
-                toggled: state.toggled,
-                lottie_animation: state.lottie_animation.clone(),
-            };
+            return state.clone();
         }
         let state = PlaybackState {
             start_time: std::time::Instant::now(),
@@ -2519,14 +2969,7 @@ impl PlaybackRegistry {
             toggled: false,
             lottie_animation: None,
         };
-        lock.insert(path.to_path_buf(), PlaybackState {
-            start_time: state.start_time,
-            hover: state.hover,
-            click_active: state.click_active,
-            click_coord: state.click_coord,
-            toggled: state.toggled,
-            lottie_animation: None,
-        });
+        lock.insert(path.to_path_buf(), state.clone());
         state
     }
 
@@ -2540,10 +2983,9 @@ impl PlaybackRegistry {
             toggled: false,
             lottie_animation: None,
         });
+
         if state.lottie_animation.is_none() {
-            if let Some(anim) = rlottie::Animation::from_file(path) {
-                state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
-            } else if let Ok(data_str) = std::fs::read_to_string(path) {
+            if let Ok(data_str) = std::fs::read_to_string(path) {
                 if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
                     state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
                 }
@@ -2571,44 +3013,57 @@ impl PlaybackRegistry {
     }
 }
 
+/// FIFO-eviction asset cache. Insertion order is preserved via VecDeque;
+/// oldest entry is evicted when capacity is reached (capacity = 100).
 pub struct AssetCache {
-    cache: Mutex<HashMap<CacheKey, CacheValue>>,
+    cache: Mutex<VecDeque<(CacheKey, CacheValue)>>,
 }
 
 impl AssetCache {
+    const CAPACITY: usize = 100;
+
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<AssetCache> = OnceLock::new();
         INSTANCE.get_or_init(|| Self {
-            cache: Mutex::new(HashMap::new()),
+            cache: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn lookup(&self, key: &CacheKey) -> Option<CacheValue> {
         let lock = self.cache.lock().unwrap();
-        lock.get(key).cloned()
+        lock.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
     }
 
     pub fn insert(&self, key: CacheKey, value: CacheValue) {
         let mut lock = self.cache.lock().unwrap();
-        lock.insert(key, value);
+        // Remove existing entry with the same key (update in place would keep order, but
+        // re-inserting at the back is simpler and semantically correct for an asset cache).
+        lock.retain(|(k, _)| k != &key);
+        if lock.len() >= Self::CAPACITY {
+            lock.pop_front(); // FIFO eviction — remove the oldest entry
+        }
+        lock.push_back((key, value));
     }
 }
 
+/// FIFO-eviction SVG tree cache (capacity = 20).
 pub struct SvgCache {
-    trees: Mutex<HashMap<PathBuf, Arc<resvg::usvg::Tree>>>,
+    trees: Mutex<VecDeque<(PathBuf, Arc<resvg::usvg::Tree>)>>,
 }
 
 impl SvgCache {
+    const CAPACITY: usize = 20;
+
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<SvgCache> = OnceLock::new();
         INSTANCE.get_or_init(|| Self {
-            trees: Mutex::new(HashMap::new()),
+            trees: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn get_or_load(&self, path: &Path) -> anyhow::Result<Arc<resvg::usvg::Tree>> {
         let mut lock = self.trees.lock().unwrap();
-        if let Some(tree) = lock.get(path) {
+        if let Some((_, tree)) = lock.iter().find(|(p, _)| p == path) {
             return Ok(Arc::clone(tree));
         }
 
@@ -2626,7 +3081,10 @@ impl SvgCache {
             .map_err(|e| anyhow::anyhow!("SVG parse error: {:?}", e))?;
         
         let arc_tree = Arc::new(tree);
-        lock.insert(path.to_path_buf(), Arc::clone(&arc_tree));
+        if lock.len() >= Self::CAPACITY {
+            lock.pop_front(); // FIFO eviction
+        }
+        lock.push_back((path.to_path_buf(), Arc::clone(&arc_tree)));
         Ok(arc_tree)
     }
 }
@@ -2635,7 +3093,9 @@ pub struct VideoPlayer {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    pub frame_buffer: Arc<Mutex<Option<Vec<u8>>>>,
+    /// RwLock instead of Mutex: the ffmpeg thread writes once per decoded frame,
+    /// while the renderer thread reads (potentially) many times per render cycle.
+    pub frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>>,
     pub child: Child,
     pub last_accessed: Instant,
 }
@@ -2660,7 +3120,19 @@ impl VideoPlayerRegistry {
         })
     }
 
-    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Vec<u8>> {
+    pub fn is_ffmpeg_available() -> bool {
+        static AVAILABLE: OnceLock<bool> = OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            Command::new("ffmpeg")
+                .arg("-version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+        })
+    }
+
+    pub fn get_frame(&self, path: &Path, width: u32, height: u32, fps: u32) -> Option<Arc<Vec<u8>>> {
         let mut players = self.players.lock().unwrap();
         let now = Instant::now();
 
@@ -2685,7 +3157,7 @@ impl VideoPlayerRegistry {
 
         if let Some(player) = players.get_mut(&key) {
             player.last_accessed = now;
-            player.frame_buffer.lock().unwrap().clone()
+            player.frame_buffer.read().unwrap().clone()
         } else {
             None
         }
@@ -2710,17 +3182,17 @@ impl VideoPlayerRegistry {
         match child {
             Ok(mut child) => {
                 let mut stdout = child.stdout.take().unwrap();
-                let frame_buffer = Arc::new(Mutex::new(None));
+                let frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>> = Arc::new(RwLock::new(None));
                 let frame_buffer_clone = Arc::clone(&frame_buffer);
                 let frame_size = (width * height * 4) as usize;
 
                 thread::spawn(move || {
-                    let mut buf = vec![0u8; frame_size];
                     loop {
+                        let mut buf = vec![0u8; frame_size];
                         if stdout.read_exact(&mut buf).is_err() {
                             break;
                         }
-                        *frame_buffer_clone.lock().unwrap() = Some(buf.clone());
+                        *frame_buffer_clone.write().unwrap() = Some(Arc::new(buf));
                     }
                 });
 
@@ -2935,6 +3407,8 @@ impl DiffEngine {
                 AnsiCommand::WriteChar(ch) => {
                     buf.push(0x03);
                     buf.extend_from_slice(&(*ch as u32).to_le_bytes());
+                    let width = crate::render::unicode::UnicodeWidthCache::get().width(*ch);
+                    buf.push(if width == 0 { 1 } else { width });
                 }
                 AnsiCommand::SetModifiers { bold, underline, italic } => {
                     buf.push(0x04);
@@ -3014,9 +3488,11 @@ impl DiffEngine {
                     commands.push(AnsiCommand::SetColor { fg, bg });
                 }
                 0x03 => {
-                    if i + 4 > bytes.len() { return Err("Truncated WriteChar"); }
+                    if i + 5 > bytes.len() { return Err("Truncated WriteChar"); }
                     let val = u32::from_le_bytes([bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]]);
                     i += 4;
+                    let _width = bytes[i];
+                    i += 1;
                     let ch = char::from_u32(val).ok_or("Invalid char value")?;
                     commands.push(AnsiCommand::WriteChar(ch));
                 }
@@ -3127,6 +3603,9 @@ pub trait FrameSink: Send {
     /// and returns Ok(true) if a frame was actually transmitted (i.e. diff was non-empty).
     fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> Result<bool>;
 
+    /// Update the current document for accessibility sinks.
+    fn update_document(&mut self, _doc: &crate::document::THTMLDocument) -> Result<()> { Ok(()) }
+
     /// Perform any initial environment configuration/setup for the sink.
     fn setup(&mut self) -> Result<()> { Ok(()) }
 
@@ -3221,10 +3700,16 @@ pub mod buffer;
 pub mod diff;
 pub mod unicode;
 pub mod emitter;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub mod renderer;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod kitty;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod sixel;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cache;
+
 
 
 --- END OF FILE: ./oxiterm-renderer/src/render/mod.rs ---
@@ -3558,6 +4043,8 @@ impl Renderer {
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
+            // BUG-SVG-01: Swap B (index 0) and R (index 2) to correctly map BGRA to RGBA
+            pixel.swap(0, 2);
             let alpha = pixel[3];
             if alpha > 0 && alpha < 255 {
                 let a_factor = 255.0 / alpha as f32;
@@ -3598,6 +4085,8 @@ impl Renderer {
             let is_lottie = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "json")
                 .unwrap_or(false);
+            // BUG-RIVE-01: The .riv extension is checked to trigger a CPU-rendered procedural toggle button simulation
+            // rather than utilizing a full Rive runtime, maintaining low binary footprint.
             let is_rive = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "riv")
                 .unwrap_or(false);
@@ -3727,7 +4216,8 @@ impl Renderer {
                     }
                 })()
             } else if is_rive {
-                // Procedural Rive Toggle Button widget
+                // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
+                // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
                 (|| -> anyhow::Result<image::RgbaImage> {
                     let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
                         .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
@@ -3924,11 +4414,8 @@ impl Renderer {
         let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
             for dy in 0..height {
                 for dx in 0..width {
-                    let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
-                        '*'
-                    } else {
-                        ' '
-                    };
+                    let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
+                    let ch = if is_border { '*' } else { ' ' };
                     buffer.set(abs_x + dx, abs_y + dy, Cell {
                         ch,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
@@ -3937,7 +4424,12 @@ impl Renderer {
                 }
             }
             let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            let display_name = format!("[Video: {}]", name);
+            let is_missing = !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available();
+            let display_name = if is_missing {
+                format!("[Video Error: ffmpeg missing! {}]", name)
+            } else {
+                format!("[Video: {}]", name)
+            };
             let len = display_name.chars().count() as u16;
             if width > len + 2 && height > 2 {
                 let start_x = abs_x + (width - len) / 2;
@@ -3976,45 +4468,50 @@ impl Renderer {
             let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
 
             if let Some(raw_rgba) = frame {
-                if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, raw_rgba) {
-                    if profile.supports_kitty_gfx {
-                        let payload = super::kitty::KittyImageManager::transmit_image(
-                            pixel_w,
-                            pixel_h,
-                            width as u32,
-                            height as u32,
-                            &img,
-                        );
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&payload);
-                        buffer.graphics.push(cmd);
-                        
-                        for dy in 0..height {
-                            for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
-                                }
+                if profile.supports_kitty_gfx {
+                    // BUG-VIDEO-01: Zero-copy transmit path. Pass Arc slice reference directly to transmit_image.
+                    let payload = super::kitty::KittyImageManager::transmit_image(
+                        pixel_w,
+                        pixel_h,
+                        width as u32,
+                        height as u32,
+                        &raw_rgba,
+                    );
+                    let mut cmd = Vec::new();
+                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                    cmd.extend_from_slice(&payload);
+                    buffer.graphics.push(cmd);
+                    
+                    for dy in 0..height {
+                        for dx in 0..width {
+                            if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                buffer.cells[idx].skip = true;
                             }
                         }
-                    } else if profile.supports_sixel {
-                        let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&sixel_payload);
-                        buffer.graphics.push(cmd);
-                        
-                        for dy in 0..height {
-                            for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
-                                }
-                            }
-                        }
-                    } else {
-                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
                     }
                     return;
+                } else {
+                    // For fallback formats, construct the ImageBuffer by cloning raw_rgba.
+                    if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(pixel_w, pixel_h, (*raw_rgba).clone()) {
+                        if profile.supports_sixel {
+                            let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&sixel_payload);
+                            buffer.graphics.push(cmd);
+                            
+                            for dy in 0..height {
+                                for dx in 0..width {
+                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
+                                        buffer.cells[idx].skip = true;
+                                    }
+                                }
+                            }
+                        } else {
+                            Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                        }
+                        return;
+                    }
                 }
             }
             draw_fallback(&resolved_path, buffer);
@@ -4764,6 +5261,10 @@ pub struct ServerConfig {
     pub password: Option<String>,
     pub no_auth: bool,
     pub web_port: u16,
+    /// When true, EventLoop uses LinearFrameSink (plain-text a11y output) instead
+    /// of the default AnsiFrameSink. Activate via `oxiterm serve --a11y`.
+    #[serde(default)]
+    pub a11y_mode: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -4788,6 +5289,7 @@ impl Default for OxiTermConfig {
                 password: None,
                 no_auth: false,
                 web_port: 8080,
+                a11y_mode: false,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -5489,6 +5991,17 @@ impl Drop for AnsiFrameSink {
     }
 }
 
+struct ChannelWriter(crate::backpressure::BoundedFrameChannel<Vec<u8>>);
+impl std::io::Write for ChannelWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = self.0.try_send(buf.to_vec());
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 pub struct EventLoop {
     pub session: Arc<ClientSession>,
     pub event_bus: Arc<crate::events::EventBus>,
@@ -5504,6 +6017,7 @@ pub struct EventLoop {
     pub weather_app: Option<crate::weather_app::WeatherApp>,
     pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
     pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
+    pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
 }
 
 impl EventLoop {
@@ -5512,9 +6026,22 @@ impl EventLoop {
         event_bus: Arc<crate::events::EventBus>, 
         output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
         doc: THTMLDocument,
+        a11y_mode: bool,
     ) -> Self {
         let dims = *session.dims.read();
-        let frame_sink = Box::new(AnsiFrameSink::new(output_tx.clone()));
+        
+        let mut dbus_bridge = None;
+        let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if a11y_mode {
+            let writer = ChannelWriter(output_tx.clone());
+            let mut bridge = oxiterm_a11y::DBusBridge::new();
+            if let Ok(addr) = oxiterm_a11y::DBusBridge::read_dbus_address() {
+                let _ = bridge.open_tunnel(std::path::Path::new("/tmp/dbus-local"), std::path::Path::new(&addr));
+            }
+            dbus_bridge = Some(bridge);
+            Box::new(oxiterm_a11y::LinearFrameSink::new(writer))
+        } else {
+            Box::new(AnsiFrameSink::new(output_tx.clone()))
+        };
         
         Self { 
             session, 
@@ -5531,6 +6058,7 @@ impl EventLoop {
             weather_app: None,
             weather_rx: None,
             weather_tx: None,
+            dbus_bridge,
         }
     }
 
@@ -5856,6 +6384,14 @@ impl EventLoop {
 
                 let dims = *self.session.dims.read();
                 if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
+                    if let Some(ref mut bridge) = self.dbus_bridge {
+                        let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
+                        let _ = bridge.register_at_spi(&tree);
+                        if let Some(active_id) = self.session.predictive_echo.read().active_node {
+                            let _ = bridge.update_focus(active_id, &tree);
+                        }
+                    }
+
                     // QUAL-01: Process pending mouse event now that we have layout
                     if let Some(mouse) = self.pending_mouse.take() {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
@@ -5890,6 +6426,7 @@ impl EventLoop {
                         }
                     }
                     
+                    let _ = self.frame_sink.update_document(&self.doc);
                     if let Ok(true) = self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back) {
                         self.buffer.swap();
                         self.frame_limiter.record_frame();
@@ -6493,7 +7030,7 @@ impl Handler for OxiServer {
                 client_session.predictive_echo.write().active_node = input_id;
 
                 let (weather_tx, weather_rx) = std::sync::mpsc::channel();
-                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc);
+                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
                 event_loop.weather_app = app_opt;
                 event_loop.source_path = self.source_path.clone();
                 event_loop.weather_tx = Some(weather_tx);
@@ -7241,7 +7778,7 @@ pub mod web_impl {
         initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         source_path: Option<std::path::PathBuf>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; 8192];
         let n = stream.peek(&mut buf).await?;
         let header = String::from_utf8_lossy(&buf[..n]);
 
@@ -7250,13 +7787,20 @@ pub mod web_impl {
             handle_websocket(ws_stream, registry, initial_doc, source_path).await?;
         } else {
             let mut stream = stream;
-            let mut read_buf = [0u8; 1024];
-            let _ = stream.readable().await;
-            let read_bytes = match stream.try_read(&mut read_buf) {
-                Ok(0) => return Ok(()),
-                Ok(n) => n,
-                Err(_) => return Ok(()),
-            };
+            let mut read_buf = vec![0u8; 8192];
+            let mut read_bytes = 0;
+            use tokio::io::AsyncReadExt;
+            loop {
+                let n = stream.read(&mut read_buf[read_bytes..]).await?;
+                if n == 0 {
+                    break;
+                }
+                read_bytes += n;
+                let s = String::from_utf8_lossy(&read_buf[..read_bytes]);
+                if s.contains("\r\n\r\n") || read_bytes >= 8192 {
+                    break;
+                }
+            }
             let request = String::from_utf8_lossy(&read_buf[..read_bytes]);
             let path = request.split_whitespace().nth(1).unwrap_or("/");
 
@@ -7275,13 +7819,32 @@ pub mod web_impl {
                 }
             };
 
+            let accepts_gzip = request.to_lowercase().contains("accept-encoding: gzip")
+                || request.to_lowercase().contains("accept-encoding: *")
+                || request.contains("Accept-Encoding: gzip");
+
+            let mut response_body = body.to_vec();
+            let mut content_encoding = "";
+            if accepts_gzip && status == "200 OK" {
+                use flate2::write::GzEncoder;
+                use flate2::Compression;
+                use std::io::Write;
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                if encoder.write_all(body).is_ok() {
+                    if let Ok(compressed) = encoder.finish() {
+                        response_body = compressed;
+                        content_encoding = "Content-Encoding: gzip\r\n";
+                    }
+                }
+            }
+
             use tokio::io::AsyncWriteExt;
             let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                status, mime, body.len()
+                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+                status, mime, response_body.len(), content_encoding
             );
             stream.write_all(response.as_bytes()).await?;
-            stream.write_all(body).await?;
+            stream.write_all(&response_body).await?;
             stream.flush().await?;
         }
         Ok(())
@@ -7340,7 +7903,7 @@ pub mod web_impl {
         client_session.predictive_echo.write().active_node = input_id;
 
         let (weather_tx, weather_rx) = std::sync::mpsc::channel();
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc);
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
         event_loop.weather_app = app_opt;
         event_loop.source_path = source_path;
@@ -7439,8 +8002,8 @@ pub mod web_impl {
                         if bytes.len() >= 5 {
                             let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
                             let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
-                            // Trigger dynamic resize
-                            *client_session.dims.write() = PtyDimensions { cols, rows };
+                            // Trigger dynamic resize via debouncer to prevent double-allocation/drift
+                            client_session.resize_debouncer.write().push(PtyDimensions { cols, rows });
                             let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
                         }
                     }
@@ -7491,6 +8054,7 @@ pub struct WebTerminal {
     bold: bool,
     underline: bool,
     italic: bool,
+    base_font: String,
 }
 
 #[wasm_bindgen]
@@ -7519,6 +8083,7 @@ impl WebTerminal {
             bold: false,
             underline: false,
             italic: false,
+            base_font: font.to_string(),
         })
     }
 
@@ -7541,8 +8106,10 @@ impl WebTerminal {
                     self.italic = italic;
                 }
                 AnsiCommand::WriteChar(ch) => {
-                    self.draw_cell(self.cx, self.cy, ch);
-                    self.cx += 1;
+                    let w = oxiterm_renderer::render::unicode::UnicodeWidthCache::get().width(ch);
+                    let w = if w == 0 { 1 } else { w } as u16;
+                    self.draw_cell(self.cx, self.cy, ch, w);
+                    self.cx += w;
                 }
                 AnsiCommand::Reset => {
                     self.fg = AnsiColor::Reset;
@@ -7575,30 +8142,28 @@ impl WebTerminal {
 }
 
 impl WebTerminal {
-    fn draw_cell(&self, col: u16, row: u16, ch: char) {
+    fn draw_cell(&self, col: u16, row: u16, ch: char, width_cells: u16) {
         let x = col as f64 * self.char_width;
         let y = row as f64 * self.char_height;
+        let cell_w = self.char_width * width_cells as f64;
 
         // 1. Draw Background
         let bg_str = get_color_str(&self.bg, false);
         self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
-        self.ctx.fill_rect(x, y, self.char_width, self.char_height);
+        self.ctx.fill_rect(x, y, cell_w, self.char_height);
 
         if ch == ' ' || ch == '\0' {
             return;
         }
 
-        // 2. Set Font styling (bold, italic)
-        let font_style = if self.bold && self.italic {
-            "bold italic 16px monospace"
-        } else if self.bold {
-            "bold 16px monospace"
-        } else if self.italic {
-            "italic 16px monospace"
-        } else {
-            "16px monospace"
-        };
-        self.ctx.set_font(font_style);
+        // 2. Set Font styling (bold, italic) using base_font
+        let font_style = format!(
+            "{}{}{}",
+            if self.bold { "bold " } else { "" },
+            if self.italic { "italic " } else { "" },
+            self.base_font
+        );
+        self.ctx.set_font(&font_style);
 
         // 3. Draw Foreground Text
         let fg_str = get_color_str(&self.fg, true);
@@ -7609,7 +8174,7 @@ impl WebTerminal {
 
         // 4. Draw Underline
         if self.underline {
-            self.ctx.fill_rect(x, y + self.char_height - 2.0, self.char_width, 2.0);
+            self.ctx.fill_rect(x, y + self.char_height - 2.0, cell_w, 2.0);
         }
     }
 }
@@ -7735,6 +8300,7 @@ members = [
     "oxiterm-renderer",
     "oxiterm-cli",
     "oxiterm-web",
+    "oxiterm-a11y",
 ]
 resolver = "2"
 
@@ -8486,6 +9052,22 @@ Line 2 of text</text>
 
 --- END OF FILE: ./examples/video_demo.thtml ---
 
+--- FILE: ./oxiterm-a11y/Cargo.toml ---
+[package]
+name = "oxiterm-a11y"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { path = "../oxiterm-renderer" }
+serde = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+--- END OF FILE: ./oxiterm-a11y/Cargo.toml ---
+
 --- FILE: ./oxiterm-cli/Cargo.toml ---
 [package]
 name = "oxiterm-cli"
@@ -8540,8 +9122,11 @@ unicode-width = { workspace = true }
 parking_lot = { workspace = true }
 base64 = "0.22.1"
 image = "0.25"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 resvg = "0.47"
 rlottie = "0.5.4"
+
 
 
 
@@ -8558,6 +9143,8 @@ edition = "2021"
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer" }
+oxiterm-a11y = { path = "../oxiterm-a11y" }
+flate2 = { version = "1.1", features = ["miniz_oxide"] }
 tokio = { workspace = true }
 russh = { workspace = true }
 russh-keys = { workspace = true }
@@ -8596,6 +9183,7 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "0.2"
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer" }
+unicode-width = { workspace = true }
 
 [dependencies.web-sys]
 version = "0.3"

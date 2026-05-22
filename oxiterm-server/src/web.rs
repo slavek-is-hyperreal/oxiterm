@@ -212,7 +212,7 @@ pub mod web_impl {
         client_session.predictive_echo.write().active_node = input_id;
 
         let (weather_tx, weather_rx) = std::sync::mpsc::channel();
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc);
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
         event_loop.weather_app = app_opt;
         event_loop.source_path = source_path;

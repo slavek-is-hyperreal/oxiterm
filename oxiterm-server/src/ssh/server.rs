@@ -121,7 +121,7 @@ impl Handler for OxiServer {
                 client_session.predictive_echo.write().active_node = input_id;
 
                 let (weather_tx, weather_rx) = std::sync::mpsc::channel();
-                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc);
+                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
                 event_loop.weather_app = app_opt;
                 event_loop.source_path = self.source_path.clone();
                 event_loop.weather_tx = Some(weather_tx);

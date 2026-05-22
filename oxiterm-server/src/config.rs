@@ -17,6 +17,10 @@ pub struct ServerConfig {
     pub password: Option<String>,
     pub no_auth: bool,
     pub web_port: u16,
+    /// When true, EventLoop uses LinearFrameSink (plain-text a11y output) instead
+    /// of the default AnsiFrameSink. Activate via `oxiterm serve --a11y`.
+    #[serde(default)]
+    pub a11y_mode: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,6 +45,7 @@ impl Default for OxiTermConfig {
                 password: None,
                 no_auth: false,
                 web_port: 8080,
+                a11y_mode: false,
             },
             session: SessionConfig {
                 max_sessions: 100,
