@@ -23,7 +23,6 @@ impl ReactorThread {
             while let Ok(msg) = rx.recv() {
                 match msg {
                     ReactorMessage::Raw(data) => {
-                        Self::detect_flow_control(&data, &tx);
                         if let Some(frame) = Self::sanitize_frame(&data) {
                             let events = decoder.feed_slice(&frame);
                             for event in events {
@@ -54,16 +53,5 @@ impl ReactorThread {
         }
         
         Some(raw.to_vec())
-    }
-
-    /// S5-20: Detection of XON/XOFF flow control characters.
-    fn detect_flow_control(data: &[u8], tx: &crate::backpressure::BoundedFrameChannel<InputEvent>) {
-        for &b in data {
-            if b == 0x13 { // XOFF (Ctrl-S)
-                let _ = tx.try_send(InputEvent::Xoff);
-            } else if b == 0x11 { // XON (Ctrl-Q)
-                let _ = tx.try_send(InputEvent::Xon);
-            }
-        }
     }
 }

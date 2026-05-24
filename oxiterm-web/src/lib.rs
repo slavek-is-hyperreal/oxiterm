@@ -7,7 +7,7 @@ use oxiterm_renderer::DiffEngine;
 
 #[wasm_bindgen]
 pub struct WebTerminal {
-    _canvas: HtmlCanvasElement,
+    canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
     char_width: f64,
     char_height: f64,
@@ -20,6 +20,7 @@ pub struct WebTerminal {
     italic: bool,
     base_font: String,
     cols: u16,
+    rows: u16,
 }
 
 #[wasm_bindgen]
@@ -37,7 +38,7 @@ impl WebTerminal {
         let char_height = line_height;
 
         Ok(WebTerminal {
-            _canvas: canvas,
+            canvas,
             ctx,
             char_width,
             char_height,
@@ -50,6 +51,7 @@ impl WebTerminal {
             italic: false,
             base_font: font.to_string(),
             cols: 80,
+            rows: 24,
         })
     }
 
@@ -61,6 +63,23 @@ impl WebTerminal {
                 AnsiCommand::MoveCursor(x, y) => {
                     self.cx = x;
                     self.cy = y;
+                    
+                    let mut resized = false;
+                    if x >= self.cols {
+                        self.cols = x + 1;
+                        let new_width = self.cols as f64 * self.char_width;
+                        self.canvas.set_width(new_width as u32);
+                        resized = true;
+                    }
+                    if y >= self.rows {
+                        self.rows = y + 1;
+                        let new_height = self.rows as f64 * self.char_height;
+                        self.canvas.set_height(new_height as u32);
+                        resized = true;
+                    }
+                    if resized {
+                        self.ctx.set_font(&self.base_font);
+                    }
                 }
                 AnsiCommand::SetColor { fg, bg } => {
                     self.fg = fg;
@@ -96,6 +115,7 @@ impl WebTerminal {
     #[wasm_bindgen]
     pub fn clear(&mut self, cols: u16, rows: u16) {
         self.cols = cols;
+        self.rows = rows;
         let bg_str = get_color_str(&AnsiColor::Reset, false);
         self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
         self.ctx.fill_rect(

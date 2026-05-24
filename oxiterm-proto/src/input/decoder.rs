@@ -106,9 +106,10 @@ impl InputStateMachine {
                     self.state = State::Escaped;
                     let _ = self.buffer.push(byte);
                     None
-                } else if byte == 0x11 || byte == 0x13 {
-                    // XON/XOFF handled directly in ReactorThread
-                    None
+                } else if byte == 0x11 {
+                    Some(InputEvent::Xon)
+                } else if byte == 0x13 {
+                    Some(InputEvent::Xoff)
                 } else if byte >= 0x80 {
                     // Check if this is the start of a sequence
                     if self.utf8_buf.is_empty() {
@@ -391,5 +392,16 @@ mod tests {
         } else {
             panic!("Expected KeyEvent 'a' after timeout reset");
         }
+    }
+
+    #[test]
+    fn test_xon_xoff_handling() {
+        let mut sm = InputStateMachine::new();
+        
+        let ev1 = sm.feed(0x11);
+        assert_eq!(ev1, Some(InputEvent::Xon));
+        
+        let ev2 = sm.feed(0x13);
+        assert_eq!(ev2, Some(InputEvent::Xoff));
     }
 }

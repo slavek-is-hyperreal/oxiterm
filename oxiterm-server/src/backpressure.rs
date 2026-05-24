@@ -21,6 +21,7 @@ struct ChannelInner<T> {
 pub struct BoundedFrameChannel<T> {
     inner: Arc<(Mutex<ChannelInner<T>>, Condvar)>,
     notify: Arc<Notify>,
+    senders: Arc<()>,
 }
 
 pub struct Receiver<T> {
@@ -39,8 +40,9 @@ impl<T: Send + 'static> BoundedFrameChannel<T> {
             Condvar::new()
         ));
         let notify = Arc::new(Notify::new());
+        let senders = Arc::new(());
         
-        let tx = Self { inner: inner.clone(), notify: notify.clone() };
+        let tx = Self { inner: inner.clone(), notify: notify.clone(), senders };
         let rx = Receiver { inner, notify };
         
         (tx, rx)
@@ -136,7 +138,7 @@ impl<T> Receiver<T> {
 
 impl<T> Drop for BoundedFrameChannel<T> {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.inner) <= 2 {
+        if Arc::strong_count(&self.senders) == 1 {
             let (lock, cvar) = &*self.inner;
             let mut inner = lock.lock();
             inner.closed = true;

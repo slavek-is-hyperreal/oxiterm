@@ -290,6 +290,7 @@ pub struct EventLoop {
     pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
     pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
+    pub parent_map: HashMap<NodeId, NodeId>,
 }
 
 impl EventLoop {
@@ -315,7 +316,7 @@ impl EventLoop {
             Box::new(AnsiFrameSink::new(output_tx.clone()))
         };
         
-        Self { 
+        let mut event_loop = Self { 
             session, 
             event_bus,
             doc,
@@ -331,7 +332,29 @@ impl EventLoop {
             weather_rx: None,
             weather_tx: None,
             dbus_bridge,
+            parent_map: HashMap::new(),
+        };
+        event_loop.rebuild_parent_map();
+        event_loop
+    }
+
+    pub fn rebuild_parent_map(&mut self) {
+        let mut parent_map = HashMap::new();
+        let mut stack = vec![self.doc.root];
+        while let Some(parent_id) = stack.pop() {
+            if let Some(node) = self.doc.arena.get(parent_id) {
+                for &child_id in &node.children {
+                    parent_map.insert(child_id, parent_id);
+                    stack.push(child_id);
+                }
+            }
         }
+        self.parent_map = parent_map;
+    }
+
+    pub fn update_doc(&mut self, new_doc: THTMLDocument) {
+        self.doc = new_doc;
+        self.rebuild_parent_map();
     }
 
     fn setup_state_subscriptions(doc: &THTMLDocument, state: &mut crate::state::StateManager) {
@@ -372,31 +395,20 @@ impl EventLoop {
         }
     }
 
-    fn find_htmx_target_path(doc: &THTMLDocument, current: NodeId, target: NodeId, path: &mut Vec<NodeId>) -> bool {
-        path.push(current);
-        if current == target {
-            return true;
-        }
-        if let Some(node) = doc.get_node(current) {
-            for &child in &node.children {
-                if Self::find_htmx_target_path(doc, child, target, path) {
-                    return true;
+    fn get_htmx_node_and_target(&self, mut node_id: NodeId) -> Option<(NodeId, String)> {
+        loop {
+            if let Some(node) = self.doc.get_node(node_id) {
+                if let Some(ref htmx) = node.attrs.event_htmx {
+                    return Some((node_id, htmx.clone()));
                 }
             }
-        }
-        path.pop();
-        false
-    }
-
-    fn get_htmx_node_and_target(doc: &THTMLDocument, node_id: NodeId) -> Option<(NodeId, String)> {
-        let mut path = Vec::new();
-        if Self::find_htmx_target_path(doc, doc.root, node_id, &mut path) {
-            for &id in path.iter().rev() {
-                if let Some(node) = doc.get_node(id) {
-                    if let Some(ref htmx) = node.attrs.event_htmx {
-                        return Some((id, htmx.clone()));
-                    }
-                }
+            if node_id == self.doc.root {
+                break;
+            }
+            if let Some(&parent_id) = self.parent_map.get(&node_id) {
+                node_id = parent_id;
+            } else {
+                break;
             }
         }
         None
@@ -440,7 +452,7 @@ impl EventLoop {
                         app.loading = false;
                         let dims = *self.session.dims.read();
                         let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                        self.doc = new_doc;
+                        self.update_doc(new_doc);
                         self.layout_engine.reset_nodes();
                         needs_render = true;
                     }
@@ -456,7 +468,8 @@ impl EventLoop {
 
             let mut disconnected = false;
             {
-                let mut rx_lock = self.session.event_rx.lock();
+                let session = self.session.clone();
+                let mut rx_lock = session.event_rx.lock();
                 loop {
                     match rx_lock.recv_timeout(sleep_dur) {
                         Ok(event) => {
@@ -476,7 +489,8 @@ impl EventLoop {
                                                 let mut state = self.session.state.write();
                                                 Self::setup_state_subscriptions(&new_doc, &mut *state);
                                                 Self::inject_initial_state(&mut new_doc, &*state);
-                                                self.doc = new_doc;
+                                                drop(state);
+                                                self.update_doc(new_doc);
                                                 self.layout_engine.reset_nodes();
                                                 needs_render = true;
                                             }
@@ -514,7 +528,7 @@ impl EventLoop {
                                                 info!("WeatherApp handled key: {}", key.codepoint);
                                                 let dims = *self.session.dims.read();
                                                 let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                                                self.doc = new_doc;
+                                                self.update_doc(new_doc);
                                                 self.layout_engine.reset_nodes();
                                                 needs_render = true;
                                             }
@@ -551,7 +565,7 @@ impl EventLoop {
                                             if let Some(node) = self.doc.get_node(node_id) {
                                                 info!("Node details: tag={:?}, attrs={:?}", node.tag, node.attrs);
                                             }
-                                            if let Some((target_node_id, htmx_target)) = Self::get_htmx_node_and_target(&self.doc, node_id) {
+                                            if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
                                                 info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
                                                 if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
                                                     // BUG-SEC-01: Path Traversal prevention
@@ -579,7 +593,8 @@ impl EventLoop {
                                                                 let mut state = self.session.state.write();
                                                                 Self::setup_state_subscriptions(&new_doc, &mut *state);
                                                                 Self::inject_initial_state(&mut new_doc, &*state);
-                                                                self.doc = new_doc;
+                                                                drop(state);
+                                                                self.update_doc(new_doc);
                                                                 self.layout_engine.reset_nodes();
                                                                 self.source_path = Some(new_path);
                                                             }
@@ -633,14 +648,15 @@ impl EventLoop {
                 return;
             }
 
-            if let Some(dims) = self.session.resize_debouncer.write().poll() {
+            let dims_opt = self.session.resize_debouncer.write().poll();
+            if let Some(dims) = dims_opt {
                 *self.session.dims.write() = dims;
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
                 info!("Resized session {} to {:?}", self.session.id, dims);
 
                 if let Some(ref mut app) = self.weather_app {
                     let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                    self.doc = new_doc;
+                    self.update_doc(new_doc);
                     self.layout_engine.reset_nodes();
                 }
 

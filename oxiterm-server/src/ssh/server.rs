@@ -80,10 +80,13 @@ impl Handler for OxiServer {
         let sid = self.channels.lock().get(&channel).copied();
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
-                *session.dims.write() = crate::session::PtyDimensions {
+                let new_dims = crate::session::PtyDimensions {
                     cols: u16::try_from(width).unwrap_or(u16::MAX),
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
+                *session.dims.write() = new_dims;
+                session.resize_debouncer.write().push(new_dims);
+                let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
             }
         }
         Ok(())
@@ -120,12 +123,14 @@ impl Handler for OxiServer {
                 
                 client_session.predictive_echo.write().active_node = input_id;
 
-                let (weather_tx, weather_rx) = std::sync::mpsc::channel();
                 let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
-                event_loop.weather_app = app_opt;
+                if let Some(app) = app_opt {
+                    let (weather_tx, weather_rx) = std::sync::mpsc::channel();
+                    event_loop.weather_app = Some(app);
+                    event_loop.weather_tx = Some(weather_tx);
+                    event_loop.weather_rx = Some(weather_rx);
+                }
                 event_loop.source_path = self.source_path.clone();
-                event_loop.weather_tx = Some(weather_tx);
-                event_loop.weather_rx = Some(weather_rx);
                 
                 std::thread::spawn(move || {
                     event_loop.run();

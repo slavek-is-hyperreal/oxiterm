@@ -98,6 +98,11 @@ impl OxiTermConfig {
         if self.session.fps_limit == 0 {
             anyhow::bail!("FPS limit cannot be 0");
         }
+        if let Some(ref pw) = self.server.password {
+            if pw.is_empty() {
+                anyhow::bail!("Server password cannot be empty string");
+            }
+        }
         Ok(())
     }
 }

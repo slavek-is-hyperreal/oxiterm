@@ -38,10 +38,19 @@ pub mod web_impl {
             let bytes = DiffEngine::encode_binary(&commands);
             info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
             match self.frame_tx.try_send(bytes) {
-                Ok(_) => info!("WsFrameSink::send_frame: send successful"),
-                Err(e) => warn!("WsFrameSink::send_frame: send failed: {:?}", e),
+                Ok(_) => {
+                    info!("WsFrameSink::send_frame: send successful");
+                    Ok(true)
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    warn!("WsFrameSink::send_frame: channel full (backpressure)");
+                    Ok(false)
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    warn!("WsFrameSink::send_frame: channel closed");
+                    anyhow::bail!("WebSocket send channel closed")
+                }
             }
-            Ok(true)
         }
     }
 
@@ -185,6 +194,7 @@ pub mod web_impl {
 
         let session_id = client_session.id;
         let registry_clone = registry.clone();
+        let client_session_clone = client_session.clone();
         tokio::spawn(async move {
             let mut ws_write = ws_write;
             while let Some(bytes) = frame_rx.recv().await {
@@ -195,6 +205,7 @@ pub mod web_impl {
             }
             info!("WS writer task terminated, removing session {}", session_id);
             registry_clone.remove_session(session_id);
+            client_session_clone.close();
         });
 
         let frame_sink = Box::new(WsFrameSink::new(frame_tx));
@@ -217,13 +228,18 @@ pub mod web_impl {
 
         client_session.predictive_echo.write().active_node = input_id;
 
-        let (weather_tx, weather_rx) = std::sync::mpsc::channel();
+        let (weather_tx, weather_rx) = if initial_doc.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
         let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
         event_loop.weather_app = app_opt;
         event_loop.source_path = source_path;
-        event_loop.weather_tx = Some(weather_tx);
-        event_loop.weather_rx = Some(weather_rx);
+        event_loop.weather_tx = weather_tx;
+        event_loop.weather_rx = weather_rx;
 
         std::thread::spawn(move || {
             event_loop.run();
@@ -327,6 +343,7 @@ pub mod web_impl {
             }
         }
 
+        client_session.close();
         Ok(())
     }
 }
