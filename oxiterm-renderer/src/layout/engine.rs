@@ -107,7 +107,10 @@ impl LayoutEngine {
         doc.clear_dirty();
 
         let mut max_bottom = 0;
-        for rect in nodes.values() {
+        for (&node_id, rect) in &nodes {
+            if node_id == doc.root {
+                continue;
+            }
             let bottom = rect.y + rect.height;
             if bottom > max_bottom {
                 max_bottom = bottom;
