@@ -301,6 +301,13 @@
             socket.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
                     const bytes = new Uint8Array(event.data);
+                    if (bytes.length === 1 && bytes[0] === 0xFF) {
+                        statusDot.className = "status-dot disconnected";
+                        statusText.innerText = "Disconnected";
+                        overlay.classList.remove("hidden");
+                        document.querySelector(".overlay-text").innerText = "Session terminated.";
+                        return;
+                    }
                     term.draw_commands(bytes);
                 }
             };

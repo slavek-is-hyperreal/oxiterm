@@ -32,8 +32,11 @@ pub mod web_impl {
             info!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             let commands = DiffEngine::diff(front, back);
             info!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
-            if commands.is_empty() {
+            if commands.is_empty() && back.graphics.is_empty() {
                 return Ok(false);
+            }
+            if !back.graphics.is_empty() {
+                warn!("WsFrameSink::send_frame: graphics data ignored (not supported over WS)");
             }
             let bytes = DiffEngine::encode_binary(&commands);
             info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
@@ -51,6 +54,12 @@ pub mod web_impl {
                     anyhow::bail!("WebSocket send channel closed")
                 }
             }
+        }
+    }
+
+    impl Drop for WsFrameSink {
+        fn drop(&mut self) {
+            let _ = self.frame_tx.try_send(vec![0xFF]);
         }
     }
 
