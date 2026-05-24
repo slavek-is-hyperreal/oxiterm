@@ -29,7 +29,7 @@ pub fn sanitize_htmx_value(input: &str) -> String {
     input
         .chars()
         .filter(|&c| {
-            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`' | ';')
+            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`')
         })
         .collect()
 }

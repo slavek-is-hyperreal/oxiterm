@@ -65,6 +65,15 @@ impl StateManager {
     }
 
     pub fn apply_action(&mut self, action: &str) {
+        for sub_action in action.split(|c| c == ';' || c == ',') {
+            let sub_action = sub_action.trim();
+            if !sub_action.is_empty() {
+                self.apply_action_single(sub_action);
+            }
+        }
+    }
+
+    fn apply_action_single(&mut self, action: &str) {
         // format: "cmd:key=val" or "cmd:key"
         let parts: Vec<&str> = action.splitn(2, ':').collect();
         if parts.len() < 2 { return; }

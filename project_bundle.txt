@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: nie, 24 maj 2026, 19:14:46 CEST
+GENERATED: nie, 24 maj 2026, 19:19:42 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -2507,7 +2507,7 @@ pub fn sanitize_htmx_value(input: &str) -> String {
     input
         .chars()
         .filter(|&c| {
-            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`' | ';')
+            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`')
         })
         .collect()
 }
@@ -7799,6 +7799,15 @@ impl StateManager {
     }
 
     pub fn apply_action(&mut self, action: &str) {
+        for sub_action in action.split(|c| c == ';' || c == ',') {
+            let sub_action = sub_action.trim();
+            if !sub_action.is_empty() {
+                self.apply_action_single(sub_action);
+            }
+        }
+    }
+
+    fn apply_action_single(&mut self, action: &str) {
         // format: "cmd:key=val" or "cmd:key"
         let parts: Vec<&str> = action.splitn(2, ':').collect();
         if parts.len() < 2 { return; }
@@ -9876,13 +9885,36 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
     <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
     <box style="flex-direction: row; padding-left: 2; padding-right: 2;
                 padding-top: 1; height: 5; align-items: center;">
-        <box class="tab-btn tab-active"  event-htmx="set:tab=false">
+        <!-- Info Tab Options -->
+        <box class="tab-btn tab-active" event-htmx="set:tab=false" bind-show="tab=false">
             <text style="height: 1;">ℹ Info</text>
         </box>
-        <box class="tab-btn tab-inactive" event-htmx="set:tab=keys">
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=false" bind-show="tab=keys">
+            <text style="height: 1;">ℹ Info</text>
+        </box>
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=false" bind-show="tab=bind">
+            <text style="height: 1;">ℹ Info</text>
+        </box>
+
+        <!-- Klawisze Tab Options -->
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=false">
             <text style="height: 1;">⌨ Klawisze</text>
         </box>
-        <box class="tab-btn tab-inactive" event-htmx="set:tab=bind">
+        <box class="tab-btn tab-active" event-htmx="set:tab=keys" bind-show="tab=keys">
+            <text style="height: 1;">⌨ Klawisze</text>
+        </box>
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=bind">
+            <text style="height: 1;">⌨ Klawisze</text>
+        </box>
+
+        <!-- bind-show Tab Options -->
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=bind" bind-show="tab=false">
+            <text style="height: 1;">🔗 bind-show</text>
+        </box>
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=bind" bind-show="tab=keys">
+            <text style="height: 1;">🔗 bind-show</text>
+        </box>
+        <box class="tab-btn tab-active" event-htmx="set:tab=bind" bind-show="tab=bind">
             <text style="height: 1;">🔗 bind-show</text>
         </box>
         <box style="flex: 1;"></box>
