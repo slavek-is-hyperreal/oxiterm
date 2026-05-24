@@ -29,12 +29,18 @@ pub mod web_impl {
 
     impl FrameSink for WsFrameSink {
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            info!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             let commands = DiffEngine::diff(front, back);
+            info!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
             if commands.is_empty() {
                 return Ok(false);
             }
             let bytes = DiffEngine::encode_binary(&commands);
-            let _ = self.frame_tx.try_send(bytes);
+            info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
+            match self.frame_tx.try_send(bytes) {
+                Ok(_) => info!("WsFrameSink::send_frame: send successful"),
+                Err(e) => warn!("WsFrameSink::send_frame: send failed: {:?}", e),
+            }
             Ok(true)
         }
     }

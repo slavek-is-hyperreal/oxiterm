@@ -4,6 +4,7 @@ use oxiterm_proto::style::AnsiColor;
 use oxiterm_renderer::render::diff::AnsiCommand;
 use oxiterm_renderer::DiffEngine;
 
+
 #[wasm_bindgen]
 pub struct WebTerminal {
     _canvas: HtmlCanvasElement,
@@ -18,6 +19,7 @@ pub struct WebTerminal {
     underline: bool,
     italic: bool,
     base_font: String,
+    cols: u16,
 }
 
 #[wasm_bindgen]
@@ -47,6 +49,7 @@ impl WebTerminal {
             underline: false,
             italic: false,
             base_font: font.to_string(),
+            cols: 80,
         })
     }
 
@@ -73,6 +76,10 @@ impl WebTerminal {
                     let w = if w == 0 { 1 } else { w } as u16;
                     self.draw_cell(self.cx, self.cy, ch, w);
                     self.cx += w;
+                    if self.cols > 0 && self.cx >= self.cols {
+                        self.cx = 0;
+                        self.cy += 1;
+                    }
                 }
                 AnsiCommand::Reset => {
                     self.fg = AnsiColor::Reset;
@@ -87,7 +94,8 @@ impl WebTerminal {
     }
 
     #[wasm_bindgen]
-    pub fn clear(&self, cols: u16, rows: u16) {
+    pub fn clear(&mut self, cols: u16, rows: u16) {
+        self.cols = cols;
         let bg_str = get_color_str(&AnsiColor::Reset, false);
         self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
         self.ctx.fill_rect(
@@ -130,6 +138,8 @@ impl WebTerminal {
 
         // 3. Draw Foreground Text
         let fg_str = get_color_str(&self.fg, true);
+        
+
         self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&fg_str));
         self.ctx.set_text_baseline("top");
         let ch_str = ch.to_string();

@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-oxiterm-server = { path = "../oxiterm-server" }
+oxiterm-server = { path = "../oxiterm-server", features = ["web"] }
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer" }
 tokio = { workspace = true }

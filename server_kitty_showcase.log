@@ -1,17 +1,17 @@
-[2m2026-05-22T21:08:35.136226Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Serving examples/showcase.thtml on 0.0.0.0:8022 (web on port 8080)
-[2m2026-05-22T21:08:35.136341Z[0m [32m INFO[0m [2moxiterm_server::loader[0m[2m:[0m Loading THTML file: "examples/showcase.thtml"
-[2m2026-05-22T21:08:35.144601Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Hot Reload active for examples/showcase.thtml
-[2m2026-05-22T21:08:35.145475Z[0m [32m INFO[0m [2moxiterm_server::ssh[0m[2m:[0m SSH server listening on 0.0.0.0:8022
-[2m2026-05-22T21:08:35.145634Z[0m [32m INFO[0m [2moxiterm_server::web::web_impl[0m[2m:[0m Web/WS server listening on http://0.0.0.0:8080
-[2m2026-05-22T21:08:40.744263Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Auth attempt for user: slavekm with key: Ed25519(VerifyingKey(CompressedEdwardsY: [159, 239, 27, 110, 30, 15, 237, 70, 69, 30, 6, 1, 242, 118, 229, 21, 41, 122, 142, 70, 112, 245, 124, 70, 99, 216, 238, 191, 209, 206, 122, 130]), EdwardsPoint{
+[2m2026-05-22T23:11:14.905999Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Serving examples/showcase.thtml on 0.0.0.0:8022 (web on port 8080)
+[2m2026-05-22T23:11:14.906148Z[0m [32m INFO[0m [2moxiterm_server::loader[0m[2m:[0m Loading THTML file: "examples/showcase.thtml"
+[2m2026-05-22T23:11:14.918256Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Hot Reload active for examples/showcase.thtml
+[2m2026-05-22T23:11:14.918763Z[0m [32m INFO[0m [2moxiterm_server::web::web_impl[0m[2m:[0m Web/WS server listening on http://0.0.0.0:8080
+[2m2026-05-22T23:11:14.919127Z[0m [32m INFO[0m [2moxiterm_server::ssh[0m[2m:[0m SSH server listening on 0.0.0.0:8022
+[2m2026-05-22T23:11:20.468361Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Auth attempt for user: slavekm with key: Ed25519(VerifyingKey(CompressedEdwardsY: [159, 239, 27, 110, 30, 15, 237, 70, 69, 30, 6, 1, 242, 118, 229, 21, 41, 122, 142, 70, 112, 245, 124, 70, 99, 216, 238, 191, 209, 206, 122, 130]), EdwardsPoint{
 	X: FieldElement51([1498074544495097, 1201466469330916, 1364150835030348, 1291080808227433, 1113144886650040]),
 	Y: FieldElement51([1423998254313375, 1759359328102621, 626621305820635, 1180477104502819, 43623665893101]),
 	Z: FieldElement51([1, 0, 0, 0, 0]),
 	T: FieldElement51([1325389107431585, 1921302150132869, 105712471900020, 986419686018321, 43406899225548])
 }))
-[2m2026-05-22T21:08:40.744656Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Opening session on channel: 2
-[2m2026-05-22T21:08:40.745400Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m PTY request for channel ChannelId(2): 100x36 (term: xterm-kitty)
-[2m2026-05-22T21:08:40.745579Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Shell request on channel: ChannelId(2)
-[2m2026-05-22T21:08:40.749879Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m SSH Data received on channel ChannelId(2): len=19, bytes=[27, 91, 63, 54, 50, 59, 99, 27, 95, 71, 105, 61, 51, 49, 59, 79, 75, 27, 92]
-[2m2026-05-22T21:08:40.750211Z[0m [32m INFO[0m [2moxiterm_server::session[0m[2m:[0m Received DA1 response: \x1b[?62;c
-[2m2026-05-22T21:08:40.750273Z[0m [32m INFO[0m [2moxiterm_server::session[0m[2m:[0m Received DA1 response: \x1b_Gi=31;OK\x1b\
+[2m2026-05-22T23:11:20.468862Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Opening session on channel: 2
+[2m2026-05-22T23:11:20.469640Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m PTY request for channel ChannelId(2): 100x36 (term: xterm-kitty)
+[2m2026-05-22T23:11:20.469842Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m Shell request on channel: ChannelId(2)
+[2m2026-05-22T23:11:20.474438Z[0m [32m INFO[0m [2moxiterm_server::ssh::server[0m[2m:[0m SSH Data received on channel ChannelId(2): len=19, bytes=[27, 91, 63, 54, 50, 59, 99, 27, 95, 71, 105, 61, 51, 49, 59, 79, 75, 27, 92]
+[2m2026-05-22T23:11:20.474930Z[0m [32m INFO[0m [2moxiterm_server::session[0m[2m:[0m Received DA1 response: \x1b[?62;c
+[2m2026-05-22T23:11:20.474985Z[0m [32m INFO[0m [2moxiterm_server::session[0m[2m:[0m Received DA1 response: \x1b_Gi=31;OK\x1b\
