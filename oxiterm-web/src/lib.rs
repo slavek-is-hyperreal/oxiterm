@@ -117,7 +117,7 @@ impl WebTerminal {
         self.cols = cols;
         self.rows = rows;
         let bg_str = get_color_str(&AnsiColor::Reset, false);
-        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
+        self.ctx.set_fill_style_str(&bg_str);
         self.ctx.fill_rect(
             0.0,
             0.0,
@@ -140,7 +140,7 @@ impl WebTerminal {
 
         // 1. Draw Background
         let bg_str = get_color_str(&self.bg, false);
-        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&bg_str));
+        self.ctx.set_fill_style_str(&bg_str);
         self.ctx.fill_rect(x, y, cell_w, self.char_height);
 
         if ch == ' ' || ch == '\0' {
@@ -160,7 +160,7 @@ impl WebTerminal {
         let fg_str = get_color_str(&self.fg, true);
         
 
-        self.ctx.set_fill_style(&wasm_bindgen::JsValue::from_str(&fg_str));
+        self.ctx.set_fill_style_str(&fg_str);
         self.ctx.set_text_baseline("top");
         let ch_str = ch.to_string();
         let _ = self.ctx.fill_text(&ch_str, x, y);

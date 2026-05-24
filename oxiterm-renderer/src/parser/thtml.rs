@@ -13,7 +13,6 @@ use nom::{
 };
 use regex::Regex;
 use std::sync::OnceLock;
-use crate::parser::tcss::apply_styles;
 
 static ANSI_REGEX: OnceLock<Regex> = OnceLock::new();
 

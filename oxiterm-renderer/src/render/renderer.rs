@@ -4,7 +4,6 @@ use crate::render::buffer::{CellBuffer, Cell};
 use oxiterm_proto::dom::{NodeTag, NodeId};
 use oxiterm_proto::style::TerminalProfile;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
 
 thread_local! {
