@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: nie, 24 maj 2026, 19:05:55 CEST
+GENERATED: nie, 24 maj 2026, 19:14:46 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -2506,10 +2506,9 @@ pub fn sanitize_style_raw(input: &str) -> String {
 pub fn sanitize_htmx_value(input: &str) -> String {
     input
         .chars()
-        .filter(|&c| matches!(c,
-            'a'..='z' | 'A'..='Z' | '0'..='9'
-            | '-' | '_' | ':' | '/' | '.'
-        ))
+        .filter(|&c| {
+            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`' | ';')
+        })
         .collect()
 }
 
@@ -10262,24 +10261,14 @@ text {
         <!-- Kolumna 1: karty z klasami -->
         <box style="flex-direction: column; width: 36; margin-right: 1;">
 
-            <text class="muted" style="margin-bottom: 1;">Klasy nadają styl wielokrotnie:</text>
-
-            <box class="card blue" style="height: 8; margin-bottom: 1;">
+            <box class="card blue" style="height: 7; margin-bottom: 1;">
                 <text class="card-title" style="fg: #38bdf8;">Karta .blue</text>
-                <text class="muted">border-color z klasy</text>
-                <text class="muted">padding: 1 z .card</text>
+                <text class="muted">Klasy nadają styl wielokrotnie</text>
             </box>
 
-            <box class="card green" style="height: 8; margin-bottom: 1;">
+            <box class="card green" style="height: 7;">
                 <text class="card-title" style="fg: #4ade80;">Karta .green</text>
-                <text class="muted">Ten sam layout co .blue</text>
-                <text class="muted">inny kolor ramki</text>
-            </box>
-
-            <box class="card amber" style="height: 8;">
-                <text class="card-title" style="fg: #f59e0b;">Karta .amber</text>
-                <text class="muted">Wielokrotne klasy:</text>
-                <text class="muted">class="card amber"</text>
+                <text class="muted">Ten sam layout, inna klasa</text>
             </box>
 
         </box>

@@ -28,10 +28,9 @@ pub fn sanitize_style_raw(input: &str) -> String {
 pub fn sanitize_htmx_value(input: &str) -> String {
     input
         .chars()
-        .filter(|&c| matches!(c,
-            'a'..='z' | 'A'..='Z' | '0'..='9'
-            | '-' | '_' | ':' | '/' | '.'
-        ))
+        .filter(|&c| {
+            !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`' | ';')
+        })
         .collect()
 }
 
