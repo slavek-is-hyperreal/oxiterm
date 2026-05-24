@@ -33,7 +33,7 @@
     <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
     <box style="flex-direction: row; padding-left: 2; padding-right: 2;
                 padding-top: 1; height: 5; align-items: center;">
-        <box class="tab-btn tab-active"  event-htmx="set:tab=info">
+        <box class="tab-btn tab-active"  event-htmx="set:tab=false">
             <text style="height: 1;">ℹ Info</text>
         </box>
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys">
@@ -52,7 +52,7 @@
                 padding-bottom: 1; flex: 1;">
 
         <!-- Zakładka: info -->
-        <box class="content-panel" bind-show="tab=info">
+        <box class="content-panel" bind-show="tab=false">
             <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Zakładki bez przeładowania strony</text>
             <text class="muted">Kliknij zakładkę → event-htmx="set:tab=xxx"</text>
             <text class="muted">StateManager zapisuje nową wartość "tab".</text>

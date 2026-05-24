@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: nie, 24 maj 2026, 18:52:04 CEST
+GENERATED: nie, 24 maj 2026, 19:05:55 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -9877,7 +9877,7 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
     <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
     <box style="flex-direction: row; padding-left: 2; padding-right: 2;
                 padding-top: 1; height: 5; align-items: center;">
-        <box class="tab-btn tab-active"  event-htmx="set:tab=info">
+        <box class="tab-btn tab-active"  event-htmx="set:tab=false">
             <text style="height: 1;">ℹ Info</text>
         </box>
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys">
@@ -9896,7 +9896,7 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
                 padding-bottom: 1; flex: 1;">
 
         <!-- Zakładka: info -->
-        <box class="content-panel" bind-show="tab=info">
+        <box class="content-panel" bind-show="tab=false">
             <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Zakładki bez przeładowania strony</text>
             <text class="muted">Kliknij zakładkę → event-htmx="set:tab=xxx"</text>
             <text class="muted">StateManager zapisuje nową wartość "tab".</text>
@@ -10101,7 +10101,7 @@ button { border-style: single; }
 <style>
 .row {
     flex-direction: row;
-    height: 1;
+    height: 3;
     align-items: center;
     margin-bottom: 1;
 }
@@ -10119,7 +10119,7 @@ button { border-style: single; }
     border-color: #334155;
     padding-left: 1;
     padding-right: 1;
-    height: 1;
+    height: 3;
     margin-right: 1;
 }
 </style>
@@ -10264,19 +10264,19 @@ text {
 
             <text class="muted" style="margin-bottom: 1;">Klasy nadają styl wielokrotnie:</text>
 
-            <box class="card blue" style="height: 5; margin-bottom: 1;">
+            <box class="card blue" style="height: 8; margin-bottom: 1;">
                 <text class="card-title" style="fg: #38bdf8;">Karta .blue</text>
                 <text class="muted">border-color z klasy</text>
                 <text class="muted">padding: 1 z .card</text>
             </box>
 
-            <box class="card green" style="height: 5; margin-bottom: 1;">
+            <box class="card green" style="height: 8; margin-bottom: 1;">
                 <text class="card-title" style="fg: #4ade80;">Karta .green</text>
                 <text class="muted">Ten sam layout co .blue</text>
                 <text class="muted">inny kolor ramki</text>
             </box>
 
-            <box class="card amber" style="height: 5;">
+            <box class="card amber" style="height: 8;">
                 <text class="card-title" style="fg: #f59e0b;">Karta .amber</text>
                 <text class="muted">Wielokrotne klasy:</text>
                 <text class="muted">class="card amber"</text>
