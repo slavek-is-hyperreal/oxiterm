@@ -9,7 +9,7 @@
 
     <!-- Main Content -->
     <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column; margin-top: 1;">
-        <img src="logo.png" style="width: 32; height: 16;" />
+        <img src="logo.jpg" style="width: 32; height: 16;" />
         <box style="margin-top: 1; justify-content: center; align-items: center;">
             <text style="color: #9ece6a; font-weight: bold;">Rust Crab Mascot</text>
             <text style="color: #565f89; margin-top: 0.5;">Auto-negotiates Kitty Graphics, Sixel, or Unicode Half-Blocks</text>

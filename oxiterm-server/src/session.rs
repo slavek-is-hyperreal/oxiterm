@@ -291,6 +291,8 @@ pub struct EventLoop {
     pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
     pub parent_map: HashMap<NodeId, NodeId>,
+    pub focusable_nodes: Vec<NodeId>,
+    pub focused_node: Option<NodeId>,
 }
 
 impl EventLoop {
@@ -333,8 +335,11 @@ impl EventLoop {
             weather_tx: None,
             dbus_bridge,
             parent_map: HashMap::new(),
+            focusable_nodes: Vec::new(),
+            focused_node: None,
         };
         event_loop.rebuild_parent_map();
+        event_loop.rebuild_focusable_nodes();
         event_loop
     }
 
@@ -355,6 +360,32 @@ impl EventLoop {
     pub fn update_doc(&mut self, new_doc: THTMLDocument) {
         self.doc = new_doc;
         self.rebuild_parent_map();
+        self.rebuild_focusable_nodes();
+    }
+
+    pub fn rebuild_focusable_nodes(&mut self) {
+        let mut nodes = Vec::new();
+        let mut stack = vec![self.doc.root];
+        while let Some(id) = stack.pop() {
+            if let Some(node) = self.doc.arena.get(id) {
+                if node.attrs.event_htmx.is_some() {
+                    nodes.push(id);
+                }
+                // push children in reverse so left-to-right / top-to-bottom order
+                for &child in node.children.iter().rev() {
+                    stack.push(child);
+                }
+            }
+        }
+        // If current focused node is gone, reset focus
+        if let Some(focused) = self.focused_node {
+            if !nodes.contains(&focused) {
+                self.focused_node = if nodes.is_empty() { None } else { Some(nodes[0]) };
+            }
+        } else if !nodes.is_empty() {
+            self.focused_node = Some(nodes[0]);
+        }
+        self.focusable_nodes = nodes;
     }
 
     fn setup_state_subscriptions(doc: &THTMLDocument, state: &mut crate::state::StateManager) {
@@ -508,8 +539,71 @@ impl EventLoop {
                                         break;
                                     }
 
-                                    // Group 1-9 for quick navigation (S6-nav)
-                                    if ('1'..='9').contains(&key.codepoint) || key.codepoint == '\t' || key.codepoint == 'r' || key.codepoint == 'R' {
+                                    // Arrow keys / Tab: move focus between event-htmx nodes
+                                    // Browser sends 0xF700=Up, 0xF701=Down, 0xF702=Right, 0xF703=Left
+                                    let is_nav_forward = key.codepoint == '\u{F701}'
+                                        || key.codepoint == '\u{F702}'
+                                        || key.codepoint == '\t';
+                                    let is_nav_backward = key.codepoint == '\u{F700}'
+                                        || key.codepoint == '\u{F703}';
+
+                                    if is_nav_forward || is_nav_backward {
+                                        if !self.focusable_nodes.is_empty() {
+                                            let n = self.focusable_nodes.len();
+                                            let cur = self.focused_node
+                                                .and_then(|f| self.focusable_nodes.iter().position(|&x| x == f))
+                                                .unwrap_or(0);
+                                            let next = if is_nav_forward {
+                                                (cur + 1) % n
+                                            } else {
+                                                (cur + n - 1) % n
+                                            };
+                                            self.focused_node = Some(self.focusable_nodes[next]);
+                                            info!("Focus moved to node {:?}", self.focused_node);
+                                            needs_render = true;
+                                        }
+                                    } else if key.codepoint == '\r' || key.codepoint as u32 == 13 {
+                                        // Enter: activate focused node's HTMX action
+                                        if let Some(focused) = self.focused_node {
+                                            if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
+                                                info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
+                                                if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
+                                                    let mut filename = htmx_target.to_string();
+                                                    if !filename.ends_with(".thtml") {
+                                                        filename.push_str(".thtml");
+                                                    }
+                                                    let base = self.source_path.as_ref()
+                                                        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                                                        .unwrap_or_else(|| std::path::PathBuf::from("."));
+                                                    let new_path = base.join(&filename);
+                                                    let is_safe = (|| -> Option<bool> {
+                                                        let canonical_base = base.canonicalize().ok()?;
+                                                        let canonical_target = new_path.canonicalize().ok()?;
+                                                        Some(canonical_target.starts_with(canonical_base))
+                                                    })().unwrap_or(false);
+                                                    if is_safe {
+                                                        match crate::loader::load_thtml_file(&new_path) {
+                                                            Ok(mut new_doc) => {
+                                                                let mut state = self.session.state.write();
+                                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                                                                Self::inject_initial_state(&mut new_doc, &*state);
+                                                                drop(state);
+                                                                self.update_doc(new_doc);
+                                                                self.layout_engine.reset_nodes();
+                                                                self.source_path = Some(new_path);
+                                                                needs_render = true;
+                                                            }
+                                                            Err(e) => warn!("Enter: failed to load {:?}: {}", new_path, e),
+                                                        }
+                                                    }
+                                                } else {
+                                                    self.session.state.write().apply_action(&htmx_target);
+                                                    needs_render = true;
+                                                }
+                                            }
+                                        }
+                                    } else if ('1'..='9').contains(&key.codepoint) || key.codepoint == 'r' || key.codepoint == 'R' {
+                                        // Group 1-9 for quick navigation (S6-nav / weather)
                                         if let Some(ref mut app) = self.weather_app {
                                             if key.codepoint == 'r' || key.codepoint == 'R' {
                                                 if !app.loading {
@@ -687,8 +781,40 @@ impl EventLoop {
 
                     let profile = self.session.terminal_profile.read().clone();
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
+                    self.buffer.back.clear();
                     Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
-                    
+
+                    // Focus ring: draw bright-cyan ▶/◀ markers on left/right edge of focused node
+                    if let Some(focused_id) = self.focused_node {
+                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                        if let Some(rect) = layout.nodes.get(&focused_id) {
+                            let mid_row = rect.y + rect.height / 2 + offset_y;
+                            let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
+                            let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                            // Left bracket
+                            if rect.x > 0 {
+                                self.buffer.back.set(rect.x.saturating_sub(1) + offset_x, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                    ch: '▶',
+                                    fg: focus_fg,
+                                    bg: focus_bg,
+                                    bold: true,
+                                    ..Default::default()
+                                });
+                            }
+                            // Right bracket
+                            let right = rect.x + rect.width + offset_x;
+                            if right < self.buffer.back.width {
+                                self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                    ch: '◀',
+                                    fg: focus_fg,
+                                    bg: focus_bg,
+                                    bold: true,
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+
                     // S5-21: PredictiveEcho overlay
                     let echo = self.session.predictive_echo.read();
                     if !echo.buffer.is_empty() {

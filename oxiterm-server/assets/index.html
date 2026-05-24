@@ -335,10 +335,10 @@
                         // Wait, since oxiterm-proto decodes normal byte sequences, we could send VT sequences
                         // as a series of individual keypresses or customize!
                         // Let's send normal ANSI escape keypresses:
-                        case "ArrowUp":    sendString("\x1b[A"); return;
-                        case "ArrowDown":  sendString("\x1b[B"); return;
-                        case "ArrowRight": sendString("\x1b[C"); return;
-                        case "ArrowLeft":  sendString("\x1b[D"); return;
+                        case "ArrowUp":    e.preventDefault(); sendKeyPress(0xF700, false, false, false); return;
+                        case "ArrowDown":  e.preventDefault(); sendKeyPress(0xF701, false, false, false); return;
+                        case "ArrowRight": e.preventDefault(); sendKeyPress(0xF702, false, false, false); return;
+                        case "ArrowLeft":  e.preventDefault(); sendKeyPress(0xF703, false, false, false); return;
                         default: return; // Ignore other specials
                     }
                 }
