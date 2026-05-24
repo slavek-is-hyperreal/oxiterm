@@ -23,6 +23,7 @@ pub struct NodeAttributes {
     pub alt: Option<String>,
     pub placeholder: Option<String>,
     pub name: Option<String>,
+    pub bind_show: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -49,3 +50,8 @@ impl Node {
         }
     }
 }
+
+pub trait StateEvaluator {
+    fn evaluate_bind_show(&self, condition: &str) -> bool;
+}
+

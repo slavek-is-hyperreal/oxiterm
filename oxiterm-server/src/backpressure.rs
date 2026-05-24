@@ -127,6 +127,12 @@ impl<T> Receiver<T> {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout)
     }
 
+    pub fn try_recv(&mut self) -> Option<T> {
+        let (lock, _) = &*self.inner;
+        let mut inner = lock.lock();
+        inner.queue.pop_front()
+    }
+
     pub fn close(&mut self) {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();

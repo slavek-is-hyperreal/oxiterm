@@ -36,16 +36,16 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    pub fn compute(&mut self, doc: &mut THTMLDocument, term_width: u16, term_height: u16) -> anyhow::Result<LayoutResult> {
+    pub fn compute(&mut self, doc: &mut THTMLDocument, cols: u16, _scroll_offset: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> anyhow::Result<LayoutResult> {
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
-        self.ensure_nodes_exist_recursive(doc, doc.root)?;
+        self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
 
         // Step 2: Synchronize dirty nodes
         for &oxi_id in &doc.dirty_nodes {
             if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
                 if let Some(node) = doc.arena.get(oxi_id) {
                     // Update style
-                    let style = self.map_style(node);
+                    let style = self.map_style(node, state_evaluator);
                     self.taffy.set_style(taffy_id, style)?;
 
                     // Update children
@@ -55,7 +55,7 @@ impl LayoutEngine {
                             taffy_children.push(t_child);
                         } else {
                             // This should not happen if ensure_nodes_exist_recursive works
-                            let t_child = self.ensure_nodes_exist_recursive(doc, child_id)?;
+                            let t_child = self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?;
                             taffy_children.push(t_child);
                         }
                     }
@@ -67,20 +67,22 @@ impl LayoutEngine {
         // Step 3: Compute layout
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
         
-        let mut root_w = term_width;
-        let mut root_h = term_height;
+        let mut root_w = cols;
+        let mut root_h = u16::MAX;
 
         if let Some(root_node) = doc.arena.get(doc.root) {
-            let mut style = self.map_style(root_node);
+            let mut style = self.map_style(root_node, state_evaluator);
             if let Some(w) = root_node.style.width {
                 root_w = w;
             } else {
-                style.size.width = taffy::style::Dimension::Length(term_width as f32);
+                style.size.width = taffy::style::Dimension::Length(cols as f32);
             }
             if let Some(h) = root_node.style.height {
                 root_h = h;
             } else {
-                style.size.height = taffy::style::Dimension::Length(term_height as f32);
+                // SPRINT SPECIFICATIONS: unconstrained height (u16::MAX) to allow measuring full layout height
+                style.size.height = taffy::style::Dimension::Length(u16::MAX as f32);
+                root_h = u16::MAX;
             }
             self.taffy.set_style(root_taffy_id, style)?;
         }
@@ -98,7 +100,15 @@ impl LayoutEngine {
         // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
 
-        let result = LayoutResult { nodes };
+        let mut max_bottom = 0;
+        for rect in nodes.values() {
+            let bottom = rect.y + rect.height;
+            if bottom > max_bottom {
+                max_bottom = bottom;
+            }
+        }
+
+        let result = LayoutResult { nodes, total_height: max_bottom };
         self.last_layout = Some(result.clone());
         Ok(result)
     }
@@ -112,27 +122,35 @@ impl LayoutEngine {
         nodes: &mut HashMap<OxiNodeId, OxiRect>,
     ) -> anyhow::Result<()> {
         if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
-            let layout = self.taffy.layout(taffy_id)
-                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
-            
-            let rect_x = layout.location.x.round() as u16;
-            let rect_y = layout.location.y.round() as u16;
-            let width = layout.size.width.round() as u16;
-            let height = layout.size.height.round() as u16;
-            
-            let abs_x = parent_x + rect_x;
-            let abs_y = parent_y + rect_y;
-            
-            nodes.insert(oxi_id, OxiRect {
-                x: abs_x,
-                y: abs_y,
-                width,
-                height,
-            });
+            let is_visible = if let Ok(style) = self.taffy.style(taffy_id) {
+                style.display != Display::None
+            } else {
+                true
+            };
 
-            if let Some(node) = doc.arena.get(oxi_id) {
-                for &child_id in &node.children {
-                    self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+            if is_visible {
+                let layout = self.taffy.layout(taffy_id)
+                    .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
+                
+                let rect_x = layout.location.x.round() as u16;
+                let rect_y = layout.location.y.round() as u16;
+                let width = layout.size.width.round() as u16;
+                let height = layout.size.height.round() as u16;
+                
+                let abs_x = parent_x + rect_x;
+                let abs_y = parent_y + rect_y;
+                
+                nodes.insert(oxi_id, OxiRect {
+                    x: abs_x,
+                    y: abs_y,
+                    width,
+                    height,
+                });
+
+                if let Some(node) = doc.arena.get(oxi_id) {
+                    for &child_id in &node.children {
+                        self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+                    }
                 }
             }
         }
@@ -160,7 +178,8 @@ impl LayoutEngine {
     fn ensure_nodes_exist_recursive(
         &mut self, 
         doc: &THTMLDocument, 
-        oxi_id: OxiNodeId
+        oxi_id: OxiNodeId,
+        state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>,
     ) -> anyhow::Result<taffy::NodeId> {
         if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
             return Ok(taffy_id);
@@ -170,17 +189,17 @@ impl LayoutEngine {
         
         let mut children = Vec::new();
         for &child_id in &node.children {
-            children.push(self.ensure_nodes_exist_recursive(doc, child_id)?);
+            children.push(self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?);
         }
 
-        let style = self.map_style(node);
+        let style = self.map_style(node, state_evaluator);
         let taffy_id = self.taffy.new_with_children(style, &children)?;
         
         self.node_map.insert(oxi_id, taffy_id);
         Ok(taffy_id)
     }
 
-    fn map_style(&self, node: &oxiterm_proto::dom::Node) -> Style {
+    fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
         let style = &node.style;
         let mut width = style.width;
         let mut height = style.height;
@@ -201,8 +220,19 @@ impl LayoutEngine {
             }
         }
 
+        let mut display = Display::Flex;
+        if let Some(cond) = &node.attrs.bind_show {
+            if let Some(eval) = state_evaluator {
+                if !eval.evaluate_bind_show(cond) {
+                    display = Display::None;
+                }
+            } else {
+                display = Display::None;
+            }
+        }
+
         Style {
-            display: Display::Flex,
+            display,
             flex_direction: match style.flex_direction {
                 oxiterm_proto::style::FlexDirection::Row => FlexDirection::Row,
                 oxiterm_proto::style::FlexDirection::Column => FlexDirection::Column,
@@ -260,7 +290,7 @@ impl LayoutEngine {
 mod tests {
     use super::*;
     use crate::document::THTMLDocument;
-    use oxiterm_proto::dom::{Node, NodeTag};
+    use oxiterm_proto::dom::{Node, NodeTag, StateEvaluator};
 
     #[test]
     fn test_basic_layout() {
@@ -273,7 +303,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&child_id).unwrap();
         assert_eq!(rect.width, 20);
         assert_eq!(rect.height, 10);
@@ -291,7 +321,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        engine.compute(&mut doc, 80, 24).unwrap();
+        engine.compute(&mut doc, 80, 0, None).unwrap();
         
         // Inside
         assert_eq!(engine.hit_test(6, 1), Some(child_id));
@@ -318,7 +348,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(parent_id, child_id).unwrap();
         
-        engine.compute(&mut doc, 80, 24).unwrap();
+        engine.compute(&mut doc, 80, 0, None).unwrap();
         
         // Child absolute coordinate: parent.left (10) + child.left (5) = 15.
         // Inside nested child (e.g. x = 16, y = 1)
@@ -337,9 +367,43 @@ mod tests {
         let node_id = doc.arena.alloc(text_node);
         doc.append_child(doc.root, node_id).unwrap();
         
-        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
         assert_eq!(rect.width, 6);
         assert_eq!(rect.height, 2);
+    }
+
+    struct MockEvaluator {
+        val: bool,
+    }
+    impl StateEvaluator for MockEvaluator {
+        fn evaluate_bind_show(&self, _condition: &str) -> bool {
+            self.val
+        }
+    }
+
+    #[test]
+    fn test_bind_show_layout() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(10);
+        child.style.height = Some(10);
+        child.attrs.bind_show = Some("some_cond".to_string());
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(doc.root, child_id).unwrap();
+
+        // 1. Evaluator says false -> node is hidden (absent from nodes)
+        let eval_false = MockEvaluator { val: false };
+        let result_hidden = engine.compute(&mut doc, 80, 0, Some(&eval_false)).unwrap();
+        assert!(result_hidden.nodes.get(&child_id).is_none());
+
+        // 2. Evaluator says true -> node is visible
+        let eval_true = MockEvaluator { val: true };
+        engine.taffy = taffy::TaffyTree::new();
+        engine.node_map.clear();
+        let result_visible = engine.compute(&mut doc, 80, 0, Some(&eval_true)).unwrap();
+        assert!(result_visible.nodes.get(&child_id).is_some());
     }
 }

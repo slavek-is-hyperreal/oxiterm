@@ -1,10 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock, OnceLock};
-use std::process::{Command, Stdio, Child};
-use std::io::Read;
-use std::thread;
-use std::time::Instant;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 pub struct CacheKey {
@@ -25,13 +21,12 @@ pub struct CacheValue {
     pub format: GraphicFormat,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct SafeAnimation {
     pub anim: rlottie::Animation,
 }
+#[cfg(not(target_arch = "wasm32"))]
 unsafe impl Send for SafeAnimation {}
-// NOTE: Sync is intentionally NOT implemented — SafeAnimation wraps a C FFI type
-// (rlottie::Animation) that relies on thread-local state. Access is always through
-// Arc<Mutex<SafeAnimation>>, which guarantees exclusive access per thread.
 
 #[derive(Clone)]
 pub struct PlaybackState {
@@ -40,6 +35,7 @@ pub struct PlaybackState {
     pub click_active: bool,
     pub click_coord: Option<(u16, u16)>,
     pub toggled: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
 }
 
@@ -66,12 +62,14 @@ impl PlaybackRegistry {
             click_active: false,
             click_coord: None,
             toggled: false,
+            #[cfg(not(target_arch = "wasm32"))]
             lottie_animation: None,
         };
         lock.insert(path.to_path_buf(), state.clone());
         state
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
         let mut lock = self.states.lock().unwrap();
         let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
@@ -84,9 +82,11 @@ impl PlaybackRegistry {
         });
 
         if state.lottie_animation.is_none() {
-            if let Ok(data_str) = std::fs::read_to_string(path) {
-                if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
-                    state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+            if let Ok(bytes) = crate::render::renderer::Renderer::read_asset(path) {
+                if let Ok(data_str) = String::from_utf8(bytes) {
+                    if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
+                        state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+                    }
                 }
             }
         }
@@ -135,8 +135,7 @@ impl AssetCache {
 
     pub fn insert(&self, key: CacheKey, value: CacheValue) {
         let mut lock = self.cache.lock().unwrap();
-        // Remove existing entry with the same key (update in place would keep order, but
-        // re-inserting at the back is simpler and semantically correct for an asset cache).
+        // Remove existing entry with the same key
         lock.retain(|(k, _)| k != &key);
         if lock.len() >= Self::CAPACITY {
             lock.pop_front(); // FIFO eviction — remove the oldest entry
@@ -146,10 +145,12 @@ impl AssetCache {
 }
 
 /// FIFO-eviction SVG tree cache (capacity = 20).
+#[cfg(not(target_arch = "wasm32"))]
 pub struct SvgCache {
     trees: Mutex<VecDeque<(PathBuf, Arc<resvg::usvg::Tree>)>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl SvgCache {
     const CAPACITY: usize = 20;
 
@@ -166,7 +167,7 @@ impl SvgCache {
             return Ok(Arc::clone(tree));
         }
 
-        let content = std::fs::read(path)?;
+        let content = crate::render::renderer::Renderer::read_asset(path)?;
         
         let mut fontdb = resvg::usvg::fontdb::Database::new();
         fontdb.load_system_fonts();
@@ -188,17 +189,26 @@ impl SvgCache {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::process::{Child, Command, Stdio};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Read;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub struct VideoPlayer {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    /// RwLock instead of Mutex: the ffmpeg thread writes once per decoded frame,
-    /// while the renderer thread reads (potentially) many times per render cycle.
     pub frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>>,
     pub child: Child,
     pub last_accessed: Instant,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for VideoPlayer {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -206,11 +216,12 @@ impl Drop for VideoPlayer {
     }
 }
 
-
+#[cfg(not(target_arch = "wasm32"))]
 pub struct VideoPlayerRegistry {
     players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl VideoPlayerRegistry {
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<VideoPlayerRegistry> = OnceLock::new();

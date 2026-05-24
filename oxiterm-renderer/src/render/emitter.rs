@@ -14,5 +14,9 @@ pub trait FrameSink: Send {
 
     /// Clears the physical display area.
     fn clear_screen(&mut self) -> Result<()> { Ok(()) }
+
+    /// Clears any graphics placements.
+    fn clear_graphics(&mut self) -> Result<()> { Ok(()) }
 }
+
 

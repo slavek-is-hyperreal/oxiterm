@@ -239,6 +239,7 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "alt" => attrs.alt = Some(value),
             "placeholder" => attrs.placeholder = Some(value),
             "name" => attrs.name = Some(value),
+            "bind-show" => attrs.bind_show = Some(value),
             _ => {}
         }
         input = rem;
@@ -353,6 +354,28 @@ mod tests {
         assert_eq!(btn.attrs.bind_state, Some("count".to_string()));
         assert_eq!(btn.attrs.event_htmx, Some("inc:count".to_string()));
     }
+
+    #[test]
+    fn test_bind_show_parsing() {
+        let input = r#"<box id="box1" bind-show="tab=home"></box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let box1 = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(box1.attrs.bind_show, Some("tab=home".to_string()));
+
+        let input2 = r#"<box id="box2" bind-show="logged_in"></box>"#;
+        let doc2 = THTMLParser::parse(input2).unwrap();
+        let root2 = doc2.get_root();
+        let box2 = doc2.get_node(root2.children[0]).unwrap();
+        assert_eq!(box2.attrs.bind_show, Some("logged_in".to_string()));
+
+        let input3 = r#"<box id="box3"></box>"#;
+        let doc3 = THTMLParser::parse(input3).unwrap();
+        let root3 = doc3.get_root();
+        let box3 = doc3.get_node(root3.children[0]).unwrap();
+        assert_eq!(box3.attrs.bind_show, None);
+    }
+
 
     #[test]
     fn test_parse_inline_style() {

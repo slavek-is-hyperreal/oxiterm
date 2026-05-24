@@ -211,13 +211,19 @@ impl AnsiFrameSink {
 impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
         let commands = oxiterm_renderer::DiffEngine::diff(front, back);
-        if commands.is_empty() && back.graphics.is_empty() {
+        let transitioning_graphics_cleanup = !front.graphics.is_empty() && back.graphics.is_empty();
+        if commands.is_empty() && back.graphics.is_empty() && !transitioning_graphics_cleanup {
             return Ok(false);
         }
 
         let mut out = Vec::new();
         // BSU: CSI ? 2026 h
         out.extend_from_slice(b"\x1b[?2026h");
+
+        // BUG-KITTY-GHOST-01: clear image placements when transitioning from graphics to no graphics
+        if !front.graphics.is_empty() && back.graphics.is_empty() {
+            out.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
+        }
         
         let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
         out.extend_from_slice(&bytes);
@@ -243,6 +249,8 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
 
     fn clear_screen(&mut self) -> anyhow::Result<()> {
         let mut clear_seq = Vec::new();
+        // Send delete_all_placements before ESC[2J
+        clear_seq.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
         clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
         let _ = self.output_tx.try_send(clear_seq);
         Ok(())
@@ -293,6 +301,8 @@ pub struct EventLoop {
     pub parent_map: HashMap<NodeId, NodeId>,
     pub focusable_nodes: Vec<NodeId>,
     pub focused_node: Option<NodeId>,
+    pub scroll_offset: u16,
+    pub total_height: u16,
 }
 
 impl EventLoop {
@@ -337,10 +347,17 @@ impl EventLoop {
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
             focused_node: None,
+            scroll_offset: 0,
+            total_height: 0,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
         event_loop
+    }
+
+    pub fn reset_layout_and_scroll(&mut self) {
+        self.layout_engine.reset_nodes();
+        self.scroll_offset = 0;
     }
 
     pub fn rebuild_parent_map(&mut self) {
@@ -484,7 +501,7 @@ impl EventLoop {
                         let dims = *self.session.dims.read();
                         let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                         self.update_doc(new_doc);
-                        self.layout_engine.reset_nodes();
+                        self.reset_layout_and_scroll();
                         needs_render = true;
                     }
                 }
@@ -505,6 +522,11 @@ impl EventLoop {
                     match rx_lock.recv_timeout(sleep_dur) {
                         Ok(event) => {
                             *self.session.last_activity.write() = std::time::Instant::now();
+                            let event = match event {
+                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72E}' || key.codepoint == 'b' => InputEvent::ScrollUp,
+                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72D}' || key.codepoint == ' ' => InputEvent::ScrollDown,
+                                e => e,
+                            };
                             match event {
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
@@ -522,7 +544,7 @@ impl EventLoop {
                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                 drop(state);
                                                 self.update_doc(new_doc);
-                                                self.layout_engine.reset_nodes();
+                                                self.reset_layout_and_scroll();
                                                 needs_render = true;
                                             }
                                             Err(e) => {
@@ -589,7 +611,7 @@ impl EventLoop {
                                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                                 drop(state);
                                                                 self.update_doc(new_doc);
-                                                                self.layout_engine.reset_nodes();
+                                                                self.reset_layout_and_scroll();
                                                                 self.source_path = Some(new_path);
                                                                 needs_render = true;
                                                             }
@@ -623,7 +645,7 @@ impl EventLoop {
                                                 let dims = *self.session.dims.read();
                                                 let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                                                 self.update_doc(new_doc);
-                                                self.layout_engine.reset_nodes();
+                                                self.reset_layout_and_scroll();
                                                 needs_render = true;
                                             }
                                         }
@@ -640,7 +662,7 @@ impl EventLoop {
                                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                                         info!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
                                         mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
-                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1);
+                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1).saturating_add(self.scroll_offset);
                                         info!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
                                     } else {
                                         warn!("No last layout found!");
@@ -689,7 +711,7 @@ impl EventLoop {
                                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                                 drop(state);
                                                                 self.update_doc(new_doc);
-                                                                self.layout_engine.reset_nodes();
+                                                                self.reset_layout_and_scroll();
                                                                 self.source_path = Some(new_path);
                                                             }
                                                             Err(e) => {
@@ -720,6 +742,16 @@ impl EventLoop {
                                 InputEvent::Xoff => { self.output_paused = true; }
                                 InputEvent::Xon => { self.output_paused = false; needs_render = true; }
                                 InputEvent::Refresh => { needs_render = true; }
+                                InputEvent::ScrollUp => {
+                                    let dims = *self.session.dims.read();
+                                    self.scroll_offset = self.scroll_offset.saturating_sub(dims.rows);
+                                    needs_render = true;
+                                }
+                                InputEvent::ScrollDown => {
+                                    let dims = *self.session.dims.read();
+                                    self.scroll_offset = (self.scroll_offset + dims.rows).min(self.total_height.saturating_sub(dims.rows));
+                                    needs_render = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -751,7 +783,7 @@ impl EventLoop {
                 if let Some(ref mut app) = self.weather_app {
                     let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                     self.update_doc(new_doc);
-                    self.layout_engine.reset_nodes();
+                    self.reset_layout_and_scroll();
                 }
 
                 // Clear physical screen and cursor to home to match clean front buffer
@@ -765,7 +797,10 @@ impl EventLoop {
                 Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
 
                 let dims = *self.session.dims.read();
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
+                let state_guard = self.session.state.read();
+                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
+                    self.total_height = layout.total_height;
+
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
                         let _ = bridge.register_at_spi(&tree);
@@ -782,35 +817,38 @@ impl EventLoop {
                     let profile = self.session.terminal_profile.read().clone();
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
                     self.buffer.back.clear();
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
+                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, self.scroll_offset);
 
                     // Focus ring: draw bright-cyan ▶/◀ markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                         if let Some(rect) = layout.nodes.get(&focused_id) {
-                            let mid_row = rect.y + rect.height / 2 + offset_y;
-                            let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
-                            let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
-                            // Left bracket
-                            if rect.x > 0 {
-                                self.buffer.back.set(rect.x.saturating_sub(1) + offset_x, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                    ch: '▶',
-                                    fg: focus_fg,
-                                    bg: focus_bg,
-                                    bold: true,
-                                    ..Default::default()
-                                });
-                            }
-                            // Right bracket
-                            let right = rect.x + rect.width + offset_x;
-                            if right < self.buffer.back.width {
-                                self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                    ch: '◀',
-                                    fg: focus_fg,
-                                    bg: focus_bg,
-                                    bold: true,
-                                    ..Default::default()
-                                });
+                            let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
+                            if mid_row_offset >= 0 && mid_row_offset < self.buffer.back.height as i32 {
+                                let mid_row = mid_row_offset as u16;
+                                let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
+                                let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                                // Left bracket
+                                if rect.x > 0 {
+                                    self.buffer.back.set(rect.x.saturating_sub(1) + offset_x, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                        ch: '▶',
+                                        fg: focus_fg,
+                                        bg: focus_bg,
+                                        bold: true,
+                                        ..Default::default()
+                                    });
+                                }
+                                // Right bracket
+                                let right = rect.x + rect.width + offset_x;
+                                if right < self.buffer.back.width {
+                                    self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                        ch: '◀',
+                                        fg: focus_fg,
+                                        bg: focus_bg,
+                                        bold: true,
+                                        ..Default::default()
+                                    });
+                                }
                             }
                         }
                     }
@@ -820,22 +858,24 @@ impl EventLoop {
                     if !echo.buffer.is_empty() {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
 
-                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y);
+                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
                         if let Some(node_id) = echo.active_node {
                             if let Some(rect) = layout.nodes.get(&node_id) {
                                 cursor_x = rect.x + offset_x;
-                                cursor_y = rect.y + offset_y;
+                                cursor_y = (rect.y + offset_y).saturating_sub(self.scroll_offset);
                             }
                         }
 
-                        for ch in echo.buffer.chars() {
-                            if cursor_x < self.buffer.back.width {
-                                self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
-                                    ch,
-                                    fg: oxiterm_proto::style::AnsiColor::Color256(2),
-                                    ..Default::default()
-                                });
-                                cursor_x += 1;
+                        if cursor_y < self.buffer.back.height {
+                            for ch in echo.buffer.chars() {
+                                if cursor_x < self.buffer.back.width {
+                                    self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
+                                        ch,
+                                        fg: oxiterm_proto::style::AnsiColor::Color256(2),
+                                        ..Default::default()
+                                    });
+                                    cursor_x += 1;
+                                }
                             }
                         }
                     }
@@ -909,6 +949,8 @@ impl EventLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxiterm_renderer::render::buffer::CellBuffer;
+    use oxiterm_renderer::FrameSink;
 
     #[test]
     fn test_predictive_echo() {
@@ -918,5 +960,48 @@ mod tests {
         assert_eq!(echo.buffer, "ab");
         echo.buffer.clear();
         assert_eq!(echo.buffer, "");
+    }
+
+    #[test]
+    fn test_ansi_frame_sink_kitty_ghost_fix() {
+        let (tx, mut rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut sink = AnsiFrameSink::new(tx);
+
+        let mut front = CellBuffer::new(10, 10);
+        let mut back = CellBuffer::new(10, 10);
+
+        // Test 4: empty frame with no graphics changes
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(!res);
+
+        // Test 3: transition from graphics to no graphics -> should contain delete_all_placements
+        front.graphics.push(b"some_img".to_vec());
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(res);
+        let frame = rx.try_recv().expect("Should receive frame");
+        // Frame should contain delete_all_placements sequence: \x1b_Ga=d,d=A\x1b\\
+        let delete_seq = b"\x1b_Ga=d,d=A\x1b\\";
+        let seq_pos = frame.windows(delete_seq.len()).position(|w| w == delete_seq);
+        assert!(seq_pos.is_some(), "delete_all_placements sequence not found in frame");
+
+        // Test 5: transition from no graphics to graphics -> no delete_all_placements, but contains back graphics
+        front.graphics.clear();
+        back.graphics.push(b"new_img_data".to_vec());
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(res);
+        let frame2 = rx.try_recv().expect("Should receive frame 2");
+        let seq_pos2 = frame2.windows(delete_seq.len()).position(|w| w == delete_seq);
+        assert!(seq_pos2.is_none(), "delete_all_placements should not be sent on transition to graphics");
+        let img_pos = frame2.windows(12).position(|w| w == b"new_img_data");
+        assert!(img_pos.is_some(), "new_img_data not found in frame");
+
+        // Test 6: clear_screen -> should contain delete_all_placements before ESC[2J
+        sink.clear_screen().unwrap();
+        let frame3 = rx.try_recv().expect("Should receive clear screen");
+        let seq_pos3 = frame3.windows(delete_seq.len()).position(|w| w == delete_seq);
+        let clear_pos = frame3.windows(4).position(|w| w == b"\x1b[2J");
+        assert!(seq_pos3.is_some(), "delete_all_placements not found in clear_screen");
+        assert!(clear_pos.is_some(), "ESC[2J not found in clear_screen");
+        assert!(seq_pos3.unwrap() < clear_pos.unwrap(), "delete_all_placements must be before ESC[2J");
     }
 }

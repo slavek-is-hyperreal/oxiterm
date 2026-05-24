@@ -20,6 +20,7 @@ impl Rect {
 #[derive(Debug, Clone)]
 pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
+    pub total_height: u16,
 }
 
 impl LayoutResult {

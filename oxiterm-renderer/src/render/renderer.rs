@@ -3,17 +3,50 @@ use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
 use oxiterm_proto::dom::{NodeTag, NodeId};
 use oxiterm_proto::style::TerminalProfile;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::collections::HashMap;
+
+thread_local! {
+    pub static VIRTUAL_FS: std::cell::RefCell<HashMap<PathBuf, Vec<u8>>> = std::cell::RefCell::new(HashMap::new());
+}
 
 pub struct Renderer;
 
 impl Renderer {
+    pub fn read_asset(path: &Path) -> Result<Vec<u8>, anyhow::Error> {
+        let path_str = path.to_string_lossy().into_owned();
+        let local_bytes = VIRTUAL_FS.with(|fs| {
+            fs.borrow().get(path).cloned()
+        });
+        if let Some(bytes) = local_bytes {
+            return Ok(bytes);
+        }
+        
+        #[cfg(target_arch = "wasm32")]
+        {
+            Err(anyhow::anyhow!("AssetNotFound: {}", path_str))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::fs::read(path).map_err(|e| anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e))
+        }
+    }
+
+    #[inline]
+    fn safe_set(buffer: &mut CellBuffer, x: i32, y: i32, cell: Cell) {
+        if x >= 0 && x < buffer.width as i32 && y >= 0 && y < buffer.height as i32 {
+            buffer.set(x as u16, y as u16, cell);
+        }
+    }
+
     pub fn render_node(
         doc: &THTMLDocument,
         layout: &LayoutResult,
         buffer: &mut CellBuffer,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        scroll_offset: u16,
     ) {
         // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
         for y in 0..buffer.height {
@@ -29,14 +62,16 @@ impl Renderer {
         
         // 2. Rekurencyjne rysowanie drzewa DOM z centrowaniem korzenia, jeśli ma sztywną mniejszą wielkość
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
+        let start_x = offset_x as i32;
+        let start_y = (offset_y as i32) - (scroll_offset as i32);
 
         Self::render_recursive(
             doc,
             layout,
             buffer,
             doc.root,
-            offset_x,
-            offset_y,
+            start_x,
+            start_y,
             oxiterm_proto::style::AnsiColor::Color256(15),
             oxiterm_proto::style::AnsiColor::Color256(0),
             profile,
@@ -49,8 +84,8 @@ impl Renderer {
         layout: &LayoutResult,
         buffer: &mut CellBuffer,
         node_id: NodeId,
-        parent_x: u16,
-        parent_y: u16,
+        parent_x: i32,
+        parent_y: i32,
         inherited_fg: oxiterm_proto::style::AnsiColor,
         inherited_bg: oxiterm_proto::style::AnsiColor,
         profile: &TerminalProfile,
@@ -58,8 +93,8 @@ impl Renderer {
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-            let abs_x = parent_x + rect.x;
-            let abs_y = parent_y + rect.y;
+            let abs_x = parent_x + rect.x as i32;
+            let abs_y = parent_y + rect.y as i32;
 
             let resolved_fg = match node.style.fg {
                 oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
@@ -73,7 +108,7 @@ impl Renderer {
             // Draw background
             for y in 0..rect.height {
                 for x in 0..rect.width {
-                    buffer.set(abs_x + x, abs_y + y, Cell {
+                    Self::safe_set(buffer, abs_x + x as i32, abs_y + y as i32, Cell {
                         ch: ' ',
                         fg: resolved_fg,
                         bg: resolved_bg,
@@ -91,14 +126,14 @@ impl Renderer {
                 
                 if rect.width > 0 && rect.height > 0 {
                     // Corners
-                    buffer.set(abs_x, abs_y, Cell {
+                    Self::safe_set(buffer, abs_x, abs_y, Cell {
                         ch: border.chars.top_left,
                         fg: border_fg,
                         bg: resolved_bg,
                         ..Default::default()
                     });
                     if rect.width > 1 {
-                        buffer.set(abs_x + rect.width - 1, abs_y, Cell {
+                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y, Cell {
                             ch: border.chars.top_right,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -106,7 +141,7 @@ impl Renderer {
                         });
                     }
                     if rect.height > 1 {
-                        buffer.set(abs_x, abs_y + rect.height - 1, Cell {
+                        Self::safe_set(buffer, abs_x, abs_y + rect.height as i32 - 1, Cell {
                             ch: border.chars.bot_left,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -114,7 +149,7 @@ impl Renderer {
                         });
                     }
                     if rect.width > 1 && rect.height > 1 {
-                        buffer.set(abs_x + rect.width - 1, abs_y + rect.height - 1, Cell {
+                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + rect.height as i32 - 1, Cell {
                             ch: border.chars.bot_right,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -124,14 +159,14 @@ impl Renderer {
 
                     // Horizontal borders
                     for x in 1..rect.width.saturating_sub(1) {
-                        buffer.set(abs_x + x, abs_y, Cell {
+                        Self::safe_set(buffer, abs_x + x as i32, abs_y, Cell {
                             ch: border.chars.top,
                             fg: border_fg,
                             bg: resolved_bg,
                             ..Default::default()
                         });
                         if rect.height > 1 {
-                            buffer.set(abs_x + x, abs_y + rect.height - 1, Cell {
+                            Self::safe_set(buffer, abs_x + x as i32, abs_y + rect.height as i32 - 1, Cell {
                                 ch: border.chars.bot,
                                 fg: border_fg,
                                 bg: resolved_bg,
@@ -142,14 +177,14 @@ impl Renderer {
 
                     // Vertical borders
                     for y in 1..rect.height.saturating_sub(1) {
-                        buffer.set(abs_x, abs_y + y, Cell {
+                        Self::safe_set(buffer, abs_x, abs_y + y as i32, Cell {
                             ch: border.chars.left,
                             fg: border_fg,
                             bg: resolved_bg,
                             ..Default::default()
                         });
                         if rect.width > 1 {
-                            buffer.set(abs_x + rect.width - 1, abs_y + y, Cell {
+                            Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + y as i32, Cell {
                                 ch: border.chars.right,
                                 fg: border_fg,
                                 bg: resolved_bg,
@@ -179,7 +214,7 @@ impl Renderer {
                                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
                                 if char_w > 0 {
                                     if cx < content_w && cy < content_h {
-                                        buffer.set(content_x + cx, content_y + cy, Cell {
+                                        Self::safe_set(buffer, content_x + cx as i32, content_y + cy as i32, Cell {
                                             ch,
                                             fg: resolved_fg,
                                             bg: resolved_bg,
@@ -188,7 +223,7 @@ impl Renderer {
                                         // Fill continuation cells with styled spaces
                                         for i in 1..char_w {
                                             if cx + i < content_w {
-                                                buffer.set(content_x + cx + i, content_y + cy, Cell {
+                                                Self::safe_set(buffer, content_x + (cx + i) as i32, content_y + cy as i32, Cell {
                                                     ch: ' ',
                                                     fg: resolved_fg,
                                                     bg: resolved_bg,
@@ -205,7 +240,7 @@ impl Renderer {
                 }
                 NodeTag::Input => {
                     for x in 0..content_w {
-                        buffer.set(content_x + x, content_y, Cell {
+                        Self::safe_set(buffer, content_x + x as i32, content_y, Cell {
                             ch: '_',
                             fg: resolved_fg,
                             bg: resolved_bg,
@@ -259,8 +294,8 @@ impl Renderer {
 
     fn unicode_block_fallback(
         img: &image::RgbaImage,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buf: &mut CellBuffer,
@@ -313,7 +348,7 @@ impl Renderer {
                     }
                 };
 
-                buf.set(abs_x + x, abs_y + y, Cell {
+                Self::safe_set(buf, abs_x + x as i32, abs_y + y as i32, Cell {
                     ch,
                     fg,
                     bg,
@@ -323,6 +358,7 @@ impl Renderer {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
@@ -341,8 +377,8 @@ impl Renderer {
 
     fn render_img(
         node: &oxiterm_proto::dom::Node,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buffer: &mut CellBuffer,
@@ -377,19 +413,26 @@ impl Renderer {
             // Fetch playback state if animation
             let mut frame_idx = None;
             if is_lottie {
-                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
-                if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
-                    let lock = safe_anim.lock().unwrap();
-                    let total_frames = lock.anim.totalframe();
-                    let fps = lock.anim.framerate();
-                    if total_frames > 0 {
-                        let fps = if fps > 0.0 { fps } else { 30.0 };
-                        let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
-                        frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                        let lock = safe_anim.lock().unwrap();
+                        let total_frames = lock.anim.totalframe();
+                        let fps = lock.anim.framerate();
+                        if total_frames > 0 {
+                            let fps = if fps > 0.0 { fps } else { 30.0 };
+                            let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
+                            frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                        } else {
+                            frame_idx = Some(0);
+                        }
                     } else {
                         frame_idx = Some(0);
                     }
-                } else {
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
                     frame_idx = Some(0);
                 }
             } else if is_rive {
@@ -435,15 +478,21 @@ impl Renderer {
 
             if let Some(bytes) = render_bytes {
                 // Cache hit! Put sequence on screen
-                let mut cmd = Vec::new();
-                cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                cmd.extend_from_slice(&bytes);
-                buffer.graphics.push(cmd);
+                if abs_x >= 0 && abs_y >= 0 {
+                    let mut cmd = Vec::new();
+                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                    cmd.extend_from_slice(&bytes);
+                    buffer.graphics.push(cmd);
+                }
                 
                 for dy in 0..height {
                     for dx in 0..width {
-                        if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                            buffer.cells[idx].skip = true;
+                        let tx = abs_x + dx as i32;
+                        let ty = abs_y + dy as i32;
+                        if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                            if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                buffer.cells[idx].skip = true;
+                            }
                         }
                     }
                 }
@@ -452,139 +501,163 @@ impl Renderer {
 
             // 2. Cache miss. Render from scratch
             let img_result = if is_svg {
-                // SVG rendering via resvg + tiny-skia
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    use crate::render::cache::SvgCache;
-                    let tree = SvgCache::get().get_or_load(&resolved_path)?;
-                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                    
-                    let size = tree.size();
-                    let scale_x = pixel_w as f32 / size.width();
-                    let scale_y = pixel_h as f32 / size.height();
-                    let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
-                    
-                    resvg::render(&tree, transform, &mut pixmap.as_mut());
-                    Ok(Self::pixmap_to_rgba_image(pixmap))
-                })()
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("SVG rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // SVG rendering via resvg + tiny-skia
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        use crate::render::cache::SvgCache;
+                        let tree = SvgCache::get().get_or_load(&resolved_path)?;
+                        let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                        
+                        let size = tree.size();
+                        let scale_x = pixel_w as f32 / size.width();
+                        let scale_y = pixel_h as f32 / size.height();
+                        let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
+                        
+                        resvg::render(&tree, transform, &mut pixmap.as_mut());
+                        Ok(Self::pixmap_to_rgba_image(pixmap))
+                    })()
+                }
             } else if is_lottie {
-                // Native Lottie Rendering using rlottie
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
-                        let mut lock = safe_anim.lock().unwrap();
-                        let size = rlottie::Size {
-                            width: pixel_w as usize,
-                            height: pixel_h as usize,
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("Lottie rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Native Lottie Rendering using rlottie
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                            let mut lock = safe_anim.lock().unwrap();
+                            let size = rlottie::Size {
+                                width: pixel_w as usize,
+                                height: pixel_h as usize,
+                            };
+                            let mut surface = rlottie::Surface::new(size);
+                            
+                            let total_frames = lock.anim.totalframe();
+                            let frame = frame_idx.unwrap_or(0);
+                            let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                            
+                            lock.anim.render(frame_to_render, &mut surface);
+                            
+                            let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
+                            for pixel in surface.data() {
+                                rgba_data.push(pixel.r);
+                                rgba_data.push(pixel.g);
+                                rgba_data.push(pixel.b);
+                                rgba_data.push(pixel.a);
+                            }
+                            
+                            image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
+                                .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
+                        } else {
+                            Err(anyhow::anyhow!("Lottie animation not loaded"))
+                        }
+                    })()
+                }
+            } else if is_rive {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("Rive rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
+                    // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                        
+                        let bits = frame_idx.unwrap_or(0);
+                        let hover = (bits & 1) != 0;
+                        let click_active = (bits & 2) != 0;
+                        let toggled = (bits & 4) != 0;
+                        
+                        let pad = 6.0;
+                        let rect_w = pixel_w as f32 - pad * 2.0;
+                        let rect_h = pixel_h as f32 - pad * 2.0;
+                        
+                        let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
+                        let mut pb = resvg::tiny_skia::PathBuilder::new();
+                        pb.push_rect(rect);
+                        let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
+                        
+                        // Track background
+                        let mut bg_paint = resvg::tiny_skia::Paint::default();
+                        bg_paint.anti_alias = true;
+                        
+                        let bg_color = if toggled {
+                            resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
+                        } else if hover {
+                            resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
                         };
-                        let mut surface = rlottie::Surface::new(size);
+                        bg_paint.set_color(bg_color);
                         
-                        let total_frames = lock.anim.totalframe();
-                        let frame = frame_idx.unwrap_or(0);
-                        let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                        pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
                         
-                        lock.anim.render(frame_to_render, &mut surface);
+                        // Outline border
+                        let mut border_paint = resvg::tiny_skia::Paint::default();
+                        border_paint.anti_alias = true;
                         
-                        let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
-                        for pixel in surface.data() {
-                            rgba_data.push(pixel.r);
-                            rgba_data.push(pixel.g);
-                            rgba_data.push(pixel.b);
-                            rgba_data.push(pixel.a);
+                        let border_color = if click_active {
+                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                        } else if hover {
+                            resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
+                        };
+                        border_paint.set_color(border_color);
+                        
+                        let mut stroke = resvg::tiny_skia::Stroke::default();
+                        stroke.width = 3.0;
+                        
+                        pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
+
+                        // Sliding knob
+                        let mut knob_paint = resvg::tiny_skia::Paint::default();
+                        knob_paint.anti_alias = true;
+                        
+                        let knob_color = if click_active {
+                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
+                        };
+                        knob_paint.set_color(knob_color);
+                        
+                        let knob_radius = rect_h / 2.0 - 4.0;
+                        let knob_x = if toggled {
+                            pixel_w as f32 - pad - knob_radius - 4.0
+                        } else {
+                            pad + knob_radius + 4.0
+                        };
+                        let knob_y = pixel_h as f32 / 2.0;
+                        
+                        let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
+                        knob_builder.push_circle(knob_x, knob_y, knob_radius);
+                        if let Some(knob_path) = knob_builder.finish() {
+                            pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
                         }
                         
-                        image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
-                            .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
-                    } else {
-                        Err(anyhow::anyhow!("Lottie animation not loaded"))
-                    }
-                })()
-            } else if is_rive {
-                // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
-                // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                    
-                    let bits = frame_idx.unwrap_or(0);
-                    let hover = (bits & 1) != 0;
-                    let click_active = (bits & 2) != 0;
-                    let toggled = (bits & 4) != 0;
-                    
-                    let pad = 6.0;
-                    let rect_w = pixel_w as f32 - pad * 2.0;
-                    let rect_h = pixel_h as f32 - pad * 2.0;
-                    
-                    let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
-                    let mut pb = resvg::tiny_skia::PathBuilder::new();
-                    pb.push_rect(rect);
-                    let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
-                    
-                    // Track background
-                    let mut bg_paint = resvg::tiny_skia::Paint::default();
-                    bg_paint.anti_alias = true;
-                    
-                    let bg_color = if toggled {
-                        resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
-                    } else if hover {
-                        resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
-                    };
-                    bg_paint.set_color(bg_color);
-                    
-                    pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                    
-                    // Outline border
-                    let mut border_paint = resvg::tiny_skia::Paint::default();
-                    border_paint.anti_alias = true;
-                    
-                    let border_color = if click_active {
-                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                    } else if hover {
-                        resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
-                    };
-                    border_paint.set_color(border_color);
-                    
-                    let mut stroke = resvg::tiny_skia::Stroke::default();
-                    stroke.width = 3.0;
-                    
-                    pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
-
-                    // Sliding knob
-                    let mut knob_paint = resvg::tiny_skia::Paint::default();
-                    knob_paint.anti_alias = true;
-                    
-                    let knob_color = if click_active {
-                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
-                    };
-                    knob_paint.set_color(knob_color);
-                    
-                    let knob_radius = rect_h / 2.0 - 4.0;
-                    let knob_x = if toggled {
-                        pixel_w as f32 - pad - knob_radius - 4.0
-                    } else {
-                        pad + knob_radius + 4.0
-                    };
-                    let knob_y = pixel_h as f32 / 2.0;
-                    
-                    let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
-                    knob_builder.push_circle(knob_x, knob_y, knob_radius);
-                    if let Some(knob_path) = knob_builder.finish() {
-                        pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                    }
-                    
-                    Ok(Self::pixmap_to_rgba_image(pixmap))
-                })()
+                        Ok(Self::pixmap_to_rgba_image(pixmap))
+                    })()
+                }
             } else {
                 // Standard image rendering
-                image::ImageReader::open(&resolved_path)
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-                    .and_then(|r| r.with_guessed_format().map_err(|e| anyhow::anyhow!("{}", e)))
+                Self::read_asset(&resolved_path)
+                    .and_then(|bytes| {
+                        image::ImageReader::new(std::io::Cursor::new(bytes))
+                            .with_guessed_format()
+                            .map_err(|e| anyhow::anyhow!("{}", e))
+                    })
                     .and_then(|r| r.decode().map_err(|e| anyhow::anyhow!("{}", e)))
                     .map(|img| {
                         let rgba = img.to_rgba8();
@@ -611,15 +684,21 @@ impl Renderer {
                             },
                         );
 
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&payload);
-                        buffer.graphics.push(cmd);
+                        if abs_x >= 0 && abs_y >= 0 {
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&payload);
+                            buffer.graphics.push(cmd);
+                        }
                         
                         for dy in 0..height {
                             for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
+                                let tx = abs_x + dx as i32;
+                                let ty = abs_y + dy as i32;
+                                if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                    if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                        buffer.cells[idx].skip = true;
+                                    }
                                 }
                             }
                         }
@@ -634,15 +713,21 @@ impl Renderer {
                             },
                         );
 
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&sixel_payload);
-                        buffer.graphics.push(cmd);
+                        if abs_x >= 0 && abs_y >= 0 {
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&sixel_payload);
+                            buffer.graphics.push(cmd);
+                        }
                         
                         for dy in 0..height {
                             for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
+                                let tx = abs_x + dx as i32;
+                                let ty = abs_y + dy as i32;
+                                if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                    if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                        buffer.cells[idx].skip = true;
+                                    }
                                 }
                             }
                         }
@@ -659,7 +744,7 @@ impl Renderer {
                             } else {
                                 ' '
                             };
-                            buffer.set(abs_x + dx, abs_y + dy, Cell {
+                            Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
                                 ch,
                                 fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                                 ..Default::default()
@@ -669,10 +754,10 @@ impl Renderer {
                     let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
                     let len = name.chars().count() as u16;
                     if width > len + 2 && height > 2 {
-                        let start_x = abs_x + (width - len) / 2;
-                        let start_y = abs_y + height / 2;
+                        let start_x = abs_x + (width - len) as i32 / 2;
+                        let start_y = abs_y + height as i32 / 2;
                         for (i, c) in name.chars().enumerate() {
-                            buffer.set(start_x + i as u16, start_y, Cell {
+                            Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
                                 ch: c,
                                 fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                                 ..Default::default()
@@ -686,8 +771,8 @@ impl Renderer {
 
     fn render_vid(
         node: &oxiterm_proto::dom::Node,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buffer: &mut CellBuffer,
@@ -699,7 +784,7 @@ impl Renderer {
                 for dx in 0..width {
                     let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
                     let ch = if is_border { '*' } else { ' ' };
-                    buffer.set(abs_x + dx, abs_y + dy, Cell {
+                    Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
                         ch,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                         ..Default::default()
@@ -707,7 +792,16 @@ impl Renderer {
                 }
             }
             let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            let is_missing = !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available();
+            let is_missing = {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    true
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available()
+                }
+            };
             let display_name = if is_missing {
                 format!("[Video Error: ffmpeg missing! {}]", name)
             } else {
@@ -715,10 +809,10 @@ impl Renderer {
             };
             let len = display_name.chars().count() as u16;
             if width > len + 2 && height > 2 {
-                let start_x = abs_x + (width - len) / 2;
-                let start_y = abs_y + height / 2;
+                let start_x = abs_x + (width - len) as i32 / 2;
+                let start_y = abs_y + height as i32 / 2;
                 for (i, c) in display_name.chars().enumerate() {
-                    buffer.set(start_x + i as u16, start_y, Cell {
+                    Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
                         ch: c,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                         ..Default::default()
@@ -748,8 +842,18 @@ impl Renderer {
                 2
             };
 
-            let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
+            let frame: Option<std::sync::Arc<Vec<u8>>> = {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps)
+                }
+            };
 
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(raw_rgba) = frame {
                 if profile.supports_kitty_gfx {
                     // BUG-VIDEO-01: Zero-copy transmit path. Pass Arc slice reference directly to transmit_image.
@@ -760,15 +864,21 @@ impl Renderer {
                         height as u32,
                         &raw_rgba,
                     );
-                    let mut cmd = Vec::new();
-                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                    cmd.extend_from_slice(&payload);
-                    buffer.graphics.push(cmd);
+                    if abs_x >= 0 && abs_y >= 0 {
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&payload);
+                        buffer.graphics.push(cmd);
+                    }
                     
                     for dy in 0..height {
                         for dx in 0..width {
-                            if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                buffer.cells[idx].skip = true;
+                            let tx = abs_x + dx as i32;
+                            let ty = abs_y + dy as i32;
+                            if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                    buffer.cells[idx].skip = true;
+                                }
                             }
                         }
                     }
@@ -778,15 +888,21 @@ impl Renderer {
                     if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(pixel_w, pixel_h, (*raw_rgba).clone()) {
                         if profile.supports_sixel {
                             let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
-                            let mut cmd = Vec::new();
-                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                            cmd.extend_from_slice(&sixel_payload);
-                            buffer.graphics.push(cmd);
+                            if abs_x >= 0 && abs_y >= 0 {
+                                let mut cmd = Vec::new();
+                                cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                                cmd.extend_from_slice(&sixel_payload);
+                                buffer.graphics.push(cmd);
+                            }
                             
                             for dy in 0..height {
                                 for dx in 0..width {
-                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                        buffer.cells[idx].skip = true;
+                                    let tx = abs_x + dx as i32;
+                                    let ty = abs_y + dy as i32;
+                                    if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                        if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                            buffer.cells[idx].skip = true;
+                                        }
                                     }
                                 }
                             }
@@ -834,10 +950,10 @@ mod tests {
         doc.append_child(doc.root, parent_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 5, 3).unwrap();
+        let layout = engine.compute(&mut doc, 5, 3, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 3);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Check top-left corner border character '┌'
         let tl_idx = buffer.flat_idx(0, 0).unwrap();
@@ -867,10 +983,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 5, 1).unwrap();
+        let layout = engine.compute(&mut doc, 5, 1, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Check index 0: contains '🚀'
         assert_eq!(buffer.cells[0].ch, '🚀');
@@ -898,10 +1014,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 6, 4).unwrap();
+        let layout = engine.compute(&mut doc, 6, 4, None).unwrap();
 
         let mut buffer = CellBuffer::new(6, 4);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Since the file is non-existent, it should render the fallback border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -921,10 +1037,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 15, 5).unwrap();
+        let layout = engine.compute(&mut doc, 15, 5, None).unwrap();
 
         let mut buffer = CellBuffer::new(15, 5);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Falling back should draw border of '*'
         assert_eq!(buffer.cells[0].ch, '*');

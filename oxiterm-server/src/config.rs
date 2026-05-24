@@ -7,6 +7,7 @@ pub struct OxiTermConfig {
     pub server: ServerConfig,
     pub session: SessionConfig,
     pub metrics: MetricsConfig,
+    pub app_server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,6 +22,7 @@ pub struct ServerConfig {
     /// of the default AnsiFrameSink. Activate via `oxiterm serve --a11y`.
     #[serde(default)]
     pub a11y_mode: bool,
+    pub app_server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,6 +48,7 @@ impl Default for OxiTermConfig {
                 no_auth: false,
                 web_port: 8080,
                 a11y_mode: false,
+                app_server_url: None,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -55,6 +58,7 @@ impl Default for OxiTermConfig {
                 enabled: true,
                 port: 9090,
             },
+            app_server_url: None,
         }
     }
 }
@@ -86,6 +90,10 @@ impl OxiTermConfig {
         }
         if let Ok(web_port) = std::env::var("OXITERM_WEB_PORT") {
             config.server.web_port = web_port.parse()?;
+        }
+        if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
+            config.server.app_server_url = Some(url.clone());
+            config.app_server_url = Some(url);
         }
         config.validate()?;
         Ok(config)

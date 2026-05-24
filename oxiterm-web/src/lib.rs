@@ -224,3 +224,145 @@ fn ansi_256_to_rgb(idx: u8) -> (u8, u8, u8) {
         (level, level, level)
     }
 }
+
+#[wasm_bindgen]
+pub struct Playground;
+
+#[wasm_bindgen]
+impl Playground {
+    #[wasm_bindgen]
+    pub fn mount_asset(path: &str, data: &[u8]) {
+        let path_buf = std::path::PathBuf::from(path);
+        oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
+            fs.borrow_mut().insert(path_buf, data.to_vec());
+        });
+    }
+
+    #[wasm_bindgen]
+    pub fn render(html_content: &str, width: u16, height: u16, format: Option<String>) -> Result<String, String> {
+        let mut doc = oxiterm_renderer::parser::THTMLParser::parse(html_content).map_err(|e| e.to_string())?;
+        let mut engine = oxiterm_renderer::layout::engine::LayoutEngine::new();
+        let layout = engine.compute(&mut doc, width, 0, None).map_err(|e| e.to_string())?;
+        
+        let mut back = oxiterm_renderer::CellBuffer::new(width, height);
+        let mut profile = oxiterm_proto::style::TerminalProfile::default();
+        profile.supports_kitty_gfx = true;
+        profile.supports_sixel = true;
+        
+        oxiterm_renderer::render::renderer::Renderer::render_node(&doc, &layout, &mut back, &profile, None, 0);
+        
+        let fmt = format.unwrap_or_else(|| "ansi".to_string());
+        if fmt.eq_ignore_ascii_case("html") {
+            Ok(Self::render_to_html(&back))
+        } else {
+            let front = oxiterm_renderer::CellBuffer::new(width, height);
+            let commands = oxiterm_renderer::DiffEngine::diff(&front, &back);
+            let ansi_bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+            Ok(String::from_utf8_lossy(&ansi_bytes).into_owned())
+        }
+    }
+
+    fn render_to_html(buffer: &oxiterm_renderer::CellBuffer) -> String {
+        let mut html = String::new();
+        html.push_str("<pre style=\"font-family: monospace; background: #0f172a; color: #f1f5f9; padding: 10px; margin: 0; line-height: 1.2;\">");
+        for y in 0..buffer.height {
+            for x in 0..buffer.width {
+                if let Some(idx) = buffer.flat_idx(x, y) {
+                    let cell = &buffer.cells[idx];
+                    if cell.skip {
+                        continue;
+                    }
+                    let mut style = String::new();
+                    // Foreground color
+                    match &cell.fg {
+                        AnsiColor::TrueColor(r, g, b) => {
+                            style.push_str(&format!("color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Color256(idx) => {
+                            let (r, g, b) = ansi_256_to_rgb(*idx);
+                            style.push_str(&format!("color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Reset => {}
+                    }
+                    // Background color
+                    match &cell.bg {
+                        AnsiColor::TrueColor(r, g, b) => {
+                            style.push_str(&format!("background-color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Color256(idx) => {
+                            let (r, g, b) = ansi_256_to_rgb(*idx);
+                            style.push_str(&format!("background-color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Reset => {}
+                    }
+                    if cell.bold {
+                        style.push_str("font-weight: bold;");
+                    }
+                    if cell.italic {
+                        style.push_str("font-style: italic;");
+                    }
+                    if cell.underline {
+                        style.push_str("text-decoration: underline;");
+                    }
+                    
+                    if !style.is_empty() {
+                        html.push_str(&format!("<span style=\"{}\">", style));
+                    }
+                    // Escape HTML characters
+                    match cell.ch {
+                        '&' => html.push_str("&amp;"),
+                        '<' => html.push_str("&lt;"),
+                        '>' => html.push_str("&gt;"),
+                        '"' => html.push_str("&quot;"),
+                        '\'' => html.push_str("&#x27;"),
+                        '\0' | ' ' => html.push_str("&nbsp;"),
+                        _ => html.push(cell.ch),
+                    }
+                    if !style.is_empty() {
+                        html.push_str("</span>");
+                    }
+                }
+            }
+            html.push_str("<br/>");
+        }
+        html.push_str("</pre>");
+        html
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_playground_render_ansi() {
+        let html = "<text style=\"color: #ff0000; background-color: #00ff00;\">Hello World</text>";
+        let rendered = Playground::render(html, 80, 24, Some("ansi".to_string())).unwrap();
+        assert!(rendered.contains("Hello World"));
+    }
+
+    #[test]
+    fn test_playground_render_html() {
+        let html = "<text style=\"color: #ff0000; background-color: #00ff00;\">Hello World</text>";
+        let rendered = Playground::render(html, 80, 24, Some("html".to_string())).unwrap();
+        assert!(rendered.contains("color: rgb(255,0,0)"));
+        assert!(rendered.contains("background-color: rgb(0,255,0)"));
+        assert!(rendered.contains(">H</span>"));
+        assert!(rendered.contains(">e</span>"));
+        assert!(rendered.contains(">&nbsp;</span>"));
+    }
+
+    #[test]
+    fn test_playground_mount_asset() {
+        let path = "test_asset.txt";
+        let data = b"hello asset";
+        Playground::mount_asset(path, data);
+        
+        let path_buf = std::path::PathBuf::from(path);
+        let read_data = oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
+            fs.borrow().get(&path_buf).cloned()
+        });
+        assert_eq!(read_data, Some(data.to_vec()));
+    }
+}
+

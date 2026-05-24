@@ -10,6 +10,8 @@ pub enum InputEvent {
     Xoff,
     Refresh, // S6-refresh
     Reload,  // SC-02: Hot Reload signal
+    ScrollUp,
+    ScrollDown,
     Unknown(Vec<u8>),
 }
 

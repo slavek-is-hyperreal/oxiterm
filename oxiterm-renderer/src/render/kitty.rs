@@ -72,4 +72,25 @@ impl KittyImageManager {
         }
         output
     }
+
+    /// Delete all placements of all images on the screen
+    pub fn delete_all_placements() -> Vec<u8> {
+        b"\x1b_Ga=d,d=A\x1b\\".to_vec()
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_delete_all_placements() {
+        let bytes = KittyImageManager::delete_all_placements();
+        assert!(bytes.starts_with(&[0x1b, 0x5f, 0x47])); // ESC_G
+        assert!(bytes.ends_with(&[0x1b, 0x5c])); // ESC\
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.contains("a=d"));
+        assert!(s.contains("d=A"));
+    }
+}
+

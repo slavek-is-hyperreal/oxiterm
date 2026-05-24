@@ -132,6 +132,59 @@ impl StateManager {
     }
 }
 
+impl oxiterm_proto::dom::StateEvaluator for StateManager {
+    fn evaluate_bind_show(&self, condition: &str) -> bool {
+        if let Some(pos) = condition.find('=') {
+            let key = &condition[..pos];
+            let val_str = &condition[pos + 1..];
+            let state_val = self.get(key);
+            match val_str {
+                "false" => {
+                    match state_val {
+                        Some(StateValue::Bool(b)) => !*b,
+                        Some(StateValue::Int(i)) => *i == 0,
+                        Some(StateValue::Str(s)) => s == "false" || s.is_empty(),
+                        Some(StateValue::List(l)) => l.is_empty(),
+                        None => true,
+                    }
+                }
+                "true" => {
+                    match state_val {
+                        Some(StateValue::Bool(b)) => *b,
+                        Some(StateValue::Int(i)) => *i != 0,
+                        Some(StateValue::Str(s)) => s == "true",
+                        Some(StateValue::List(l)) => !l.is_empty(),
+                        None => false,
+                    }
+                }
+                _ => {
+                    if let Some(sv) = state_val {
+                        match sv {
+                            StateValue::Str(s) => s == val_str,
+                            StateValue::Int(i) => i.to_string() == val_str,
+                            StateValue::Bool(b) => b.to_string() == val_str,
+                            StateValue::List(l) => l.contains(&val_str.to_string()),
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
+        } else {
+            if let Some(sv) = self.get(condition) {
+                match sv {
+                    StateValue::Bool(b) => *b,
+                    StateValue::Int(i) => *i != 0,
+                    StateValue::Str(s) => !s.is_empty() && s != "false",
+                    StateValue::List(l) => !l.is_empty(),
+                }
+            } else {
+                false
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,4 +264,36 @@ mod tests {
         sm.apply_action("clear:non_existent_key");
         assert_eq!(sm.get("non_existent_key"), None);
     }
+
+    #[test]
+    fn test_evaluate_bind_show() {
+        use oxiterm_proto::dom::StateEvaluator;
+        let mut sm = StateManager::new();
+
+        // 1. Bare key tests
+        assert_eq!(sm.evaluate_bind_show("logged_in"), false);
+        sm.set("logged_in".to_string(), StateValue::Bool(true));
+        assert_eq!(sm.evaluate_bind_show("logged_in"), true);
+        sm.set("logged_in".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("logged_in"), false);
+
+        // 2. key=value tests
+        assert_eq!(sm.evaluate_bind_show("tab=home"), false);
+        sm.set("tab".to_string(), StateValue::Str("home".to_string()));
+        assert_eq!(sm.evaluate_bind_show("tab=home"), true);
+        assert_eq!(sm.evaluate_bind_show("tab=profile"), false);
+
+        // 3. key=false tests
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), true); // absent is considered false
+        sm.set("show_details".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), true);
+        sm.set("show_details".to_string(), StateValue::Bool(true));
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), false);
+
+        // 4. key=true tests
+        assert_eq!(sm.evaluate_bind_show("show_details=true"), true);
+        sm.set("show_details".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("show_details=true"), false);
+    }
 }
+
