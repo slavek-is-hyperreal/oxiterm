@@ -238,6 +238,7 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "placeholder" => attrs.placeholder = Some(value),
             "name" => attrs.name = Some(value),
             "bind-show" => attrs.bind_show = Some(value),
+            "bind-value" => attrs.bind_value = Some(value),
             _ => {}
         }
         input = rem;

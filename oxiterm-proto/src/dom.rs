@@ -24,6 +24,8 @@ pub struct NodeAttributes {
     pub placeholder: Option<String>,
     pub name: Option<String>,
     pub bind_show: Option<String>,
+    /// Key in StateManager where the typed text of this `<input>` is stored.
+    pub bind_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

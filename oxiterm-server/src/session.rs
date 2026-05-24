@@ -303,6 +303,8 @@ pub struct EventLoop {
     pub focused_node: Option<NodeId>,
     pub scroll_offset: u16,
     pub total_height: u16,
+    /// Optional dispatcher for external app server notifications.
+    pub app_dispatcher: Option<crate::dispatcher::AppDispatcher>,
 }
 
 impl EventLoop {
@@ -349,6 +351,7 @@ impl EventLoop {
             focused_node: None,
             scroll_offset: 0,
             total_height: 0,
+            app_dispatcher: None,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
@@ -385,7 +388,11 @@ impl EventLoop {
         let mut stack = vec![self.doc.root];
         while let Some(id) = stack.pop() {
             if let Some(node) = self.doc.arena.get(id) {
-                if node.attrs.event_htmx.is_some() {
+                // Focusable: any node with event_htmx OR an <input> with bind_value
+                let is_interactive = node.attrs.event_htmx.is_some()
+                    || (node.tag == oxiterm_proto::dom::NodeTag::Input
+                        && node.attrs.bind_value.is_some());
+                if is_interactive {
                     nodes.push(id);
                 }
                 // push children in reverse so left-to-right / top-to-bottom order
@@ -460,6 +467,41 @@ impl EventLoop {
             }
         }
         None
+    }
+
+    /// If an `AppDispatcher` is configured, snapshot the current state and fire a POST.
+    fn try_dispatch(&self, action: &str) {
+        if let Some(ref dispatcher) = self.app_dispatcher {
+            let state_guard = self.session.state.read();
+            let mut state_snapshot = std::collections::HashMap::new();
+            // Collect all known keys referenced in the DOM as bind_state or bind_value.
+            for (_id, node) in self.doc.arena.iter() {
+                if let Some(ref key) = node.attrs.bind_state {
+                    if let Some(val) = state_guard.get(key) {
+                        state_snapshot.insert(key.clone(), val.to_string());
+                    }
+                }
+                if let Some(ref key) = node.attrs.bind_value {
+                    if let Some(val) = state_guard.get(key) {
+                        state_snapshot.insert(key.clone(), val.to_string());
+                    }
+                }
+                if let Some(ref key) = node.attrs.bind_show {
+                    // bind_show condition: extract key before '='
+                    let key_part = key.split('=').next().unwrap_or(key);
+                    if let Some(val) = state_guard.get(key_part) {
+                        state_snapshot.insert(key_part.to_string(), val.to_string());
+                    }
+                }
+            }
+            drop(state_guard);
+            let payload = crate::dispatcher::DispatchPayload {
+                action: action.to_string(),
+                state: state_snapshot,
+                session_id: self.session.id,
+            };
+            dispatcher.dispatch(payload);
+        }
     }
 
     pub fn run(&mut self) {
@@ -620,6 +662,7 @@ impl EventLoop {
                                                     }
                                                 } else {
                                                     self.session.state.write().apply_action(&htmx_target);
+                                                    self.try_dispatch(&htmx_target);
                                                     needs_render = true;
                                                 }
                                             }
@@ -650,9 +693,57 @@ impl EventLoop {
                                             }
                                         }
                                     } else {
-                                        let mut echo = self.session.predictive_echo.write();
-                                        echo.buffer.push(key.codepoint);
-                                        needs_render = true;
+                                        // Check if focused node is an <input> with bind_value
+                                        let handled_by_input = if let Some(focused_id) = self.focused_node {
+                                            if let Some(node) = self.doc.get_node(focused_id) {
+                                                if node.tag == oxiterm_proto::dom::NodeTag::Input {
+                                                    if let Some(ref state_key) = node.attrs.bind_value.clone() {
+                                                        let cp = key.codepoint;
+                                                        if cp as u32 == 127 || cp as u32 == 8 {
+                                                            // Backspace: remove last char from state
+                                                            let current = match self.session.state.read().get(state_key) {
+                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
+                                                                _ => String::new(),
+                                                            };
+                                                            let mut new_val = current;
+                                                            new_val.pop();
+                                                            self.session.state.write().set(
+                                                                state_key.clone(),
+                                                                crate::state::StateValue::Str(new_val),
+                                                            );
+                                                            needs_render = true;
+                                                            true
+                                                        } else if cp == '\r' || cp as u32 == 13 {
+                                                            // Enter on input: fire event_htmx if present, but don't consume
+                                                            // (let the outer Enter branch handle it via get_htmx_node_and_target)
+                                                            false
+                                                        } else if !cp.is_control() {
+                                                            // Printable char: append to state
+                                                            let current = match self.session.state.read().get(state_key) {
+                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
+                                                                _ => String::new(),
+                                                            };
+                                                            let mut new_val = current;
+                                                            new_val.push(cp);
+                                                            self.session.state.write().set(
+                                                                state_key.clone(),
+                                                                crate::state::StateValue::Str(new_val),
+                                                            );
+                                                            needs_render = true;
+                                                            true
+                                                        } else {
+                                                            false
+                                                        }
+                                                    } else { false }
+                                                } else { false }
+                                            } else { false }
+                                        } else { false };
+
+                                        if !handled_by_input {
+                                            let mut echo = self.session.predictive_echo.write();
+                                            echo.buffer.push(key.codepoint);
+                                            needs_render = true;
+                                        }
                                     }
                                 }
                                 InputEvent::MouseEvent(mut mouse) => {
@@ -724,6 +815,7 @@ impl EventLoop {
                                                 } else {
                                                     // Handle general HTMX action (inc, dec, toggle, set, etc.)
                                                     self.session.state.write().apply_action(&htmx_target);
+                                                    self.try_dispatch(&htmx_target);
                                                 }
                                             } else {
                                                 info!("No HTMX target found for node {:?}", node_id);
@@ -764,6 +856,12 @@ impl EventLoop {
                                     let max_scroll = self.total_height.saturating_sub(viewport_h);
                                     self.scroll_offset = (self.scroll_offset + viewport_h).min(max_scroll);
                                     needs_render = true;
+                                }
+                                InputEvent::TextInput(text) => {
+                                    // TextInput is generated when an external dispatcher routes
+                                    // typed text to a focused input node. Currently a no-op at
+                                    // session level; dispatching happens via AppDispatcher.
+                                    info!("TextInput received (len={}): {:?}", text.len(), text);
                                 }
                                 _ => {}
                             }

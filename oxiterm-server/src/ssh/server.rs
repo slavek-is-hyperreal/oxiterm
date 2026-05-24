@@ -131,7 +131,10 @@ impl Handler for OxiServer {
                     event_loop.weather_rx = Some(weather_rx);
                 }
                 event_loop.source_path = self.source_path.clone();
-                
+                if let Some(ref url) = self.config.server.app_server_url {
+                    event_loop.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(url.clone()));
+                }
+
                 std::thread::spawn(move || {
                     event_loop.run();
                 });
