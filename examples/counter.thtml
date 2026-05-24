@@ -1,25 +1,74 @@
-<box style="flex-direction: column; width: 80; height: 24; background-color: #0f172a;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
-        <text style="color: #38bdf8; font-weight: bold;">OxiTerm Counter Demo</text>
-        <text style="color: #94a3b8;" event-htmx="hello.thtml">[ Back to Home ]</text>
+<style>
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+}
+.btn {
+    border-style: single;
+    padding-left: 2;
+    padding-right: 2;
+    height: 3;
+    align-items: center;
+    justify-content: center;
+}
+.btn-red   { border-color: #f87171; fg: #f87171; }
+.btn-green { border-color: #4ade80; fg: #4ade80; }
+.btn-gray  { border-color: #475569; fg: #94a3b8; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <!-- Nagłówek -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #f59e0b; height: 1;">🔢 Licznik — inc / dec / clear</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <!-- Main Content -->
-    <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column;">
-        <text style="color: #94a3b8; margin-bottom: 1;">Current Value:</text>
-        <box style="padding: 2; border-style: double; border-color: #f59e0b;">
-            <text style="color: #ffffff; font-size: 200%; font-weight: bold;" bind-state="counter">0</text>
+    <!-- Treść -->
+    <box style="flex-direction: row; padding: 2; flex: 1;">
+
+        <!-- Duży licznik -->
+        <box class="panel" style="border-color: #f59e0b; width: 36; align-items: center;
+                                  justify-content: center; margin-right: 2;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Bieżąca wartość:</text>
+            <box style="border-style: double; border-color: #f59e0b; padding: 2;
+                        justify-content: center; align-items: center;">
+                <text style="fg: #fbbf24; height: 1;" bind-state="counter">0</text>
+            </box>
+            <box style="flex-direction: row; margin-top: 2;">
+                <box class="btn btn-red" style="margin-right: 1;" event-htmx="dec:counter">
+                    <text style="height: 1;">  −  </text>
+                </box>
+                <box class="btn btn-green" style="margin-right: 1;" event-htmx="inc:counter">
+                    <text style="height: 1;">  +  </text>
+                </box>
+                <box class="btn btn-gray" event-htmx="clear:counter">
+                    <text style="height: 1;">  ×  </text>
+                </box>
+            </box>
         </box>
-        
-        <box class="controls">
-            <button class="btn" event-htmx="dec:counter">-</button>
-            <button class="btn" event-htmx="inc:counter">+</button>
+
+        <!-- Opis akcji -->
+        <box class="panel" style="border-color: #334155; flex: 1;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Obsługiwane akcje event-htmx:</text>
+            <text style="fg: #4ade80;  height: 1;">inc:klucz   — liczba += 1</text>
+            <text style="fg: #f87171;  height: 1;">dec:klucz   — liczba -= 1</text>
+            <text style="fg: #94a3b8;  height: 1;">clear:klucz — reset do 0</text>
+            <box style="height: 1;"></box>
+            <text style="fg: #64748b; height: 1;">Stan Int(i64) żyje w</text>
+            <text style="fg: #64748b; height: 1;">StateManager serwera.</text>
+            <text style="fg: #64748b; height: 1;">bind-state odświeża</text>
+            <text style="fg: #64748b; height: 1;">reaktywnie tylko ten węzeł.</text>
         </box>
+
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; background-color: #1e293b; justify-content: center;">
-        <text style="color: #64748b;">Powered by OxiTerm Engine</text>
+    <!-- Stopka -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
     </box>
+
 </box>

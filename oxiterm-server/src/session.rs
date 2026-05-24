@@ -744,12 +744,25 @@ impl EventLoop {
                                 InputEvent::Refresh => { needs_render = true; }
                                 InputEvent::ScrollUp => {
                                     let dims = *self.session.dims.read();
-                                    self.scroll_offset = self.scroll_offset.saturating_sub(dims.rows);
+                                    let has_scroll = self.total_height > dims.rows;
+                                    let viewport_h = if has_scroll {
+                                        dims.rows.saturating_sub(1)
+                                    } else {
+                                        dims.rows
+                                    };
+                                    self.scroll_offset = self.scroll_offset.saturating_sub(viewport_h);
                                     needs_render = true;
                                 }
                                 InputEvent::ScrollDown => {
                                     let dims = *self.session.dims.read();
-                                    self.scroll_offset = (self.scroll_offset + dims.rows).min(self.total_height.saturating_sub(dims.rows));
+                                    let has_scroll = self.total_height > dims.rows;
+                                    let viewport_h = if has_scroll {
+                                        dims.rows.saturating_sub(1)
+                                    } else {
+                                        dims.rows
+                                    };
+                                    let max_scroll = self.total_height.saturating_sub(viewport_h);
+                                    self.scroll_offset = (self.scroll_offset + viewport_h).min(max_scroll);
                                     needs_render = true;
                                 }
                                 _ => {}
@@ -801,6 +814,28 @@ impl EventLoop {
                 if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
                     self.total_height = layout.total_height;
 
+                    let has_scroll = self.total_height > dims.rows;
+                    let viewport_h = if has_scroll {
+                        dims.rows.saturating_sub(1)
+                    } else {
+                        dims.rows
+                    };
+
+                    // BUG-HTMX-ENTER-MISSING-SCROLL-01: Auto-scroll to focused node if it exists and is out of the viewport
+                    if let Some(focused_id) = self.focused_node {
+                        if let Some(rect) = layout.nodes.get(&focused_id) {
+                            if rect.y < self.scroll_offset {
+                                self.scroll_offset = rect.y;
+                            } else if rect.y + rect.height > self.scroll_offset + viewport_h {
+                                self.scroll_offset = (rect.y + rect.height).saturating_sub(viewport_h);
+                            }
+                        }
+                    }
+
+                    // Clamp scroll_offset to valid bounds
+                    let max_scroll = self.total_height.saturating_sub(viewport_h);
+                    self.scroll_offset = self.scroll_offset.min(max_scroll);
+
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
                         let _ = bridge.register_at_spi(&tree);
@@ -824,19 +859,23 @@ impl EventLoop {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                         if let Some(rect) = layout.nodes.get(&focused_id) {
                             let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
-                            if mid_row_offset >= 0 && mid_row_offset < self.buffer.back.height as i32 {
+                            // BUG-FOCUS-RING-SCROLLED-01: Restrict drawing to viewport_h and prevent overwriting status bar
+                            if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
                                 let mid_row = mid_row_offset as u16;
                                 let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
                                 let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
                                 // Left bracket
                                 if rect.x > 0 {
-                                    self.buffer.back.set(rect.x.saturating_sub(1) + offset_x, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                        ch: '▶',
-                                        fg: focus_fg,
-                                        bg: focus_bg,
-                                        bold: true,
-                                        ..Default::default()
-                                    });
+                                    let lx = rect.x.saturating_sub(1) + offset_x;
+                                    if lx < self.buffer.back.width {
+                                        self.buffer.back.set(lx, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                            ch: '▶',
+                                            fg: focus_fg,
+                                            bg: focus_bg,
+                                            bold: true,
+                                            ..Default::default()
+                                        });
+                                    }
                                 }
                                 // Right bracket
                                 let right = rect.x + rect.width + offset_x;
@@ -866,7 +905,8 @@ impl EventLoop {
                             }
                         }
 
-                        if cursor_y < self.buffer.back.height {
+                        // Prevent drawing predictive echo on the status bar row
+                        if cursor_y < viewport_h {
                             for ch in echo.buffer.chars() {
                                 if cursor_x < self.buffer.back.width {
                                     self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
@@ -876,6 +916,74 @@ impl EventLoop {
                                     });
                                     cursor_x += 1;
                                 }
+                            }
+                        }
+                    }
+
+                    // BUG-SCROLL-NO-INDICATOR-01: Draw scroll status bar if total_height > dims.rows
+                    if self.total_height > dims.rows {
+                        let last_row = dims.rows.saturating_sub(1);
+                        let mut status_parts = Vec::new();
+                        
+                        if self.scroll_offset > 0 {
+                            status_parts.push("▲ PgUp".to_string());
+                        }
+                        if self.scroll_offset < self.total_height.saturating_sub(viewport_h) {
+                            status_parts.push("▼ PgDn".to_string());
+                        }
+                        
+                        let current_row = self.scroll_offset + 1;
+                        status_parts.push(format!("wiersz {}/{}", current_row, self.total_height));
+                        
+                        let max_scroll = self.total_height.saturating_sub(viewport_h);
+                        let pct = if max_scroll > 0 {
+                            (self.scroll_offset as f32 / max_scroll as f32 * 100.0).round() as u8
+                        } else {
+                            0
+                        };
+                        
+                        let bar_width = 8;
+                        let filled_width = if max_scroll > 0 {
+                            (self.scroll_offset as usize * bar_width) / max_scroll as usize
+                        } else {
+                            0
+                        };
+                        let filled_width = filled_width.min(bar_width);
+                        let bar: String = std::iter::repeat('█').take(filled_width)
+                            .chain(std::iter::repeat('░').take(bar_width - filled_width))
+                            .collect();
+                            
+                        status_parts.push(format!("{} {}%", bar, pct));
+                        
+                        let status_str = status_parts.join("  ");
+                        let bar_bg = oxiterm_proto::style::AnsiColor::Color256(236); // dark grey
+                        let bar_fg = oxiterm_proto::style::AnsiColor::Color256(255); // white
+                        
+                        for x in 0..dims.cols {
+                            self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
+                                ch: ' ',
+                                fg: bar_fg,
+                                bg: bar_bg,
+                                ..Default::default()
+                            });
+                        }
+                        
+                        let start_x = if dims.cols > status_str.chars().count() as u16 {
+                            (dims.cols - status_str.chars().count() as u16) / 2
+                        } else {
+                            0
+                        };
+                        
+                        for (i, ch) in status_str.chars().enumerate() {
+                            let x = start_x + i as u16;
+                            if x < dims.cols {
+                                self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
+                                    ch,
+                                    fg: bar_fg,
+                                    bg: bar_bg,
+                                    bold: true,
+                                    ..Default::default()
+                                });
                             }
                         }
                     }

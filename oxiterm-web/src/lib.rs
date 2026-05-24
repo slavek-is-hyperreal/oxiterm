@@ -238,6 +238,11 @@ impl Playground {
         });
     }
 
+    /// Renders the given THTML document to either ANSI sequence or HTML.
+    /// 
+    /// NOTE: Reactive dynamic states are not simulated or evaluated in this static
+    /// rendering playground mode. Consequently, nodes containing `bind-show` conditional show
+    /// attributes will default to being visible rather than being hidden.
     #[wasm_bindgen]
     pub fn render(html_content: &str, width: u16, height: u16, format: Option<String>) -> Result<String, String> {
         let mut doc = oxiterm_renderer::parser::THTMLParser::parse(html_content).map_err(|e| e.to_string())?;

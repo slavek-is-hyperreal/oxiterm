@@ -36,7 +36,13 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
+    /// Computes the layout of the document.
+    /// Note: `_scroll_offset` is accepted here to maintain API shape/compatibility,
+    /// but layout computation itself is independent of the scroll offset (which is handled by the renderer).
     pub fn compute(&mut self, doc: &mut THTMLDocument, cols: u16, _scroll_offset: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> anyhow::Result<LayoutResult> {
+        // BUG-BIND-SHOW-INCREMENTAL-01: Clear taffy cache to force recalculation of conditional visibility (bind-show)
+        self.reset_nodes();
+
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
         self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
 
@@ -226,9 +232,9 @@ impl LayoutEngine {
                 if !eval.evaluate_bind_show(cond) {
                     display = Display::None;
                 }
-            } else {
-                display = Display::None;
             }
+            // BUG-PLAYGROUND-BIND-SHOW-01: If state_evaluator is None (e.g. static preview/playground),
+            // we default to keeping the node visible (Display::Flex) so conditional show boxes are not hidden.
         }
 
         Style {
@@ -401,8 +407,6 @@ mod tests {
 
         // 2. Evaluator says true -> node is visible
         let eval_true = MockEvaluator { val: true };
-        engine.taffy = taffy::TaffyTree::new();
-        engine.node_map.clear();
         let result_visible = engine.compute(&mut doc, 80, 0, Some(&eval_true)).unwrap();
         assert!(result_visible.nodes.get(&child_id).is_some());
     }

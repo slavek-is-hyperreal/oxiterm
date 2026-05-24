@@ -1,44 +1,69 @@
-<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #f5c2e7; padding: 1;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
-        <text style="color: #cdd6f4; font-weight: bold;">🎬 OxiTerm High-Performance Video Streaming</text>
-        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #f5c2e7;" event-htmx="hello.thtml">
-            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
-        </box>
+<style>
+.stat-row { flex-direction: row; height: 1; margin-bottom: 1; }
+.stat-key { width: 18; fg: #94a3b8; height: 1; }
+.stat-val { fg: #e2e8f0; height: 1; }
+.muted    { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #fb923c; height: 1;">🎬 Wideo — ffmpeg → CellBuffer → SSH</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <!-- Main Content -->
-    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
-        <!-- Left Side: Video Player -->
-        <box style="flex: 1; border-style: rounded; border-color: #f5c2e7; justify-content: center; align-items: center; background-color: #000000; overflow: hidden;">
-            <!-- Renders the video file -->
-            <video src="clip.mp4" style="width: 44; height: 22;" />
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- Odtwarzacz -->
+        <box style="flex: 1; border-style: rounded; border-color: #fb923c;
+                    justify-content: center; align-items: center;
+                    bg: #000000; margin-right: 1;">
+            <video src="clip.mp4" alt="Demo wideo" style="width: 40; height: 18;" />
         </box>
 
-        <!-- Right Side: Statistics & Controls -->
-        <box style="width: 32; flex-direction: column; gap: 1;">
-            <!-- Player Stats Box -->
-            <box style="height: 11; border-style: rounded; border-color: #89b4fa; flex-direction: column; padding: 1; justify-content: space-around;">
-                <text style="color: #89b4fa; font-weight: bold;">📊 Engine Pipeline</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Decoding: FFmpeg-compatible</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Speed: up to 60 FPS</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Target Size: 44 x 22 cells</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Frame delta-updates active</text>
+        <!-- Panel informacyjny -->
+        <box style="width: 30; flex-direction: column;">
+
+            <box style="border-style: rounded; border-color: #38bdf8;
+                        padding: 1; flex-direction: column; margin-bottom: 1;">
+                <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Pipeline</text>
+                <box class="stat-row">
+                    <text class="stat-key">Dekoder:</text>
+                    <text class="stat-val">ffmpeg stdin</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Format:</text>
+                    <text class="stat-val">RGBA raw</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Buffer:</text>
+                    <text class="stat-val">Arc&lt;Vec&lt;u8&gt;&gt;</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Eviction:</text>
+                    <text class="stat-val">5s bezczynności</text>
+                </box>
             </box>
 
-            <!-- Render Fallbacks Box -->
-            <box style="height: 11; border-style: rounded; border-color: #e0af68; flex-direction: column; padding: 1; justify-content: space-around;">
-                <text style="color: #e0af68; font-weight: bold;">🛡️ Graphics Fallbacks</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Kitty Gfx Protocol (high-res)</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Sixel Codec (medium-res)</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Half-Block Unicode (ASCII/TUI)</text>
-                <text style="color: #a6adc8; font-size: 75%; font-style: italic;">Adaptive auto-detection</text>
+            <box style="border-style: rounded; border-color: #4ade80;
+                        padding: 1; flex-direction: column;">
+                <text style="fg: #4ade80; height: 1; margin-bottom: 1;">FPS wg protokołu</text>
+                <text class="muted">Kitty Graphics: 30fps</text>
+                <text class="muted">Sixel:          10fps</text>
+                <text class="muted">Unicode blocks:  2fps</text>
+                <box style="height: 1;"></box>
+                <text class="muted">Zero buf.clone()</text>
+                <text class="muted">RwLock na frame</text>
             </box>
+
         </box>
+
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
-        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście — wymaga ffmpeg w systemie</text>
     </box>
+
 </box>

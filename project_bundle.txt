@@ -1,6 +1,6 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: nie, 24 maj 2026, 16:09:30 CEST
+GENERATED: nie, 24 maj 2026, 18:44:52 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
@@ -24,16 +24,20 @@ GENERATED: nie, 24 maj 2026, 16:09:30 CEST
 │   ├── clip.mp4
 │   ├── counter.thtml
 │   ├── hello.thtml
-│   ├── image_demo.thtml
 │   ├── loader.json
 │   ├── logo.jpg
 │   ├── mascot.svg
+│   ├── media_demo.thtml
+│   ├── navigation_demo.thtml
 │   ├── showcase.thtml
+│   ├── state_demo.thtml
+│   ├── styles_demo.thtml
 │   ├── todo.thtml
 │   ├── toggle.riv
-│   ├── vector_demo.thtml
 │   └── video_demo.thtml
 ├── host_key
+├── neo_exa
+│   └── files.zip
 ├── oxiterm-a11y
 │   ├── Cargo.toml
 │   └── src
@@ -148,7 +152,7 @@ GENERATED: nie, 24 maj 2026, 16:09:30 CEST
     ├── kitty_video_demo_frame_4.png
     └── kitty_video_demo_frame_5.png
 
-26 directories, 116 files
+27 directories, 119 files
 
 === RUST SOURCE FILES (.rs) ===
 --------------------------------------------------------------------------------
@@ -640,6 +644,7 @@ pub struct NodeAttributes {
     pub alt: Option<String>,
     pub placeholder: Option<String>,
     pub name: Option<String>,
+    pub bind_show: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -666,6 +671,11 @@ impl Node {
         }
     }
 }
+
+pub trait StateEvaluator {
+    fn evaluate_bind_show(&self, condition: &str) -> bool;
+}
+
 
 --- END OF FILE: ./oxiterm-proto/src/dom.rs ---
 
@@ -1093,6 +1103,8 @@ pub enum InputEvent {
     Xoff,
     Refresh, // S6-refresh
     Reload,  // SC-02: Hot Reload signal
+    ScrollUp,
+    ScrollDown,
     Unknown(Vec<u8>),
 }
 
@@ -1593,16 +1605,22 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    pub fn compute(&mut self, doc: &mut THTMLDocument, term_width: u16, term_height: u16) -> anyhow::Result<LayoutResult> {
+    /// Computes the layout of the document.
+    /// Note: `_scroll_offset` is accepted here to maintain API shape/compatibility,
+    /// but layout computation itself is independent of the scroll offset (which is handled by the renderer).
+    pub fn compute(&mut self, doc: &mut THTMLDocument, cols: u16, _scroll_offset: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> anyhow::Result<LayoutResult> {
+        // BUG-BIND-SHOW-INCREMENTAL-01: Clear taffy cache to force recalculation of conditional visibility (bind-show)
+        self.reset_nodes();
+
         // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
-        self.ensure_nodes_exist_recursive(doc, doc.root)?;
+        self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
 
         // Step 2: Synchronize dirty nodes
         for &oxi_id in &doc.dirty_nodes {
             if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
                 if let Some(node) = doc.arena.get(oxi_id) {
                     // Update style
-                    let style = self.map_style(node);
+                    let style = self.map_style(node, state_evaluator);
                     self.taffy.set_style(taffy_id, style)?;
 
                     // Update children
@@ -1612,7 +1630,7 @@ impl LayoutEngine {
                             taffy_children.push(t_child);
                         } else {
                             // This should not happen if ensure_nodes_exist_recursive works
-                            let t_child = self.ensure_nodes_exist_recursive(doc, child_id)?;
+                            let t_child = self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?;
                             taffy_children.push(t_child);
                         }
                     }
@@ -1624,20 +1642,22 @@ impl LayoutEngine {
         // Step 3: Compute layout
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
         
-        let mut root_w = term_width;
-        let mut root_h = term_height;
+        let mut root_w = cols;
+        let mut root_h = u16::MAX;
 
         if let Some(root_node) = doc.arena.get(doc.root) {
-            let mut style = self.map_style(root_node);
+            let mut style = self.map_style(root_node, state_evaluator);
             if let Some(w) = root_node.style.width {
                 root_w = w;
             } else {
-                style.size.width = taffy::style::Dimension::Length(term_width as f32);
+                style.size.width = taffy::style::Dimension::Length(cols as f32);
             }
             if let Some(h) = root_node.style.height {
                 root_h = h;
             } else {
-                style.size.height = taffy::style::Dimension::Length(term_height as f32);
+                // SPRINT SPECIFICATIONS: unconstrained height (u16::MAX) to allow measuring full layout height
+                style.size.height = taffy::style::Dimension::Length(u16::MAX as f32);
+                root_h = u16::MAX;
             }
             self.taffy.set_style(root_taffy_id, style)?;
         }
@@ -1655,7 +1675,15 @@ impl LayoutEngine {
         // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
 
-        let result = LayoutResult { nodes };
+        let mut max_bottom = 0;
+        for rect in nodes.values() {
+            let bottom = rect.y + rect.height;
+            if bottom > max_bottom {
+                max_bottom = bottom;
+            }
+        }
+
+        let result = LayoutResult { nodes, total_height: max_bottom };
         self.last_layout = Some(result.clone());
         Ok(result)
     }
@@ -1669,27 +1697,35 @@ impl LayoutEngine {
         nodes: &mut HashMap<OxiNodeId, OxiRect>,
     ) -> anyhow::Result<()> {
         if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
-            let layout = self.taffy.layout(taffy_id)
-                .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
-            
-            let rect_x = layout.location.x.round() as u16;
-            let rect_y = layout.location.y.round() as u16;
-            let width = layout.size.width.round() as u16;
-            let height = layout.size.height.round() as u16;
-            
-            let abs_x = parent_x + rect_x;
-            let abs_y = parent_y + rect_y;
-            
-            nodes.insert(oxi_id, OxiRect {
-                x: abs_x,
-                y: abs_y,
-                width,
-                height,
-            });
+            let is_visible = if let Ok(style) = self.taffy.style(taffy_id) {
+                style.display != Display::None
+            } else {
+                true
+            };
 
-            if let Some(node) = doc.arena.get(oxi_id) {
-                for &child_id in &node.children {
-                    self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+            if is_visible {
+                let layout = self.taffy.layout(taffy_id)
+                    .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
+                
+                let rect_x = layout.location.x.round() as u16;
+                let rect_y = layout.location.y.round() as u16;
+                let width = layout.size.width.round() as u16;
+                let height = layout.size.height.round() as u16;
+                
+                let abs_x = parent_x + rect_x;
+                let abs_y = parent_y + rect_y;
+                
+                nodes.insert(oxi_id, OxiRect {
+                    x: abs_x,
+                    y: abs_y,
+                    width,
+                    height,
+                });
+
+                if let Some(node) = doc.arena.get(oxi_id) {
+                    for &child_id in &node.children {
+                        self.flatten_layout_recursive(doc, child_id, abs_x, abs_y, nodes)?;
+                    }
                 }
             }
         }
@@ -1717,7 +1753,8 @@ impl LayoutEngine {
     fn ensure_nodes_exist_recursive(
         &mut self, 
         doc: &THTMLDocument, 
-        oxi_id: OxiNodeId
+        oxi_id: OxiNodeId,
+        state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>,
     ) -> anyhow::Result<taffy::NodeId> {
         if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
             return Ok(taffy_id);
@@ -1727,17 +1764,17 @@ impl LayoutEngine {
         
         let mut children = Vec::new();
         for &child_id in &node.children {
-            children.push(self.ensure_nodes_exist_recursive(doc, child_id)?);
+            children.push(self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?);
         }
 
-        let style = self.map_style(node);
+        let style = self.map_style(node, state_evaluator);
         let taffy_id = self.taffy.new_with_children(style, &children)?;
         
         self.node_map.insert(oxi_id, taffy_id);
         Ok(taffy_id)
     }
 
-    fn map_style(&self, node: &oxiterm_proto::dom::Node) -> Style {
+    fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
         let style = &node.style;
         let mut width = style.width;
         let mut height = style.height;
@@ -1758,8 +1795,19 @@ impl LayoutEngine {
             }
         }
 
+        let mut display = Display::Flex;
+        if let Some(cond) = &node.attrs.bind_show {
+            if let Some(eval) = state_evaluator {
+                if !eval.evaluate_bind_show(cond) {
+                    display = Display::None;
+                }
+            }
+            // BUG-PLAYGROUND-BIND-SHOW-01: If state_evaluator is None (e.g. static preview/playground),
+            // we default to keeping the node visible (Display::Flex) so conditional show boxes are not hidden.
+        }
+
         Style {
-            display: Display::Flex,
+            display,
             flex_direction: match style.flex_direction {
                 oxiterm_proto::style::FlexDirection::Row => FlexDirection::Row,
                 oxiterm_proto::style::FlexDirection::Column => FlexDirection::Column,
@@ -1817,7 +1865,7 @@ impl LayoutEngine {
 mod tests {
     use super::*;
     use crate::document::THTMLDocument;
-    use oxiterm_proto::dom::{Node, NodeTag};
+    use oxiterm_proto::dom::{Node, NodeTag, StateEvaluator};
 
     #[test]
     fn test_basic_layout() {
@@ -1830,7 +1878,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&child_id).unwrap();
         assert_eq!(rect.width, 20);
         assert_eq!(rect.height, 10);
@@ -1848,7 +1896,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
-        engine.compute(&mut doc, 80, 24).unwrap();
+        engine.compute(&mut doc, 80, 0, None).unwrap();
         
         // Inside
         assert_eq!(engine.hit_test(6, 1), Some(child_id));
@@ -1875,7 +1923,7 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(parent_id, child_id).unwrap();
         
-        engine.compute(&mut doc, 80, 24).unwrap();
+        engine.compute(&mut doc, 80, 0, None).unwrap();
         
         // Child absolute coordinate: parent.left (10) + child.left (5) = 15.
         // Inside nested child (e.g. x = 16, y = 1)
@@ -1894,10 +1942,42 @@ mod tests {
         let node_id = doc.arena.alloc(text_node);
         doc.append_child(doc.root, node_id).unwrap();
         
-        let result = engine.compute(&mut doc, 80, 24).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
         assert_eq!(rect.width, 6);
         assert_eq!(rect.height, 2);
+    }
+
+    struct MockEvaluator {
+        val: bool,
+    }
+    impl StateEvaluator for MockEvaluator {
+        fn evaluate_bind_show(&self, _condition: &str) -> bool {
+            self.val
+        }
+    }
+
+    #[test]
+    fn test_bind_show_layout() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(10);
+        child.style.height = Some(10);
+        child.attrs.bind_show = Some("some_cond".to_string());
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(doc.root, child_id).unwrap();
+
+        // 1. Evaluator says false -> node is hidden (absent from nodes)
+        let eval_false = MockEvaluator { val: false };
+        let result_hidden = engine.compute(&mut doc, 80, 0, Some(&eval_false)).unwrap();
+        assert!(result_hidden.nodes.get(&child_id).is_none());
+
+        // 2. Evaluator says true -> node is visible
+        let eval_true = MockEvaluator { val: true };
+        let result_visible = engine.compute(&mut doc, 80, 0, Some(&eval_true)).unwrap();
+        assert!(result_visible.nodes.get(&child_id).is_some());
     }
 }
 
@@ -1935,6 +2015,7 @@ impl Rect {
 #[derive(Debug, Clone)]
 pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
+    pub total_height: u16,
 }
 
 impl LayoutResult {
@@ -2633,6 +2714,7 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "alt" => attrs.alt = Some(value),
             "placeholder" => attrs.placeholder = Some(value),
             "name" => attrs.name = Some(value),
+            "bind-show" => attrs.bind_show = Some(value),
             _ => {}
         }
         input = rem;
@@ -2747,6 +2829,28 @@ mod tests {
         assert_eq!(btn.attrs.bind_state, Some("count".to_string()));
         assert_eq!(btn.attrs.event_htmx, Some("inc:count".to_string()));
     }
+
+    #[test]
+    fn test_bind_show_parsing() {
+        let input = r#"<box id="box1" bind-show="tab=home"></box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let box1 = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(box1.attrs.bind_show, Some("tab=home".to_string()));
+
+        let input2 = r#"<box id="box2" bind-show="logged_in"></box>"#;
+        let doc2 = THTMLParser::parse(input2).unwrap();
+        let root2 = doc2.get_root();
+        let box2 = doc2.get_node(root2.children[0]).unwrap();
+        assert_eq!(box2.attrs.bind_show, Some("logged_in".to_string()));
+
+        let input3 = r#"<box id="box3"></box>"#;
+        let doc3 = THTMLParser::parse(input3).unwrap();
+        let root3 = doc3.get_root();
+        let box3 = doc3.get_node(root3.children[0]).unwrap();
+        assert_eq!(box3.attrs.bind_show, None);
+    }
+
 
     #[test]
     fn test_parse_inline_style() {
@@ -2914,10 +3018,6 @@ mod tests {
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock, OnceLock};
-use std::process::{Command, Stdio, Child};
-use std::io::Read;
-use std::thread;
-use std::time::Instant;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 pub struct CacheKey {
@@ -2938,13 +3038,12 @@ pub struct CacheValue {
     pub format: GraphicFormat,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct SafeAnimation {
     pub anim: rlottie::Animation,
 }
+#[cfg(not(target_arch = "wasm32"))]
 unsafe impl Send for SafeAnimation {}
-// NOTE: Sync is intentionally NOT implemented — SafeAnimation wraps a C FFI type
-// (rlottie::Animation) that relies on thread-local state. Access is always through
-// Arc<Mutex<SafeAnimation>>, which guarantees exclusive access per thread.
 
 #[derive(Clone)]
 pub struct PlaybackState {
@@ -2953,6 +3052,7 @@ pub struct PlaybackState {
     pub click_active: bool,
     pub click_coord: Option<(u16, u16)>,
     pub toggled: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
 }
 
@@ -2979,12 +3079,14 @@ impl PlaybackRegistry {
             click_active: false,
             click_coord: None,
             toggled: false,
+            #[cfg(not(target_arch = "wasm32"))]
             lottie_animation: None,
         };
         lock.insert(path.to_path_buf(), state.clone());
         state
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
         let mut lock = self.states.lock().unwrap();
         let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
@@ -2997,9 +3099,11 @@ impl PlaybackRegistry {
         });
 
         if state.lottie_animation.is_none() {
-            if let Ok(data_str) = std::fs::read_to_string(path) {
-                if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
-                    state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+            if let Ok(bytes) = crate::render::renderer::Renderer::read_asset(path) {
+                if let Ok(data_str) = String::from_utf8(bytes) {
+                    if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
+                        state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
+                    }
                 }
             }
         }
@@ -3048,8 +3152,7 @@ impl AssetCache {
 
     pub fn insert(&self, key: CacheKey, value: CacheValue) {
         let mut lock = self.cache.lock().unwrap();
-        // Remove existing entry with the same key (update in place would keep order, but
-        // re-inserting at the back is simpler and semantically correct for an asset cache).
+        // Remove existing entry with the same key
         lock.retain(|(k, _)| k != &key);
         if lock.len() >= Self::CAPACITY {
             lock.pop_front(); // FIFO eviction — remove the oldest entry
@@ -3059,10 +3162,12 @@ impl AssetCache {
 }
 
 /// FIFO-eviction SVG tree cache (capacity = 20).
+#[cfg(not(target_arch = "wasm32"))]
 pub struct SvgCache {
     trees: Mutex<VecDeque<(PathBuf, Arc<resvg::usvg::Tree>)>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl SvgCache {
     const CAPACITY: usize = 20;
 
@@ -3079,7 +3184,7 @@ impl SvgCache {
             return Ok(Arc::clone(tree));
         }
 
-        let content = std::fs::read(path)?;
+        let content = crate::render::renderer::Renderer::read_asset(path)?;
         
         let mut fontdb = resvg::usvg::fontdb::Database::new();
         fontdb.load_system_fonts();
@@ -3101,17 +3206,26 @@ impl SvgCache {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::process::{Child, Command, Stdio};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Read;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub struct VideoPlayer {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    /// RwLock instead of Mutex: the ffmpeg thread writes once per decoded frame,
-    /// while the renderer thread reads (potentially) many times per render cycle.
     pub frame_buffer: Arc<RwLock<Option<Arc<Vec<u8>>>>>,
     pub child: Child,
     pub last_accessed: Instant,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Drop for VideoPlayer {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -3119,11 +3233,12 @@ impl Drop for VideoPlayer {
     }
 }
 
-
+#[cfg(not(target_arch = "wasm32"))]
 pub struct VideoPlayerRegistry {
     players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl VideoPlayerRegistry {
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<VideoPlayerRegistry> = OnceLock::new();
@@ -3623,7 +3738,11 @@ pub trait FrameSink: Send {
 
     /// Clears the physical display area.
     fn clear_screen(&mut self) -> Result<()> { Ok(()) }
+
+    /// Clears any graphics placements.
+    fn clear_graphics(&mut self) -> Result<()> { Ok(()) }
 }
+
 
 
 --- END OF FILE: ./oxiterm-renderer/src/render/emitter.rs ---
@@ -3703,7 +3822,28 @@ impl KittyImageManager {
         }
         output
     }
+
+    /// Delete all placements of all images on the screen
+    pub fn delete_all_placements() -> Vec<u8> {
+        b"\x1b_Ga=d,d=A\x1b\\".to_vec()
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_delete_all_placements() {
+        let bytes = KittyImageManager::delete_all_placements();
+        assert!(bytes.starts_with(&[0x1b, 0x5f, 0x47])); // ESC_G
+        assert!(bytes.ends_with(&[0x1b, 0x5c])); // ESC\
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.contains("a=d"));
+        assert!(s.contains("d=A"));
+    }
+}
+
 
 --- END OF FILE: ./oxiterm-renderer/src/render/kitty.rs ---
 
@@ -3713,13 +3853,9 @@ pub mod diff;
 pub mod unicode;
 pub mod emitter;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod renderer;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod kitty;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod sixel;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod cache;
 
 
@@ -3732,17 +3868,50 @@ use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
 use oxiterm_proto::dom::{NodeTag, NodeId};
 use oxiterm_proto::style::TerminalProfile;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::collections::HashMap;
+
+thread_local! {
+    pub static VIRTUAL_FS: std::cell::RefCell<HashMap<PathBuf, Vec<u8>>> = std::cell::RefCell::new(HashMap::new());
+}
 
 pub struct Renderer;
 
 impl Renderer {
+    pub fn read_asset(path: &Path) -> Result<Vec<u8>, anyhow::Error> {
+        let path_str = path.to_string_lossy().into_owned();
+        let local_bytes = VIRTUAL_FS.with(|fs| {
+            fs.borrow().get(path).cloned()
+        });
+        if let Some(bytes) = local_bytes {
+            return Ok(bytes);
+        }
+        
+        #[cfg(target_arch = "wasm32")]
+        {
+            Err(anyhow::anyhow!("AssetNotFound: {}", path_str))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::fs::read(path).map_err(|e| anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e))
+        }
+    }
+
+    #[inline]
+    fn safe_set(buffer: &mut CellBuffer, x: i32, y: i32, cell: Cell) {
+        if x >= 0 && x < buffer.width as i32 && y >= 0 && y < buffer.height as i32 {
+            buffer.set(x as u16, y as u16, cell);
+        }
+    }
+
     pub fn render_node(
         doc: &THTMLDocument,
         layout: &LayoutResult,
         buffer: &mut CellBuffer,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        scroll_offset: u16,
     ) {
         // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
         for y in 0..buffer.height {
@@ -3758,14 +3927,16 @@ impl Renderer {
         
         // 2. Rekurencyjne rysowanie drzewa DOM z centrowaniem korzenia, jeśli ma sztywną mniejszą wielkość
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
+        let start_x = offset_x as i32;
+        let start_y = (offset_y as i32) - (scroll_offset as i32);
 
         Self::render_recursive(
             doc,
             layout,
             buffer,
             doc.root,
-            offset_x,
-            offset_y,
+            start_x,
+            start_y,
             oxiterm_proto::style::AnsiColor::Color256(15),
             oxiterm_proto::style::AnsiColor::Color256(0),
             profile,
@@ -3778,8 +3949,8 @@ impl Renderer {
         layout: &LayoutResult,
         buffer: &mut CellBuffer,
         node_id: NodeId,
-        parent_x: u16,
-        parent_y: u16,
+        parent_x: i32,
+        parent_y: i32,
         inherited_fg: oxiterm_proto::style::AnsiColor,
         inherited_bg: oxiterm_proto::style::AnsiColor,
         profile: &TerminalProfile,
@@ -3787,8 +3958,8 @@ impl Renderer {
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-            let abs_x = parent_x + rect.x;
-            let abs_y = parent_y + rect.y;
+            let abs_x = parent_x + rect.x as i32;
+            let abs_y = parent_y + rect.y as i32;
 
             let resolved_fg = match node.style.fg {
                 oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
@@ -3802,7 +3973,7 @@ impl Renderer {
             // Draw background
             for y in 0..rect.height {
                 for x in 0..rect.width {
-                    buffer.set(abs_x + x, abs_y + y, Cell {
+                    Self::safe_set(buffer, abs_x + x as i32, abs_y + y as i32, Cell {
                         ch: ' ',
                         fg: resolved_fg,
                         bg: resolved_bg,
@@ -3820,14 +3991,14 @@ impl Renderer {
                 
                 if rect.width > 0 && rect.height > 0 {
                     // Corners
-                    buffer.set(abs_x, abs_y, Cell {
+                    Self::safe_set(buffer, abs_x, abs_y, Cell {
                         ch: border.chars.top_left,
                         fg: border_fg,
                         bg: resolved_bg,
                         ..Default::default()
                     });
                     if rect.width > 1 {
-                        buffer.set(abs_x + rect.width - 1, abs_y, Cell {
+                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y, Cell {
                             ch: border.chars.top_right,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -3835,7 +4006,7 @@ impl Renderer {
                         });
                     }
                     if rect.height > 1 {
-                        buffer.set(abs_x, abs_y + rect.height - 1, Cell {
+                        Self::safe_set(buffer, abs_x, abs_y + rect.height as i32 - 1, Cell {
                             ch: border.chars.bot_left,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -3843,7 +4014,7 @@ impl Renderer {
                         });
                     }
                     if rect.width > 1 && rect.height > 1 {
-                        buffer.set(abs_x + rect.width - 1, abs_y + rect.height - 1, Cell {
+                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + rect.height as i32 - 1, Cell {
                             ch: border.chars.bot_right,
                             fg: border_fg,
                             bg: resolved_bg,
@@ -3853,14 +4024,14 @@ impl Renderer {
 
                     // Horizontal borders
                     for x in 1..rect.width.saturating_sub(1) {
-                        buffer.set(abs_x + x, abs_y, Cell {
+                        Self::safe_set(buffer, abs_x + x as i32, abs_y, Cell {
                             ch: border.chars.top,
                             fg: border_fg,
                             bg: resolved_bg,
                             ..Default::default()
                         });
                         if rect.height > 1 {
-                            buffer.set(abs_x + x, abs_y + rect.height - 1, Cell {
+                            Self::safe_set(buffer, abs_x + x as i32, abs_y + rect.height as i32 - 1, Cell {
                                 ch: border.chars.bot,
                                 fg: border_fg,
                                 bg: resolved_bg,
@@ -3871,14 +4042,14 @@ impl Renderer {
 
                     // Vertical borders
                     for y in 1..rect.height.saturating_sub(1) {
-                        buffer.set(abs_x, abs_y + y, Cell {
+                        Self::safe_set(buffer, abs_x, abs_y + y as i32, Cell {
                             ch: border.chars.left,
                             fg: border_fg,
                             bg: resolved_bg,
                             ..Default::default()
                         });
                         if rect.width > 1 {
-                            buffer.set(abs_x + rect.width - 1, abs_y + y, Cell {
+                            Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + y as i32, Cell {
                                 ch: border.chars.right,
                                 fg: border_fg,
                                 bg: resolved_bg,
@@ -3908,7 +4079,7 @@ impl Renderer {
                                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
                                 if char_w > 0 {
                                     if cx < content_w && cy < content_h {
-                                        buffer.set(content_x + cx, content_y + cy, Cell {
+                                        Self::safe_set(buffer, content_x + cx as i32, content_y + cy as i32, Cell {
                                             ch,
                                             fg: resolved_fg,
                                             bg: resolved_bg,
@@ -3917,7 +4088,7 @@ impl Renderer {
                                         // Fill continuation cells with styled spaces
                                         for i in 1..char_w {
                                             if cx + i < content_w {
-                                                buffer.set(content_x + cx + i, content_y + cy, Cell {
+                                                Self::safe_set(buffer, content_x + (cx + i) as i32, content_y + cy as i32, Cell {
                                                     ch: ' ',
                                                     fg: resolved_fg,
                                                     bg: resolved_bg,
@@ -3934,7 +4105,7 @@ impl Renderer {
                 }
                 NodeTag::Input => {
                     for x in 0..content_w {
-                        buffer.set(content_x + x, content_y, Cell {
+                        Self::safe_set(buffer, content_x + x as i32, content_y, Cell {
                             ch: '_',
                             fg: resolved_fg,
                             bg: resolved_bg,
@@ -3988,8 +4159,8 @@ impl Renderer {
 
     fn unicode_block_fallback(
         img: &image::RgbaImage,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buf: &mut CellBuffer,
@@ -4042,7 +4213,7 @@ impl Renderer {
                     }
                 };
 
-                buf.set(abs_x + x, abs_y + y, Cell {
+                Self::safe_set(buf, abs_x + x as i32, abs_y + y as i32, Cell {
                     ch,
                     fg,
                     bg,
@@ -4052,6 +4223,7 @@ impl Renderer {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
@@ -4070,8 +4242,8 @@ impl Renderer {
 
     fn render_img(
         node: &oxiterm_proto::dom::Node,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buffer: &mut CellBuffer,
@@ -4106,19 +4278,26 @@ impl Renderer {
             // Fetch playback state if animation
             let mut frame_idx = None;
             if is_lottie {
-                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
-                if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
-                    let lock = safe_anim.lock().unwrap();
-                    let total_frames = lock.anim.totalframe();
-                    let fps = lock.anim.framerate();
-                    if total_frames > 0 {
-                        let fps = if fps > 0.0 { fps } else { 30.0 };
-                        let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
-                        frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                        let lock = safe_anim.lock().unwrap();
+                        let total_frames = lock.anim.totalframe();
+                        let fps = lock.anim.framerate();
+                        if total_frames > 0 {
+                            let fps = if fps > 0.0 { fps } else { 30.0 };
+                            let elapsed_secs = playback.start_time.elapsed().as_secs_f64();
+                            frame_idx = Some((elapsed_secs * fps) as usize % total_frames);
+                        } else {
+                            frame_idx = Some(0);
+                        }
                     } else {
                         frame_idx = Some(0);
                     }
-                } else {
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
                     frame_idx = Some(0);
                 }
             } else if is_rive {
@@ -4164,15 +4343,21 @@ impl Renderer {
 
             if let Some(bytes) = render_bytes {
                 // Cache hit! Put sequence on screen
-                let mut cmd = Vec::new();
-                cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                cmd.extend_from_slice(&bytes);
-                buffer.graphics.push(cmd);
+                if abs_x >= 0 && abs_y >= 0 {
+                    let mut cmd = Vec::new();
+                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                    cmd.extend_from_slice(&bytes);
+                    buffer.graphics.push(cmd);
+                }
                 
                 for dy in 0..height {
                     for dx in 0..width {
-                        if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                            buffer.cells[idx].skip = true;
+                        let tx = abs_x + dx as i32;
+                        let ty = abs_y + dy as i32;
+                        if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                            if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                buffer.cells[idx].skip = true;
+                            }
                         }
                     }
                 }
@@ -4181,139 +4366,163 @@ impl Renderer {
 
             // 2. Cache miss. Render from scratch
             let img_result = if is_svg {
-                // SVG rendering via resvg + tiny-skia
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    use crate::render::cache::SvgCache;
-                    let tree = SvgCache::get().get_or_load(&resolved_path)?;
-                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                    
-                    let size = tree.size();
-                    let scale_x = pixel_w as f32 / size.width();
-                    let scale_y = pixel_h as f32 / size.height();
-                    let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
-                    
-                    resvg::render(&tree, transform, &mut pixmap.as_mut());
-                    Ok(Self::pixmap_to_rgba_image(pixmap))
-                })()
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("SVG rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // SVG rendering via resvg + tiny-skia
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        use crate::render::cache::SvgCache;
+                        let tree = SvgCache::get().get_or_load(&resolved_path)?;
+                        let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                        
+                        let size = tree.size();
+                        let scale_x = pixel_w as f32 / size.width();
+                        let scale_y = pixel_h as f32 / size.height();
+                        let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
+                        
+                        resvg::render(&tree, transform, &mut pixmap.as_mut());
+                        Ok(Self::pixmap_to_rgba_image(pixmap))
+                    })()
+                }
             } else if is_lottie {
-                // Native Lottie Rendering using rlottie
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
-                        let mut lock = safe_anim.lock().unwrap();
-                        let size = rlottie::Size {
-                            width: pixel_w as usize,
-                            height: pixel_h as usize,
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("Lottie rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Native Lottie Rendering using rlottie
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
+                            let mut lock = safe_anim.lock().unwrap();
+                            let size = rlottie::Size {
+                                width: pixel_w as usize,
+                                height: pixel_h as usize,
+                            };
+                            let mut surface = rlottie::Surface::new(size);
+                            
+                            let total_frames = lock.anim.totalframe();
+                            let frame = frame_idx.unwrap_or(0);
+                            let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                            
+                            lock.anim.render(frame_to_render, &mut surface);
+                            
+                            let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
+                            for pixel in surface.data() {
+                                rgba_data.push(pixel.r);
+                                rgba_data.push(pixel.g);
+                                rgba_data.push(pixel.b);
+                                rgba_data.push(pixel.a);
+                            }
+                            
+                            image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
+                                .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
+                        } else {
+                            Err(anyhow::anyhow!("Lottie animation not loaded"))
+                        }
+                    })()
+                }
+            } else if is_rive {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Err(anyhow::anyhow!("Rive rendering not supported on WASM"))
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
+                    // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
+                    (|| -> anyhow::Result<image::RgbaImage> {
+                        let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
+                        
+                        let bits = frame_idx.unwrap_or(0);
+                        let hover = (bits & 1) != 0;
+                        let click_active = (bits & 2) != 0;
+                        let toggled = (bits & 4) != 0;
+                        
+                        let pad = 6.0;
+                        let rect_w = pixel_w as f32 - pad * 2.0;
+                        let rect_h = pixel_h as f32 - pad * 2.0;
+                        
+                        let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
+                            .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
+                        let mut pb = resvg::tiny_skia::PathBuilder::new();
+                        pb.push_rect(rect);
+                        let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
+                        
+                        // Track background
+                        let mut bg_paint = resvg::tiny_skia::Paint::default();
+                        bg_paint.anti_alias = true;
+                        
+                        let bg_color = if toggled {
+                            resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
+                        } else if hover {
+                            resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
                         };
-                        let mut surface = rlottie::Surface::new(size);
+                        bg_paint.set_color(bg_color);
                         
-                        let total_frames = lock.anim.totalframe();
-                        let frame = frame_idx.unwrap_or(0);
-                        let frame_to_render = if total_frames > 0 { frame % total_frames } else { 0 };
+                        pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
                         
-                        lock.anim.render(frame_to_render, &mut surface);
+                        // Outline border
+                        let mut border_paint = resvg::tiny_skia::Paint::default();
+                        border_paint.anti_alias = true;
                         
-                        let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
-                        for pixel in surface.data() {
-                            rgba_data.push(pixel.r);
-                            rgba_data.push(pixel.g);
-                            rgba_data.push(pixel.b);
-                            rgba_data.push(pixel.a);
+                        let border_color = if click_active {
+                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                        } else if hover {
+                            resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
+                        };
+                        border_paint.set_color(border_color);
+                        
+                        let mut stroke = resvg::tiny_skia::Stroke::default();
+                        stroke.width = 3.0;
+                        
+                        pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
+
+                        // Sliding knob
+                        let mut knob_paint = resvg::tiny_skia::Paint::default();
+                        knob_paint.anti_alias = true;
+                        
+                        let knob_color = if click_active {
+                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
+                        } else {
+                            resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
+                        };
+                        knob_paint.set_color(knob_color);
+                        
+                        let knob_radius = rect_h / 2.0 - 4.0;
+                        let knob_x = if toggled {
+                            pixel_w as f32 - pad - knob_radius - 4.0
+                        } else {
+                            pad + knob_radius + 4.0
+                        };
+                        let knob_y = pixel_h as f32 / 2.0;
+                        
+                        let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
+                        knob_builder.push_circle(knob_x, knob_y, knob_radius);
+                        if let Some(knob_path) = knob_builder.finish() {
+                            pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
                         }
                         
-                        image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
-                            .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
-                    } else {
-                        Err(anyhow::anyhow!("Lottie animation not loaded"))
-                    }
-                })()
-            } else if is_rive {
-                // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
-                // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
-                (|| -> anyhow::Result<image::RgbaImage> {
-                    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                    
-                    let bits = frame_idx.unwrap_or(0);
-                    let hover = (bits & 1) != 0;
-                    let click_active = (bits & 2) != 0;
-                    let toggled = (bits & 4) != 0;
-                    
-                    let pad = 6.0;
-                    let rect_w = pixel_w as f32 - pad * 2.0;
-                    let rect_h = pixel_h as f32 - pad * 2.0;
-                    
-                    let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
-                        .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
-                    let mut pb = resvg::tiny_skia::PathBuilder::new();
-                    pb.push_rect(rect);
-                    let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
-                    
-                    // Track background
-                    let mut bg_paint = resvg::tiny_skia::Paint::default();
-                    bg_paint.anti_alias = true;
-                    
-                    let bg_color = if toggled {
-                        resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
-                    } else if hover {
-                        resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
-                    };
-                    bg_paint.set_color(bg_color);
-                    
-                    pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                    
-                    // Outline border
-                    let mut border_paint = resvg::tiny_skia::Paint::default();
-                    border_paint.anti_alias = true;
-                    
-                    let border_color = if click_active {
-                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                    } else if hover {
-                        resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
-                    };
-                    border_paint.set_color(border_color);
-                    
-                    let mut stroke = resvg::tiny_skia::Stroke::default();
-                    stroke.width = 3.0;
-                    
-                    pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
-
-                    // Sliding knob
-                    let mut knob_paint = resvg::tiny_skia::Paint::default();
-                    knob_paint.anti_alias = true;
-                    
-                    let knob_color = if click_active {
-                        resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                    } else {
-                        resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
-                    };
-                    knob_paint.set_color(knob_color);
-                    
-                    let knob_radius = rect_h / 2.0 - 4.0;
-                    let knob_x = if toggled {
-                        pixel_w as f32 - pad - knob_radius - 4.0
-                    } else {
-                        pad + knob_radius + 4.0
-                    };
-                    let knob_y = pixel_h as f32 / 2.0;
-                    
-                    let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
-                    knob_builder.push_circle(knob_x, knob_y, knob_radius);
-                    if let Some(knob_path) = knob_builder.finish() {
-                        pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                    }
-                    
-                    Ok(Self::pixmap_to_rgba_image(pixmap))
-                })()
+                        Ok(Self::pixmap_to_rgba_image(pixmap))
+                    })()
+                }
             } else {
                 // Standard image rendering
-                image::ImageReader::open(&resolved_path)
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-                    .and_then(|r| r.with_guessed_format().map_err(|e| anyhow::anyhow!("{}", e)))
+                Self::read_asset(&resolved_path)
+                    .and_then(|bytes| {
+                        image::ImageReader::new(std::io::Cursor::new(bytes))
+                            .with_guessed_format()
+                            .map_err(|e| anyhow::anyhow!("{}", e))
+                    })
                     .and_then(|r| r.decode().map_err(|e| anyhow::anyhow!("{}", e)))
                     .map(|img| {
                         let rgba = img.to_rgba8();
@@ -4340,15 +4549,21 @@ impl Renderer {
                             },
                         );
 
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&payload);
-                        buffer.graphics.push(cmd);
+                        if abs_x >= 0 && abs_y >= 0 {
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&payload);
+                            buffer.graphics.push(cmd);
+                        }
                         
                         for dy in 0..height {
                             for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
+                                let tx = abs_x + dx as i32;
+                                let ty = abs_y + dy as i32;
+                                if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                    if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                        buffer.cells[idx].skip = true;
+                                    }
                                 }
                             }
                         }
@@ -4363,15 +4578,21 @@ impl Renderer {
                             },
                         );
 
-                        let mut cmd = Vec::new();
-                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                        cmd.extend_from_slice(&sixel_payload);
-                        buffer.graphics.push(cmd);
+                        if abs_x >= 0 && abs_y >= 0 {
+                            let mut cmd = Vec::new();
+                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                            cmd.extend_from_slice(&sixel_payload);
+                            buffer.graphics.push(cmd);
+                        }
                         
                         for dy in 0..height {
                             for dx in 0..width {
-                                if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                    buffer.cells[idx].skip = true;
+                                let tx = abs_x + dx as i32;
+                                let ty = abs_y + dy as i32;
+                                if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                    if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                        buffer.cells[idx].skip = true;
+                                    }
                                 }
                             }
                         }
@@ -4388,7 +4609,7 @@ impl Renderer {
                             } else {
                                 ' '
                             };
-                            buffer.set(abs_x + dx, abs_y + dy, Cell {
+                            Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
                                 ch,
                                 fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                                 ..Default::default()
@@ -4398,10 +4619,10 @@ impl Renderer {
                     let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
                     let len = name.chars().count() as u16;
                     if width > len + 2 && height > 2 {
-                        let start_x = abs_x + (width - len) / 2;
-                        let start_y = abs_y + height / 2;
+                        let start_x = abs_x + (width - len) as i32 / 2;
+                        let start_y = abs_y + height as i32 / 2;
                         for (i, c) in name.chars().enumerate() {
-                            buffer.set(start_x + i as u16, start_y, Cell {
+                            Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
                                 ch: c,
                                 fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                                 ..Default::default()
@@ -4415,8 +4636,8 @@ impl Renderer {
 
     fn render_vid(
         node: &oxiterm_proto::dom::Node,
-        abs_x: u16,
-        abs_y: u16,
+        abs_x: i32,
+        abs_y: i32,
         width: u16,
         height: u16,
         buffer: &mut CellBuffer,
@@ -4428,7 +4649,7 @@ impl Renderer {
                 for dx in 0..width {
                     let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
                     let ch = if is_border { '*' } else { ' ' };
-                    buffer.set(abs_x + dx, abs_y + dy, Cell {
+                    Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
                         ch,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                         ..Default::default()
@@ -4436,7 +4657,16 @@ impl Renderer {
                 }
             }
             let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            let is_missing = !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available();
+            let is_missing = {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    true
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available()
+                }
+            };
             let display_name = if is_missing {
                 format!("[Video Error: ffmpeg missing! {}]", name)
             } else {
@@ -4444,10 +4674,10 @@ impl Renderer {
             };
             let len = display_name.chars().count() as u16;
             if width > len + 2 && height > 2 {
-                let start_x = abs_x + (width - len) / 2;
-                let start_y = abs_y + height / 2;
+                let start_x = abs_x + (width - len) as i32 / 2;
+                let start_y = abs_y + height as i32 / 2;
                 for (i, c) in display_name.chars().enumerate() {
-                    buffer.set(start_x + i as u16, start_y, Cell {
+                    Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
                         ch: c,
                         fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
                         ..Default::default()
@@ -4477,8 +4707,18 @@ impl Renderer {
                 2
             };
 
-            let frame = crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
+            let frame: Option<std::sync::Arc<Vec<u8>>> = {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps)
+                }
+            };
 
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(raw_rgba) = frame {
                 if profile.supports_kitty_gfx {
                     // BUG-VIDEO-01: Zero-copy transmit path. Pass Arc slice reference directly to transmit_image.
@@ -4489,15 +4729,21 @@ impl Renderer {
                         height as u32,
                         &raw_rgba,
                     );
-                    let mut cmd = Vec::new();
-                    cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                    cmd.extend_from_slice(&payload);
-                    buffer.graphics.push(cmd);
+                    if abs_x >= 0 && abs_y >= 0 {
+                        let mut cmd = Vec::new();
+                        cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                        cmd.extend_from_slice(&payload);
+                        buffer.graphics.push(cmd);
+                    }
                     
                     for dy in 0..height {
                         for dx in 0..width {
-                            if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                buffer.cells[idx].skip = true;
+                            let tx = abs_x + dx as i32;
+                            let ty = abs_y + dy as i32;
+                            if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                    buffer.cells[idx].skip = true;
+                                }
                             }
                         }
                     }
@@ -4507,15 +4753,21 @@ impl Renderer {
                     if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(pixel_w, pixel_h, (*raw_rgba).clone()) {
                         if profile.supports_sixel {
                             let sixel_payload = super::sixel::SixelCodec::encode_sixel_static(&img);
-                            let mut cmd = Vec::new();
-                            cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
-                            cmd.extend_from_slice(&sixel_payload);
-                            buffer.graphics.push(cmd);
+                            if abs_x >= 0 && abs_y >= 0 {
+                                let mut cmd = Vec::new();
+                                cmd.extend_from_slice(format!("\x1b[{};{}H", abs_y + 1, abs_x + 1).as_bytes());
+                                cmd.extend_from_slice(&sixel_payload);
+                                buffer.graphics.push(cmd);
+                            }
                             
                             for dy in 0..height {
                                 for dx in 0..width {
-                                    if let Some(idx) = buffer.flat_idx(abs_x + dx, abs_y + dy) {
-                                        buffer.cells[idx].skip = true;
+                                    let tx = abs_x + dx as i32;
+                                    let ty = abs_y + dy as i32;
+                                    if tx >= 0 && tx < buffer.width as i32 && ty >= 0 && ty < buffer.height as i32 {
+                                        if let Some(idx) = buffer.flat_idx(tx as u16, ty as u16) {
+                                            buffer.cells[idx].skip = true;
+                                        }
                                     }
                                 }
                             }
@@ -4563,10 +4815,10 @@ mod tests {
         doc.append_child(doc.root, parent_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 5, 3).unwrap();
+        let layout = engine.compute(&mut doc, 5, 3, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 3);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Check top-left corner border character '┌'
         let tl_idx = buffer.flat_idx(0, 0).unwrap();
@@ -4596,10 +4848,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 5, 1).unwrap();
+        let layout = engine.compute(&mut doc, 5, 1, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Check index 0: contains '🚀'
         assert_eq!(buffer.cells[0].ch, '🚀');
@@ -4627,10 +4879,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 6, 4).unwrap();
+        let layout = engine.compute(&mut doc, 6, 4, None).unwrap();
 
         let mut buffer = CellBuffer::new(6, 4);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Since the file is non-existent, it should render the fallback border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -4650,10 +4902,10 @@ mod tests {
         doc.append_child(doc.root, node_id).unwrap();
 
         let mut engine = LayoutEngine::new();
-        let layout = engine.compute(&mut doc, 15, 5).unwrap();
+        let layout = engine.compute(&mut doc, 15, 5, None).unwrap();
 
         let mut buffer = CellBuffer::new(15, 5);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
 
         // Falling back should draw border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -5199,6 +5451,12 @@ impl<T> Receiver<T> {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout)
     }
 
+    pub fn try_recv(&mut self) -> Option<T> {
+        let (lock, _) = &*self.inner;
+        let mut inner = lock.lock();
+        inner.queue.pop_front()
+    }
+
     pub fn close(&mut self) {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();
@@ -5265,6 +5523,7 @@ pub struct OxiTermConfig {
     pub server: ServerConfig,
     pub session: SessionConfig,
     pub metrics: MetricsConfig,
+    pub app_server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -5279,6 +5538,7 @@ pub struct ServerConfig {
     /// of the default AnsiFrameSink. Activate via `oxiterm serve --a11y`.
     #[serde(default)]
     pub a11y_mode: bool,
+    pub app_server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -5304,6 +5564,7 @@ impl Default for OxiTermConfig {
                 no_auth: false,
                 web_port: 8080,
                 a11y_mode: false,
+                app_server_url: None,
             },
             session: SessionConfig {
                 max_sessions: 100,
@@ -5313,6 +5574,7 @@ impl Default for OxiTermConfig {
                 enabled: true,
                 port: 9090,
             },
+            app_server_url: None,
         }
     }
 }
@@ -5344,6 +5606,10 @@ impl OxiTermConfig {
         }
         if let Ok(web_port) = std::env::var("OXITERM_WEB_PORT") {
             config.server.web_port = web_port.parse()?;
+        }
+        if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
+            config.server.app_server_url = Some(url.clone());
+            config.app_server_url = Some(url);
         }
         config.validate()?;
         Ok(config)
@@ -5958,13 +6224,19 @@ impl AnsiFrameSink {
 impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
         let commands = oxiterm_renderer::DiffEngine::diff(front, back);
-        if commands.is_empty() && back.graphics.is_empty() {
+        let transitioning_graphics_cleanup = !front.graphics.is_empty() && back.graphics.is_empty();
+        if commands.is_empty() && back.graphics.is_empty() && !transitioning_graphics_cleanup {
             return Ok(false);
         }
 
         let mut out = Vec::new();
         // BSU: CSI ? 2026 h
         out.extend_from_slice(b"\x1b[?2026h");
+
+        // BUG-KITTY-GHOST-01: clear image placements when transitioning from graphics to no graphics
+        if !front.graphics.is_empty() && back.graphics.is_empty() {
+            out.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
+        }
         
         let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
         out.extend_from_slice(&bytes);
@@ -5990,6 +6262,8 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
 
     fn clear_screen(&mut self) -> anyhow::Result<()> {
         let mut clear_seq = Vec::new();
+        // Send delete_all_placements before ESC[2J
+        clear_seq.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
         clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
         let _ = self.output_tx.try_send(clear_seq);
         Ok(())
@@ -6040,6 +6314,8 @@ pub struct EventLoop {
     pub parent_map: HashMap<NodeId, NodeId>,
     pub focusable_nodes: Vec<NodeId>,
     pub focused_node: Option<NodeId>,
+    pub scroll_offset: u16,
+    pub total_height: u16,
 }
 
 impl EventLoop {
@@ -6084,10 +6360,17 @@ impl EventLoop {
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
             focused_node: None,
+            scroll_offset: 0,
+            total_height: 0,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
         event_loop
+    }
+
+    pub fn reset_layout_and_scroll(&mut self) {
+        self.layout_engine.reset_nodes();
+        self.scroll_offset = 0;
     }
 
     pub fn rebuild_parent_map(&mut self) {
@@ -6231,7 +6514,7 @@ impl EventLoop {
                         let dims = *self.session.dims.read();
                         let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                         self.update_doc(new_doc);
-                        self.layout_engine.reset_nodes();
+                        self.reset_layout_and_scroll();
                         needs_render = true;
                     }
                 }
@@ -6252,6 +6535,11 @@ impl EventLoop {
                     match rx_lock.recv_timeout(sleep_dur) {
                         Ok(event) => {
                             *self.session.last_activity.write() = std::time::Instant::now();
+                            let event = match event {
+                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72E}' || key.codepoint == 'b' => InputEvent::ScrollUp,
+                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72D}' || key.codepoint == ' ' => InputEvent::ScrollDown,
+                                e => e,
+                            };
                             match event {
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
@@ -6269,7 +6557,7 @@ impl EventLoop {
                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                 drop(state);
                                                 self.update_doc(new_doc);
-                                                self.layout_engine.reset_nodes();
+                                                self.reset_layout_and_scroll();
                                                 needs_render = true;
                                             }
                                             Err(e) => {
@@ -6336,7 +6624,7 @@ impl EventLoop {
                                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                                 drop(state);
                                                                 self.update_doc(new_doc);
-                                                                self.layout_engine.reset_nodes();
+                                                                self.reset_layout_and_scroll();
                                                                 self.source_path = Some(new_path);
                                                                 needs_render = true;
                                                             }
@@ -6370,7 +6658,7 @@ impl EventLoop {
                                                 let dims = *self.session.dims.read();
                                                 let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                                                 self.update_doc(new_doc);
-                                                self.layout_engine.reset_nodes();
+                                                self.reset_layout_and_scroll();
                                                 needs_render = true;
                                             }
                                         }
@@ -6387,7 +6675,7 @@ impl EventLoop {
                                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                                         info!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
                                         mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
-                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1);
+                                        mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1).saturating_add(self.scroll_offset);
                                         info!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
                                     } else {
                                         warn!("No last layout found!");
@@ -6436,7 +6724,7 @@ impl EventLoop {
                                                                 Self::inject_initial_state(&mut new_doc, &*state);
                                                                 drop(state);
                                                                 self.update_doc(new_doc);
-                                                                self.layout_engine.reset_nodes();
+                                                                self.reset_layout_and_scroll();
                                                                 self.source_path = Some(new_path);
                                                             }
                                                             Err(e) => {
@@ -6467,6 +6755,29 @@ impl EventLoop {
                                 InputEvent::Xoff => { self.output_paused = true; }
                                 InputEvent::Xon => { self.output_paused = false; needs_render = true; }
                                 InputEvent::Refresh => { needs_render = true; }
+                                InputEvent::ScrollUp => {
+                                    let dims = *self.session.dims.read();
+                                    let has_scroll = self.total_height > dims.rows;
+                                    let viewport_h = if has_scroll {
+                                        dims.rows.saturating_sub(1)
+                                    } else {
+                                        dims.rows
+                                    };
+                                    self.scroll_offset = self.scroll_offset.saturating_sub(viewport_h);
+                                    needs_render = true;
+                                }
+                                InputEvent::ScrollDown => {
+                                    let dims = *self.session.dims.read();
+                                    let has_scroll = self.total_height > dims.rows;
+                                    let viewport_h = if has_scroll {
+                                        dims.rows.saturating_sub(1)
+                                    } else {
+                                        dims.rows
+                                    };
+                                    let max_scroll = self.total_height.saturating_sub(viewport_h);
+                                    self.scroll_offset = (self.scroll_offset + viewport_h).min(max_scroll);
+                                    needs_render = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -6498,7 +6809,7 @@ impl EventLoop {
                 if let Some(ref mut app) = self.weather_app {
                     let (new_doc, _) = app.build_document(dims.cols, dims.rows);
                     self.update_doc(new_doc);
-                    self.layout_engine.reset_nodes();
+                    self.reset_layout_and_scroll();
                 }
 
                 // Clear physical screen and cursor to home to match clean front buffer
@@ -6512,7 +6823,32 @@ impl EventLoop {
                 Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
 
                 let dims = *self.session.dims.read();
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, dims.rows) {
+                let state_guard = self.session.state.read();
+                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
+                    self.total_height = layout.total_height;
+
+                    let has_scroll = self.total_height > dims.rows;
+                    let viewport_h = if has_scroll {
+                        dims.rows.saturating_sub(1)
+                    } else {
+                        dims.rows
+                    };
+
+                    // BUG-HTMX-ENTER-MISSING-SCROLL-01: Auto-scroll to focused node if it exists and is out of the viewport
+                    if let Some(focused_id) = self.focused_node {
+                        if let Some(rect) = layout.nodes.get(&focused_id) {
+                            if rect.y < self.scroll_offset {
+                                self.scroll_offset = rect.y;
+                            } else if rect.y + rect.height > self.scroll_offset + viewport_h {
+                                self.scroll_offset = (rect.y + rect.height).saturating_sub(viewport_h);
+                            }
+                        }
+                    }
+
+                    // Clamp scroll_offset to valid bounds
+                    let max_scroll = self.total_height.saturating_sub(viewport_h);
+                    self.scroll_offset = self.scroll_offset.min(max_scroll);
+
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
                         let _ = bridge.register_at_spi(&tree);
@@ -6529,35 +6865,42 @@ impl EventLoop {
                     let profile = self.session.terminal_profile.read().clone();
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
                     self.buffer.back.clear();
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir);
+                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, self.scroll_offset);
 
                     // Focus ring: draw bright-cyan ▶/◀ markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                         if let Some(rect) = layout.nodes.get(&focused_id) {
-                            let mid_row = rect.y + rect.height / 2 + offset_y;
-                            let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
-                            let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
-                            // Left bracket
-                            if rect.x > 0 {
-                                self.buffer.back.set(rect.x.saturating_sub(1) + offset_x, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                    ch: '▶',
-                                    fg: focus_fg,
-                                    bg: focus_bg,
-                                    bold: true,
-                                    ..Default::default()
-                                });
-                            }
-                            // Right bracket
-                            let right = rect.x + rect.width + offset_x;
-                            if right < self.buffer.back.width {
-                                self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                    ch: '◀',
-                                    fg: focus_fg,
-                                    bg: focus_bg,
-                                    bold: true,
-                                    ..Default::default()
-                                });
+                            let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
+                            // BUG-FOCUS-RING-SCROLLED-01: Restrict drawing to viewport_h and prevent overwriting status bar
+                            if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
+                                let mid_row = mid_row_offset as u16;
+                                let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
+                                let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                                // Left bracket
+                                if rect.x > 0 {
+                                    let lx = rect.x.saturating_sub(1) + offset_x;
+                                    if lx < self.buffer.back.width {
+                                        self.buffer.back.set(lx, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                            ch: '▶',
+                                            fg: focus_fg,
+                                            bg: focus_bg,
+                                            bold: true,
+                                            ..Default::default()
+                                        });
+                                    }
+                                }
+                                // Right bracket
+                                let right = rect.x + rect.width + offset_x;
+                                if right < self.buffer.back.width {
+                                    self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                        ch: '◀',
+                                        fg: focus_fg,
+                                        bg: focus_bg,
+                                        bold: true,
+                                        ..Default::default()
+                                    });
+                                }
                             }
                         }
                     }
@@ -6567,22 +6910,93 @@ impl EventLoop {
                     if !echo.buffer.is_empty() {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
 
-                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y);
+                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
                         if let Some(node_id) = echo.active_node {
                             if let Some(rect) = layout.nodes.get(&node_id) {
                                 cursor_x = rect.x + offset_x;
-                                cursor_y = rect.y + offset_y;
+                                cursor_y = (rect.y + offset_y).saturating_sub(self.scroll_offset);
                             }
                         }
 
-                        for ch in echo.buffer.chars() {
-                            if cursor_x < self.buffer.back.width {
-                                self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
+                        // Prevent drawing predictive echo on the status bar row
+                        if cursor_y < viewport_h {
+                            for ch in echo.buffer.chars() {
+                                if cursor_x < self.buffer.back.width {
+                                    self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
+                                        ch,
+                                        fg: oxiterm_proto::style::AnsiColor::Color256(2),
+                                        ..Default::default()
+                                    });
+                                    cursor_x += 1;
+                                }
+                            }
+                        }
+                    }
+
+                    // BUG-SCROLL-NO-INDICATOR-01: Draw scroll status bar if total_height > dims.rows
+                    if self.total_height > dims.rows {
+                        let last_row = dims.rows.saturating_sub(1);
+                        let mut status_parts = Vec::new();
+                        
+                        if self.scroll_offset > 0 {
+                            status_parts.push("▲ PgUp".to_string());
+                        }
+                        if self.scroll_offset < self.total_height.saturating_sub(viewport_h) {
+                            status_parts.push("▼ PgDn".to_string());
+                        }
+                        
+                        let current_row = self.scroll_offset + 1;
+                        status_parts.push(format!("wiersz {}/{}", current_row, self.total_height));
+                        
+                        let max_scroll = self.total_height.saturating_sub(viewport_h);
+                        let pct = if max_scroll > 0 {
+                            (self.scroll_offset as f32 / max_scroll as f32 * 100.0).round() as u8
+                        } else {
+                            0
+                        };
+                        
+                        let bar_width = 8;
+                        let filled_width = if max_scroll > 0 {
+                            (self.scroll_offset as usize * bar_width) / max_scroll as usize
+                        } else {
+                            0
+                        };
+                        let filled_width = filled_width.min(bar_width);
+                        let bar: String = std::iter::repeat('█').take(filled_width)
+                            .chain(std::iter::repeat('░').take(bar_width - filled_width))
+                            .collect();
+                            
+                        status_parts.push(format!("{} {}%", bar, pct));
+                        
+                        let status_str = status_parts.join("  ");
+                        let bar_bg = oxiterm_proto::style::AnsiColor::Color256(236); // dark grey
+                        let bar_fg = oxiterm_proto::style::AnsiColor::Color256(255); // white
+                        
+                        for x in 0..dims.cols {
+                            self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
+                                ch: ' ',
+                                fg: bar_fg,
+                                bg: bar_bg,
+                                ..Default::default()
+                            });
+                        }
+                        
+                        let start_x = if dims.cols > status_str.chars().count() as u16 {
+                            (dims.cols - status_str.chars().count() as u16) / 2
+                        } else {
+                            0
+                        };
+                        
+                        for (i, ch) in status_str.chars().enumerate() {
+                            let x = start_x + i as u16;
+                            if x < dims.cols {
+                                self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
                                     ch,
-                                    fg: oxiterm_proto::style::AnsiColor::Color256(2),
+                                    fg: bar_fg,
+                                    bg: bar_bg,
+                                    bold: true,
                                     ..Default::default()
                                 });
-                                cursor_x += 1;
                             }
                         }
                     }
@@ -6656,6 +7070,8 @@ impl EventLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxiterm_renderer::render::buffer::CellBuffer;
+    use oxiterm_renderer::FrameSink;
 
     #[test]
     fn test_predictive_echo() {
@@ -6665,6 +7081,49 @@ mod tests {
         assert_eq!(echo.buffer, "ab");
         echo.buffer.clear();
         assert_eq!(echo.buffer, "");
+    }
+
+    #[test]
+    fn test_ansi_frame_sink_kitty_ghost_fix() {
+        let (tx, mut rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut sink = AnsiFrameSink::new(tx);
+
+        let mut front = CellBuffer::new(10, 10);
+        let mut back = CellBuffer::new(10, 10);
+
+        // Test 4: empty frame with no graphics changes
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(!res);
+
+        // Test 3: transition from graphics to no graphics -> should contain delete_all_placements
+        front.graphics.push(b"some_img".to_vec());
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(res);
+        let frame = rx.try_recv().expect("Should receive frame");
+        // Frame should contain delete_all_placements sequence: \x1b_Ga=d,d=A\x1b\\
+        let delete_seq = b"\x1b_Ga=d,d=A\x1b\\";
+        let seq_pos = frame.windows(delete_seq.len()).position(|w| w == delete_seq);
+        assert!(seq_pos.is_some(), "delete_all_placements sequence not found in frame");
+
+        // Test 5: transition from no graphics to graphics -> no delete_all_placements, but contains back graphics
+        front.graphics.clear();
+        back.graphics.push(b"new_img_data".to_vec());
+        let res = sink.send_frame(&front, &back).unwrap();
+        assert!(res);
+        let frame2 = rx.try_recv().expect("Should receive frame 2");
+        let seq_pos2 = frame2.windows(delete_seq.len()).position(|w| w == delete_seq);
+        assert!(seq_pos2.is_none(), "delete_all_placements should not be sent on transition to graphics");
+        let img_pos = frame2.windows(12).position(|w| w == b"new_img_data");
+        assert!(img_pos.is_some(), "new_img_data not found in frame");
+
+        // Test 6: clear_screen -> should contain delete_all_placements before ESC[2J
+        sink.clear_screen().unwrap();
+        let frame3 = rx.try_recv().expect("Should receive clear screen");
+        let seq_pos3 = frame3.windows(delete_seq.len()).position(|w| w == delete_seq);
+        let clear_pos = frame3.windows(4).position(|w| w == b"\x1b[2J");
+        assert!(seq_pos3.is_some(), "delete_all_placements not found in clear_screen");
+        assert!(clear_pos.is_some(), "ESC[2J not found in clear_screen");
+        assert!(seq_pos3.unwrap() < clear_pos.unwrap(), "delete_all_placements must be before ESC[2J");
     }
 }
 
@@ -7407,6 +7866,59 @@ impl StateManager {
     }
 }
 
+impl oxiterm_proto::dom::StateEvaluator for StateManager {
+    fn evaluate_bind_show(&self, condition: &str) -> bool {
+        if let Some(pos) = condition.find('=') {
+            let key = &condition[..pos];
+            let val_str = &condition[pos + 1..];
+            let state_val = self.get(key);
+            match val_str {
+                "false" => {
+                    match state_val {
+                        Some(StateValue::Bool(b)) => !*b,
+                        Some(StateValue::Int(i)) => *i == 0,
+                        Some(StateValue::Str(s)) => s == "false" || s.is_empty(),
+                        Some(StateValue::List(l)) => l.is_empty(),
+                        None => true,
+                    }
+                }
+                "true" => {
+                    match state_val {
+                        Some(StateValue::Bool(b)) => *b,
+                        Some(StateValue::Int(i)) => *i != 0,
+                        Some(StateValue::Str(s)) => s == "true",
+                        Some(StateValue::List(l)) => !l.is_empty(),
+                        None => false,
+                    }
+                }
+                _ => {
+                    if let Some(sv) = state_val {
+                        match sv {
+                            StateValue::Str(s) => s == val_str,
+                            StateValue::Int(i) => i.to_string() == val_str,
+                            StateValue::Bool(b) => b.to_string() == val_str,
+                            StateValue::List(l) => l.contains(&val_str.to_string()),
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
+        } else {
+            if let Some(sv) = self.get(condition) {
+                match sv {
+                    StateValue::Bool(b) => *b,
+                    StateValue::Int(i) => *i != 0,
+                    StateValue::Str(s) => !s.is_empty() && s != "false",
+                    StateValue::List(l) => !l.is_empty(),
+                }
+            } else {
+                false
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7486,7 +7998,39 @@ mod tests {
         sm.apply_action("clear:non_existent_key");
         assert_eq!(sm.get("non_existent_key"), None);
     }
+
+    #[test]
+    fn test_evaluate_bind_show() {
+        use oxiterm_proto::dom::StateEvaluator;
+        let mut sm = StateManager::new();
+
+        // 1. Bare key tests
+        assert_eq!(sm.evaluate_bind_show("logged_in"), false);
+        sm.set("logged_in".to_string(), StateValue::Bool(true));
+        assert_eq!(sm.evaluate_bind_show("logged_in"), true);
+        sm.set("logged_in".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("logged_in"), false);
+
+        // 2. key=value tests
+        assert_eq!(sm.evaluate_bind_show("tab=home"), false);
+        sm.set("tab".to_string(), StateValue::Str("home".to_string()));
+        assert_eq!(sm.evaluate_bind_show("tab=home"), true);
+        assert_eq!(sm.evaluate_bind_show("tab=profile"), false);
+
+        // 3. key=false tests
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), true); // absent is considered false
+        sm.set("show_details".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), true);
+        sm.set("show_details".to_string(), StateValue::Bool(true));
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), false);
+
+        // 4. key=true tests
+        assert_eq!(sm.evaluate_bind_show("show_details=true"), true);
+        sm.set("show_details".to_string(), StateValue::Bool(false));
+        assert_eq!(sm.evaluate_bind_show("show_details=true"), false);
+    }
 }
+
 
 --- END OF FILE: ./oxiterm-server/src/state.rs ---
 
@@ -8448,6 +8992,153 @@ fn ansi_256_to_rgb(idx: u8) -> (u8, u8, u8) {
     }
 }
 
+#[wasm_bindgen]
+pub struct Playground;
+
+#[wasm_bindgen]
+impl Playground {
+    #[wasm_bindgen]
+    pub fn mount_asset(path: &str, data: &[u8]) {
+        let path_buf = std::path::PathBuf::from(path);
+        oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
+            fs.borrow_mut().insert(path_buf, data.to_vec());
+        });
+    }
+
+    /// Renders the given THTML document to either ANSI sequence or HTML.
+    /// 
+    /// NOTE: Reactive dynamic states are not simulated or evaluated in this static
+    /// rendering playground mode. Consequently, nodes containing `bind-show` conditional show
+    /// attributes will default to being visible rather than being hidden.
+    #[wasm_bindgen]
+    pub fn render(html_content: &str, width: u16, height: u16, format: Option<String>) -> Result<String, String> {
+        let mut doc = oxiterm_renderer::parser::THTMLParser::parse(html_content).map_err(|e| e.to_string())?;
+        let mut engine = oxiterm_renderer::layout::engine::LayoutEngine::new();
+        let layout = engine.compute(&mut doc, width, 0, None).map_err(|e| e.to_string())?;
+        
+        let mut back = oxiterm_renderer::CellBuffer::new(width, height);
+        let mut profile = oxiterm_proto::style::TerminalProfile::default();
+        profile.supports_kitty_gfx = true;
+        profile.supports_sixel = true;
+        
+        oxiterm_renderer::render::renderer::Renderer::render_node(&doc, &layout, &mut back, &profile, None, 0);
+        
+        let fmt = format.unwrap_or_else(|| "ansi".to_string());
+        if fmt.eq_ignore_ascii_case("html") {
+            Ok(Self::render_to_html(&back))
+        } else {
+            let front = oxiterm_renderer::CellBuffer::new(width, height);
+            let commands = oxiterm_renderer::DiffEngine::diff(&front, &back);
+            let ansi_bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+            Ok(String::from_utf8_lossy(&ansi_bytes).into_owned())
+        }
+    }
+
+    fn render_to_html(buffer: &oxiterm_renderer::CellBuffer) -> String {
+        let mut html = String::new();
+        html.push_str("<pre style=\"font-family: monospace; background: #0f172a; color: #f1f5f9; padding: 10px; margin: 0; line-height: 1.2;\">");
+        for y in 0..buffer.height {
+            for x in 0..buffer.width {
+                if let Some(idx) = buffer.flat_idx(x, y) {
+                    let cell = &buffer.cells[idx];
+                    if cell.skip {
+                        continue;
+                    }
+                    let mut style = String::new();
+                    // Foreground color
+                    match &cell.fg {
+                        AnsiColor::TrueColor(r, g, b) => {
+                            style.push_str(&format!("color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Color256(idx) => {
+                            let (r, g, b) = ansi_256_to_rgb(*idx);
+                            style.push_str(&format!("color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Reset => {}
+                    }
+                    // Background color
+                    match &cell.bg {
+                        AnsiColor::TrueColor(r, g, b) => {
+                            style.push_str(&format!("background-color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Color256(idx) => {
+                            let (r, g, b) = ansi_256_to_rgb(*idx);
+                            style.push_str(&format!("background-color: rgb({},{},{});", r, g, b));
+                        }
+                        AnsiColor::Reset => {}
+                    }
+                    if cell.bold {
+                        style.push_str("font-weight: bold;");
+                    }
+                    if cell.italic {
+                        style.push_str("font-style: italic;");
+                    }
+                    if cell.underline {
+                        style.push_str("text-decoration: underline;");
+                    }
+                    
+                    if !style.is_empty() {
+                        html.push_str(&format!("<span style=\"{}\">", style));
+                    }
+                    // Escape HTML characters
+                    match cell.ch {
+                        '&' => html.push_str("&amp;"),
+                        '<' => html.push_str("&lt;"),
+                        '>' => html.push_str("&gt;"),
+                        '"' => html.push_str("&quot;"),
+                        '\'' => html.push_str("&#x27;"),
+                        '\0' | ' ' => html.push_str("&nbsp;"),
+                        _ => html.push(cell.ch),
+                    }
+                    if !style.is_empty() {
+                        html.push_str("</span>");
+                    }
+                }
+            }
+            html.push_str("<br/>");
+        }
+        html.push_str("</pre>");
+        html
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_playground_render_ansi() {
+        let html = "<text style=\"color: #ff0000; background-color: #00ff00;\">Hello World</text>";
+        let rendered = Playground::render(html, 80, 24, Some("ansi".to_string())).unwrap();
+        assert!(rendered.contains("Hello World"));
+    }
+
+    #[test]
+    fn test_playground_render_html() {
+        let html = "<text style=\"color: #ff0000; background-color: #00ff00;\">Hello World</text>";
+        let rendered = Playground::render(html, 80, 24, Some("html".to_string())).unwrap();
+        assert!(rendered.contains("color: rgb(255,0,0)"));
+        assert!(rendered.contains("background-color: rgb(0,255,0)"));
+        assert!(rendered.contains(">H</span>"));
+        assert!(rendered.contains(">e</span>"));
+        assert!(rendered.contains(">&nbsp;</span>"));
+    }
+
+    #[test]
+    fn test_playground_mount_asset() {
+        let path = "test_asset.txt";
+        let data = b"hello asset";
+        Playground::mount_asset(path, data);
+        
+        let path_buf = std::path::PathBuf::from(path);
+        let read_data = oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
+            fs.borrow().get(&path_buf).cloned()
+        });
+        assert_eq!(read_data, Some(data.to_vec()));
+    }
+}
+
+
 --- END OF FILE: ./oxiterm-web/src/lib.rs ---
 
 === IMPORTANT PROJECT FILES (Cargo.toml, .thtml, .md) ===
@@ -8923,347 +9614,885 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 --- END OF FILE: ./docs/SPRINT_REPORTS.md ---
 
 --- FILE: ./examples/counter.thtml ---
-<box style="flex-direction: column; width: 80; height: 24; background-color: #0f172a;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
-        <text style="color: #38bdf8; font-weight: bold;">OxiTerm Counter Demo</text>
-        <text style="color: #94a3b8;" event-htmx="hello.thtml">[ Back to Home ]</text>
+<style>
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+}
+.btn {
+    border-style: single;
+    padding-left: 2;
+    padding-right: 2;
+    height: 3;
+    align-items: center;
+    justify-content: center;
+}
+.btn-red   { border-color: #f87171; fg: #f87171; }
+.btn-green { border-color: #4ade80; fg: #4ade80; }
+.btn-gray  { border-color: #475569; fg: #94a3b8; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <!-- Nagłówek -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #f59e0b; height: 1;">🔢 Licznik — inc / dec / clear</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <!-- Main Content -->
-    <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column;">
-        <text style="color: #94a3b8; margin-bottom: 1;">Current Value:</text>
-        <box style="padding: 2; border-style: double; border-color: #f59e0b;">
-            <text style="color: #ffffff; font-size: 200%; font-weight: bold;" bind-state="counter">0</text>
+    <!-- Treść -->
+    <box style="flex-direction: row; padding: 2; flex: 1;">
+
+        <!-- Duży licznik -->
+        <box class="panel" style="border-color: #f59e0b; width: 36; align-items: center;
+                                  justify-content: center; margin-right: 2;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Bieżąca wartość:</text>
+            <box style="border-style: double; border-color: #f59e0b; padding: 2;
+                        justify-content: center; align-items: center;">
+                <text style="fg: #fbbf24; height: 1;" bind-state="counter">0</text>
+            </box>
+            <box style="flex-direction: row; margin-top: 2;">
+                <box class="btn btn-red" style="margin-right: 1;" event-htmx="dec:counter">
+                    <text style="height: 1;">  −  </text>
+                </box>
+                <box class="btn btn-green" style="margin-right: 1;" event-htmx="inc:counter">
+                    <text style="height: 1;">  +  </text>
+                </box>
+                <box class="btn btn-gray" event-htmx="clear:counter">
+                    <text style="height: 1;">  ×  </text>
+                </box>
+            </box>
         </box>
-        
-        <box class="controls">
-            <button class="btn" event-htmx="dec:counter">-</button>
-            <button class="btn" event-htmx="inc:counter">+</button>
+
+        <!-- Opis akcji -->
+        <box class="panel" style="border-color: #334155; flex: 1;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Obsługiwane akcje event-htmx:</text>
+            <text style="fg: #4ade80;  height: 1;">inc:klucz   — liczba += 1</text>
+            <text style="fg: #f87171;  height: 1;">dec:klucz   — liczba -= 1</text>
+            <text style="fg: #94a3b8;  height: 1;">clear:klucz — reset do 0</text>
+            <box style="height: 1;"></box>
+            <text style="fg: #64748b; height: 1;">Stan Int(i64) żyje w</text>
+            <text style="fg: #64748b; height: 1;">StateManager serwera.</text>
+            <text style="fg: #64748b; height: 1;">bind-state odświeża</text>
+            <text style="fg: #64748b; height: 1;">reaktywnie tylko ten węzeł.</text>
         </box>
+
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; background-color: #1e293b; justify-content: center;">
-        <text style="color: #64748b;">Powered by OxiTerm Engine</text>
+    <!-- Stopka -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
     </box>
+
 </box>
 
 --- END OF FILE: ./examples/counter.thtml ---
 
 --- FILE: ./examples/hello.thtml ---
-<box style="flex-direction: column; justify-content: center; align-items: center; width: 84; height: 32; background-color: #1a1b26; border-style: rounded; border-color: #7aa2f7; padding: 1;">
-    <box style="padding-left: 2; padding-right: 2; padding-top: 0.5; padding-bottom: 0.5; border-style: double; border-color: #bb9af7; margin-bottom: 1;">
-        <text style="color: #bb9af7; font-weight: bold; font-size: 150%;">🚀 Welcome to OxiTerm Dashboard 🚀</text>
-    </box>
-    
-    <box style="margin-bottom: 2;">
-        <text style="color: #9ece6a;">Build full TUI applications using THTML and TCSS</text>
+<style>
+.card {
+    flex-direction: column;
+    align-items: center;
+    padding: 1;
+    border-style: rounded;
+}
+.card-counter  { border-color: #f59e0b; }
+.card-state    { border-color: #4ade80; }
+.card-style    { border-color: #c084fc; }
+.card-media    { border-color: #f87171; }
+.card-nav      { border-color: #38bdf8; }
+.card-a11y     { border-color: #fb923c; }
+
+.label { height: 1; }
+.muted { fg: #64748b; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <!-- Nagłówek -->
+    <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interaktywne TUI przez SSH  🚀</text>
     </box>
 
-    <!-- Navigation Cards Grid -->
-    <box style="flex-direction: column; gap: 1; width: 70; margin-bottom: 2;">
-        <box style="flex-direction: row; justify-content: space-between; width: 70;">
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #f7768e; flex-direction: column; align-items: center;" event-htmx="counter.thtml">
-                <text style="color: #e0af68; font-weight: bold;">🔢 Counter Demo</text>
-                <text style="color: #565f89; margin-top: 0.5;">Interactive state binding</text>
+    <!-- Siatka kart nawigacyjnych -->
+    <box style="flex-direction: column; padding: 1; flex-direction: column;">
+
+        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
+            <box class="card card-counter" style="width: 24; margin-right: 1;" event-htmx="counter.thtml">
+                <text style="fg: #f59e0b; height: 1;">🔢 Licznik i stan</text>
+                <text class="muted label">Inc / dec / clear</text>
             </box>
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #9ece6a; flex-direction: column; align-items: center;" event-htmx="todo.thtml">
-                <text style="color: #73daca; font-weight: bold;">📝 Tasks Demo</text>
-                <text style="color: #565f89; margin-top: 0.5;">To-do list tracker</text>
+            <box class="card card-state" style="width: 24; margin-right: 1;" event-htmx="state_demo.thtml">
+                <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu</text>
+                <text class="muted label">Int Bool Str List</text>
+            </box>
+            <box class="card card-style" style="width: 24;" event-htmx="styles_demo.thtml">
+                <text style="fg: #c084fc; height: 1;">🎨 CSS klasy i kaskada</text>
+                <text class="muted label">Blok &lt;style&gt;</text>
             </box>
         </box>
 
-        <box style="flex-direction: row; justify-content: space-between; width: 70; margin-top: 1;">
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #ff9e64; flex-direction: column; align-items: center;" event-htmx="image_demo.thtml">
-                <text style="color: #ff9e64; font-weight: bold;">🖼️ Graphics Demo</text>
-                <text style="color: #565f89; margin-top: 0.5;">Sixel & Kitty image engine</text>
+        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
+            <box class="card card-nav" style="width: 24; margin-right: 1;" event-htmx="navigation_demo.thtml">
+                <text style="fg: #38bdf8; height: 1;">📑 Nawigacja i bind-show</text>
+                <text class="muted label">Zakładki bez reload</text>
             </box>
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #7aa2f7; flex-direction: column; align-items: center;" event-htmx="showcase.thtml">
-                <text style="color: #38bdf8; font-weight: bold;">🧪 Layout Showcase</text>
-                <text style="color: #565f89; margin-top: 0.5;">Edge-cases & stress tests</text>
+            <box class="card card-media" style="width: 24; margin-right: 1;" event-htmx="media_demo.thtml">
+                <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje</text>
+                <text class="muted label">SVG Lottie Kitty</text>
+            </box>
+            <box class="card card-a11y" style="width: 24;" event-htmx="video_demo.thtml">
+                <text style="fg: #fb923c; height: 1;">🎬 Wideo</text>
+                <text class="muted label">ffmpeg → terminal</text>
             </box>
         </box>
 
-        <!-- Vector & Animation / Video row -->
-        <box style="flex-direction: row; justify-content: space-between; width: 70; margin-top: 1;">
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #bb9af7; flex-direction: column; align-items: center;" event-htmx="vector_demo.thtml">
-                <text style="color: #bb9af7; font-weight: bold;">🎨 Vector & Animation</text>
-                <text style="color: #565f89; margin-top: 0.5;">SVG, Lottie & Rive</text>
-            </box>
-            <box style="width: 33; padding: 1; background-color: #24283b; border-style: rounded; border-color: #f5c2e7; flex-direction: column; align-items: center;" event-htmx="video_demo.thtml">
-                <text style="color: #f5c2e7; font-weight: bold;">🎬 Video Stream</text>
-                <text style="color: #565f89; margin-top: 0.5;">60 FPS MP4 decoding</text>
-            </box>
-        </box>
     </box>
 
-    <box style="height: 1; justify-content: center; width: 70; border-top: #414868;">
-        <text style="color: #565f89;">Press [Q] to quit session</text>
+    <!-- Stopka -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted label">[Q] Wyjście   [Tab] / [↑↓] Nawigacja klawiaturą   [Enter] Wybierz</text>
     </box>
+
 </box>
 
 --- END OF FILE: ./examples/hello.thtml ---
 
---- FILE: ./examples/image_demo.thtml ---
-<box style="flex-direction: column; width: 80; height: 28; background-color: #1a1b26; border-style: rounded; border-color: #7aa2f7; padding: 1;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #24283b; border-style: single; border-color: #414868; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
-        <text style="color: #ff9e64; font-weight: bold;">🖼️ OxiTerm Graphics & Image Engine</text>
-        <box style="background-color: #414868; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #7aa2f7;" event-htmx="hello.thtml">
-            <text style="color: #ffffff; font-weight: bold;">[ Back to Home ]</text>
+--- FILE: ./examples/media_demo.thtml ---
+<style>
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    align-items: center;
+}
+.panel-title { height: 1; margin-bottom: 1; }
+.caption     { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje — SVG · Lottie · PNG</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+    </box>
+
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- SVG -->
+        <box class="panel" style="border-color: #38bdf8; width: 26; margin-right: 1;">
+            <text class="panel-title" style="fg: #38bdf8;">SVG (resvg)</text>
+            <img src="mascot.svg" alt="Rustowy krab — Ferris" style="width: 20; height: 10;" />
+            <text class="caption">Renderowany przez resvg+tiny_skia</text>
+            <text class="caption">BGRA→RGBA, pełna alpha</text>
+        </box>
+
+        <!-- PNG/JPG -->
+        <box class="panel" style="border-color: #4ade80; width: 26; margin-right: 1;">
+            <text class="panel-title" style="fg: #4ade80;">Obraz rastrowy</text>
+            <img src="logo.jpg" alt="Logo projektu" style="width: 20; height: 10;" />
+            <text class="caption">Auto: Kitty → Sixel → Unicode</text>
+            <text class="caption">Negocjacja przez DA1</text>
+        </box>
+
+        <!-- Lottie -->
+        <box class="panel" style="border-color: #fbbf24; width: 20;">
+            <text class="panel-title" style="fg: #fbbf24;">Lottie JSON</text>
+            <img src="loader.json" alt="Animacja ładowania" style="width: 14; height: 7;" />
+            <text class="caption">Klatki przez rlottie</text>
+            <text class="caption">60fps na Kitty</text>
+            <text class="caption">RGBA bez alpha bug</text>
+        </box>
+
+    </box>
+
+    <!-- Wiersz protokołów -->
+    <box style="flex-direction: row; padding-left: 1; padding-right: 1;
+                height: 4; border-style: single; border-color: #1e293b;
+                margin-left: 1; margin-right: 1; align-items: center;">
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #38bdf8; height: 1;">Kitty Graphics</text>
+            <text style="fg: #334155; height: 1;">Kitty WezTerm Ghostty</text>
+        </box>
+        <box style="width: 1; bg: #334155;"></box>
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #4ade80; height: 1;">Sixel</text>
+            <text style="fg: #334155; height: 1;">Konsole mlterm</text>
+        </box>
+        <box style="width: 1; bg: #334155;"></box>
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
+            <text style="fg: #334155; height: 1;">Wszystkie terminale</text>
         </box>
     </box>
 
-    <!-- Main Content -->
-    <box style="flex: 1; justify-content: center; align-items: center; flex-direction: column; margin-top: 1;">
-        <img src="logo.jpg" style="width: 32; height: 16;" />
-        <box style="margin-top: 1; justify-content: center; align-items: center;">
-            <text style="color: #9ece6a; font-weight: bold;">Rust Crab Mascot</text>
-            <text style="color: #565f89; margin-top: 0.5;">Auto-negotiates Kitty Graphics, Sixel, or Unicode Half-Blocks</text>
-        </box>
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja</text>
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; justify-content: center; border-top: #414868; padding-top: 0.5;">
-        <text style="color: #565f89;">Powered by OxiTerm image engine</text>
-    </box>
 </box>
 
---- END OF FILE: ./examples/image_demo.thtml ---
+--- END OF FILE: ./examples/media_demo.thtml ---
+
+--- FILE: ./examples/navigation_demo.thtml ---
+<style>
+.tab-btn {
+    border-style: single;
+    padding-left: 2;
+    padding-right: 2;
+    height: 3;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1;
+}
+.tab-active   { border-color: #38bdf8; fg: #38bdf8; bg: #0f2a3d; }
+.tab-inactive { border-color: #334155; fg: #475569; }
+
+.content-panel {
+    border-style: rounded;
+    border-color: #334155;
+    padding: 2;
+    flex-direction: column;
+    flex: 1;
+}
+.muted { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">📑 Nawigacja klawiaturą i bind-show</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+    </box>
+
+    <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
+    <box style="flex-direction: row; padding-left: 2; padding-right: 2;
+                padding-top: 1; height: 5; align-items: center;">
+        <box class="tab-btn tab-active"  event-htmx="set:tab=info">
+            <text style="height: 1;">ℹ Info</text>
+        </box>
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=keys">
+            <text style="height: 1;">⌨ Klawisze</text>
+        </box>
+        <box class="tab-btn tab-inactive" event-htmx="set:tab=bind">
+            <text style="height: 1;">🔗 bind-show</text>
+        </box>
+        <box style="flex: 1;"></box>
+        <text class="muted">Aktywna zakładka: </text>
+        <text style="fg: #38bdf8; height: 1;" bind-state="tab">info</text>
+    </box>
+
+    <!-- Treść zakładek — tylko jedna widoczna dzięki bind-show -->
+    <box style="flex-direction: column; padding-left: 2; padding-right: 2;
+                padding-bottom: 1; flex: 1;">
+
+        <!-- Zakładka: info -->
+        <box class="content-panel" bind-show="tab=info">
+            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Zakładki bez przeładowania strony</text>
+            <text class="muted">Kliknij zakładkę → event-htmx="set:tab=xxx"</text>
+            <text class="muted">StateManager zapisuje nową wartość "tab".</text>
+            <text class="muted">bind-show="tab=info" chowa/pokazuje węzeł.</text>
+            <text class="muted">LayoutEngine całkowicie pomija ukryte węzły.</text>
+            <text class="muted">Zero opóźnienia — logika po stronie serwera.</text>
+        </box>
+
+        <!-- Zakładka: keys -->
+        <box class="content-panel" bind-show="tab=keys">
+            <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Nawigacja klawiaturą</text>
+            <text class="muted">Tab / ↓ / →  — następny focusable węzeł</text>
+            <text class="muted">Shift+Tab / ↑ / ←  — poprzedni węzeł</text>
+            <text class="muted">Enter  — aktywuj event-htmx focused węzła</text>
+            <text class="muted">Q      — wyjście z sesji</text>
+            <text class="muted">Focus ring: ▶ i ◀ po bokach aktywnego węzła.</text>
+        </box>
+
+        <!-- Zakładka: bind -->
+        <box class="content-panel" bind-show="tab=bind">
+            <text style="fg: #c084fc; height: 1; margin-bottom: 1;">Składnia bind-show</text>
+            <text class="muted">bind-show="klucz"       — true gdy Bool(true)</text>
+            <text class="muted">bind-show="klucz=true"  — explicit true</text>
+            <text class="muted">bind-show="klucz=false" — odwrotność</text>
+            <text class="muted">bind-show="tab=home"    — równość Str</text>
+            <text class="muted">bind-show="count=0"     — równość Int</text>
+        </box>
+
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Zmień zakładkę</text>
+    </box>
+
+</box>
+
+--- END OF FILE: ./examples/navigation_demo.thtml ---
 
 --- FILE: ./examples/showcase.thtml ---
-<box style="flex-direction: column; width: 90; height: 32; background-color: #0f172a;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #1e293b; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2;">
-        <text style="color: #38bdf8; font-weight: bold;">🧪 OxiTerm Edge-Case & Showcase Page</text>
-        <box style="background-color: #334155; padding: 0.5; border: #38bdf8;" event-htmx="hello.thtml">
-            <text style="color: #ffffff; font-weight: bold;">[ BACK TO HOME ]</text>
-        </box>
+<style>
+/* Showcase używa maksimum funkcji CSS pipeline */
+
+/* Tag selektory */
+text { fg: #e2e8f0; }
+button { border-style: single; }
+
+/* Klasy */
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+}
+.section-title { fg: #94a3b8; height: 1; margin-bottom: 1; }
+.mono          { fg: #a3e635; height: 1; }
+.muted         { fg: #475569; height: 1; }
+.ok            { fg: #4ade80; height: 1; }
+.warn          { fg: #f59e0b; height: 1; }
+.err           { fg: #f87171; height: 1; }
+
+/* Id selektor */
+#unicode-panel { border-color: #c084fc; }
+#border-panel  { border-color: #38bdf8; }
+#state-panel   { border-color: #f59e0b; }
+#layout-panel  { border-color: #f87171; }
+</style>
+
+<box style="flex-direction: column; width: 90; height: 32; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">🧪 Showcase — wszystkie funkcje silnika</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <!-- Main Body: Two Rows -->
-    <box style="flex-direction: column; flex: 1; padding: 1;">
-        <!-- Row 1: Standard Components -->
-        <box style="flex-direction: row; height: 12; margin-bottom: 1;">
-            <!-- Panel 1: Borders & Padding -->
-            <box style="width: 28; height: 11; border-style: rounded; border-color: #ef4444; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
-                <text style="color: #ef4444; font-weight: bold;">Borders & Padding</text>
-                <box style="background-color: #f97316; height: 2; justify-content: center; align-items: center;">
-                    <text style="color: #ffffff;">Solid Box</text>
-                </box>
-                <box style="background-color: transparent; border-style: single; border-color: #e2e8f0; height: 2; justify-content: center; align-items: center;">
-                    <text style="color: #38bdf8;">Transparent</text>
-                </box>
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- Kolumna 1 -->
+        <box style="flex-direction: column; width: 28; margin-right: 1;">
+
+            <!-- Unicode i emoji -->
+            <box id="unicode-panel" class="panel" style="margin-bottom: 1; height: 10;">
+                <text class="section-title">Wide chars i emoji</text>
+                <text class="mono">🚀 = 2 kolumny</text>
+                <text class="mono">日本語 = 2×3</text>
+                <text class="mono">A = 1 kolumna</text>
+                <text class="mono">🚀A = [🚀][A]</text>
+                <text class="muted">UnicodeWidthCache</text>
             </box>
 
-            <!-- Panel 2: Wide Unicode & Text -->
-            <box style="width: 28; height: 11; border-style: double; border-color: #3b82f6; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
-                <text style="color: #3b82f6; font-weight: bold;">Wide Chars & Text</text>
-                <text style="color: #10b981;">Wide: [🚀][🌧️][☀️][A]</text>
-                <text style="color: #f43f5e;">Multiline Text:
-Line 1 of text
-Line 2 of text</text>
+            <!-- Kolory -->
+            <box class="panel" style="border-color: #334155; height: 10;">
+                <text class="section-title">Paleta kolorów</text>
+                <text style="fg: #38bdf8; height: 1;">TrueColor #38bdf8</text>
+                <text style="fg: #4ade80; height: 1;">TrueColor #4ade80</text>
+                <text style="fg: #f87171; height: 1;">TrueColor #f87171</text>
+                <text style="fg: 226;     height: 1;">Color256(226) żółty</text>
+                <text style="fg: 46;      height: 1;">Color256(46) zieleń</text>
+                <text class="muted">dziedziczone przez dzieci</text>
             </box>
 
-            <!-- Panel 3: Interactive Inputs -->
-            <box style="width: 28; height: 11; border-style: single; border-color: #10b981; flex-direction: column; justify-content: space-around; align-items: center; padding: 1;">
-                <text style="color: #10b981; font-weight: bold;">Inputs & Actions</text>
-                <input style="color: #38bdf8; width: 20; height: 1;" />
-                <box style="flex-direction: row; justify-content: space-between; width: 22;">
-                    <button style="background-color: #e11d48; padding: 1; border: #ffffff;" event-htmx="dec:showcase_counter">
-                        <text style="color: #ffffff; font-weight: bold;"> - </text>
-                    </button>
-                    <box style="justify-content: center; align-items: center; width: 8; border: #ffffff;">
-                        <text style="color: #ffffff; font-weight: bold;" bind-state="showcase_counter">0</text>
-                    </box>
-                    <button style="background-color: #059669; padding: 1; border: #ffffff;" event-htmx="inc:showcase_counter">
-                        <text style="color: #ffffff; font-weight: bold;"> + </text>
-                    </button>
-                </box>
-            </box>
         </box>
 
-        <!-- Row 2: Edge Cases & Robot Stress Tests -->
-        <box style="flex-direction: row; height: 12;">
-            <!-- Panel 4: CSS Parser & Text Overflow Edge Cases -->
-            <box style="width: 42; height: 11; border-style: rounded; border-color: #eab308; flex-direction: column; justify-content: space-around; padding: 1; margin-right: 1;">
-                <text style="color: #eab308; font-weight: bold;">CSS Parser & Overflow Edge Cases</text>
-                <!-- Invalid styles: color hex, width, font weight, trailing junk -->
-                <box style="color:   #xyz ;   width:   abc  ;;   padding: 1.5; background-color: invalid_color;">
-                    <text style="color: #xyz; font-weight: invalid;">Style Fallbacks: OK</text>
+        <!-- Kolumna 2 -->
+        <box style="flex-direction: column; width: 28; margin-right: 1;">
+
+            <!-- Ramki -->
+            <box id="border-panel" class="panel" style="margin-bottom: 1; height: 9;">
+                <text class="section-title">Style ramek</text>
+                <box style="border-style: single;  border-color: #38bdf8;
+                            height: 1; padding-left: 1; margin-bottom: 1;">
+                    <text style="fg: #38bdf8; height: 1;">single ┌─┐</text>
                 </box>
-                <!-- Extremely long text element to test clipping / bounds overflow -->
-                <text style="color: #f59e0b;">LongWord: Supercalifragilisticexpialidocious</text>
-                <!-- Missing bind-state -->
-                <text style="color: #a855f7;">Missing state bind: [<text bind-state="missing_var">DEFAULT</text>]</text>
+                <box style="border-style: double;  border-color: #4ade80;
+                            height: 1; padding-left: 1; margin-bottom: 1;">
+                    <text style="fg: #4ade80; height: 1;">double ╔═╗</text>
+                </box>
+                <box style="border-style: rounded; border-color: #f59e0b;
+                            height: 1; padding-left: 1;">
+                    <text style="fg: #f59e0b; height: 1;">rounded ╭─╮</text>
+                </box>
             </box>
 
-            <!-- Panel 5: Small Borders, Nesting & Zero Width -->
-            <box style="width: 42; height: 11; border-style: double; border-color: #ec4899; flex-direction: column; justify-content: space-around; padding: 1;">
-                <text style="color: #ec4899; font-weight: bold;">Borders, Nesting & Zero Width</text>
-                <box style="flex-direction: row; justify-content: space-between; align-items: center;">
-                    <!-- Tiny Bordered Boxes -->
-                    <box style="width: 1; height: 1; border: #ef4444; margin-right: 1;"></box>
-                    <box style="width: 2; height: 2; border: #3b82f6; margin-right: 1;"></box>
-                    <!-- Deeply Nested Border Offset Logic -->
-                    <box style="border: #10b981; padding: 1; width: 10; height: 5;">
-                        <box style="border: #ef4444; padding: 1; width: 6; height: 3;">
-                            <box style="border: #3b82f6; width: 2; height: 1; background-color: #3b82f6;"></box>
-                        </box>
-                    </box>
-                    <!-- Zero Width Characters / Modifiers & Empty blocks -->
-                    <box style="flex-direction: column; align-items: flex-start;">
-                        <text style="color: #a855f7;">ZeroW: A​B️C</text>
-                        <text style="color: #6366f1;">Spaces: [      ]</text>
-                        <text></text>
-                    </box>
+            <!-- Padding/margin -->
+            <box class="panel" style="border-color: #334155; height: 11;">
+                <text class="section-title">Padding i margin</text>
+                <box style="border-style: single; border-color: #475569;
+                            padding-top: 1; padding-left: 2; margin-bottom: 1;">
+                    <text class="mono">padding-top:1</text>
+                    <text class="mono">padding-left:2</text>
+                </box>
+                <box style="margin-top: 1; border-style: single; border-color: #334155;">
+                    <text class="mono">margin-top:1</text>
                 </box>
             </box>
+
         </box>
+
+        <!-- Kolumna 3 -->
+        <box style="flex-direction: column; flex: 1;">
+
+            <!-- Interaktywność + bind-show -->
+            <box id="state-panel" class="panel" style="margin-bottom: 1; height: 10;">
+                <text class="section-title">Stan i bind-show</text>
+                <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
+                    <text class="muted" style="width: 10;">licznik:</text>
+                    <text style="fg: #fbbf24; height: 1; width: 6;" bind-state="sc">0</text>
+                    <button style="border-color: #4ade80; padding-left: 1; padding-right: 1;
+                                   height: 1; fg: #4ade80;" event-htmx="inc:sc">[+]</button>
+                    <button style="border-color: #f87171; padding-left: 1; padding-right: 1;
+                                   height: 1; fg: #f87171;" event-htmx="dec:sc">[-]</button>
+                </box>
+                <!-- bind-show z kondycją liczbową -->
+                <box bind-show="sc=0">
+                    <text class="muted">Licznik = 0 (bind-show="sc=0")</text>
+                </box>
+                <box bind-show="sc=false">
+                    <text class="ok">Licznik != 0 (bind-show="sc=false")</text>
+                </box>
+                <text class="muted" style="margin-top: 1;">Węzły nie istnieją w layoutcie</text>
+                <text class="muted">gdy warunek = false.</text>
+            </box>
+
+            <!-- Layout -->
+            <box id="layout-panel" class="panel" style="height: 11;">
+                <text class="section-title">Flexbox justify-content</text>
+                <box style="flex-direction: row; justify-content: flex-start;
+                            border-style: single; border-color: #334155;
+                            height: 1; margin-bottom: 1;">
+                    <text style="fg: #38bdf8; height: 1;">flex-start</text>
+                </box>
+                <box style="flex-direction: row; justify-content: center;
+                            border-style: single; border-color: #334155;
+                            height: 1; margin-bottom: 1;">
+                    <text style="fg: #4ade80; height: 1;">center</text>
+                </box>
+                <box style="flex-direction: row; justify-content: flex-end;
+                            border-style: single; border-color: #334155;
+                            height: 1; margin-bottom: 1;">
+                    <text style="fg: #f59e0b; height: 1;">flex-end</text>
+                </box>
+                <box style="flex-direction: row; justify-content: space-between;
+                            border-style: single; border-color: #334155; height: 1;">
+                    <text style="fg: #f87171; height: 1;">space</text>
+                    <text style="fg: #f87171; height: 1;">between</text>
+                </box>
+            </box>
+
+        </box>
+
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; background-color: #1e293b; justify-content: center;">
-        <text style="color: #64748b;">Use mouse clicks to increment counter. Press [Q] to exit</text>
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  Kliknij przyciski myszą lub Enter</text>
     </box>
+
 </box>
 
 --- END OF FILE: ./examples/showcase.thtml ---
 
+--- FILE: ./examples/state_demo.thtml ---
+<style>
+.row {
+    flex-direction: row;
+    height: 1;
+    align-items: center;
+    margin-bottom: 1;
+}
+.label-col {
+    width: 18;
+    height: 1;
+    fg: #94a3b8;
+}
+.value-col {
+    width: 16;
+    height: 1;
+}
+.action {
+    border-style: single;
+    border-color: #334155;
+    padding-left: 1;
+    padding-right: 1;
+    height: 1;
+    margin-right: 1;
+}
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu — Int Bool Str List</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+    </box>
+
+    <box style="flex-direction: row; padding: 2; flex: 1;">
+
+        <!-- Lewa kolumna: stany + kontrolki -->
+        <box style="flex-direction: column; width: 44; margin-right: 2;">
+
+            <!-- Int -->
+            <box class="row">
+                <text class="label-col">Int (licznik):</text>
+                <text class="value-col" style="fg: #38bdf8;" bind-state="demo_int">0</text>
+                <text class="action" style="fg: #4ade80;" event-htmx="inc:demo_int">[+1]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="dec:demo_int">[-1]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_int">[x]</text>
+            </box>
+
+            <!-- Bool -->
+            <box class="row">
+                <text class="label-col">Bool (toggle):</text>
+                <text class="value-col" style="fg: #fbbf24;" bind-state="demo_bool">false</text>
+                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[przełącz]</text>
+            </box>
+
+            <!-- Str set -->
+            <box class="row">
+                <text class="label-col">Str (set):</text>
+                <text class="value-col" style="fg: #c084fc;" bind-state="demo_str">—</text>
+                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=aktywny">[aktywny]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=błąd">[błąd]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_str">[x]</text>
+            </box>
+
+            <!-- List append/clear -->
+            <box class="row">
+                <text class="label-col">List (append):</text>
+                <text class="value-col" style="fg: #34d399;" bind-state="demo_list">[]</text>
+                <text class="action" style="fg: #4ade80;" event-htmx="append:demo_list=elem">[+elem]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_list">[x]</text>
+            </box>
+
+            <!-- Separator -->
+            <box style="height: 1; border-style: single; border-color: #1e293b; margin-bottom: 1;"></box>
+
+            <!-- Legenda typów -->
+            <text style="fg: #64748b; height: 1;">Stany żyją w StateManager serwera.</text>
+            <text style="fg: #64748b; height: 1;">bind-state odświeża węzeł reaktywnie.</text>
+            <text style="fg: #64748b; height: 1;">clear: zeruje do wartości domyślnej</text>
+            <text style="fg: #64748b; height: 1;">dla danego typu (0, false, "", []).</text>
+
+        </box>
+
+        <!-- Prawa kolumna: tabela typów -->
+        <box style="flex-direction: column; flex: 1; border-style: rounded;
+                    border-color: #334155; padding: 1;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Typy StateValue:</text>
+            <text style="fg: #38bdf8;  height: 1;">Int(i64)       inc dec clear</text>
+            <text style="fg: #fbbf24;  height: 1;">Bool(bool)     toggle clear</text>
+            <text style="fg: #c084fc;  height: 1;">Str(String)    set clear</text>
+            <text style="fg: #34d399;  height: 1;">List(Vec&lt;str&gt;) append clear</text>
+            <box style="height: 1;"></box>
+            <text style="fg: #64748b; height: 1;">Display:</text>
+            <text style="fg: #64748b; height: 1;">42 / true / hello / [a, b]</text>
+        </box>
+
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
+    </box>
+
+</box>
+
+--- END OF FILE: ./examples/state_demo.thtml ---
+
+--- FILE: ./examples/styles_demo.thtml ---
+<style>
+/* Selektor tagu — wszystkie text dostają domyślny kolor */
+text {
+    fg: #e2e8f0;
+}
+
+/* Klasy kart */
+.card {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    margin-right: 1;
+}
+
+/* Warianty kolorystyczne */
+.blue   { border-color: #38bdf8; }
+.green  { border-color: #4ade80; }
+.amber  { border-color: #f59e0b; }
+.red    { border-color: #f87171; }
+.purple { border-color: #c084fc; }
+
+/* Nagłówek karty — nadpisuje tag selektor */
+.card-title {
+    fg: #f8fafc;
+    height: 1;
+    margin-bottom: 1;
+}
+
+/* Selektory id */
+#cascade-demo {
+    border-style: double;
+    border-color: #c084fc;
+    padding: 2;
+}
+
+/* Klasa wyciszona */
+.muted {
+    fg: #64748b;
+    height: 1;
+}
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #c084fc; height: 1;">🎨 CSS klasy, id i kaskada — blok &lt;style&gt;</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+    </box>
+
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- Kolumna 1: karty z klasami -->
+        <box style="flex-direction: column; width: 36; margin-right: 1;">
+
+            <text class="muted" style="margin-bottom: 1;">Klasy nadają styl wielokrotnie:</text>
+
+            <box class="card blue" style="height: 5; margin-bottom: 1;">
+                <text class="card-title" style="fg: #38bdf8;">Karta .blue</text>
+                <text class="muted">border-color z klasy</text>
+                <text class="muted">padding: 1 z .card</text>
+            </box>
+
+            <box class="card green" style="height: 5; margin-bottom: 1;">
+                <text class="card-title" style="fg: #4ade80;">Karta .green</text>
+                <text class="muted">Ten sam layout co .blue</text>
+                <text class="muted">inny kolor ramki</text>
+            </box>
+
+            <box class="card amber" style="height: 5;">
+                <text class="card-title" style="fg: #f59e0b;">Karta .amber</text>
+                <text class="muted">Wielokrotne klasy:</text>
+                <text class="muted">class="card amber"</text>
+            </box>
+
+        </box>
+
+        <!-- Kolumna 2: kaskada i priorytety -->
+        <box style="flex-direction: column; flex: 1;">
+
+            <text class="muted" style="margin-bottom: 1;">Kaskada (od najniższego priorytetu):</text>
+
+            <!-- Demo kaskady -->
+            <box id="cascade-demo" style="flex-direction: column; margin-bottom: 1;">
+                <text style="height: 1; fg: #94a3b8;">tag text { fg: #e2e8f0 }</text>
+                <text class="card-title">↑ klasa .card-title nadpisuje tag</text>
+                <text style="fg: #4ade80; height: 1;">↑ inline style="fg: #4ade80" wygrywa</text>
+                <text class="muted">Ten box ma id="cascade-demo"</text>
+                <text class="muted">→ double border z #cascade-demo</text>
+            </box>
+
+            <!-- Tabela priorytetów -->
+            <box style="border-style: single; border-color: #334155; padding: 1;
+                        flex-direction: column;">
+                <text style="fg: #94a3b8; height: 1;">Priorytety (rosnąco):</text>
+                <text style="fg: #475569; height: 1;">1. tag     { }</text>
+                <text style="fg: #64748b; height: 1;">2. .klasa  { }</text>
+                <text style="fg: #94a3b8; height: 1;">3. #id     { }</text>
+                <text style="fg: #e2e8f0; height: 1;">4. style=""  ← wygrywa zawsze</text>
+            </box>
+
+        </box>
+
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście  [Tab] Nawigacja</text>
+    </box>
+
+</box>
+
+--- END OF FILE: ./examples/styles_demo.thtml ---
+
 --- FILE: ./examples/todo.thtml ---
-<box style="flex-direction: column; width: 80; height: 24; background-color: #111111; padding: 2;">
-    <box style="flex-direction: row; justify-content: space-between; margin-bottom: 1;">
-        <text style="color: #00ff00; font-weight: bold;">📝 MY TASKS</text>
-        <text style="color: #94a3b8;">Active: <text bind-state="todo_count">3</text></text>
-    </box>
-    
-    <box style="flex-direction: column; gap: 1; border-style: single; border-color: #333333; padding: 1;">
-        <!-- Task Item 1 -->
-        <box style="flex-direction: row; justify-content: space-between; border-style: rounded; border-color: #222222; padding: 0.5;">
-            <text style="color: #ffffff;">[x] Fix authentication bug</text>
-            <text style="color: #666666;">DONE</text>
-        </box>
-        
-        <!-- Task Item 2 -->
-        <box style="flex-direction: row; justify-content: space-between; border-style: rounded; border-color: #38bdf8; padding: 0.5;">
-            <text style="color: #38bdf8;">[ ] Implement Hot Reload</text>
-            <text style="color: #38bdf8; font-style: italic;">IN PROGRESS</text>
-        </box>
-        
-        <!-- Task Item 3 -->
-        <box style="flex-direction: row; justify-content: space-between; border-style: rounded; border-color: #222222; padding: 0.5;">
-            <text style="color: #ffffff;">[ ] Write documentation</text>
-            <text style="color: #666666;">TODO</text>
-        </box>
+<style>
+.task-done   { border-color: #334155; fg: #475569; }
+.task-active { border-color: #38bdf8; fg: #e2e8f0; }
+.task-todo   { border-color: #1e293b; fg: #94a3b8; }
+.task-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    border-style: rounded;
+    padding-left: 1;
+    padding-right: 1;
+    height: 3;
+    margin-bottom: 1;
+}
+.badge {
+    border-style: single;
+    padding-left: 1;
+    padding-right: 1;
+    height: 1;
+}
+.muted { fg: #475569; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #4ade80; height: 1;">📝 Lista zadań — append i List state</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <box style="margin-top: 2; border-style: single; border-color: #00ff00; padding: 0.5; justify-content: center;" event-htmx="inc:todo_count">
-        <text style="color: #00ff00;">+ ADD NEW TASK</text>
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- Lista -->
+        <box style="flex: 1; flex-direction: column; margin-right: 1;">
+
+            <box style="flex-direction: row; justify-content: space-between;
+                        align-items: center; margin-bottom: 1;">
+                <text style="fg: #4ade80; height: 1;">Zadania</text>
+                <box style="flex-direction: row; align-items: center;">
+                    <text class="muted">Lista: </text>
+                    <text style="fg: #4ade80; height: 1;" bind-state="task_list">[]</text>
+                </box>
+            </box>
+
+            <box class="task-row task-done">
+                <text style="height: 1;">[✓] Naprawić auth bug</text>
+                <box class="badge" style="border-color: #334155;">
+                    <text style="fg: #475569; height: 1;">DONE</text>
+                </box>
+            </box>
+
+            <box class="task-row task-active">
+                <text style="height: 1;">[→] Implementacja Hot Reload</text>
+                <box class="badge" style="border-color: #38bdf8;">
+                    <text style="fg: #38bdf8; height: 1;">ACTIVE</text>
+                </box>
+            </box>
+
+            <box class="task-row task-todo">
+                <text style="height: 1;">[ ] Napisać dokumentację</text>
+                <box class="badge" style="border-color: #1e293b;">
+                    <text class="muted">TODO</text>
+                </box>
+            </box>
+
+            <!-- Dodaj do listy przez append: -->
+            <box style="height: 3; border-style: single; border-color: #4ade80;
+                        justify-content: center; align-items: center;
+                        margin-top: 1;" event-htmx="append:task_list=nowe zadanie">
+                <text style="fg: #4ade80; height: 1;">[ + Dodaj do state listy ]</text>
+            </box>
+
+            <box style="height: 1; margin-top: 1;">
+                <text class="muted">append:task_list=nowe dodaje do List state</text>
+            </box>
+
+        </box>
+
+        <!-- Opis wzorca -->
+        <box style="width: 24; border-style: rounded; border-color: #334155;
+                    padding: 1; flex-direction: column;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">List state</text>
+            <text class="muted">append:k=v</text>
+            <text class="muted">dodaje do listy.</text>
+            <text class="muted">clear:k czyści.</text>
+            <text class="muted">bind-state="k"</text>
+            <text class="muted">pokazuje [a, b].</text>
+            <box style="height: 1;"></box>
+            <text class="muted">Stan żyje</text>
+            <text class="muted">przez nawigację.</text>
+        </box>
+
     </box>
 
-    <box style="margin-top: auto; justify-content: center;">
-        <text style="color: #444444;" event-htmx="hello.thtml">Press [Q] to quit · Home</text>
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Dodaj element</text>
     </box>
+
 </box>
 
 --- END OF FILE: ./examples/todo.thtml ---
 
---- FILE: ./examples/vector_demo.thtml ---
-<box style="flex-direction: column; width: 96; height: 32; background-color: #11111b; border-style: rounded; border-color: #bb9af7; padding: 1;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
-        <text style="color: #cdd6f4; font-weight: bold;">🎨 OxiTerm Vector Graphics & Interactive Animation</text>
-        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #bb9af7;" event-htmx="hello.thtml">
-            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
-        </box>
+--- FILE: ./examples/video_demo.thtml ---
+<style>
+.stat-row { flex-direction: row; height: 1; margin-bottom: 1; }
+.stat-key { width: 18; fg: #94a3b8; height: 1; }
+.stat-val { fg: #e2e8f0; height: 1; }
+.muted    { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #fb923c; height: 1;">🎬 Wideo — ffmpeg → CellBuffer → SSH</text>
+        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
     </box>
 
-    <!-- Main Content -->
-    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
-        <!-- Left Side: Interactive Widgets (Rive & Lottie) -->
-        <box style="flex-direction: column; width: 40; gap: 1;">
-            <!-- Rive Interactive Widget -->
-            <box style="height: 12; border-style: rounded; border-color: #a6e3a1; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
-                <text style="color: #a6e3a1; font-weight: bold;">🎮 Rive Interactive State-Machine</text>
-                <img src="toggle.riv" style="width: 24; height: 6;" />
-                <text style="color: #89b4fa; font-style: italic; font-size: 80%;">Hover & Click to toggle state</text>
-            </box>
+    <box style="flex-direction: row; padding: 1; flex: 1;">
 
-            <!-- Lottie Vector Loop -->
-            <box style="height: 11; border-style: rounded; border-color: #f9e2af; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
-                <text style="color: #f9e2af; font-weight: bold;">⏳ Lottie Vector Spinner</text>
-                <img src="loader.json" style="width: 12; height: 6;" />
-                <text style="color: #a6adc8; font-size: 80%;">Ticks 15 FPS via event-loop sleep</text>
-            </box>
+        <!-- Odtwarzacz -->
+        <box style="flex: 1; border-style: rounded; border-color: #fb923c;
+                    justify-content: center; align-items: center;
+                    bg: #000000; margin-right: 1;">
+            <video src="clip.mp4" alt="Demo wideo" style="width: 40; height: 18;" />
         </box>
 
-        <!-- Right Side: SVG Static & Dynamic rendering -->
-        <box style="flex-direction: column; flex: 1; gap: 1;">
-            <box style="flex: 1; border-style: rounded; border-color: #f38ba8; flex-direction: column; padding: 1; align-items: center; justify-content: space-around;">
-                <text style="color: #f38ba8; font-weight: bold;">🖼️ Scalable Vector Graphics (SVG)</text>
-                <!-- SVG Image rendered via resvg and tiny-skia -->
-                <img src="mascot.svg" style="width: 32; height: 16;" />
-                <box style="flex-direction: column; align-items: center;">
-                    <text style="color: #cdd6f4; font-size: 90%;">High-fidelity vector rasterization</text>
-                    <text style="color: #585b70; font-size: 80%;">Fully cached & hardware encoded via Sixel/Kitty</text>
+        <!-- Panel informacyjny -->
+        <box style="width: 30; flex-direction: column;">
+
+            <box style="border-style: rounded; border-color: #38bdf8;
+                        padding: 1; flex-direction: column; margin-bottom: 1;">
+                <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Pipeline</text>
+                <box class="stat-row">
+                    <text class="stat-key">Dekoder:</text>
+                    <text class="stat-val">ffmpeg stdin</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Format:</text>
+                    <text class="stat-val">RGBA raw</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Buffer:</text>
+                    <text class="stat-val">Arc&lt;Vec&lt;u8&gt;&gt;</text>
+                </box>
+                <box class="stat-row">
+                    <text class="stat-key">Eviction:</text>
+                    <text class="stat-val">5s bezczynności</text>
                 </box>
             </box>
-        </box>
-    </box>
 
-    <!-- Footer -->
-    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
-        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
-    </box>
-</box>
-
---- END OF FILE: ./examples/vector_demo.thtml ---
-
---- FILE: ./examples/video_demo.thtml ---
-<box style="flex-direction: column; width: 84; height: 32; background-color: #11111b; border-style: rounded; border-color: #f5c2e7; padding: 1;">
-    <!-- Header -->
-    <box style="height: 3; background-color: #181825; border-style: rounded; border-color: #45475a; justify-content: space-between; align-items: center; padding-left: 2; padding-right: 2; margin-bottom: 1;">
-        <text style="color: #cdd6f4; font-weight: bold;">🎬 OxiTerm High-Performance Video Streaming</text>
-        <box style="background-color: #313244; padding-left: 1; padding-right: 1; border-style: rounded; border-color: #f5c2e7;" event-htmx="hello.thtml">
-            <text style="color: #cdd6f4; font-weight: bold;">[ Back to Home ]</text>
-        </box>
-    </box>
-
-    <!-- Main Content -->
-    <box style="flex: 1; flex-direction: row; gap: 1; padding: 0.5;">
-        <!-- Left Side: Video Player -->
-        <box style="flex: 1; border-style: rounded; border-color: #f5c2e7; justify-content: center; align-items: center; background-color: #000000; overflow: hidden;">
-            <!-- Renders the video file -->
-            <video src="clip.mp4" style="width: 44; height: 22;" />
-        </box>
-
-        <!-- Right Side: Statistics & Controls -->
-        <box style="width: 32; flex-direction: column; gap: 1;">
-            <!-- Player Stats Box -->
-            <box style="height: 11; border-style: rounded; border-color: #89b4fa; flex-direction: column; padding: 1; justify-content: space-around;">
-                <text style="color: #89b4fa; font-weight: bold;">📊 Engine Pipeline</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Decoding: FFmpeg-compatible</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Speed: up to 60 FPS</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Target Size: 44 x 22 cells</text>
-                <text style="color: #cdd6f4; font-size: 90%;">• Frame delta-updates active</text>
+            <box style="border-style: rounded; border-color: #4ade80;
+                        padding: 1; flex-direction: column;">
+                <text style="fg: #4ade80; height: 1; margin-bottom: 1;">FPS wg protokołu</text>
+                <text class="muted">Kitty Graphics: 30fps</text>
+                <text class="muted">Sixel:          10fps</text>
+                <text class="muted">Unicode blocks:  2fps</text>
+                <box style="height: 1;"></box>
+                <text class="muted">Zero buf.clone()</text>
+                <text class="muted">RwLock na frame</text>
             </box>
 
-            <!-- Render Fallbacks Box -->
-            <box style="height: 11; border-style: rounded; border-color: #e0af68; flex-direction: column; padding: 1; justify-content: space-around;">
-                <text style="color: #e0af68; font-weight: bold;">🛡️ Graphics Fallbacks</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Kitty Gfx Protocol (high-res)</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Sixel Codec (medium-res)</text>
-                <text style="color: #cdd6f4; font-size: 80%;">- Half-Block Unicode (ASCII/TUI)</text>
-                <text style="color: #a6adc8; font-size: 75%; font-style: italic;">Adaptive auto-detection</text>
-            </box>
         </box>
+
     </box>
 
-    <!-- Footer -->
-    <box style="height: 1; justify-content: center; border-top: #313244; padding-top: 0.5;">
-        <text style="color: #585b70;">Press [Q] to quit · Interactive mouse support active</text>
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Wyjście — wymaga ffmpeg w systemie</text>
     </box>
+
 </box>
 
 --- END OF FILE: ./examples/video_demo.thtml ---
