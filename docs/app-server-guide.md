@@ -1,14 +1,14 @@
-# Integracja z Zewnętrznym Serwerem Aplikacji (App Server)
+# Integration with an External Application Server (App Server)
 
-OxiTerm odpowiada za warstwę interfejsu użytkownika (THTML/TCSS), obsługę zdarzeń terminala (klawiatura/mysz) oraz zarządzanie prostym stanem sesji (`StateManager`). Jednak dla operacji wykraczających poza wbudowane akcje — takich jak walidacja formularzy, zapytania do bazy danych czy integracja z zewnętrznymi API — konieczne jest podłączenie zewnętrznego serwera aplikacji (**App Server**).
+OxiTerm is responsible for the user interface layer (THTML/TCSS), handling terminal events (keyboard/mouse), and managing basic session state (`StateManager`). However, for operations that go beyond built-in actions — such as form validation, database queries, or external API integration — you must connect an external application server (**App Server**).
 
 ---
 
-## 1. Protokół Komunikacji
+## 1. Communication Protocol
 
-Komunikacja między OxiTerm a zewnętrznym serwerem odbywa się za pomocą żądań HTTP POST. Przy każdym wystąpieniu zdarzenia `event-htmx`, OxiTerm wysyła asynchroniczne zapytanie z ciałem w formacie JSON na adres url zdefiniowany w zmiennej środowiskowej `OXITERM_APP_SERVER`.
+Communication between OxiTerm and the external server takes place using HTTP POST requests. On every `event-htmx` event, OxiTerm sends an asynchronous request with a JSON payload to the URL defined in the `OXITERM_APP_SERVER` environment variable.
 
-### Schemat Payloadu JSON (OxiTerm → App Server)
+### JSON Payload Schema (OxiTerm → App Server)
 
 ```json
 {
@@ -21,22 +21,22 @@ Komunikacja między OxiTerm a zewnętrznym serwerem odbywa się za pomocą żąd
 }
 ```
 
-### Opis Pól
+### Field Descriptions
 
-| Pole | Typ | Opis |
+| Field | Type | Description |
 |---|---|---|
-| `action` | string | Surowa wartość atrybutu `event-htmx` (np. `"login"`, `"save_record"`), która wyzwoliła to zdarzenie. |
-| `state` | object | Słownik (mapa klucz-wartość) reprezentujący bieżący stan sesji. Wszystkie wartości stanu są przesyłane w formie ciągów znaków (String). |
-| `session_id` | integer | Unikalny identyfikator przypisany do danej sesji SSH lub WebSocket. Służy do rozróżniania poszczególnych połączonych użytkowników. |
+| `action` | string | The raw value of the `event-htmx` attribute (e.g. `"login"`, `"save_record"`) that triggered the event. |
+| `state` | object | A key-value dictionary representing the current session state. All state values are sent as strings. |
+| `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
 
 > [!WARNING]
-> Wysyłanie zdarzeń przez OxiTerm odbywa się w trybie **fire-and-forget** (wyślij i zapomnij). Serwer OxiTerm nie czeka na odpowiedź zwrotną (HTTP response) z serwera aplikacji przed ponownym wyrenderowaniem ekranu. Odpowiedź z serwera aplikacji powinna mieć kod statusu `204 No Content` lub `200 OK` z pustym body.
+> Event propagation by OxiTerm operates in a **fire-and-forget** mode. The OxiTerm server does not wait for an HTTP response from the application server before re-rendering the screen. The response from the application server should have a status code of `204 No Content` or `200 OK` with an empty body.
 
 ---
 
-## 2. Implementacja w Pythonie
+## 2. Python Implementation
 
-### Flask (prosty przykład)
+### Flask (simple example)
 ```bash
 pip install flask
 ```
@@ -55,10 +55,10 @@ def handle_event():
     if action == "validate_form":
         email = state.get("email", "")
         if "@" not in email:
-            print(f"Sesja {session_id}: Niepoprawny format adresu email")
+            print(f"Session {session_id}: Invalid email format")
 
     elif action == "save_record":
-        print(f"Zapisywanie rekordu dla sesji {session_id}: {state}")
+        print(f"Saving record for session {session_id}: {state}")
 
     return "", 204
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     app.run(port=3000)
 ```
 
-### FastAPI (asynchroniczny serwer z Pydantic)
+### FastAPI (asynchronous server with Pydantic)
 ```bash
 pip install fastapi uvicorn
 ```
@@ -92,19 +92,19 @@ async def handle(ev: OxiEvent):
     return {}
 
 async def validate_email(session_id: int, state: dict[str, str]):
-    # Logika walidacji...
+    # Validation logic...
     pass
 
 async def save_to_db(session_id: int, state: dict[str, str]):
-    # Zapis do bazy...
+    # DB Save...
     pass
 
-# Uruchomienie: uvicorn server:app --port 3000
+# Run with: uvicorn server:app --port 3000
 ```
 
 ---
 
-## 3. Implementacja w Node.js (JavaScript / TypeScript)
+## 3. Node.js Implementation (JavaScript / TypeScript)
 
 ### Express
 ```bash
@@ -122,13 +122,13 @@ app.post("/events", (req, res) => {
   switch (action) {
     case "login":
       if (state.username === "admin" && state.password === "secret") {
-        console.log(`Sesja ${session_id}: autoryzacja powiodła się`);
+        console.log(`Session ${session_id}: authentication succeeded`);
       }
       break;
 
     case "fetch_data":
       fetchFromDB(state).then(data => {
-        console.log(`Sesja ${session_id}: pobrano dane`, data);
+        console.log(`Session ${session_id}: data fetched`, data);
       });
       break;
   }
@@ -145,7 +145,7 @@ const app = new Hono()
 
 app.post("/events", async c => {
   const { action, state, session_id } = await c.req.json()
-  console.log(`[Sesja ${session_id}] Zdarzenie: ${action}`, state)
+  console.log(`[Session ${session_id}] Event: ${action}`, state)
   return c.body(null, 204)
 })
 
@@ -154,9 +154,9 @@ export default { port: 3000, fetch: app.fetch }
 
 ---
 
-## 4. Implementacja w Rust (Axum)
+## 4. Rust Implementation (Axum)
 
-Uruchomienie serwera aplikacji w języku Rust pozwala na współdzielenie typów struktur zdarzeń (np. poprzez wspólny crate w workspace).
+Running your application server in Rust allows you to share event structure types (e.g., through a shared crate in a workspace).
 
 ```toml
 [dependencies]
@@ -183,11 +183,11 @@ async fn handle(Json(ev): Json<OxiEvent>) -> StatusCode {
         "save_config" => {
             let k = ev.state.get("config_key").cloned().unwrap_or_default();
             let v = ev.state.get("config_val").cloned().unwrap_or_default();
-            println!("[Sesja {}] Zapisano: {}={}", ev.session_id, k, v);
+            println!("[Session {}] Saved: {}={}", ev.session_id, k, v);
         }
         "run_job" => {
             tokio::spawn(async move {
-                // Wykonanie długotrwałego zadania w tle...
+                // Execute long-running background task...
             });
         }
         _ => {}
@@ -205,9 +205,9 @@ async fn main() {
 
 ---
 
-## 5. Kompletny Przepływ (Formularz logowania)
+## 5. Complete Flow (Login Form Example)
 
-Oto jak zbudować interfejs THTML, aby poprawnie przekazywał dane wejściowe do Twojego serwera aplikacji:
+Here is how to construct a THTML interface to pass input values to your application server:
 
 ```html
 <style>
@@ -218,22 +218,22 @@ Oto jak zbudować interfejs THTML, aby poprawnie przekazywał dane wejściowe do
 </style>
 
 <box style="flex-direction: column; width: 60; height: 24; bg: #0f172a;">
-  <text style="fg: #38bdf8; height: 1; margin-bottom: 2;">Panel Logowania</text>
+  <text style="fg: #38bdf8; height: 1; margin-bottom: 2;">Login Panel</text>
 
-  <text style="fg: #94a3b8; height: 1;">Nazwa użytkownika:</text>
-  <input bind-value="username" class="field" placeholder="Wpisz nazwę..."/>
+  <text style="fg: #94a3b8; height: 1;">Username:</text>
+  <input bind-value="username" class="field" placeholder="Enter username..."/>
 
-  <text style="fg: #94a3b8; height: 1; margin-top: 1;">Hasło:</text>
+  <text style="fg: #94a3b8; height: 1; margin-top: 1;">Password:</text>
   <input bind-value="password" class="field" placeholder="••••••"/>
 
-  <!-- Kliknięcie wyzwoli akcję "login" -->
+  <!-- Clicking will trigger the "login" action -->
   <box class="btn" style="margin-top: 2;" event-htmx="login">
-    <text style="fg: #4ade80; height: 1;">Zaloguj się</text>
+    <text style="fg: #4ade80; height: 1;">Log In</text>
   </box>
 </box>
 ```
 
-Gdy użytkownik uzupełni pola i kliknie przycisk "Zaloguj się", OxiTerm wyśle do App Servera następujące żądanie POST:
+When the user fills in the fields and clicks the "Log In" button, OxiTerm will send the following POST request to the App Server:
 ```json
 {
   "action": "login",
@@ -247,8 +247,8 @@ Gdy użytkownik uzupełni pola i kliknie przycisk "Zaloguj się", OxiTerm wyśle
 
 ---
 
-## 6. Współbieżność i Wzorce Wielosesyjne
+## 6. Concurrency and Multi-Session Patterns
 
-Gdy serwer OxiTerm obsługuje wielu użytkowników jednocześnie, serwer aplikacji musi poprawnie rozróżniać sesje:
-* **Identyfikacja użytkownika:** Zawsze używaj pola `session_id` jako unikalnego klucza do identyfikacji bieżącego połączenia. Możesz mapować `session_id` na identyfikator zalogowanego użytkownika w pamięci podręcznej (np. w bazie Redis lub w HashMapie w pamięci procesu).
-* **Izolacja stanu:** OxiTerm automatycznie izoluje i przechowuje osobny stan `StateManager` dla każdej podłączonej sesji SSH/Web. Twój App Server również powinien zachować pełną izolację danych pomiędzy różnymi wartościami `session_id`.
+When the OxiTerm server handles multiple users concurrently, the application server must properly distinguish between sessions:
+* **User Identification:** Always use the `session_id` field as the unique key to identify the current connection. You can map `session_id` to a logged-in user identifier in a cache (e.g. in Redis or an in-memory HashMap).
+* **State Isolation:** OxiTerm automatically isolates and maintains a separate `StateManager` state for each connected SSH/Web session. Your App Server should also maintain complete data isolation between different `session_id` values.

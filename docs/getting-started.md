@@ -1,44 +1,44 @@
-# Przewodnik: Tworzenie aplikacji z OxiTerm
+# Guide: Creating Applications with OxiTerm
 
-OxiTerm to framework do tworzenia aplikacji TUI (Terminal User Interface) renderowanych po stronie serwera (Server-Side Rendered). Interfejs opisujesz deklaratywnie za pomocą języka znaczników **THTML** oraz stylizujesz za pomocą **TCSS**. Serwer OxiTerm parsuje te pliki, oblicza układ (layout) za pomocą Flexboxa, a następnie przesyła minimalne instrukcje ANSI (diffy) do klienta po SSH lub WebSocket. Klient potrzebuje jedynie zwykłego terminala — nie musi instalować żadnego dedykowanego oprogramowania.
+OxiTerm is a framework for creating server-side rendered TUI (Terminal User Interface) applications. You describe the interface declaratively using the **THTML** markup language and style it using **TCSS**. The OxiTerm server parses these files, computes the layout using Flexbox, and then sends minimal ANSI instructions (diffs) to the client via SSH or WebSocket. The client only needs a standard terminal — no dedicated software needs to be installed.
 
 ---
 
-## 1. Instalacja
+## 1. Installation
 
-Do zbudowania OxiTerm ze źródeł wymagane jest środowisko Rust. Jeśli go nie posiadasz, zainstaluj je ze strony: [https://rustup.rs](https://rustup.rs)
+A Rust environment is required to build OxiTerm from source. If you don't have it, install it from: [https://rustup.rs](https://rustup.rs)
 
-Następnie sklonuj repozytorium i zbuduj projekt:
+Then clone the repository and build the project:
 ```bash
 git clone https://github.com/slavek-is-hyperreal/oxiterm && cd oxiterm
 cargo build --release
 ```
-Skompilowany plik wykonywalny znajdziesz w: `target/release/oxiterm`
+You can find the compiled executable in: `target/release/oxiterm`
 
 ---
 
-## 2. Szybki start (Pierwsza aplikacja)
+## 2. Quick Start (First Application)
 
-Utwórz plik o nazwie `hello.thtml` z następującą zawartością:
+Create a file named `hello.thtml` with the following content:
 
 ```html
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
   <box style="height: 3; bg: #1e293b; align-items: center;
               padding-left: 2; border-style: single; border-color: #334155;">
-    <text style="fg: #38bdf8; height: 1;">Witaj w OxiTerm!</text>
+    <text style="fg: #38bdf8; height: 1;">Welcome to OxiTerm!</text>
   </box>
   <box style="padding: 2;">
-    <text style="fg: #e2e8f0; height: 1;">To jest aplikacja TUI renderowana po stronie serwera.</text>
+    <text style="fg: #e2e8f0; height: 1;">This is a server-side rendered TUI application.</text>
   </box>
 </box>
 ```
 
-Uruchom serwer w trybie deweloperskim (bez autoryzacji):
+Start the server in development mode (without authentication):
 ```bash
 oxiterm serve hello.thtml --port 2222 --no-auth
 ```
 
-Teraz możesz połączyć się z aplikacją z dowolnego terminala za pomocą SSH:
+Now you can connect to the application from any terminal using SSH:
 ```bash
 ssh localhost -p 2222
 ```
@@ -47,21 +47,21 @@ ssh localhost -p 2222
 
 ## 3. Hot Reload
 
-OxiTerm automatycznie monitoruje serwowany plik `.thtml`. Po edycji i zapisaniu pliku na dysku, wszystkie aktywne sesje połączeń SSH i Web zostaną **natychmiast zaktualizowane** bez konieczności ponownego łączenia. Co ważne, stan aplikacji (zapisany w `StateManager`) jest w pełni zachowywany przy przeładowaniu układu!
+OxiTerm automatically monitors the served `.thtml` file. After editing and saving the file to disk, all active SSH and Web connection sessions will be **instantly updated** without needing to reconnect. Crucially, the application state (stored in `StateManager`) is fully preserved during layout reloads!
 
 ---
 
-## 4. Dodawanie Stanu i Akcji
+## 4. Adding State and Actions
 
-Stanem i interakcją zarządzasz za pomocą atrybutów `bind-state` oraz `event-htmx`:
+You manage state and interaction using `bind-state` and `event-htmx` attributes:
 
 ```html
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
-  <!-- bind-state wiąże zawartość tekstową z kluczem stanu "n" -->
+  <!-- bind-state binds text content to the state key "n" -->
   <text bind-state="n" style="fg: #fbbf24; height: 1; margin: 2;">0</text>
   
   <box style="flex-direction: row; padding-left: 2;">
-    <!-- event-htmx definiuje akcję po kliknięciu lub zatwierdzeniu Enterem -->
+    <!-- event-htmx defines the action when clicked or submitted with Enter -->
     <box style="border-style: single; border-color: #f87171; padding: 1; height: 3;
                align-items: center; margin-right: 1;" event-htmx="dec:n">
       <text style="fg: #f87171; height: 1;">−</text>
@@ -76,9 +76,9 @@ Stanem i interakcją zarządzasz za pomocą atrybutów `bind-state` oraz `event-
 
 ---
 
-## 5. Klasy CSS
+## 5. CSS Classes
 
-Aby uniknąć powtarzania styli inline, możesz zdefiniować blok `<style>` zawierający reguły TCSS:
+To avoid repeating inline styles, you can define a `<style>` block containing TCSS rules:
 
 ```html
 <style>
@@ -88,16 +88,16 @@ Aby uniknąć powtarzania styli inline, możesz zdefiniować blok `<style>` zawi
 </style>
 
 <box class="card blue" style="height: 8;">
-  <text style="fg: #38bdf8; height: 1;">Niebieska karta</text>
-  <text class="muted">Przykładowa zawartość karty.</text>
+  <text style="fg: #38bdf8; height: 1;">Blue Card</text>
+  <text class="muted">Sample card content.</text>
 </box>
 ```
 
 ---
 
-## 6. Zakładki z użyciem `bind-show`
+## 6. Tabs Using `bind-show`
 
-Atrybut `bind-show` pozwala na warunkowe ukrywanie lub pokazywanie elementów na podstawie stanu:
+The `bind-show` attribute allows you to conditionally hide or show elements based on state:
 
 ```html
 <box style="flex-direction: row; height: 3;">
@@ -105,91 +105,91 @@ Atrybut `bind-show` pozwala na warunkowe ukrywanie lub pokazywanie elementów na
     <text style="height: 1;">Info</text>
   </box>
   <box event-htmx="set:tab=logs" style="border-style: single; padding: 1; height: 3;">
-    <text style="height: 1;">Logi</text>
+    <text style="height: 1;">Logs</text>
   </box>
 </box>
 
-<!-- tab=false oznacza, że element jest widoczny, gdy klucz "tab" jest nieobecny w stanie (domyślnie widoczny) -->
+<!-- tab=false means the element is visible when the key "tab" is absent in state (visible by default) -->
 <box bind-show="tab=false" style="padding: 2;">
-  <text style="height: 1;">Zawartość zakładki Info.</text>
+  <text style="height: 1;">Info tab content.</text>
 </box>
 
 <box bind-show="tab=logs" style="padding: 2;">
-  <text style="height: 1;">Zawartość zakładki Logi.</text>
+  <text style="height: 1;">Logs tab content.</text>
 </box>
 ```
 
 ---
 
-## 7. Pola tekstowe (Input)
+## 7. Text Input Fields (Input)
 
-Pole `<input>` pozwala na pobieranie danych wpisywanych przez użytkownika:
+The `<input>` tag allows you to collect data typed by the user:
 
 ```html
-<input bind-value="query" placeholder="Szukaj..."
+<input bind-value="query" placeholder="Search..."
        style="height: 1; border-style: single; border-color: #38bdf8;"/>
 <text bind-state="query" style="fg: #94a3b8; height: 1;"/>
 ```
 
-* Użyj klawisza `Tab`, aby ustawić focus na elemencie `<input>`.
-* Zacznij pisać — bufor wejściowy Predictive Echo natychmiast zaktualizuje widok (lokalnie).
-* Klawisz `Backspace` usuwa ostatni znak.
-* Klawisz `Enter` zatwierdza wpisany tekst i zapisuje go w stanie pod kluczem zdefiniowanym w `bind-value` (np. `"query"`), a także uruchamia akcję `event-htmx`, jeśli została podana.
+* Use the `Tab` key to focus on the `<input>` element.
+* Start typing — the Predictive Echo input buffer will immediately update the view (locally).
+* The `Backspace` key deletes the last character.
+* The `Enter` key commits the typed text and saves it in the state under the key defined in `bind-value` (e.g. `"query"`), and also triggers the `event-htmx` action if defined.
 
 ---
 
-## 8. Obrazy i Media
+## 8. Images and Media
 
-OxiTerm umożliwia bezpośrednie osadzanie grafiki wektorowej, animacji oraz plików wideo:
+OxiTerm enables directly embedding vector graphics, animations, and video files:
 
 ```html
-<img src="logo.svg"    alt="Logo projektu" style="width: 20; height: 10;"/>
-<img src="bell.json"   alt="Wektorowa animacja dzwonka" style="width: 12; height: 6;"/>
-<video src="clip.mp4"  alt="Prezentacja wideo" style="width: 40; height: 20;"/>
+<img src="logo.svg"    alt="Project logo" style="width: 20; height: 10;"/>
+<img src="bell.json"   alt="Vector bell animation" style="width: 12; height: 6;"/>
+<video src="clip.mp4"  alt="Video presentation" style="width: 40; height: 20;"/>
 ```
 
-* **Automatyczna detekcja protokołu:** OxiTerm dynamicznie dopasowuje format graficzny do możliwości Twojego terminala (Kitty Graphics Protocol → Sixel → znaki Unicode `▀▄█`).
-* **Formaty:** Obsługiwane są obrazy SVG, PNG, JPG oraz animacje Lottie (`.json`).
-* **Wideo:** Odtwarzanie wideo wymaga obecności narzędzia `ffmpeg` w zmiennej środowiskowej `PATH`.
+* **Automatic Protocol Detection:** OxiTerm dynamically matches the graphic format to your terminal capabilities (Kitty Graphics Protocol → Sixel → Unicode character blocks `▀▄█`).
+* **Formats:** SVG, PNG, JPG images and Lottie animations (`.json`) are supported.
+* **Video:** Video playback requires the `ffmpeg` tool to be present in your environment's `PATH`.
 
 ---
 
-## 9. Klawiszologia
+## 9. Key Bindings
 
-| Klawisz | Działanie |
+| Key | Action |
 |---------|-----------|
-| `Tab` / `↓` / `→` | Przejście do następnego interaktywnego elementu (focus) |
-| `Shift + Tab` / `↑` / `←` | Powrót do poprzedniego elementu |
-| `Enter` | Aktywacja zaznaczonego elementu |
-| `PgUp` / `b` | Przewinięcie widoku o jedną stronę w górę |
-| `PgDn` / `Spacja` | Przewinięcie widoku o jedną stronę w dół |
-| `Q` / `q` | Zamknięcie sesji i odłączenie |
+| `Tab` / `↓` / `→` | Go to the next interactive element (focus) |
+| `Shift + Tab` / `↑` / `←` | Return to the previous element |
+| `Enter` | Activate the focused element |
+| `PgUp` / `b` | Scroll view one page up |
+| `PgDn` / `Space` | Scroll view one page down |
+| `Q` / `q` | Close session and disconnect |
 
 ---
 
-## 10. Nawigacja między stronami
+## 10. Page Navigation
 
-Możesz zmieniać całe ekrany, wskazując plik `.thtml` w akcji `event-htmx`:
+You can switch entire screens by pointing to a `.thtml` file in the `event-htmx` action:
 
 ```html
-<text event-htmx="settings.thtml" style="height: 1;">→ Przejdź do ustawień</text>
+<text event-htmx="settings.thtml" style="height: 1;">→ Go to settings</text>
 ```
 
 > [!TIP]
-> Stan sesji (`StateManager`) jest współdzielony i **zachowywany** podczas nawigacji między stronami pliku `.thtml`. Zmienne ustawione na jednej stronie będą dostępne na nowo załadowanej stronie.
+> The session state (`StateManager`) is shared and **preserved** during navigation between `.thtml` pages. Variables set on one page will be available on the newly loaded page.
 
 ---
 
-## 11. Integracja z zewnętrznym serwerem aplikacji (App Server)
+## 11. Integration with an External Application Server (App Server)
 
-Jeśli Twoja aplikacja wymaga złożonej logiki biznesowej, dostępu do bazy danych lub zewnętrznych API, możesz podłączyć zewnętrzny serwer aplikacji. 
+If your application requires complex business logic, database access, or external APIs, you can connect an external application server.
 
-Uruchom OxiTerm ze zmienną `OXITERM_APP_SERVER`:
+Run OxiTerm with the `OXITERM_APP_SERVER` variable:
 ```bash
 OXITERM_APP_SERVER=http://localhost:3000/events oxiterm serve app.thtml
 ```
 
-Przy każdej akcji użytkownika (`event-htmx`), OxiTerm wyśle asynchroniczny (fire-and-forget) POST JSON do zdefiniowanego adresu url:
+For every user action (`event-htmx`), OxiTerm will send an asynchronous (fire-and-forget) POST JSON to the defined URL:
 ```json
 {
   "action": "save_profile",
@@ -197,20 +197,20 @@ Przy każdej akcji użytkownika (`event-htmx`), OxiTerm wyśle asynchroniczny (f
   "session_id": 42
 }
 ```
-Więcej informacji znajdziesz w dokumencie [app-server-guide.md](app-server-guide.md).
+For more information, see [app-server-guide.md](app-server-guide.md).
 
 ---
 
-## 12. Zmienne Środowiskowe
+## 12. Environment Variables
 
-Możesz konfigurować zachowanie serwera za pomocą poniższych zmiennych:
+You can configure the server behavior using the following environment variables:
 
-| Zmienna | Domyślnie | Opis |
-|---------|-----------|------|
-| `OXITERM_PORT` | `2222` | Port, na którym nasłuchuje serwer SSH |
-| `OXITERM_HOST` | `0.0.0.0` | Adres IP nasłuchu SSH |
-| `OXITERM_PASSWORD` | (brak) | Hasło do logowania SSH (jeśli ustawione, włącza autoryzację hasłem) |
-| `OXITERM_NO_AUTH` | `false` | Wyłącza autoryzację SSH (wymagane w trybie deweloperskim, gdy brak kluczy autoryzowanych) |
-| `OXITERM_WEB_PORT` | `8080` | Port serwera HTTP/WebSocket dla dostępu przez przeglądarkę |
-| `OXITERM_APP_SERVER` | (brak) | Adres URL zewnętrznego serwera aplikacji dla akcji event-htmx |
-| `RUST_LOG` | `warn` | Poziom logowania serwera (np. `debug`, `info`, `warn`, `error`) |
+| Variable | Default | Description |
+|---|---|---|
+| `OXITERM_PORT` | `2222` | Port on which the SSH server listens |
+| `OXITERM_HOST` | `0.0.0.0` | SSH listening IP address |
+| `OXITERM_PASSWORD` | (none) | SSH login password (if set, enables password authentication) |
+| `OXITERM_NO_AUTH` | `false` | Disables SSH authentication (required in dev mode when authorized_keys are missing) |
+| `OXITERM_WEB_PORT` | `8080` | HTTP/WebSocket server port for web browser access |
+| `OXITERM_APP_SERVER` | (none) | URL of the external application server for event-htmx actions |
+| `RUST_LOG` | `warn` | Server logging level (e.g. `debug`, `info`, `warn`, `error`) |

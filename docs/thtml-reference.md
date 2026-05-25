@@ -1,153 +1,153 @@
 # THTML — Terminal HTML Language Reference
 
-THTML (Terminal HTML) to deklaratywny język znaczników OxiTerm służący do budowania interfejsów TUI (Terminal User Interface) renderowanych po stronie serwera. Jest to podzbiór XML ze ścisłą strukturą tagów oraz małym, wyspecjalizowanym słownikiem atrybutów.
+THTML (Terminal HTML) is OxiTerm's declarative markup language used to build server-side rendered TUI (Terminal User Interface) applications. It is a subset of XML with a strict tag structure and a small, specialized dictionary of attributes.
 
 ---
 
-## 1. Struktura dokumentu
+## 1. Document Structure
 
-Każdy dokument THTML jest parsuwany do drzewa węzłów, którego domyślnym, ukrytym korzeniem jest węzeł `<screen>`. W dowolnym miejscu dokumentu (zazwyczaj na początku) może pojawić się opcjonalny blok `<style>` zawierający definicje reguł stylizowania TCSS.
+Every THTML document is parsed into a tree of nodes, where the default, implicit root is the `<screen>` node. An optional `<style>` block containing TCSS styling rule definitions can appear anywhere in the document (usually at the beginning).
 
 ```html
-<!-- Opcjonalny blok stylów -->
+<!-- Optional style block -->
 <style>
   .btn { border-style: single; border-color: #4ade80; }
   .header-text { fg: #38bdf8; height: 1; }
 </style>
 
-<!-- Drzewo komponentów interfejsu -->
+<!-- UI components tree -->
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
-  <text class="header-text">Witaj w OxiTerm!</text>
+  <text class="header-text">Welcome to OxiTerm!</text>
 </box>
 ```
 
-Pliki nie powinny zawierać elementów specyficznych dla przeglądarkowego HTML, takich jak `<!DOCTYPE>`, `<html>`, `<head>` czy `<body>`.
+Files must not contain elements specific to browser HTML, such as `<!DOCTYPE>`, `<html>`, `<head>`, or `<body>`.
 
 ---
 
-## 2. Obsługiwane Tagi
+## 2. Supported Tags
 
-OxiTerm wspiera dokładnie siedem tagów. Użycie nieznanego tagu spowoduje błąd parsowania dokumentu.
+OxiTerm supports exactly seven tags. Using an unknown tag will cause a document parsing error.
 
-| Tag | Rola | Dzieci | Uwagi |
+| Tag | Role | Children | Notes |
 |---|---|---|---|
-| `<screen>` | Niejawny korzeń | Dowolne | Tworzony automatycznie przez parser, nigdy nie pisze się go wprost. |
-| `<box>` | Kontener układu | Dowolne | Odpowiednik HTML-owego `<div>`. Domyślnie działa jako kontener Flexbox. |
-| `<text>` | Tekst wierszowy | Brak (tylko tekst) | Wyświetla treść tekstową. Wspiera Unicode, znaki dwukomórkowe (CJK) oraz emoji. |
-| `<input>` | Pole tekstowe | Brak | Służy do pobierania tekstu od użytkownika. Wymaga atrybutu `bind-value`. |
-| `<button>` | Interaktywny przycisk | Brak (tylko tekst) | Węzeł focusowalny klawiaturą, uruchamia akcję zdefiniowaną w `event-htmx`. |
-| `<img>` | Obraz lub animacja | Brak | Wyświetla pliki SVG, PNG, JPG oraz animacje Lottie (`.json`). |
-| `<video>` | Odtwarzacz wideo | Brak | Płynne odtwarzanie filmów w tle. Wymaga obecności programu `ffmpeg` w systemie. |
+| `<screen>` | Implicit root | Any | Created automatically by the parser, never written directly. |
+| `<box>` | Layout container | Any | Equivalent to HTML `<div>`. Operates as a Flexbox container by default. |
+| `<text>` | Inline text | None (text only) | Displays text content. Supports Unicode, double-width characters (CJK), and emojis. |
+| `<input>` | Text field | None | Used to collect user input. Requires the `bind-value` attribute. |
+| `<button>` | Interactive button | None (text only) | Focusable keyboard node; triggers the action defined in `event-htmx`. |
+| `<img>` | Image or animation | None | Displays SVG, PNG, JPG files and Lottie animations (`.json`). |
+| `<video>` | Video player | None | Play video files smoothly in the background. Requires `ffmpeg` in the system. |
 
 > [!WARNING]
-> Tagi `<img>` oraz `<input>` mogą być samozamykające się (`<img />`, `<input />`). Pozostałe tagi bezwzględnie wymagają tagów zamykających (np. `<text>Zawartość</text>`).
+> The `<img>` and `<input>` tags can be self-closing (`<img />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
 
 ---
 
-## 3. Atrybuty Uniwersalne
+## 3. Universal Attributes
 
-Poniższe atrybuty mogą być aplikowane do każdego typu węzła:
+The following attributes can be applied to any node type:
 
-| Atrybut | Typ wartości | Opis |
+| Attribute | Value Type | Description |
 |---|---|---|
-| `id` | Tekst | Unikalny identyfikator węzła w drzewie. Wykorzystywany przez selektor CSS `#id`. |
-| `class` | Tekst (rozdzielany spacjami) | Klasy stylów TCSS. Aplikowane zgodnie z kolejnością występowania w arkuszu stylów. |
-| `style` | Styl TCSS | Deklaracje stylów inline (rozdzielane średnikami). Mają najwyższy priorytet w kaskadzie. |
-| `event-htmx` | Tekst akcji | Akcja (lub lista akcji) wywoływana po kliknięciu elementu lub wciśnięciu klawisza `Enter`. |
-| `bind-state` | Klucz stanu | Reaktywnie wyświetla bieżącą wartość powiązanego klucza ze `StateManager` jako treść tekstową. |
-| `bind-show` | Tekst warunku | Warunkowo ukrywa/pokazuje węzeł. Węzeł ukryty jest całkowicie usuwany z layoutu. |
+| `id` | Text | Unique identifier of the node in the tree. Used by the CSS `#id` selector. |
+| `class` | Text (space-separated) | TCSS style classes. Applied in the order they appear in the stylesheet. |
+| `style` | TCSS Style | Inline style declarations (semicolon-separated). Have the highest priority in the cascade. |
+| `event-htmx` | Action text | Action (or sequence of actions) triggered when the element is clicked or when `Enter` is pressed. |
+| `bind-state` | State key | Reactively displays the current value of the associated key from `StateManager` as text content. |
+| `bind-show` | Condition text | Conditionally hides/shows the node. Hidden nodes are completely removed from the layout. |
 
 ---
 
-## 4. Atrybuty Specyficzne dla Tagów
+## 4. Tag-Specific Attributes
 
-| Tag | Atrybut | Opis |
+| Tag | Attribute | Description |
 |---|---|---|
-| `<img>`, `<video>` | `src` | Ścieżka relatywna do pliku zasobu (względem katalogu z plikiem `.thtml`). Ścieżki są sprawdzane pod kątem prób ataków typu Path Traversal. |
-| `<img>`, `<video>` | `alt` | Tekstowy opis elementu multimedialnego, wykorzystywany w trybie ułatwień dostępu (`--a11y`). |
-| `<input>` | `placeholder` | Tekst pomocniczy wyświetlany w polu, gdy bufor wpisywania jest pusty. |
-| `<input>` | `name` | Nazwa maszynowa pola wejściowego używana jako etykieta w drzewie ułatwień dostępu (Accessibility Tree). |
-| `<input>` | `bind-value` | Klucz stanu w `StateManager`, w którym **na bieżąco** (przy każdym wciśnięciu klawisza) zapisywany jest wpisywany tekst. |
+| `<img>`, `<video>` | `src` | Relative path to the resource file (relative to the directory containing the `.thtml` file). Paths are checked for Path Traversal attack attempts. |
+| `<img>`, `<video>` | `alt` | Textual description of the media element, used in accessibility mode (`--a11y`). |
+| `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
+| `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |
+| `<input>` | `bind-value` | State key in `StateManager` where the typed text is saved **in real-time** (on every keystroke). |
 
 ---
 
-## 5. Akcje `event-htmx`
+## 5. `event-htmx` Actions
 
-Atrybut `event-htmx` obsługuje pojedynczą akcję lub ich sekwencję. Instrukcje wykonywane są od lewej do prawej. Jako separatora instrukcji można używać zarówno **średnika** (`;`), jak i **przecinka** (`,`).
+The `event-htmx` attribute supports a single action or a sequence of actions. Instructions are executed from left to right. Both **semicolon** (`;`) and **comma** (`,`) can be used as instruction separators.
 
-| Format akcji | Efekt działania | Przykład użycia |
+| Action Format | Effect | Example |
 |---|---|---|
-| `inc:klucz` | Zwiększa wartość całkowitą stanu (Int) o 1 | `event-htmx="inc:counter"` |
-| `dec:klucz` | Zmniejsza wartość całkowitą stanu (Int) o 1 | `event-htmx="dec:counter"` |
-| `toggle:klucz` | Przełącza wartość logiczną stanu (Bool) | `event-htmx="toggle:sidebar_open"` |
-| `set:klucz=wartość` | Ustawia stan (Str) na podany tekst | `event-htmx="set:tab=settings"` |
-| `append:klucz=wartość` | Dodaje podaną wartość tekstową do listy (List) | `event-htmx="append:logs=nowe_zdarzenie"` |
-| `clear:klucz` | Resetuje stan do wartości domyślnej dla danego typu (`0`, `false`, `""` lub `[]`) | `event-htmx="clear:counter"` |
-| `plik.thtml` | Zmienia aktualny ekran aplikacji na inny plik `.thtml` | `event-htmx="dashboard.thtml"` |
-| `akcja1;akcja2` | Wykonuje wiele akcji kolejno po sobie | `event-htmx="set:tab=x;inc:views"` |
+| `inc:key` | Increments the integer state (Int) value by 1 | `event-htmx="inc:counter"` |
+| `dec:key` | Decrements the integer state (Int) value by 1 | `event-htmx="dec:counter"` |
+| `toggle:key` | Flips the boolean state (Bool) value | `event-htmx="toggle:sidebar_open"` |
+| `set:key=value` | Sets the state (Str) to the specified text | `event-htmx="set:tab=settings"` |
+| `append:key=value` | Appends the specified text value to a list state (List) | `event-htmx="append:logs=new_event"` |
+| `clear:key` | Resets state to default value for its type (`0`, `false`, `""` or `[]`) | `event-htmx="clear:counter"` |
+| `file.thtml` | Switches the current application screen to another `.thtml` file | `event-htmx="dashboard.thtml"` |
+| `action1;action2` | Executes multiple actions sequentially | `event-htmx="set:tab=x;inc:views"` |
 
 > [!NOTE]
-> Przejście do innej strony `.thtml` (nawigacja) **zachowuje** cały stan zgromadzony w pamięci podręcznej sesji `StateManager`. Dzięki temu użytkownik nie traci wprowadzonych danych ani kontekstu sesji podczas przechodzenia między ekranami.
+> Navigating to another `.thtml` page **preserves** all state collected in the session `StateManager` cache. This ensures users do not lose their inputs or session context when transitioning between screens.
 
 ---
 
-## 6. Warunki `bind-show`
+## 6. `bind-show` Conditions
 
-Atrybut `bind-show` służy do reaktywnego ukrywania elementów interfejsu. Węzły, których warunek ewaluuje się do `false`, są całkowicie usuwane z kalkulacji layoutu Taffy (nie zajmują żadnej przestrzeni w terminalu).
+The `bind-show` attribute is used to reactively hide interface elements. Nodes whose conditions evaluate to `false` are completely excluded from Taffy layout calculations (they consume no space in the terminal).
 
-| Składnia warunku | Warunek jest prawdziwy (`true`), gdy: |
+| Condition Syntax | Condition is `true` when: |
 |---|---|
-| `bind-show="klucz"` | Powiązany klucz ma wartość logiczną `true`, niezerową liczbę całkowitą (Int != 0), niepusty ciąg znaków (Str != "" i Str != "false") lub niepustą listę. |
-| `bind-show="klucz=wartość"` | Reprezentacja tekstowa wartości stanu pod tym kluczem jest dokładnie równa `"wartość"`. Jeśli wartością stanu pod kluczem jest lista (`List`), warunek jest spełniony, gdy lista zawiera element o wartości `"wartość"`. |
-| `bind-show="klucz=false"` | Wartość powiązanego klucza jest fałszywa (falsy) lub **klucz w ogóle nie istnieje w stanie**. |
-| `bind-show="klucz=true"` | Wartość powiązanego klucza jest prawdziwa (truthy). Jeśli klucz nie istnieje, zwracane jest `false`. |
+| `bind-show="key"` | The associated key has a boolean value of `true`, a non-zero integer (Int != 0), a non-empty string (Str != "" and Str != "false"), or a non-empty list. |
+| `bind-show="key=value"` | The text representation of the state value under this key is exactly equal to `"value"`. If the state value is a `List`, the condition is satisfied if the list contains the element `"value"`. |
+| `bind-show="key=false"` | The associated key value is falsy or **the key does not exist in the state**. |
+| `bind-show="key=true"` | The associated key value is truthy. If the key does not exist, `false` is returned. |
 
 > [!IMPORTANT]
-> Jeżeli klucz stanu nie istnieje w pamięci podręcznej sesji, wszystkie formy sprawdzania warunku (oprócz `key=false`) domyślnie ewaluują się jako `false`. Użycie `bind-show="menu=false"` pozwala na domyślne wyświetlenie panelu przy starcie sesji, zanim stan zostanie zainicjalizowany przez jakiekolwiek akcje.
+> If a state key does not exist in the session cache, all condition formats (except `key=false`) evaluate to `false` by default. Using `bind-show="menu=false"` allows a panel to be visible by default at session startup, before the state is initialized by any actions.
 
 ---
 
-## 7. Typy Stanu
+## 7. State Types
 
-`StateManager` przechowuje typowane wartości stanu. W poniższej tabeli przedstawiono, jak poszczególne typy są renderowane na ekranie przez atrybut `bind-state`:
+`StateManager` stores typed state values. The table below illustrates how different types are rendered on screen by the `bind-state` attribute:
 
-| Typ stanu | Wewnętrzny typ Rust | Sposób reprezentacji przez `bind-state` | Przykład wyjścia |
+| State Type | Internal Rust Type | Representation by `bind-state` | Example Output |
 |---|---|---|---|
-| **Int** | `i64` | Jako zapis liczbowy | `42` |
-| **Bool** | `bool` | W postaci słownej: `true` lub `false` | `true` |
-| **Str** | `String` | Bezpośrednia treść napisu | `Witaj świecie` |
-| **List** | `Vec<String>` | Lista wartości ujęta w nawiasy kwadratowe | `[element1, element2, element3]` |
+| **Int** | `i64` | Numeric notation | `42` |
+| **Bool** | `bool` | Word form: `true` or `false` | `true` |
+| **Str** | `String` | Raw string contents | `Hello world` |
+| **List** | `Vec<String>` | List of values enclosed in square brackets | `[item1, item2, item3]` |
 
 ---
 
-## 8. Interakcja z Polami `<input>`
+## 8. Interacting with `<input>` Fields
 
-Przepływ wprowadzania danych w polach tekstowych wygląda następująco:
-1. Użytkownik przenosi zaznaczenie (focus) na pole `<input>` za pomocą klawisza `Tab` lub strzałek kierunkowych.
-2. Zaczyna wpisywać tekst. Znak po znaku, wprowadzana treść jest **natychmiast zapisywana** w stanie pod kluczem zdefiniowanym w atrybucie `bind-value`. Inne elementy powiązane z tym samym kluczem poprzez `bind-state` będą na żywo reagować na każdy wpisany znak.
-3. Klawisz `Backspace` usuwa ostatni znak z bufora i aktualizuje stan.
-4. Klawisz `Enter` zatwierdza pole i uruchamia akcję zdefiniowaną w atrybucie `event-htmx` (jeśli taki istnieje).
+The data entry flow in input fields is as follows:
+1. The user moves focus to the `<input>` field using the `Tab` key or arrow keys.
+2. The user starts typing. Character by character, the input content is **instantly saved** in the state under the key defined in the `bind-value` attribute. Other elements bound to the same key via `bind-state` will react in real-time to each keystroke.
+3. The `Backspace` key deletes the last character from the buffer and updates the state.
+4. The `Enter` key commits the field and triggers the action defined in the `event-htmx` attribute (if any).
 
-Przykład powiązania wejścia z reaktywnym tekstem:
+Example binding input with reactive text:
 ```html
-<input bind-value="email" placeholder="Wpisz swój email..."
+<input bind-value="email" placeholder="Enter your email..."
        style="height: 1; border-style: single; border-color: #38bdf8;"/>
 <text bind-state="email" style="fg: #94a3b8; height: 1;"/>
 ```
 
 ---
 
-## 9. Komentarze
+## 9. Comments
 
-Standardowe komentarze znane z języka HTML są całkowicie pomijane podczas parsowania drzewa dokumentu:
+Standard HTML comments are completely skipped when parsing the document tree:
 ```html
-<!-- Ten komentarz zostanie wycięty i nie trafi do drzewa DOM -->
+<!-- This comment will be stripped and will not end up in the DOM tree -->
 ```
 
 ---
 
-## 10. Bezpieczeństwo i sanityzacja danych
+## 10. Data Safety and Sanitization
 
-OxiTerm dba o to, by wejście dostarczane przez pliki THTML i interakcję użytkownika nie zepsuło wyświetlania u innych klientów ani nie doprowadziło do błędów renderowania:
-* **Style (`style="..."`):** Wszelkie kody ucieczki ANSI (Escape sequences) są wykrywane i wycinane za pomocą wyrażenia regularnego. Unika to potencjalnych ataków polegających na wstrzyknięciu destrukcyjnych kodów sterujących terminalem.
-* **Atrybuty akcji (`event-htmx`, `bind-state`, `bind-show`):** Wszystkie znaki kontrolne oraz znaki takie jak nawiasy, cudzysłowy i ukośniki wsteczne (`(`, `)`, `'`, `"`, `<`, `>`, `\`, `` ` ``) są usuwane. Dozwolone są wyłącznie znaki alfanumeryczne, spacje, znaki równości oraz znaki bezpieczne dla adresów URL.
+OxiTerm ensures that input provided by THTML files and user interaction does not disrupt terminal output or lead to rendering errors:
+* **Styles (`style="..."`):** Any ANSI escape sequences are detected and stripped using regex. This prevents injection attacks with destructive terminal control codes.
+* **Action Attributes (`event-htmx`, `bind-state`, `bind-show`):** All control characters and symbols like brackets, quotes, and backslashes (`(`, `)`, `'`, `"`, `<`, `>`, `\`, `` ` ``) are removed. Only alphanumeric characters, spaces, equal signs, and URL-safe characters are allowed.

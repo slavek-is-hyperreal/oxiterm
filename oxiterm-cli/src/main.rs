@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 use std::path::PathBuf;
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::time::Duration;
@@ -88,23 +88,30 @@ async fn main() -> Result<()> {
             // SC-01: Setup Hot Reload watcher
             let registry_clone = registry.clone();
             let file_path = PathBuf::from(&file);
-            let (tx, rx) = std::sync::mpsc::channel();
-            let mut debouncer = new_debouncer(Duration::from_millis(100), tx)?;
-            debouncer.watcher().watch(&file_path, RecursiveMode::NonRecursive)?;
-
-            info!("Hot Reload active for {}", file);
-            
             let file_path_clone = file_path.clone();
-            tokio::spawn(async move {
-                while let Ok(events) = rx.recv() {
-                    if let Ok(_evs) = events {
-                        info!("File change detected, broadcasting Reload signal...");
-                        registry_clone.broadcast_input_event(InputEvent::Reload);
+            let (tx, rx) = std::sync::mpsc::channel();
+            match new_debouncer(Duration::from_millis(100), tx) {
+                Ok(mut debouncer) => {
+                    if let Err(e) = debouncer.watcher().watch(&file_path, RecursiveMode::NonRecursive) {
+                        warn!("Failed to watch file for hot reload (OS limit reached?): {}", e);
+                    } else {
+                        info!("Hot Reload active for {}", file);
+                        tokio::spawn(async move {
+                            while let Ok(events) = rx.recv() {
+                                if let Ok(_evs) = events {
+                                    info!("File change detected, broadcasting Reload signal...");
+                                    registry_clone.broadcast_input_event(InputEvent::Reload);
+                                }
+                            }
+                            // Keep debouncer alive
+                            let _ = debouncer;
+                        });
                     }
                 }
-                // Keep debouncer alive
-                let _ = debouncer;
-            });
+                Err(e) => {
+                    warn!("Failed to create hot reload debouncer: {}", e);
+                }
+            }
 
             // Start Web/WebSocket server
             let web_host = config.server.host.clone();

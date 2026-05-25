@@ -1,81 +1,81 @@
-# Architektura OxiTerm
+# OxiTerm Architecture
 
-Dokument ten szczegółowo opisuje architekturę systemu OxiTerm — frameworku TUI (Terminal User Interface) działającego w modelu Server-Side Rendering (SSR).
+This document details the architecture of the OxiTerm system — a TUI (Terminal User Interface) framework operating in a Server-Side Rendering (SSR) model.
 
 ---
 
 ## 1. THTML (Terminal HTML)
 
-Język znaczników THTML służy do deklaratywnego opisywania struktury interfejsu terminala.
-* **`<screen>`**: Niejawny, najwyższy kontener (root) dokumentu, reprezentujący całą przestrzeń roboczą terminala.
-* **`<box>`**: Uniwersalny kontener układu (odpowiednik `<div>`). Wspiera pełne pozycjonowanie Flexbox.
-* **`<text>`**: Reprezentuje zawartość tekstową. Obsługuje automatyczne zawijanie wierszy, znaki Unicode, znaki dwukomórkowe (np. CJK) oraz emoji.
-* **`<input>`**: Interaktywne pole tekstowe do wprowadzania znaków z klawiatury.
-* **`<button>`**: Focusowalny przycisk wyzwalający zdarzenia akcji.
-* **`<img>`**: Osadza grafikę wektorową SVG (`.svg`), animacje Lottie (`.json`) oraz interaktywne kontrolki Rive (`.riv`). Grafika wektorowa jest rasteryzowana w czasie rzeczywistym przy użyciu bibliotek `resvg` oraz `tiny-skia` do pikseli, a następnie przesyłana jako protokół graficzny terminala.
-* **`<video>`**: Umożliwia płynne odtwarzanie plików wideo (`.mp4` i inne). Klatki wideo są dekodowane i rasteryzowane w tle przy użyciu narzędzia `ffmpeg`.
+The THTML markup language is used to declaratively describe the structure of the terminal interface.
+* **`<screen>`**: The implicit top-level container (root) of the document, representing the entire terminal workspace.
+* **`<box>`**: A universal layout container (equivalent to `<div>`). Supports full Flexbox positioning.
+* **`<text>`**: Represents text content. Supports automatic line wrapping (future/work-in-progress), Unicode characters, double-width characters (e.g. CJK), and emojis.
+* **`<input>`**: An interactive text field for keyboard character input.
+* **`<button>`**: A focusable button that triggers action events.
+* **`<img>`**: Embeds SVG vector graphics (`.svg`), Lottie animations (`.json`), and interactive Rive controls (`.riv`). Vector graphics are rasterized in real-time to pixels using `resvg` and `tiny-skia` libraries, and then transmitted using the terminal's graphics protocol.
+* **`<video>`**: Enables smooth video playback (`.mp4` and others). Video frames are decoded and rasterized in the background using the `ffmpeg` tool.
 
 ---
 
 ## 2. TCSS (Terminal CSS)
 
-TCSS to uproszczony dialekt CSS dostosowany do siatki znakowej.
-* **Jednostki:** Rozmiary (width, height, margin, padding) wyrażane są w postaci liczb całkowitych reprezentujących komórki znakowe (character cells).
-* **Układ (Layout):** Wspiera Flexbox (kierunki, wyrównanie osi, odstępy).
-* **Kolory:** Obsługa TrueColor (24-bit RGB), 256-kolorowej palety ANSI, słownych nazw kolorów oraz wartości specjalnych (`reset`, `transparent`).
-* **Ramki (Borders):** Generowane z użyciem semigrafiki Unicode ( Box Drawing Characters) w stylach: `single`, `double` oraz `rounded`.
+TCSS is a simplified CSS dialect tailored for character grids.
+* **Units:** Dimensions (width, height, margin, padding) are expressed as integers representing character cells.
+* **Layout:** Supports Flexbox (directions, alignment, gaps).
+* **Colors:** Supports TrueColor (24-bit RGB), 256-color ANSI palette, named colors, and special values (`reset`, `transparent`).
+* **Borders:** Generated using Unicode semigraphics (Box Drawing Characters) in the following styles: `single`, `double`, and `rounded`.
 
 ---
 
-## 3. Potok Renderowania SSR (Server-Side Rendering)
+## 3. SSR Rendering Pipeline (Server-Side Rendering)
 
-Proces generowania obrazu i wysyłania go do klienta przebiega w następujących krokach:
+The process of generating the frame and sending it to the client proceeds in the following steps:
 
 ```mermaid
 graph TD
-    THTML[Plik THTML] --> Parser[Parser THTML nom]
-    Parser --> AST[Drzewo AST / Arena DOM]
-    CSS[Zasady TCSS] --> Cascade[Aplikacja styli & Kaskada]
+    THTML[THTML File] --> Parser[nom THTML Parser]
+    Parser --> AST[AST Tree / DOM Arena]
+    CSS[TCSS Rules] --> Cascade[Style Application & Cascade]
     AST --> Cascade
-    Cascade --> Layout[Silnik Layoutu Taffy]
-    Layout --> Render[Renderowanie do CellBuffer]
-    Render --> Diff[Diffing i Generowanie ANSI]
-    Diff --> Transport[Wysyłka do Klienta SSH/WS]
+    Cascade --> Layout[Taffy Layout Engine]
+    Layout --> Render[Render to CellBuffer]
+    Render --> Diff[Diffing & ANSI Generation]
+    Diff --> Transport[SSH/WS Client Transport]
 ```
 
-1. **Parsowanie THTML:** Parser oparty na bibliotece `nom` buduje drzewo DOM wewnątrz zoptymalizowanej areny pamięciowej (`Arena DOM`), filtrując i sanityzując niebezpieczne znaczniki oraz atrybuty.
-2. **Kaskada Stylizacji:** Reguły TCSS z bloku `<style>` oraz atrybutów `style` inline są nakładane na węzły w jednej passie kaskadowej, rozwiązując priorytety (tag < class < id < inline).
-3. **Kalkulacja Układu (Layout Engine):** Silnik **Taffy** oblicza ostateczne pozycje i rozmiary każdego elementu na siatce terminala. Na tym etapie warunki `bind-show` są ewaluowane — niewidoczne węzły są oznaczane jako `Display::None` i nie zajmują miejsca.
-4. **Renderowanie do Bufora:** Zbudowane drzewo z wyliczonymi wymiarami jest rysowane do dwuwymiarowego bufora klatek (`CellBuffer`). Elementy multimedialne (SVG/Lottie/Rive/Wideo) są rasteryzowane do pikseli i kompresowane do formatów Kitty/Sixel.
-5. **Generowanie ANSI (Diffing Engine):** Ostateczna klatka w buforze (`DoubleBuffer`) jest porównywana z poprzednią klatką wysłaną do klienta. Generowana jest minimalna sekwencja kodów ucieczki ANSI sterująca kursorem i kolorami, co dramatycznie zmniejsza narzut sieciowy.
+1. **THTML Parsing:** The parser, based on the `nom` library, builds a DOM tree inside an optimized memory arena (`DOM Arena`), filtering and sanitizing dangerous tags and attributes.
+2. **Style Cascade:** TCSS rules from the `<style>` block and inline `style` attributes are applied to nodes in a single cascade pass, resolving priorities (tag < class < id < inline).
+3. **Layout Calculation (Layout Engine):** The **Taffy** engine calculates the final positions and sizes of each element on the terminal grid. At this stage, `bind-show` conditions are evaluated — invisible nodes are marked as `Display::None` and consume no space.
+4. **Rendering to Buffer:** The built tree with calculated dimensions is drawn to a two-dimensional frame buffer (`CellBuffer`). Multimedia elements (SVG/Lottie/Rive/Video) are rasterized to pixels and compressed to Kitty/Sixel formats.
+5. **ANSI Generation (Diffing Engine):** The final frame in the buffer (`DoubleBuffer`) is compared with the previous frame sent to the client. A minimal sequence of ANSI escape codes is generated to control the cursor and colors, dramatically reducing network overhead.
 
 ---
 
-## 4. Architektura Transportu
+## 4. Transport Architecture
 
-OxiTerm obsługuje dwa niezależne kanały dystrybucji obrazu TUI:
-* **SSH Server (russh):** Asynchroniczny demon SSH. Negocjuje parametry PTY (wymiary okna, Kitty Graphics, mysz SGR) i przechwytuje wejściowe strumienie bajtów klienta, odsyłając skompresowane ANSI diffy.
-* **WebSocket Server:** Umożliwia uruchamianie aplikacji OxiTerm bezpośrednio w przeglądarkach internetowych z wykorzystaniem terminala xterm.js na froncie.
-
----
-
-## 5. Odporność i Optymalizacje
-
-Wydajność i odporność OxiTerm w środowisku sieciowym opiera się na kilku kluczowych mechanizmach:
-* **Resilient Reactor Thread (RRT):** Dedykowany, nieblokujący wątek OS służący do odczytywania wejścia użytkownika z SSH. RRT parsuje surowy strumień bajtów na zdarzenia klawiatury i myszy (Kitty/SGR) za pomocą `InputStateMachine`, chroniąc pętlę zdarzeń przed zablokowaniem i odpierając ataki DoS (np. zbyt długie sekwencje ucieczki są odrzucane w `sanitize_frame`).
-* **Dynamiczna Pętla Animacji (Dynamic Ticking Loop):** W stanie bezczynności pętla renderowania śpi przez `5ms` w oczekiwaniu na zdarzenia. Jeżeli w drzewie DOM znajdują się aktywne animacje Lottie lub Rive, OxiTerm dynamicznie podnosi częstotliwość odświeżania do 15 FPS (`66ms` tick) w celu płynnego odtwarzania klatek animacji.
-* **Dwuwarstwowy Cache Graficzny:**
-  - `SvgCache`: Przechowuje raz sparsowane drzewa wektorowe `usvg::Tree`, aby uniknąć ponownego kosztownego parsowania XML.
-  - `AssetCache`: Przechowuje gotowe, skompresowane strumienie bajtów grafik Sixel/Kitty dopasowane do aktualnej rozdzielczości klatki, omijając cały proces rasteryzacji przy braku zmian.
-* **Synchronized Updates (BSU/ESU):** Zapobiega rozrywaniu ekranu (tearingowi) poprzez owijanie paczek ANSI diffów w protokół synchronizacji ramek terminala (`\x1b[?2026h` / `\x1b[?2026l`).
-* **Predictive Local Echo:** Lokalny bufor przewidywania tekstu minimalizujący odczucie opóźnienia łącza (latency) u użytkownika piszącego w polach `<input>`.
-* **Backpressure (Kontrola przeciążeń):** Ograniczony kanał klatek (`BoundedFrameChannel`). Powolne terminale klienckie, które nie nadążają z odbiorem diffów, powodują bezpieczne pomijanie (dropowanie) klatek na serwerze, co zapobiega wyciekom pamięci.
-* **Czyszczenie bufora przewijania:** Przy starcie i zmianie rozmiaru wysyłana jest sekwencja `\x1b[3J`, czyszcząca historię (scrollback) klienta, co zapobiega powstawaniu artefaktów graficznych.
+OxiTerm supports two independent TUI image distribution channels:
+* **SSH Server (russh):** An asynchronous SSH daemon. It negotiates PTY parameters (window dimensions, Kitty Graphics, SGR mouse) and captures input byte streams from the client, returning compressed ANSI diffs.
+* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers using the xterm.js terminal on the frontend.
 
 ---
 
-## 6. Ułatwienia Dostępu (Accessibility)
+## 5. Resilience and Optimizations
 
-Po uruchomieniu serwera z flagą `--a11y`, silnik przełącza się w tryb **LinearFrameSink**:
-* Zamiast dwuwymiarowego bufora ANSI, dokument jest renderowany w postaci drzewa liniowego tekstu, idealnego dla czytników ekranu (Screen Readers).
-* OxiTerm może integrować się z szyną systemową DBus w systemach Linux w celu bezpośredniej komunikacji z syntezatorami mowy i czytnikami Braille'a.
+OxiTerm's performance and stability in a network environment rely on several key mechanisms:
+* **Resilient Reactor Thread (RRT):** A dedicated, non-blocking OS thread used to read user input from SSH. The RRT parses the raw byte stream into keyboard and mouse events (Kitty/SGR) using the `InputStateMachine`, preventing the event loop from blocking and mitigating DoS attacks (e.g., excessively long escape sequences are rejected in `sanitize_frame`).
+* **Dynamic Ticking Loop:** In an idle state, the rendering loop sleeps for `5ms` awaiting events. If there are active Lottie or Rive animations in the DOM tree, OxiTerm dynamically raises the refresh rate to 15 FPS (`66ms` tick) for smooth animation playback.
+* **Dual-Tier Graphic Cache:**
+  - `SvgCache`: Stores once-parsed `usvg::Tree` vector structures to avoid repeating expensive XML parsing.
+  - `AssetCache`: Stores pre-compressed Sixel/Kitty graphic byte streams matching the current frame resolution, bypassing the entire rasterization process when there are no changes.
+* **Synchronized Updates (BSU/ESU):** Prevents screen tearing by wrapping ANSI diff packets in the terminal frame synchronization protocol (`\x1b[?2026h` / `\x1b[?2026l`).
+* **Predictive Local Echo:** A local text prediction buffer that minimizes network latency for users typing in `<input>` fields.
+* **Backpressure (Congestion Control):** A bounded frame channel (`BoundedFrameChannel`). Slow client terminals that cannot keep up with receiving diffs cause safe frame dropping on the server, preventing memory leaks.
+* **Scrollback Buffer Clearing:** Upon startup and resize, a `\x1b[3J` sequence is sent to clear the client's scrollback history, preventing graphic artifacts.
+
+---
+
+## 6. Accessibility
+
+When launching the server with the `--a11y` flag, the engine switches to the **LinearFrameSink** mode:
+* Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
+* OxiTerm can integrate with the DBus system bus on Linux systems to communicate directly with speech synthesizers and Braille displays.

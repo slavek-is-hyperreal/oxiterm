@@ -18,47 +18,47 @@
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
 
-    <!-- Nagłówek -->
+    <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interaktywne TUI przez SSH  🚀</text>
+        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interactive TUI over SSH  🚀</text>
     </box>
 
-    <!-- Środkowy kontener wyrównujący (wpycha stopkę na dół i centruje zawartość) -->
+    <!-- Center container for alignment (pushes footer down and centers content) -->
     <box style="flex: 1; align-items: center; justify-content: center;">
         
-        <!-- Główny panel zbiorczy (jeden duży box dla wszystkich kart) -->
+        <!-- Main wrapper panel (one big box for all cards) -->
         <box style="border-style: single; border-color: #334155; padding: 1;
                     width: 76; height: 15; flex-direction: column;">
             
-            <!-- Pierwszy wiersz kart -->
+            <!-- First row of cards -->
             <box style="flex-direction: row; height: 6; margin-bottom: 1;">
                 <box class="card card-counter" style="width: 24; margin-right: 1;" event-htmx="counter.thtml">
-                    <text style="fg: #f59e0b; height: 1;">🔢 Licznik i stan</text>
+                    <text style="fg: #f59e0b; height: 1;">🔢 Counter and State</text>
                     <text class="muted label">Inc / dec / clear</text>
                 </box>
                 <box class="card card-state" style="width: 24; margin-right: 1;" event-htmx="state_demo.thtml">
-                    <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu</text>
+                    <text style="fg: #4ade80; height: 1;">🔄 All State Types</text>
                     <text class="muted label">Int Bool Str List</text>
                 </box>
                 <box class="card card-style" style="width: 24;" event-htmx="styles_demo.thtml">
-                    <text style="fg: #c084fc; height: 1;">🎨 CSS klasy i kaskada</text>
-                    <text class="muted label">Blok &lt;style&gt;</text>
+                    <text style="fg: #c084fc; height: 1;">🎨 CSS Classes &amp; Cascade</text>
+                    <text class="muted label">&lt;style&gt; block</text>
                 </box>
             </box>
 
-            <!-- Drugi wiersz kart -->
+            <!-- Second row of cards -->
             <box style="flex-direction: row; height: 6;">
                 <box class="card card-nav" style="width: 24; margin-right: 1;" event-htmx="navigation_demo.thtml">
-                    <text style="fg: #38bdf8; height: 1;">📑 Nawigacja i bind-show</text>
-                    <text class="muted label">Zakładki bez reload</text>
+                    <text style="fg: #38bdf8; height: 1;">📑 Navigation &amp; bind-show</text>
+                    <text class="muted label">Tabs without reload</text>
                 </box>
                 <box class="card card-media" style="width: 24; margin-right: 1;" event-htmx="media_demo.thtml">
-                    <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje</text>
+                    <text style="fg: #f87171; height: 1;">🖼️ Graphics &amp; Animations</text>
                     <text class="muted label">SVG Lottie Kitty</text>
                 </box>
                 <box class="card card-a11y" style="width: 24;" event-htmx="video_demo.thtml">
-                    <text style="fg: #fb923c; height: 1;">🎬 Wideo</text>
+                    <text style="fg: #fb923c; height: 1;">🎬 Video</text>
                     <text class="muted label">ffmpeg → terminal</text>
                 </box>
             </box>
@@ -67,9 +67,9 @@
         
     </box>
 
-    <!-- Stopka (belka z info o nawigacji na samym dole) -->
+    <!-- Footer (navigation info bar at the absolute bottom) -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted label">[Q] Wyjście   [Tab] / [↑↓] Nawigacja klawiaturą   [Enter] Wybierz</text>
+        <text class="muted label">[Q] Exit   [Tab] / [↑↓] Keyboard Navigation   [Enter] Select</text>
     </box>
 
 </box>

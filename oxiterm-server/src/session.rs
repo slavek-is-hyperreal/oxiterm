@@ -403,10 +403,19 @@ impl EventLoop {
     }
 
     pub fn rebuild_focusable_nodes(&mut self) {
+        use oxiterm_proto::dom::StateEvaluator;
+        let state_guard = self.session.state.read();
         let mut nodes = Vec::new();
         let mut stack = vec![self.doc.root];
         while let Some(id) = stack.pop() {
             if let Some(node) = self.doc.arena.get(id) {
+                // Skip hidden nodes and their children
+                if let Some(ref cond) = node.attrs.bind_show {
+                    if !state_guard.evaluate_bind_show(cond) {
+                        continue;
+                    }
+                }
+
                 // Focusable: any node with event_htmx OR an <input> with bind_value
                 let is_interactive = node.attrs.event_htmx.is_some()
                     || (node.tag == oxiterm_proto::dom::NodeTag::Input
@@ -928,6 +937,7 @@ impl EventLoop {
                 if self.frame_limiter.should_render() {
                     // Sync reactive state before render
                     Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+                    self.rebuild_focusable_nodes();
 
                     let dims = *self.session.dims.read();
                     let state_guard = self.session.state.read();
@@ -1234,5 +1244,75 @@ mod tests {
         assert!(seq_pos3.is_some(), "delete_all_placements not found in clear_screen");
         assert!(clear_pos.is_some(), "ESC[2J not found in clear_screen");
         assert!(seq_pos3.unwrap() < clear_pos.unwrap(), "delete_all_placements must be before ESC[2J");
+    }
+
+    #[test]
+    fn test_rebuild_focusable_nodes_respects_bind_show() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let client_session = reg.create_session().unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        
+        // Node 2: interactive, bind_show = show_node2
+        let mut node2 = Node::new(NodeTag::Box);
+        node2.attrs.event_htmx = Some("click_action".to_string());
+        node2.attrs.bind_show = Some("show_node2".to_string());
+        let id2 = arena.alloc(node2);
+        
+        // Node 3: interactive, bind_show = show_node3
+        let mut node3 = Node::new(NodeTag::Box);
+        node3.attrs.event_htmx = Some("click_action2".to_string());
+        node3.attrs.bind_show = Some("show_node3".to_string());
+        let id3 = arena.alloc(node3);
+        
+        // Root node
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![id2, id3];
+        let root_id = arena.alloc(root);
+        
+        let doc = THTMLDocument {
+            arena,
+            root: root_id,
+            dirty_nodes: Vec::new(),
+        };
+        
+        let mut event_loop = EventLoop::new(
+            client_session,
+            event_bus,
+            output_tx,
+            doc,
+            false,
+        );
+        
+        // Initially both absent / false. So neither should be focusable.
+        event_loop.rebuild_focusable_nodes();
+        assert!(!event_loop.focusable_nodes.contains(&id2));
+        assert!(!event_loop.focusable_nodes.contains(&id3));
+
+        // Set state: show_node2=true, show_node3=false
+        {
+            let mut state = event_loop.session.state.write();
+            state.set("show_node2".to_string(), crate::state::StateValue::Bool(true));
+            state.set("show_node3".to_string(), crate::state::StateValue::Bool(false));
+        }
+        
+        event_loop.rebuild_focusable_nodes();
+        assert!(event_loop.focusable_nodes.contains(&id2));
+        assert!(!event_loop.focusable_nodes.contains(&id3));
+        
+        // Set state: show_node2=false, show_node3=true
+        {
+            let mut state = event_loop.session.state.write();
+            state.set("show_node2".to_string(), crate::state::StateValue::Bool(false));
+            state.set("show_node3".to_string(), crate::state::StateValue::Bool(true));
+        }
+        
+        event_loop.rebuild_focusable_nodes();
+        assert!(!event_loop.focusable_nodes.contains(&id2));
+        assert!(event_loop.focusable_nodes.contains(&id3));
     }
 }

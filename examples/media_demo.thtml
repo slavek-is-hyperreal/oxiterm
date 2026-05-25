@@ -14,8 +14,8 @@
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje — SVG · Lottie · PNG</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #f87171; height: 1;">🖼️ Graphics and Animations — SVG · Lottie · PNG</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
@@ -23,31 +23,31 @@
         <!-- SVG -->
         <box class="panel" style="border-color: #38bdf8; width: 26; margin-right: 1;">
             <text class="panel-title" style="fg: #38bdf8;">SVG (resvg)</text>
-            <img src="mascot.svg" alt="Rustowy krab — Ferris" style="width: 20; height: 10;" />
-            <text class="caption">Renderowany przez resvg+tiny_skia</text>
-            <text class="caption">BGRA→RGBA, pełna alpha</text>
+            <img src="mascot.svg" alt="Rust crab — Ferris" style="width: 20; height: 10;" />
+            <text class="caption">Rendered by resvg+tiny_skia</text>
+            <text class="caption">BGRA→RGBA, full alpha</text>
         </box>
 
         <!-- PNG/JPG -->
         <box class="panel" style="border-color: #4ade80; width: 26; margin-right: 1;">
-            <text class="panel-title" style="fg: #4ade80;">Obraz rastrowy</text>
-            <img src="logo.jpg" alt="Logo projektu" style="width: 20; height: 10;" />
+            <text class="panel-title" style="fg: #4ade80;">Raster Image</text>
+            <img src="logo.jpg" alt="Project logo" style="width: 20; height: 10;" />
             <text class="caption">Auto: Kitty → Sixel → Unicode</text>
-            <text class="caption">Negocjacja przez DA1</text>
+            <text class="caption">Negotiated via DA1</text>
         </box>
 
         <!-- Lottie -->
         <box class="panel" style="border-color: #fbbf24; width: 20;">
             <text class="panel-title" style="fg: #fbbf24;">Lottie JSON</text>
-            <img src="bell.json" alt="Animacja dzwonka" style="width: 14; height: 7;" />
-            <text class="caption">Klatki przez rlottie</text>
-            <text class="caption">60fps na Kitty</text>
-            <text class="caption">RGBA bez alpha bug</text>
+            <img src="bell.json" alt="Bell animation" style="width: 14; height: 7;" />
+            <text class="caption">Frames via rlottie</text>
+            <text class="caption">60fps on Kitty</text>
+            <text class="caption">RGBA without alpha bug</text>
         </box>
 
     </box>
 
-    <!-- Wiersz protokołów -->
+    <!-- Protocols row -->
     <box style="flex-direction: row; padding-left: 1; padding-right: 1;
                 height: 4; border-style: single; border-color: #1e293b;
                 margin-left: 1; margin-right: 1; align-items: center;">
@@ -63,12 +63,12 @@
         <box style="width: 1; bg: #334155;"></box>
         <box style="flex: 1; align-items: center; flex-direction: column;">
             <text style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
-            <text style="fg: #334155; height: 1;">Wszystkie terminale</text>
+            <text style="fg: #334155; height: 1;">All terminals</text>
         </box>
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja</text>
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation</text>
     </box>
 
 </box>

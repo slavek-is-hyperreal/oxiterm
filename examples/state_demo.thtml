@@ -29,18 +29,18 @@
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu — Int Bool Str List</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #4ade80; height: 1;">🔄 All State Types — Int Bool Str List</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 2; flex: 1;">
 
-        <!-- Lewa kolumna: stany + kontrolki -->
+        <!-- Left column: states + controls -->
         <box style="flex-direction: column; width: 44; margin-right: 2;">
 
             <!-- Int -->
             <box class="row">
-                <text class="label-col">Int (licznik):</text>
+                <text class="label-col">Int (counter):</text>
                 <text class="value-col" style="fg: #38bdf8;" bind-state="demo_int">0</text>
                 <text class="action" style="fg: #4ade80;" event-htmx="inc:demo_int">[+1]</text>
                 <text class="action" style="fg: #f87171;" event-htmx="dec:demo_int">[-1]</text>
@@ -51,15 +51,15 @@
             <box class="row">
                 <text class="label-col">Bool (toggle):</text>
                 <text class="value-col" style="fg: #fbbf24;" bind-state="demo_bool">false</text>
-                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[przełącz]</text>
+                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[toggle]</text>
             </box>
 
             <!-- Str set -->
             <box class="row">
                 <text class="label-col">Str (set):</text>
                 <text class="value-col" style="fg: #c084fc;" bind-state="demo_str">—</text>
-                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=aktywny">[aktywny]</text>
-                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=błąd">[błąd]</text>
+                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=active">[active]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=error">[error]</text>
                 <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_str">[x]</text>
             </box>
 
@@ -74,18 +74,18 @@
             <!-- Separator -->
             <box style="height: 1; border-style: single; border-color: #1e293b; margin-bottom: 1;"></box>
 
-            <!-- Legenda typów -->
-            <text style="fg: #64748b; height: 1;">Stany żyją w StateManager serwera.</text>
-            <text style="fg: #64748b; height: 1;">bind-state odświeża węzeł reaktywnie.</text>
-            <text style="fg: #64748b; height: 1;">clear: zeruje do wartości domyślnej</text>
-            <text style="fg: #64748b; height: 1;">dla danego typu (0, false, "", []).</text>
+            <!-- Type legend -->
+            <text style="fg: #64748b; height: 1;">States live in the server StateManager.</text>
+            <text style="fg: #64748b; height: 1;">bind-state updates the node reactively.</text>
+            <text style="fg: #64748b; height: 1;">clear: resets to default value</text>
+            <text style="fg: #64748b; height: 1;">for the given type (0, false, "", []).</text>
 
         </box>
 
-        <!-- Prawa kolumna: tabela typów -->
+        <!-- Right column: types table -->
         <box style="flex-direction: column; flex: 1; border-style: rounded;
                     border-color: #334155; padding: 1;">
-            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Typy StateValue:</text>
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">StateValue Types:</text>
             <text style="fg: #38bdf8;  height: 1;">Int(i64)       inc dec clear</text>
             <text style="fg: #fbbf24;  height: 1;">Bool(bool)     toggle clear</text>
             <text style="fg: #c084fc;  height: 1;">Str(String)    set clear</text>
@@ -98,7 +98,7 @@
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation  [Enter] Action</text>
     </box>
 
 </box>

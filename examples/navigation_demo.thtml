@@ -26,11 +26,11 @@
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #38bdf8; height: 1;">📑 Nawigacja klawiaturą i bind-show</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #38bdf8; height: 1;">📑 Keyboard Navigation and bind-show</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
-    <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
+    <!-- Tab bar — set:tab changes visibility via bind-show -->
     <box style="flex-direction: row; padding-left: 2; padding-right: 2;
                 padding-top: 1; height: 5; align-items: center;">
         <!-- Info Tab Options -->
@@ -44,15 +44,15 @@
             <text style="height: 1;">ℹ Info</text>
         </box>
 
-        <!-- Klawisze Tab Options -->
+        <!-- Keys Tab Options -->
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=false">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
         <box class="tab-btn tab-active" event-htmx="set:tab=keys" bind-show="tab=keys">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=bind">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
 
         <!-- bind-show Tab Options -->
@@ -66,48 +66,48 @@
             <text style="height: 1;">🔗 bind-show</text>
         </box>
         <box style="flex: 1;"></box>
-        <text class="muted">Aktywna zakładka: </text>
+        <text class="muted">Active tab: </text>
         <text style="fg: #38bdf8; height: 1;" bind-state="tab">info</text>
     </box>
 
-    <!-- Treść zakładek — tylko jedna widoczna dzięki bind-show -->
+    <!-- Tab content — only one visible thanks to bind-show -->
     <box style="flex-direction: column; padding-left: 2; padding-right: 2;
                 padding-bottom: 1; flex: 1;">
 
-        <!-- Zakładka: info -->
+        <!-- Tab: info -->
         <box class="content-panel" bind-show="tab=false">
-            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Zakładki bez przeładowania strony</text>
-            <text class="muted">Kliknij zakładkę → event-htmx="set:tab=xxx"</text>
-            <text class="muted">StateManager zapisuje nową wartość "tab".</text>
-            <text class="muted">bind-show="tab=info" chowa/pokazuje węzeł.</text>
-            <text class="muted">LayoutEngine całkowicie pomija ukryte węzły.</text>
-            <text class="muted">Zero opóźnienia — logika po stronie serwera.</text>
+            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Tabs without page reload</text>
+            <text class="muted">Click tab → event-htmx="set:tab=xxx"</text>
+            <text class="muted">StateManager saves the new "tab" value.</text>
+            <text class="muted">bind-show="tab=info" hides/shows the node.</text>
+            <text class="muted">LayoutEngine completely skips hidden nodes.</text>
+            <text class="muted">Zero latency — server-side logic.</text>
         </box>
 
-        <!-- Zakładka: keys -->
+        <!-- Tab: keys -->
         <box class="content-panel" bind-show="tab=keys">
-            <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Nawigacja klawiaturą</text>
-            <text class="muted">Tab / ↓ / →  — następny focusable węzeł</text>
-            <text class="muted">Shift+Tab / ↑ / ←  — poprzedni węzeł</text>
-            <text class="muted">Enter  — aktywuj event-htmx focused węzła</text>
-            <text class="muted">Q      — wyjście z sesji</text>
-            <text class="muted">Focus ring: ▶ i ◀ po bokach aktywnego węzła.</text>
+            <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Keyboard Navigation</text>
+            <text class="muted">Tab / ↓ / →  — next focusable node</text>
+            <text class="muted">Shift+Tab / ↑ / ←  — previous node</text>
+            <text class="muted">Enter  — activate event-htmx of focused node</text>
+            <text class="muted">Q      — exit session</text>
+            <text class="muted">Focus ring: ▶ and ◀ around the active node.</text>
         </box>
 
-        <!-- Zakładka: bind -->
+        <!-- Tab: bind -->
         <box class="content-panel" bind-show="tab=bind">
-            <text style="fg: #c084fc; height: 1; margin-bottom: 1;">Składnia bind-show</text>
-            <text class="muted">bind-show="klucz"       — true gdy Bool(true)</text>
-            <text class="muted">bind-show="klucz=true"  — explicit true</text>
-            <text class="muted">bind-show="klucz=false" — odwrotność</text>
-            <text class="muted">bind-show="tab=home"    — równość Str</text>
-            <text class="muted">bind-show="count=0"     — równość Int</text>
+            <text style="fg: #c084fc; height: 1; margin-bottom: 1;">bind-show Syntax</text>
+            <text class="muted">bind-show="key"       — true when Bool(true)</text>
+            <text class="muted">bind-show="key=true"  — explicit true</text>
+            <text class="muted">bind-show="key=false" — opposite (falsy or absent)</text>
+            <text class="muted">bind-show="tab=home"    — Str equality</text>
+            <text class="muted">bind-show="count=0"     — Int equality</text>
         </box>
 
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Zmień zakładkę</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Change Tab</text>
     </box>
 
 </box>

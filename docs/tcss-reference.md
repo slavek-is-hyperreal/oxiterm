@@ -1,61 +1,61 @@
 # TCSS — Terminal CSS Styling Reference
 
-TCSS (Terminal CSS) to język stylizowania używany w OxiTerm do kontrolowania układu (layoutu), odstępów oraz kolorów elementów THTML. Składnią bezpośrednio nawiązuje do standardowego języka CSS, jednak jest dostosowany do siatki znakowej terminala i ograniczeń graficznych środowiska tekstowego.
+TCSS (Terminal CSS) is the styling language used in OxiTerm to control the layout, spacing, and colors of THTML elements. Its syntax directly mirrors standard CSS, but is adapted to the terminal character grid and the graphical constraints of text-based environments.
 
 ---
 
-## 1. Składnia i Kaskada
+## 1. Syntax and Cascade
 
-Stylizację można definiować na dwa sposoby:
-1. W bloku `<style>` umieszczonym wewnątrz dokumentu THTML.
-2. Bezpośrednio na węzłach za pomocą atrybutu `style` (style inline).
+Styling can be defined in two ways:
+1. In a `<style>` block placed inside the THTML document.
+2. Directly on nodes using the `style` attribute (inline styles).
 
-### Selektory i Ważność (Priorytet kaskady)
+### Selectors and Specificity (Cascade Priority)
 
-Style są aplikowane w jednej zunifikowanej fazie według następującego rosnącego priorytetu (od najsłabszego do najsilniejszego):
-1. **Selektor Tagu:** np. `text { fg: green; }` (aplikuje się do wszystkich tagów tego typu).
-2. **Selektor Klasy:** np. `.btn { bg: blue; }` (aplikuje się do węzłów posiadających atrybut `class="btn"`).
-3. **Selektor Identyfikatora:** np. `#main { width: 80; }` (aplikuje się do węzła z `id="main"`).
-4. **Style inline:** np. `<box style="height: 3;">` (zdefiniowane bezpośrednio w atrybucie `style` węzła).
+Styles are applied in a single unified phase according to the following ascending priority (from weakest to strongest):
+1. **Tag Selector:** e.g., `text { fg: green; }` (applies to all tags of this type).
+2. **Class Selector:** e.g., `.btn { bg: blue; }` (applies to nodes with a `class="btn"` attribute).
+3. **ID Selector:** e.g., `#main { width: 80; }` (applies to the node with `id="main"`).
+4. **Inline Styles:** e.g., `<box style="height: 3;">` (defined directly in the node's `style` attribute).
 
-Kolejne reguły o tym samym priorytecie nadpisują poprzednie (decyduje kolejność zapisu w pliku).
+Subsequent rules with the same priority overwrite previous ones (determined by the order of appearance in the file).
 
 ---
 
-## 2. Obsługiwane Właściwości
+## 2. Supported Properties
 
-| Właściwość | Dozwolone Wartości | Opis |
+| Property | Allowed Values | Description |
 |---|---|---|
-| `width` | Liczba całkowita | Szerokość elementu wyrażona w liczbie kolumn terminala. |
-| `height` | Liczba całkowita | Wysokość elementu wyrażona w liczbie wierszy terminala. |
-| `fg` \| `color` | Kolor | Kolor tekstu (foreground). |
-| `bg` \| `background-color` | Kolor | Kolor tła (background). |
-| `flex-direction` | `row` (domyślnie), `column` | Kierunek układania elementów potomnych w kontenerze Flexbox. |
-| `align-items` | `flex-start` (domyślnie), `flex-end`, `center`, `stretch` | Wyrównanie elementów potomnych w poprzek osi głównej. |
-| `justify-content` | `flex-start` (domyślnie), `flex-end`, `center`, `space-between`, `space-around` | Rozmieszczenie elementów potomnych wzdłuż osi głównej. |
-| `padding` | Liczba całkowita | Wewnętrzny odstęp (ze wszystkich stron) wyrażony w komórkach znakowych. |
-| `padding-top` \| `padding-right` \| `padding-bottom` \| `padding-left` | Liczba całkowita | Szczegółowe wewnętrzne odstępy z poszczególnych stron. |
-| `margin` | Liczba całkowita | Zewnętrzny margines (ze wszystkich stron) wyrażony w komórkach znakowych. |
-| `margin-top` \| `margin-right` \| `margin-bottom` \| `margin-left` | Liczba całkowita | Szczegółowe zewnętrzne marginesy z poszczególnych stron. |
-| `border` | Kolor | Włącza ramkę wokół elementu o określonym kolorze i domyślnym stylu (`single`). |
-| `border-style` | `single`, `double`, `rounded` | Styl znaków użytych do narysowania ramki (znaki rysowania ramek Unicode). |
-| `border-color` | Kolor | Określa lub nadpisuje kolor ramki. |
+| `width` | Integer | Element width expressed as the number of terminal columns. |
+| `height` | Integer | Element height expressed as the number of terminal rows. |
+| `fg` \| `color` | Color | Text color (foreground). |
+| `bg` \| `background-color` | Color | Background color. |
+| `flex-direction` | `row` (default), `column` | The direction in which child elements are laid out in a Flexbox container. |
+| `align-items` | `flex-start` (default), `flex-end`, `center`, `stretch` | Alignment of child elements cross the main axis. |
+| `justify-content` | `flex-start` (default), `flex-end`, `center`, `space-between`, `space-around` | Spacing of child elements along the main axis. |
+| `padding` | Integer | Inner padding (all sides) expressed in character cells. |
+| `padding-top` \| `padding-right` \| `padding-bottom` \| `padding-left` | Integer | Detailed inner padding for individual sides. |
+| `margin` | Integer | Outer margin (all sides) expressed in character cells. |
+| `margin-top` \| `margin-right` \| `margin-bottom` \| `margin-left` | Integer | Detailed outer margins for individual sides. |
+| `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
+| `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
+| `border-color` | Color | Specifies or overrides the border color. |
 
 ---
 
-## 3. Definiowanie Kolorów
+## 3. Defining Colors
 
-W TCSS kolory można definiować na cztery sposoby:
+In TCSS, colors can be defined in four ways:
 
-| Format koloru | Opis | Przykład |
+| Color Format | Description | Example |
 |---|---|---|
-| **Nazwa CSS** | Jedna z podstawowych nazw kolorów (automatycznie mapowana na TrueColor RGB) | `fg: red;`, `bg: blue;` |
-| **Hex RGB** | Zapis szesnastkowy o długości 7 znaków (24-bit TrueColor) | `fg: #ff5500;`, `bg: #0f172a;` |
-| **Numer 0-255** | Indeks z 256-kolorowej palety ANSI (przydatne jako fallback na starszych terminalach) | `fg: 46;` (jasny zielony), `bg: 234;` (ciemnoszary) |
-| **Reset / Transparent** | Przywraca domyślny kolor terminala lub czyni tło przeźroczystym | `fg: reset;`, `bg: transparent;` |
+| **CSS Color Name** | A basic color name (automatically mapped to TrueColor RGB) | `fg: red;`, `bg: blue;` |
+| **Hex RGB** | 7-character hexadecimal string (24-bit TrueColor) | `fg: #ff5500;`, `bg: #0f172a;` |
+| **0-255 Number** | Index from the 256-color ANSI palette (useful fallback for older terminals) | `fg: 46;` (bright green), `bg: 234;` (dark gray) |
+| **Reset / Transparent** | Restores the default terminal color or makes the background transparent | `fg: reset;`, `bg: transparent;` |
 
-### Obsługiwane nazwy kolorów (CSS Color Names)
-OxiTerm rozpoznaje dokładnie następujące nazwy kolorów:
+### Supported Named Colors (CSS Color Names)
+OxiTerm recognizes exactly the following color names:
 * `black` (RGB 0, 0, 0)
 * `red` (RGB 255, 0, 0)
 * `green` (RGB 0, 255, 0)
@@ -67,14 +67,14 @@ OxiTerm rozpoznaje dokładnie następujące nazwy kolorów:
 
 ---
 
-## 4. Rysowanie Ramek (Borders)
+## 4. Drawing Borders
 
-Włączenie ramki na elemencie odbywa się za pomocą właściwości `border` lub `border-color`. Ramka zajmuje **dokładnie 1 komórkę znakową** szerokości i wysokości na krawędziach elementu.
+Enabling a border on an element is done using the `border` or `border-color` properties. The border occupies **exactly 1 character cell** of width and height on the element's edges.
 
-### Style ramek (`border-style`):
-Do rysowania ramek OxiTerm używa znaków semigraﬁcznych Unicode (Box Drawing Characters):
+### Border Styles (`border-style`):
+To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
 
-* **`single`** (domyślny):
+* **`single`** (default):
   ```text
   ┌──────┐
   │      │
@@ -95,9 +95,9 @@ Do rysowania ramek OxiTerm używa znaków semigraﬁcznych Unicode (Box Drawing 
 
 ---
 
-## 5. Czego TCSS NIE obsługuje (w porównaniu do przeglądarkowego CSS)
+## 5. What TCSS Does NOT Support (compared to browser CSS)
 
-* **Brak jednostek:** Rozmiary, marginesy i paddingi podaje się jako czyste liczby całkowite (reprezentujące komórki znakowe terminala). Jednostki takie jak `px`, `em`, `rem`, `%` nie są obsługiwane.
-* **Brak `display: none`:** Ukrywanie elementów realizowane jest wyłącznie na poziomie struktury DOM za pomocą atrybutu `bind-show`.
-* **Brak stylizacji tekstu:** Właściwości takie jak `font-size`, `font-family`, `font-weight` (np. bold), czy `font-style` (np. italic) nie są wspierane w TCSS, ponieważ terminal wymusza użycie czcionki o stałej szerokości (monospace).
-* **Brak zaokrągleń rogów tła:** Właściwość `border-radius` nie jest obsługiwana. Jedynym sposobem na uzyskanie zaokrąglonych rogów jest użycie `border-style: rounded;`.
+* **No Units:** Dimensions, margins, and paddings are specified as pure integers (representing terminal character cells). Units such as `px`, `em`, `rem`, `%` are not supported.
+* **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
+* **No Text Formatting:** Properties like `font-size`, `font-family`, `font-weight` (e.g. bold), or `font-style` (e.g. italic) are not supported in TCSS because the terminal enforces a fixed-width monospace font.
+* **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.
