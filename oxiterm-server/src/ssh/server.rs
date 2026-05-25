@@ -108,7 +108,26 @@ impl Handler for OxiServer {
                 let dims = *client_session.dims.read();
                 let mut app_opt = None;
                 
-                let (doc, input_id) = if let Some(ref initial) = self.initial_document {
+                let (doc, input_id) = if let Some(ref path) = self.source_path {
+                    match crate::loader::load_thtml_file(path) {
+                        Ok(d) => (d, None),
+                        Err(e) => {
+                            warn!("Failed to load document from source path {:?}: {}, falling back to initial_document", path, e);
+                            if let Some(ref initial) = self.initial_document {
+                                (initial.clone(), None)
+                            } else {
+                                let app = tokio::task::spawn_blocking(|| {
+                                    let mut a = crate::weather_app::WeatherApp::new();
+                                    a.refresh();
+                                    a
+                                }).await.unwrap();
+                                let (d, id) = app.build_document(dims.cols, dims.rows);
+                                app_opt = Some(app);
+                                (d, id)
+                            }
+                        }
+                    }
+                } else if let Some(ref initial) = self.initial_document {
                     (initial.clone(), None)
                 } else {
                     let app = tokio::task::spawn_blocking(|| {

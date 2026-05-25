@@ -1,0 +1,178 @@
+THTML Reference
+THTML (Terminal HTML) is OxiTerm&apos;s declarative markup language for building server-side rendered TUI interfaces. It is a strict XML subset with seven tags and a small attribute vocabulary.
+
+1. Document Structure
+Every THTML document is parsed into a tree rooted at an implicit &lt;screen&gt; node. A single optional &lt;style&gt; block may appear anywhere in the document to define TCSS rules.
+
+&lt;style&gt;
+  .btn { border-style: single; border-color: #4ade80; }
+&lt;/style&gt;
+
+&lt;box style=&quot;flex-direction: column; width: 80; height: 24; bg: #0f172a;&quot;&gt;
+  &lt;text style=&quot;fg: #38bdf8; height: 1;&quot;&gt;Hello, OxiTerm!&lt;/text&gt;
+&lt;/box&gt;
+
+2. Tags
+OxiTerm supports exactly seven tags. Unknown tags cause a parse error.
+
+Tag
+Role
+Children
+Notes
+&lt;screen&gt;
+Implicit root
+Any
+Never written explicitly
+&lt;box&gt;
+Layout container
+Any
+Equivalent to HTML &lt;div&gt;
+&lt;text&gt;
+Inline text
+None (text content)
+Supports Unicode, wide chars, emoji
+&lt;input&gt;
+Text field
+None
+Requires bind-value for capture
+&lt;button&gt;
+Interactive button
+None (text content)
+Focusable, fires event-htmx
+&lt;img&gt;
+Image or animation
+None
+SVG, PNG, JPG, Lottie .json
+&lt;video&gt;
+Video playback
+None
+Requires ffmpeg in PATH
+
+3. Universal Attributes
+
+Attribute
+Type
+Description
+id
+String
+Unique identifier. Used by #id CSS selector.
+class
+Space-separated list
+CSS class names. Applied in stylesheet order.
+style
+Inline TCSS
+Inline style declarations. Highest cascade priority.
+event-htmx
+Action string
+Action fired on click or Enter. See §5.
+bind-state
+State key
+Displays value of this state key as text content.
+bind-show
+Condition string
+Hides node when condition is false. See §6.
+
+4. Tag-Specific Attributes
+
+Tag
+Attribute
+Description
+&lt;img&gt;, &lt;video&gt;
+src
+Relative path to asset file.
+&lt;img&gt;, &lt;video&gt;
+alt
+Text description for --a11y mode.
+&lt;input&gt;
+placeholder
+Hint text shown when field is empty.
+&lt;input&gt;
+name
+Machine name used in a11y tree label.
+&lt;input&gt;
+bind-value
+State key where typed text is stored on Enter.
+
+5. event-htmx Actions
+Accepts a semicolon-separated list. Multiple actions execute left-to-right.
+
+Format
+Effect
+Example
+inc:key
+Int state += 1
+inc:counter
+dec:key
+Int state -= 1
+dec:counter
+toggle:key
+Bool state flips
+toggle:menu_open
+set:key=value
+Str state = value
+set:tab=settings
+append:key=value
+Appends to List state
+append:log=entry
+clear:key
+Reset to type default (0/false/&quot;&quot;/[])
+clear:counter
+file.thtml
+Navigate to another page
+dashboard.thtml
+cmd1;cmd2
+Multiple actions in sequence
+set:tab=x;inc:views
+
+💡 Navigation to .thtml preserves all StateManager state across pages.
+
+6. bind-show Conditions
+Hidden nodes are completely removed from the layout — they consume no space.
+
+Condition
+True when
+bind-show=&quot;key&quot;
+state[&quot;key&quot;] == Bool(true) or non-empty Str
+bind-show=&quot;key=value&quot;
+state[&quot;key&quot;].to_string() == &quot;value&quot;
+bind-show=&quot;key=false&quot;
+state[&quot;key&quot;] is falsy or key absent
+bind-show=&quot;count=0&quot;
+state[&quot;count&quot;] == Int(0)
+
+⚠️  When a key does not exist in state, all forms except key=false evaluate to false. Use key=false to make a panel default-visible at startup.
+
+7. State Types
+
+Type
+Internal
+Rendered by bind-state
+Int
+i64
+42
+Bool
+bool
+true / false
+Str
+String
+the string value
+List
+Vec&lt;String&gt;
+[item1, item2, item3]
+
+8. Input Capture Flow
+Tab to focus &lt;input&gt;
+Type — buffer updates live; bind-state shows each keystroke
+Backspace removes last character
+Enter commits: state[&quot;bind-value key&quot;] = Str(buffer), fires event-htmx
+
+&lt;input bind-value=&quot;email&quot; placeholder=&quot;user@example.com&quot;
+       style=&quot;height: 1; border-style: single; border-color: #38bdf8;&quot;/&gt;
+&lt;text bind-state=&quot;email&quot; style=&quot;fg: #94a3b8; height: 1;&quot;/&gt;
+
+9. Comments
+&lt;!-- HTML-style comments are stripped during parsing --&gt;
+
+10. Sanitization
+style=&quot;&quot; — ANSI escape sequences stripped via regex.
+event-htmx, bind-state, bind-show — control chars and ( ) &apos; &quot; &lt; &gt; \ ` removed. = space Unicode preserved.

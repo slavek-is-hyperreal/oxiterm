@@ -41,18 +41,39 @@ pub enum Declaration {
     BorderColor(AnsiColor),
 }
 
+pub fn strip_comments(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next(); // consume '*'
+            while let Some(c2) = chars.next() {
+                if c2 == '*' && chars.peek() == Some(&'/') {
+                    chars.next(); // consume '/'
+                    break;
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct StyleSheet {
     pub rules: Vec<(Selector, Vec<Declaration>)>,
 }
 
 pub fn parse_tcss(input: &str) -> Result<StyleSheet> {
-    let (_, rules) = parse_rules(input).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
+    let stripped = strip_comments(input);
+    let (_, rules) = parse_rules(&stripped).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
     Ok(StyleSheet { rules })
 }
 
 pub fn parse_inline_tcss(input: &str) -> Result<Vec<Declaration>> {
-    let (_, decls) = parse_declarations(input).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
+    let stripped = strip_comments(input);
+    let (_, decls) = parse_declarations(&stripped).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
     Ok(decls)
 }
 
@@ -366,5 +387,22 @@ mod tests {
         assert_eq!(final_btn.style.width, Some(20));
         assert_eq!(final_btn.style.bg, AnsiColor::TrueColor(255, 0, 255));
         assert_eq!(final_btn.style.fg, AnsiColor::TrueColor(255, 0, 0));
+    }
+
+    #[test]
+    fn test_comments_stripping() {
+        let tcss = "
+            /* Comment at start */
+            button {
+                /* Inner comment */
+                width: 10;
+            }
+            /* Comment between rules */
+            .btn {
+                width: 20;
+            }
+        ";
+        let stylesheet = parse_tcss(tcss).unwrap();
+        assert_eq!(stylesheet.rules.len(), 2);
     }
 }

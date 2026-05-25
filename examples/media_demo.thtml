@@ -39,7 +39,7 @@
         <!-- Lottie -->
         <box class="panel" style="border-color: #fbbf24; width: 20;">
             <text class="panel-title" style="fg: #fbbf24;">Lottie JSON</text>
-            <img src="loader.json" alt="Animacja ładowania" style="width: 14; height: 7;" />
+            <img src="bell.json" alt="Animacja dzwonka" style="width: 14; height: 7;" />
             <text class="caption">Klatki przez rlottie</text>
             <text class="caption">60fps na Kitty</text>
             <text class="caption">RGBA bez alpha bug</text>

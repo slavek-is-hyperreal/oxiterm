@@ -1,0 +1,129 @@
+TCSS Reference
+TCSS (Terminal CSS) is OxiTerm&apos;s stylesheet language. It uses standard CSS syntax (selector { property: value; }) with a property vocabulary tuned for the character grid.
+
+1. Cascade and Specificity
+
+Priority
+Source
+Example
+1 (lowest)
+Tag selector
+box { border-style: single; }
+2
+Class selector
+.card { padding: 1; }
+3
+ID selector
+#header { bg: #1e293b; }
+4 (highest)
+Inline style attribute
+style=&quot;fg: #38bdf8; height: 1;&quot;
+
+💡 Last rule wins for same-selector conflicts. No specificity calculation within one layer.
+
+2. Style Block
+&lt;style&gt;
+  text  { fg: #e2e8f0; }
+  .panel { border-style: rounded; padding: 1; flex-direction: column; }
+  .active { border-color: #38bdf8; }
+  #sidebar { width: 24; bg: #1e293b; }
+&lt;/style&gt;
+
+3. Color Properties
+
+Property
+Aliases
+Accepted values
+fg
+color
+#rrggbb  |  color-name  |  0–255  |  reset
+bg
+background-color
+#rrggbb  |  color-name  |  0–255  |  reset
+
+Named colors: black red green yellow blue magenta cyan white
+Colors are inherited by all descendants unless overridden.
+
+4. Layout Properties
+
+Property
+Values
+Default
+width
+integer (character columns)
+auto
+height
+integer (terminal rows)
+auto
+flex-direction
+row | column
+row
+align-items
+flex-start | flex-end | center | stretch
+stretch
+justify-content
+flex-start | flex-end | center | space-between | space-around
+flex-start
+
+💡 Width and height are always in character-grid units (columns/rows), not pixels.
+
+5. Spacing Properties
+
+Property
+Description
+padding
+Shorthand: all four sides
+padding-top / right / bottom / left
+Individual sides
+margin
+Shorthand: all four sides
+margin-top / right / bottom / left
+Individual sides
+
+⚠️  Border adds 1 character per side. A node with height: 3 and border-style has 1 usable content row. Minimum height for bordered text nodes: 3.
+
+6. Border Properties
+
+Property
+Values
+Effect
+border-style
+single | double | rounded
+Enables border, sets character set
+border-color
+color value
+Sets border foreground color
+border
+color value
+Shorthand: single border with color
+
+Style
+Corners
+Horizontal
+Vertical
+single
+┌ ┐ └ ┘
+─
+│
+double
+╔ ╗ ╚ ╝
+═
+║
+rounded
+╭ ╮ ╰ ╯
+─
+│
+
+7. Inline Styles
+The style=&quot;&quot; attribute accepts semicolon-separated TCSS declarations in any order. Trailing semicolon is optional.
+&lt;box style=&quot;flex-direction: column; bg: #0f172a; padding: 1; height: 10;&quot;&gt;
+&lt;text style=&quot;fg: #38bdf8; height: 1;&quot;&gt;Hello&lt;/text&gt;
+
+8. Properties NOT Supported
+font-size, font-weight, font-family (monospace only, no bold/italic)
+display: none/block (use bind-show)
+position: absolute/fixed (no absolute positioning)
+overflow: scroll/hidden (document scroll via PgUp/PgDn only)
+gap (use margin between children)
+flex: N shorthand (flex-grow not yet implemented)
+opacity, transform, transition, animation

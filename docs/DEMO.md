@@ -71,5 +71,5 @@ ssh localhost -p 2222
 ### 💎 Showcase Elements
 Once connected, navigate to the **🎨 Vector & Animation Demo** card. It displays:
 1. **Rive Interactive Widget (`toggle.riv`)**: A custom interactive slider toggle. Hovering and clicking with mouse input dynamically triggers the slide translation animation.
-2. **Lottie Vector Spinner (`loader.json`)**: An active vector loader spinner. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
+2. **Lottie Vector Animation (`bell.json`)**: An active vector bell animation. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
 3. **SVG Vector Mascot (`mascot.svg`)**: A high-fidelity rasterized SVG graphic drawing the OxiTerm rust mascot, cached and rendered via `resvg`.

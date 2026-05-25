@@ -1,0 +1,201 @@
+App Server Integration
+OxiTerm handles rendering and state. For anything beyond built-in actions (inc/dec/toggle/set/append/clear) — validation, database queries, external APIs — connect an App Server. OxiTerm POSTs a JSON payload to your endpoint on every event-htmx action.
+
+1. Protocol
+Request: OxiTerm → App Server (HTTP POST)
+{
+  &quot;action&quot;:     &quot;validate_form&quot;,
+  &quot;state&quot;:      { &quot;email&quot;: &quot;user@example.com&quot;, &quot;step&quot;: &quot;2&quot; },
+  &quot;session_id&quot;: 42
+}
+
+Field
+Type
+Description
+action
+string
+The raw event-htmx value that fired.
+state
+object
+All current state keys, values as strings.
+session_id
+integer
+Unique per SSH/WebSocket connection.
+
+⚠️  This is fire-and-forget. OxiTerm does not wait for the response before re-rendering. To push state changes back to the client, use a separate WebSocket or polling mechanism (planned for a future release).
+
+Configure:
+OXITERM_APP_SERVER=http://localhost:3000/events oxiterm serve app.thtml
+
+2. Python App Server
+Flask (simple)
+pip install flask
+
+from flask import Flask, request
+app = Flask(__name__)
+
+@app.route(&quot;/events&quot;, methods=[&quot;POST&quot;])
+def handle_event():
+    payload    = request.json
+    action     = payload[&quot;action&quot;]
+    state      = payload[&quot;state&quot;]
+    session_id = payload[&quot;session_id&quot;]
+
+    if action == &quot;validate_form&quot;:
+        email = state.get(&quot;email&quot;, &quot;&quot;)
+        if &quot;@&quot; not in email:
+            print(f&quot;Session {session_id}: invalid email&quot;)
+
+    elif action == &quot;save_record&quot;:
+        print(f&quot;Saving: {state}&quot;)
+
+    return &quot;&quot;, 204
+
+if __name__ == &quot;__main__&quot;:
+    app.run(port=3000)
+
+FastAPI (async)
+pip install fastapi uvicorn
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Event(BaseModel):
+    action:     str
+    state:      dict[str, str]
+    session_id: int
+
+@app.post(&quot;/events&quot;)
+async def handle(ev: Event):
+    match ev.action:
+        case &quot;validate_form&quot;: await validate(ev.state)
+        case &quot;save_record&quot;:   await save(ev.state)
+    return {}
+
+# uvicorn server:app --port 3000
+
+💡 Python is ideal when OxiTerm fronts an existing Python service — Django, FastAPI, data pipelines. Add a single route to any existing project.
+
+3. JavaScript / Node.js App Server
+Express
+npm install express
+
+const express = require(&quot;express&quot;);
+const app = express();
+app.use(express.json());
+
+app.post(&quot;/events&quot;, (req, res) =&gt; {
+  const { action, state, session_id } = req.body;
+
+  switch (action) {
+    case &quot;login&quot;:
+      if (state.username === &quot;admin&quot; &amp;&amp; state.password === &quot;secret&quot;)
+        console.log(`Session ${session_id}: auth OK`);
+      break;
+
+    case &quot;fetch_data&quot;:
+      fetchFromDB(state).then(d =&gt; console.log(&quot;Got:&quot;, d));
+      break;
+  }
+  res.status(204).send();
+});
+
+app.listen(3000);
+
+Hono (Bun / Edge)
+import { Hono } from &quot;hono&quot;
+const app = new Hono()
+
+app.post(&quot;/events&quot;, async c =&gt; {
+  const { action, state, session_id } = await c.req.json()
+  console.log(`[${session_id}] ${action}`, state)
+  return c.body(null, 204)
+})
+
+export default { port: 3000, fetch: app.fetch }
+
+💡 JavaScript App Servers are ideal when OxiTerm provides a terminal UI for an existing Node.js API. Auth, WebSocket fanout, and external API calls fit naturally.
+
+4. Rust App Server (Axum)
+[dependencies]
+axum       = &quot;0.7&quot;
+tokio      = { version = &quot;1&quot;, features = [&quot;full&quot;] }
+serde      = { version = &quot;1&quot;, features = [&quot;derive&quot;] }
+serde_json = &quot;1&quot;
+
+use axum::{Router, Json, http::StatusCode, routing::post};
+use serde::Deserialize;
+use std::collections::HashMap;
+
+#[derive(Deserialize)]
+struct OxiEvent {
+    action:     String,
+    state:      HashMap&lt;String, String&gt;,
+    session_id: usize,
+}
+
+async fn handle(Json(ev): Json&lt;OxiEvent&gt;) -&gt; StatusCode {
+    match ev.action.as_str() {
+        &quot;save_config&quot; =&gt; {
+            let k = ev.state.get(&quot;config_key&quot;).cloned().unwrap_or_default();
+            let v = ev.state.get(&quot;config_val&quot;).cloned().unwrap_or_default();
+            println!(&quot;[{}] save {k}={v}&quot;, ev.session_id);
+        }
+        &quot;run_job&quot; =&gt; { tokio::spawn(async move { /* ... */ }); }
+        _ =&gt; {}
+    }
+    StatusCode::NO_CONTENT
+}
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route(&quot;/events&quot;, post(handle));
+    let l = tokio::net::TcpListener::bind(&quot;0.0.0.0:3000&quot;).await.unwrap();
+    axum::serve(l, app).await.unwrap();
+}
+
+💡 Rust App Servers are ideal for ops tooling and deployment dashboards. OxiTerm and Axum can share types via a common workspace crate.
+
+5. THTML Login Form Example
+Name your state keys to match what your server expects:
+&lt;style&gt;
+  .field { border-style:single; border-color:#334155;
+           height:1; padding-left:1; margin-top:1; }
+  .btn   { border-style:single; border-color:#4ade80;
+           padding:1; height:3; align-items:center; }
+&lt;/style&gt;
+
+&lt;box style=&quot;flex-direction:column;width:60;height:24;bg:#0f172a;&quot;&gt;
+  &lt;text style=&quot;fg:#38bdf8;height:1;margin-bottom:2;&quot;&gt;Login&lt;/text&gt;
+
+  &lt;text style=&quot;fg:#94a3b8;height:1;&quot;&gt;Username:&lt;/text&gt;
+  &lt;input bind-value=&quot;username&quot; class=&quot;field&quot; placeholder=&quot;admin&quot;/&gt;
+
+  &lt;text style=&quot;fg:#94a3b8;height:1;margin-top:1;&quot;&gt;Password:&lt;/text&gt;
+  &lt;input bind-value=&quot;password&quot; class=&quot;field&quot; placeholder=&quot;••••••&quot;/&gt;
+
+  &lt;box class=&quot;btn&quot; style=&quot;margin-top:2;&quot; event-htmx=&quot;login&quot;&gt;
+    &lt;text style=&quot;fg:#4ade80;height:1;&quot;&gt;Log In&lt;/text&gt;
+  &lt;/box&gt;
+&lt;/box&gt;
+
+When the user submits, the App Server receives:
+{ &quot;action&quot;: &quot;login&quot;, &quot;state&quot;: { &quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;secret&quot; }, &quot;session_id&quot;: 1 }
+
+6. Running Both Together
+# Terminal 1 — App Server
+python server.py
+
+# Terminal 2 — OxiTerm
+OXITERM_APP_SERVER=http://localhost:3000/events \
+  oxiterm serve app.thtml --port 2222 --no-auth
+
+# Terminal 3 — Client
+ssh localhost -p 2222
+
+7. Multi-Session Patterns
+Store auth tokens by session_id in a HashMap or Redis.
+Use session_id as the key for per-user database rows.
+Broadcast state changes to all sessions via your own fanout (OxiTerm does not share state between sessions).

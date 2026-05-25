@@ -34,6 +34,15 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .collect()
 }
 
+pub fn decode_entities(input: &str) -> String {
+    input
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
 pub fn extract_style_block(html: &str) -> (String, String) {
     let re = regex::Regex::new(r"(?is)<style\b[^>]*>(.*?)</style>").unwrap();
     let mut style_content = String::new();
@@ -90,7 +99,7 @@ impl THTMLParser {
     fn insert_node_recursive(doc: &mut THTMLDocument, parent_id: NodeId, parsed: ParsedNode) -> Result<()> {
         let mut node = Node::new(parsed.tag);
         node.attrs = parsed.attrs;
-        node.text = parsed.text;
+        node.text = parsed.text.map(|t| decode_entities(&t));
         
         // NOTE: Inline styles are NOT applied here. They are applied in THTMLParser::parse
         // via apply_styles (which handles all selector levels including inline) for documents
@@ -425,5 +434,14 @@ mod tests {
         assert!(cleaned.contains("<box class=\"btn\">Hello</box>"));
         assert!(styles.contains(".btn { fg: red; }"));
         assert!(styles.contains("#main { bg: blue; }"));
+    }
+
+    #[test]
+    fn test_entity_decoding() {
+        let input = r#"<text>Arc&lt;Vec&lt;u8&gt;&gt; &amp; &quot;test&quot;</text>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(node.text.as_deref(), Some("Arc<Vec<u8>> & \"test\""));
     }
 }
