@@ -1,0 +1,67 @@
+<style>
+.card {
+    flex-direction: column;
+    align-items: center;
+    padding: 1;
+    border-style: rounded;
+}
+.card-counter  { border-color: #f59e0b; }
+.card-state    { border-color: #4ade80; }
+.card-style    { border-color: #c084fc; }
+.card-media    { border-color: #f87171; }
+.card-nav      { border-color: #38bdf8; }
+.card-a11y     { border-color: #fb923c; }
+
+.label { height: 1; }
+.muted { fg: #64748b; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <!-- Nagłówek -->
+    <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interaktywne TUI przez SSH  🚀</text>
+    </box>
+
+    <!-- Siatka kart nawigacyjnych -->
+    <box style="flex-direction: column; padding: 1; flex-direction: column;">
+
+        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
+            <box class="card card-counter" style="width: 24; margin-right: 1;" event-htmx="counter.thtml">
+                <text style="fg: #f59e0b; height: 1;">🔢 Licznik i stan</text>
+                <text class="muted label">Inc / dec / clear</text>
+            </box>
+            <box class="card card-state" style="width: 24; margin-right: 1;" event-htmx="state_demo.thtml">
+                <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu</text>
+                <text class="muted label">Int Bool Str List</text>
+            </box>
+            <box class="card card-style" style="width: 24;" event-htmx="styles_demo.thtml">
+                <text style="fg: #c084fc; height: 1;">🎨 CSS klasy i kaskada</text>
+                <text class="muted label">Blok &lt;style&gt;</text>
+            </box>
+        </box>
+
+        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
+            <box class="card card-nav" style="width: 24; margin-right: 1;" event-htmx="navigation_demo.thtml">
+                <text style="fg: #38bdf8; height: 1;">📑 Nawigacja i bind-show</text>
+                <text class="muted label">Zakładki bez reload</text>
+            </box>
+            <box class="card card-media" style="width: 24; margin-right: 1;" event-htmx="media_demo.thtml">
+                <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje</text>
+                <text class="muted label">SVG Lottie Kitty</text>
+            </box>
+            <box class="card card-a11y" style="width: 24;" event-htmx="video_demo.thtml">
+                <text style="fg: #fb923c; height: 1;">🎬 Wideo</text>
+                <text class="muted label">ffmpeg → terminal</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Stopka -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted label">[Q] Wyjście   [Tab] / [↑↓] Nawigacja klawiaturą   [Enter] Wybierz</text>
+    </box>
+
+</box>

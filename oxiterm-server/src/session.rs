@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::ssh::reactor::ReactorMessage;
 use parking_lot::RwLock;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 pub use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_renderer::layout::engine::LayoutEngine;
@@ -212,6 +212,9 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
         let commands = oxiterm_renderer::DiffEngine::diff(front, back);
         let transitioning_graphics_cleanup = !front.graphics.is_empty() && back.graphics.is_empty();
+        
+        debug!("send_frame: commands count = {}, graphics count = {}, transitioning_graphics_cleanup = {}", commands.len(), back.graphics.len(), transitioning_graphics_cleanup);
+        
         if commands.is_empty() && back.graphics.is_empty() && !transitioning_graphics_cleanup {
             return Ok(false);
         }
@@ -226,6 +229,7 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         }
         
         let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+        debug!("send_frame: encoded ANSI size = {} bytes", bytes.len());
         out.extend_from_slice(&bytes);
         
         for g in &back.graphics {
@@ -235,17 +239,32 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         // ESU: CSI ? 2026 l
         out.extend_from_slice(b"\x1b[?2026l");
         
-        let _ = self.output_tx.try_send(out);
-        Ok(true)
+        let sent_len = out.len();
+        match self.output_tx.try_send(out) {
+            crate::backpressure::SendResult::Sent => {
+                debug!("send_frame: successfully sent frame ({} bytes) to output_tx", sent_len);
+                Ok(true)
+            }
+            crate::backpressure::SendResult::Dropped => {
+                warn!("send_frame: frame dropped due to backpressure");
+                Ok(false)
+            }
+            crate::backpressure::SendResult::Closed => {
+                warn!("send_frame: frame closed");
+                Ok(false)
+            }
+        }
     }
 
     fn setup(&mut self) -> anyhow::Result<()> {
+        debug!("AnsiFrameSink::setup called");
         let mut initial_clear = Vec::new();
         // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
         initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
         let _ = self.output_tx.try_send(initial_clear);
         Ok(())
     }
+
 
     fn clear_screen(&mut self) -> anyhow::Result<()> {
         let mut clear_seq = Vec::new();
@@ -515,6 +534,7 @@ impl EventLoop {
         let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
+        let mut pending_render = false;
         loop {
             // SA-10: Idle timeout check (10 minutes). Explicitly return to close the session.
             let elapsed = self.session.last_activity.read().elapsed();
@@ -523,8 +543,9 @@ impl EventLoop {
                 return;
             }
 
-            let mut needs_render = first_frame;
+            let mut needs_render = first_frame || pending_render;
             first_frame = false;
+            pending_render = false;
 
             // Poll for weather updates
             if let Some(ref rx) = self.weather_rx {
@@ -903,13 +924,14 @@ impl EventLoop {
                 needs_render = true;
             }
 
-            if needs_render && !self.output_paused && self.frame_limiter.should_render() {
-                // Sync reactive state before render
-                Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+            if needs_render && !self.output_paused {
+                if self.frame_limiter.should_render() {
+                    // Sync reactive state before render
+                    Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
 
-                let dims = *self.session.dims.read();
-                let state_guard = self.session.state.read();
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
+                    let dims = *self.session.dims.read();
+                    let state_guard = self.session.state.read();
+                    if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
                     self.total_height = layout.total_height;
 
                     let has_scroll = self.total_height > dims.rows;
@@ -1091,6 +1113,9 @@ impl EventLoop {
                         self.buffer.swap();
                         self.frame_limiter.record_frame();
                     }
+                }
+                } else {
+                    pending_render = true;
                 }
             }
         }
