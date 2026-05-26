@@ -1,3 +1,8 @@
+//! THTML template markup language parser.
+//!
+//! Parses custom THTML templates into a DOM tree [`THTMLDocument`]. Sanitizes raw styles
+//! and event attributes defensively to protect against injection and cross-site scripting (XSS) attacks.
+
 use crate::document::THTMLDocument;
 use oxiterm_proto::dom::{Node, NodeId, NodeTag, NodeAttributes};
 use anyhow::{Result, anyhow};
@@ -16,6 +21,7 @@ use std::sync::OnceLock;
 
 static ANSI_REGEX: OnceLock<Regex> = OnceLock::new();
 
+/// Strips raw ANSI escape sequences from input strings to prevent visual styling injection.
 pub fn sanitize_style_raw(input: &str) -> String {
     let re = ANSI_REGEX.get_or_init(|| {
         Regex::new(r"[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]").unwrap()
@@ -23,8 +29,10 @@ pub fn sanitize_style_raw(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
-/// BUG-M03: Sanitize `event-htmx` attribute values.
-/// Only URL-safe characters are permitted. All control chars and escape sequences are stripped.
+/// Sanitizes attribute values of `event-htmx` and related event triggers.
+///
+/// Permits only URL-safe alphanumeric and symbol characters to block arbitrary scripting/command execution
+/// inside the terminal event hooks. Strips parentheses, quotation marks, and backslashes.
 pub fn sanitize_htmx_value(input: &str) -> String {
     input
         .chars()
@@ -34,6 +42,7 @@ pub fn sanitize_htmx_value(input: &str) -> String {
         .collect()
 }
 
+/// Decodes basic HTML entities like `&lt;`, `&gt;`, `&quot;`, `&apos;`, and `&amp;`.
 pub fn decode_entities(input: &str) -> String {
     input
         .replace("&lt;", "<")
@@ -43,6 +52,9 @@ pub fn decode_entities(input: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// Extracts CSS blocks inside `<style>...</style>` tags from THTML markup.
+///
+/// Returns the cleaned THTML body alongside the combined CSS stylesheet content.
 pub fn extract_style_block(html: &str) -> (String, String) {
     let re = regex::Regex::new(r"(?is)<style\b[^>]*>(.*?)</style>").unwrap();
     let mut style_content = String::new();
@@ -60,11 +72,17 @@ pub fn extract_style_block(html: &str) -> (String, String) {
     (cleaned_html, style_content)
 }
 
+/// Parser for the THTML markup dialect.
 pub struct THTMLParser;
 
 type ParseResult<'a, T> = IResult<&'a str, T, VerboseError<&'a str>>;
 
 impl THTMLParser {
+    /// Parses a THTML string template into a DOM [`THTMLDocument`] structure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a verbose error if the template contains unmatched tags or invalid grammar.
     pub fn parse(input: &str) -> Result<THTMLDocument> {
         let (cleaned_html, style_content) = extract_style_block(input);
         let mut doc = THTMLDocument::new();
@@ -87,9 +105,8 @@ impl THTMLParser {
             Self::insert_node_recursive(&mut doc, root_id, node)?;
         }
         
-        // apply_styles is ALWAYS called (even when there is no <style> block) because
-        // insert_node_recursive no longer applies inline styles — apply_styles handles the
-        // full cascade (tag → class → id → inline) in a single unified pass.
+        // Inline styles are deferred to the cascade processor apply_styles to ensure
+        // correct specificity resolution and styling hierarchy.
         let stylesheet = crate::parser::tcss::parse_tcss(&style_content).unwrap_or_default();
         crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
         
@@ -101,11 +118,6 @@ impl THTMLParser {
         node.attrs = parsed.attrs;
         node.text = parsed.text.map(|t| decode_entities(&t));
         
-        // NOTE: Inline styles are NOT applied here. They are applied in THTMLParser::parse
-        // via apply_styles (which handles all selector levels including inline) for documents
-        // that have a <style> block. For plain documents (no <style>), apply_styles is also
-        // called with an empty stylesheet, so inline styles are always applied once — here
-        // we defer to that single pass to avoid double work.
         let node_id = doc.arena.alloc(node);
         doc.append_child(parent_id, node_id)?;
         
@@ -157,7 +169,6 @@ impl THTMLParser {
 
         loop {
             let close_tag_name = tag_name_to_str(tag_name);
-            // Efficiently take text until the next tag or closing tag
             if let Ok((rem, text)) = take_until::<&str, &str, VerboseError<&str>>("<")(current_input) {
                 if !text.is_empty() {
                     text_content.push_str(text);
@@ -165,7 +176,6 @@ impl THTMLParser {
                 current_input = rem;
             }
 
-            // Check if it's the closing tag
             let close_tag_res: ParseResult<&str> = recognize(tuple((tag("</"), tag(close_tag_name), multispace0, nom_char('>'))))(current_input);
             
             if let Ok((remaining, _)) = close_tag_res {
@@ -266,9 +276,8 @@ fn parse_attr_kv(input: &str) -> ParseResult<'_, (String, String)> {
     
     let value = match key {
         "style" => sanitize_style_raw(value),
-        // BUG-M03: sanitize event-htmx — allow only URL-safe chars, reject ANSI/escape sequences
         "event-htmx" => sanitize_htmx_value(value),
-        "bind-state" => sanitize_htmx_value(value), // Same safety rules for state keys
+        "bind-state" => sanitize_htmx_value(value),
         _ => value.to_string(),
     };
     
@@ -337,7 +346,6 @@ mod tests {
     fn test_sanitize_htmx() {
         let input = "alert('xss');/path/to/target";
         let sanitized = sanitize_htmx_value(input);
-        // Only URL-safe chars allowed
         assert!(!sanitized.contains('('));
         assert!(!sanitized.contains('\''));
         assert!(sanitized.contains("/path/to/target"));
@@ -384,7 +392,6 @@ mod tests {
         assert_eq!(box3.attrs.bind_show, None);
     }
 
-
     #[test]
     fn test_parse_inline_style() {
         let input = r#"<box style="fg: red; bg: #0000ff; width: 50; flex-direction: column;">Styled</box>"#;
@@ -394,22 +401,18 @@ mod tests {
         
         assert_eq!(box_node.style.width, Some(50));
         assert_eq!(box_node.style.flex_direction, oxiterm_proto::style::FlexDirection::Column);
-        // Fg color should be red (TrueColor(255, 0, 0))
         assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
-        // Bg color should be blue (TrueColor(0, 0, 255))
         assert_eq!(box_node.style.bg, oxiterm_proto::style::AnsiColor::TrueColor(0, 0, 255));
     }
 
     #[test]
     fn test_parse_style_missing_semicolon() {
-        // Test inline style without trailing semicolon
         let input = r#"<box style="fg: red">Styled</box>"#;
         let doc = THTMLParser::parse(input).unwrap();
         let root = doc.get_root();
         let box_node = doc.get_node(root.children[0]).unwrap();
         assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
 
-        // Test stylesheet parsing block without trailing semicolon
         let css = ".myclass { fg: green }";
         let stylesheet = crate::parser::tcss::parse_tcss(css).unwrap();
         assert_eq!(stylesheet.rules.len(), 1);

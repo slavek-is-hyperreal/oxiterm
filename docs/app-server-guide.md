@@ -6,7 +6,7 @@ OxiTerm is responsible for the user interface layer (THTML/TCSS), handling termi
 
 ## 1. Communication Protocol
 
-Communication between OxiTerm and the external server takes place using HTTP POST requests. On every `event-htmx` event, OxiTerm sends an asynchronous request with a JSON payload to the URL defined in the `OXITERM_APP_SERVER` environment variable.
+Communication between OxiTerm and the external server takes place using HTTP POST requests. On every `event-htmx` event, OxiTerm sends an asynchronous request in a background thread with a JSON payload to the URL defined in the `OXITERM_APP_SERVER` environment variable.
 
 ### JSON Payload Schema (OxiTerm → App Server)
 
@@ -29,20 +29,33 @@ Communication between OxiTerm and the external server takes place using HTTP POS
 | `state` | object | A key-value dictionary representing the current session state. All state values are sent as strings. |
 | `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
 
-> [!WARNING]
-> Event propagation by OxiTerm operates in a **fire-and-forget** mode. The OxiTerm server does not wait for an HTTP response from the application server before re-rendering the screen. The response from the application server should have a status code of `204 No Content` or `200 OK` with an empty body.
+### Dynamic State Patching (App Server → OxiTerm)
+
+If the App Server returns a status code of **`200 OK`** with a JSON object, OxiTerm parses the response body as a **State Patch** and applies it to the active session state. If no state updates are needed, the response should have a status code of **`204 No Content`** (or `200 OK` with an empty body).
+
+#### Example State Patch Response (App Server → OxiTerm)
+```json
+{
+  "email_error": "Invalid email domain",
+  "step": "3"
+}
+```
+This patch will insert or update the keys `email_error` and `step` in the session's `StateManager`, and OxiTerm will immediately redraw the terminal UI to reflect the updated state.
+
+> [!NOTE]
+> Event dispatching by OxiTerm runs asynchronously in a spawned thread to avoid blocking the terminal event loop. The state patch is applied to the session as soon as the HTTP request completes.
 
 ---
 
 ## 2. Python Implementation
 
-### Flask (simple example)
+### Flask (with State Patching)
 ```bash
 pip install flask
 ```
 
 ```python
-from flask import Flask, request
+from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 @app.route("/events", methods=["POST"])
@@ -56,23 +69,28 @@ def handle_event():
         email = state.get("email", "")
         if "@" not in email:
             print(f"Session {session_id}: Invalid email format")
+            # Return a state patch to show an error message in the UI
+            return jsonify({
+                "email_error": "Invalid email format"
+            }), 200
 
     elif action == "save_record":
         print(f"Saving record for session {session_id}: {state}")
 
+    # No state change needed
     return "", 204
 
 if __name__ == "__main__":
     app.run(port=3000)
 ```
 
-### FastAPI (asynchronous server with Pydantic)
+### FastAPI (asynchronous server with Pydantic and State Patching)
 ```bash
 pip install fastapi uvicorn
 ```
 
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -83,20 +101,19 @@ class OxiEvent(BaseModel):
     session_id: int
 
 @app.post("/events")
-async def handle(ev: OxiEvent):
+async def handle(ev: OxiEvent, response: Response):
     match ev.action:
         case "validate_form":
-            await validate_email(ev.session_id, ev.state)
+            email = ev.state.get("email", "")
+            if "@" not in email:
+                return {"email_error": "Invalid email format"}
         case "save_record":
             await save_to_db(ev.session_id, ev.state)
+            
+    response.status_code = status.HTTP_204_NO_CONTENT
     return {}
 
-async def validate_email(session_id: int, state: dict[str, str]):
-    # Validation logic...
-    pass
-
 async def save_to_db(session_id: int, state: dict[str, str]):
-    # DB Save...
     pass
 
 # Run with: uvicorn server:app --port 3000
@@ -123,8 +140,15 @@ app.post("/events", (req, res) => {
     case "login":
       if (state.username === "admin" && state.password === "secret") {
         console.log(`Session ${session_id}: authentication succeeded`);
+        return res.json({
+          auth_error: "",
+          logged_in: "true"
+        });
+      } else {
+        return res.json({
+          auth_error: "Invalid username or password"
+        });
       }
-      break;
 
     case "fetch_data":
       fetchFromDB(state).then(data => {
@@ -145,7 +169,16 @@ const app = new Hono()
 
 app.post("/events", async c => {
   const { action, state, session_id } = await c.req.json()
-  console.log(`[Session ${session_id}] Event: ${action}`, state)
+  
+  if (action === "check_username") {
+    const username = state.username || "";
+    if (username.length < 3) {
+      return c.json({ username_error: "Too short!" })
+    } else {
+      return c.json({ username_error: "" })
+    }
+  }
+
   return c.body(null, 204)
 })
 
@@ -167,7 +200,7 @@ serde_json = "1"
 ```
 
 ```rust
-use axum::{Router, Json, http::StatusCode, routing::post};
+use axum::{Router, Json, response::IntoResponse, http::StatusCode, routing::post};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -178,21 +211,31 @@ struct OxiEvent {
     session_id: usize,
 }
 
-async fn handle(Json(ev): Json<OxiEvent>) -> StatusCode {
+async fn handle(Json(ev): Json<OxiEvent>) -> impl IntoResponse {
     match ev.action.as_str() {
         "save_config" => {
             let k = ev.state.get("config_key").cloned().unwrap_or_default();
             let v = ev.state.get("config_val").cloned().unwrap_or_default();
             println!("[Session {}] Saved: {}={}", ev.session_id, k, v);
+            StatusCode::NO_CONTENT.into_response()
         }
-        "run_job" => {
-            tokio::spawn(async move {
-                // Execute long-running background task...
-            });
+        "validate_age" => {
+            let age_str = ev.state.get("age").cloned().unwrap_or_default();
+            if let Ok(age) = age_str.parse::<u32>() {
+                if age < 18 {
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "age_error": "Must be 18 or older" }))
+                    ).into_response();
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "age_error": "" }))
+            ).into_response()
         }
-        _ => {}
+        _ => StatusCode::NO_CONTENT.into_response()
     }
-    StatusCode::NO_CONTENT
 }
 
 #[tokio::main]
@@ -226,6 +269,9 @@ Here is how to construct a THTML interface to pass input values to your applicat
   <text style="fg: #94a3b8; height: 1; margin-top: 1;">Password:</text>
   <input bind-value="password" class="field" placeholder="••••••"/>
 
+  <!-- Display auth error if set in state -->
+  <text bind-state="auth_error" style="fg: #f87171; height: 1; margin-top: 1;"/>
+
   <!-- Clicking will trigger the "login" action -->
   <box class="btn" style="margin-top: 2;" event-htmx="login">
     <text style="fg: #4ade80; height: 1;">Log In</text>
@@ -239,11 +285,21 @@ When the user fills in the fields and clicks the "Log In" button, OxiTerm will s
   "action": "login",
   "state": {
     "username": "admin",
-    "password": "mysecretpassword"
+    "password": "mysecretpassword",
+    "auth_error": ""
   },
   "session_id": 1
 }
 ```
+
+If the credentials are correct, the App Server can respond with:
+```json
+{
+  "auth_error": "",
+  "logged_in": "true"
+}
+```
+Updating the session state.
 
 ---
 

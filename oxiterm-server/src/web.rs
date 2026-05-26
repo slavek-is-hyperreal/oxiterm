@@ -1,3 +1,8 @@
+//! WebSocket and HTTP Web interface implementation for OxiTerm.
+//!
+//! Provides WebSocket framing handlers (`WsFrameSink`), static assets routing,
+//! input event translators (keyboard, mouse, resize), and path traversal checks.
+
 #[cfg(feature = "web")]
 pub mod web_impl {
     use std::sync::Arc;
@@ -18,6 +23,7 @@ pub mod web_impl {
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
 
+    /// Simple hash path utility.
     pub fn hash_path(path: &str) -> u32 {
         let mut hash: u32 = 5381;
         for c in path.chars() {
@@ -26,6 +32,7 @@ pub mod web_impl {
         hash
     }
 
+    /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
         frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
         session: Arc<ClientSession>,
@@ -35,6 +42,7 @@ pub mod web_impl {
     }
 
     impl WsFrameSink {
+        /// Creates a new `WsFrameSink`.
         pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>, session: Arc<ClientSession>, source_path: Option<std::path::PathBuf>) -> Self {
             Self {
                 frame_tx,
@@ -48,13 +56,11 @@ pub mod web_impl {
 
     impl FrameSink for WsFrameSink {
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
-            // Check active media, send payloads (0x20) if unsent
             let media_base_url = crate::config::OxiTermConfig::from_env().ok().and_then(|c| c.media_base_url).map(std::path::PathBuf::from);
             let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
 
             let active_media = self.session.active_media.read().clone();
             
-            // Check if active media positions have changed
             let mut coords_changed = false;
             if active_media.len() != self.sent_coordinates.len() {
                 coords_changed = true;
@@ -77,7 +83,6 @@ pub mod web_impl {
             }
 
             if coords_changed {
-                // Send clear command (tag 0x21, empty coordinates) to signal active media reset
                 let _ = self.frame_tx.try_send(vec![0x21]);
                 
                 self.sent_coordinates.clear();
@@ -107,7 +112,6 @@ pub mod web_impl {
                         }
                     }
 
-                    // Send graphic coordinates (0x21)
                     let mut msg = vec![0x21];
                     msg.extend_from_slice(&h.to_le_bytes());
                     msg.extend_from_slice(&media.x.to_le_bytes());
@@ -158,6 +162,7 @@ pub mod web_impl {
         }
     }
 
+    /// Starts the HTTP / WS serving thread loop.
     pub fn start_web_server(
         host: String,
         port: u16,
@@ -338,8 +343,6 @@ pub mod web_impl {
         let mut dims = *client_session.dims.read();
 
         // Wait for the first resize message (0x10) from the client to set initial dimensions.
-        // This prevents a first-frame race condition where the server renders at default 80x24
-        // before the correct client dimensions are known.
         while let Some(msg_res) = ws_read.next().await {
             let msg = match msg_res {
                 Ok(m) => m,
@@ -378,7 +381,6 @@ pub mod web_impl {
         let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
         event_loop.source_path = source_path;
-
 
         std::thread::spawn(move || {
             event_loop.run();
@@ -472,7 +474,6 @@ pub mod web_impl {
                         if bytes.len() >= 5 {
                             let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
                             let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
-                            // Trigger dynamic resize via debouncer to prevent double-allocation/drift
                             client_session.resize_debouncer.write().push(PtyDimensions { cols, rows });
                             let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
                         }
@@ -571,7 +572,6 @@ pub mod web_impl {
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
 
-            // First frame: should send clear (1 byte), asset payload (0x20), and coordinates (0x21)
             let _ = sink.send_frame(&front, &back);
             let _ = std::fs::remove_file(test_file);
 
@@ -582,7 +582,6 @@ pub mod web_impl {
             let msg2 = rx.try_recv().unwrap();
             assert_eq!(msg2[0], 0x21); // coordinates
 
-            // Second frame (no changes): should NOT send any messages, and send_frame should return false
             let res = sink.send_frame(&front, &back).unwrap();
             assert!(!res);
             assert!(rx.try_recv().is_err());
@@ -594,7 +593,6 @@ pub mod web_impl {
             let session = reg.create_session().unwrap();
             
             use crate::session::MediaRenderInfo;
-            // A path that escapes the base directory
             session.active_media.write().push(MediaRenderInfo {
                 path: "../../../escaped_media.png".to_string(),
                 x: 10,
@@ -605,7 +603,6 @@ pub mod web_impl {
 
             let temp_dir = std::env::temp_dir();
             let session_path = temp_dir.join("subdir").join("session.thtml");
-            // Create the directory for session_path to ensure canonicalize() on base doesn't fail
             std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
@@ -616,11 +613,9 @@ pub mod web_impl {
 
             let _ = sink.send_frame(&front, &back);
 
-            // Let's inspect the channel messages.
             let msg0 = rx.try_recv().unwrap();
             assert_eq!(msg0[0], 0x21); // clear
             
-            // Second message should be coordinates (0x21) instead of asset payload (0x20)
             let msg1 = rx.try_recv().unwrap();
             assert_eq!(msg1[0], 0x21); 
             assert!(rx.try_recv().is_err());
@@ -633,6 +628,7 @@ pub mod web_impl {
     use std::sync::Arc;
     use crate::session::SessionRegistry;
 
+    /// No-op fallback when web compile feature is disabled.
     pub fn start_web_server(
         _host: String,
         _port: u16,
@@ -641,6 +637,5 @@ pub mod web_impl {
         _initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         _source_path: Option<std::path::PathBuf>,
     ) {
-        // Noop when compile feature "web" is disabled
     }
 }

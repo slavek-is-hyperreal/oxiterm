@@ -1,45 +1,38 @@
-//! `AppDispatcher` — sends OxiTerm state/input events to an external app server.
+//! State dispatcher to external app servers.
 //!
-//! When `OXITERM_APP_SERVER` is configured, OxiTerm POSTs a JSON payload to the
-//! external URL. The payload carries the current state snapshot and the triggering
-//! action so that a backend can react (e.g. store form data, run business logic).
-//!
-//! # Contract
-//! - One public struct: `AppDispatcher`.
-//! - One public method: `dispatch`.
-//! - No long-lived threads; each `dispatch` call is fire-and-forget on a std thread.
-//! - No new Cargo.toml deps (uses `ureq` already present).
+//! Sends state snapshots and action payloads to configured application backends
+//! in a fire-and-forget thread, receiving and applying JSON state patches to client sessions.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, warn};
 
-/// The JSON body sent to the external app server on each dispatch.
+/// The JSON payload dispatched to the application backend on events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DispatchPayload {
-    /// The HTMX action string that triggered this dispatch (e.g. `"set:tab=info"`).
+    /// The action event string trigger (e.g. `"set:tab=info"`).
     pub action: String,
-    /// Current values for all known state keys (stringified).
+    /// Currently resolved session state keys and values.
     pub state: HashMap<String, String>,
-    /// Session identifier for correlating events on the server side.
+    /// Unique identifier of the connection session.
     pub session_id: usize,
 }
 
-/// Sends state events to an external app server (fire-and-forget).
+/// Dispatcher responsible for sending session state updates to the app server.
 pub struct AppDispatcher {
-    /// URL of the external app server (e.g. `http://localhost:3000/events`).
+    /// Destination endpoint URL of the application server events channel.
     app_server_url: String,
 }
 
 impl AppDispatcher {
-    /// Create from the configured URL.
+    /// Creates a new dispatcher targeting the given URL.
     pub fn new(app_server_url: String) -> Self {
         Self { app_server_url }
     }
 
-    /// Fire-and-forget POST of `payload` to the configured URL.
+    /// Dispatches the payload in a spawned thread to avoid blocking the event loop.
     ///
-    /// Spawns a std thread so the event loop is never blocked.
+    /// Parses responses returning a state patch JSON and applies them to the session.
     pub fn dispatch(&self, payload: DispatchPayload, session: std::sync::Arc<crate::session::ClientSession>) {
         let url = self.app_server_url.clone();
         std::thread::spawn(move || {
@@ -67,8 +60,6 @@ impl AppDispatcher {
         });
     }
 }
-
-// ─── Unit Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -110,17 +101,13 @@ mod tests {
         assert_eq!(d.app_server_url, "http://localhost:3000/events");
     }
 
-    /// Verifies that `dispatch` does not panic when URL is unreachable.
-    /// (The spawned thread will fail gracefully and log a warning.)
     #[test]
     fn test_dispatch_unreachable_does_not_panic() {
         let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
         let payload = make_payload("toggle:flag", 0);
         let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
-        // Should not panic — failure is logged inside the spawned thread.
         d.dispatch(payload, session);
-        // Give thread a moment to attempt and fail.
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
@@ -140,12 +127,10 @@ mod tests {
         
         d.dispatch(payload, session.clone());
         
-        // Accept the mock server connection
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf).unwrap();
         
-        // Write mock response with state patch JSON
         let body = "{\"new_key\":\"patched_val\"}";
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
@@ -154,7 +139,6 @@ mod tests {
         );
         stream.write_all(response.as_bytes()).unwrap();
         
-        // Wait up to 2 seconds for state patch to be applied
         let start = std::time::Instant::now();
         while start.elapsed() < std::time::Duration::from_secs(2) {
             if session.state.read().get("new_key").is_some() {
@@ -163,9 +147,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         
-        // Verify state patch was applied to session
         let state = session.state.read();
         assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
     }
 }
-

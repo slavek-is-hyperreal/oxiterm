@@ -1,3 +1,8 @@
+//! SSH server module for OxiTerm.
+//!
+//! Exposes host key loaders, handshake negotiators, and the main TCP listener loop
+//! spawning connection reactors under rate limiter bounds.
+
 pub mod keys;
 pub mod reactor;
 pub mod negotiator;
@@ -13,6 +18,9 @@ use crate::ratelimit::RateLimiter;
 use tracing::{info, warn};
 use std::collections::HashMap;
 
+/// Runs the main TCP listener loop for incoming SSH connection streams.
+///
+/// Binds to the configured address/port, loads keys, and registers active client handles.
 pub async fn run_server(
     config: OxiTermConfig, 
     registry: Arc<SessionRegistry>,
@@ -40,7 +48,7 @@ pub async fn run_server(
     loop {
         let (stream, peer_addr) = listener.accept().await?;
         
-        // Rate limiting (QUAL-004)
+        // Rate limiting checks, anchored by spec [QUAL-004]
         match rate_limiter.check_and_record(peer_addr.ip()) {
             crate::ratelimit::RateResult::Allow => {
                 let russh_config_ref = ssh_config.clone();
@@ -60,7 +68,7 @@ pub async fn run_server(
                     if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
                         warn!("SSH session error for {peer_addr}: {e:?}");
                     }
-                    // QUAL-006: Ensure all sessions are removed even on abrupt disconnect
+                    // Anchored by spec [QUAL-006]. Ensure all session handles are removed from the registry on abrupt disconnect.
                     let mut channels = session_channels.lock();
                     for (_, sid) in channels.drain() {
                         info!("Cleanup: Removing session {sid} from registry");
@@ -70,7 +78,6 @@ pub async fn run_server(
             }
             crate::ratelimit::RateResult::Deny => {
                 warn!("Rate limit exceeded for {peer_addr}");
-                // Just drop the connection
             }
             crate::ratelimit::RateResult::Throttle(delay) => {
                 warn!("Throttling {peer_addr} for {delay:?}");
@@ -92,7 +99,7 @@ pub async fn run_server(
                     if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
                         warn!("SSH session error for {peer_addr}: {e:?}");
                     }
-                    // QUAL-006: Ensure all sessions are removed even on abrupt disconnect
+                    // Anchored by spec [QUAL-006]. Ensure all session handles are removed from the registry on abrupt disconnect.
                     let mut channels = session_channels.lock();
                     for (_, sid) in channels.drain() {
                         info!("Cleanup: Removing session {sid} from registry");

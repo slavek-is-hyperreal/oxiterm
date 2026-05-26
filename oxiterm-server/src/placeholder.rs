@@ -1,7 +1,13 @@
+//! OxiTerm placeholder user interface.
+//!
+//! Generates a fallback visual document structure displaying setup and usage instructions
+//! when no specific THTML template is provided.
+
 use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_proto::dom::{Node, NodeTag};
 use oxiterm_proto::style::{AnsiColor, FlexDirection, JustifyContent, AlignItems, BorderStyle, BorderChars};
 
+/// Builds the default fallback template layout with setup instructions.
 pub fn build_placeholder_doc(cols: u16, rows: u16) -> THTMLDocument {
     let mut doc = THTMLDocument::new();
     
@@ -40,7 +46,7 @@ pub fn build_placeholder_doc(cols: u16, rows: u16) -> THTMLDocument {
     doc.append_child(border_id, title_id).unwrap();
 
     let mut desc = Node::new(NodeTag::Text);
-    desc.text = Some("Brak dokumentu THTML.".to_string());
+    desc.text = Some("No THTML document loaded.".to_string());
     desc.style.fg = AnsiColor::Color256(250);
     desc.style.height = Some(1);
     desc.style.margin.top = 1;
@@ -48,7 +54,7 @@ pub fn build_placeholder_doc(cols: u16, rows: u16) -> THTMLDocument {
     doc.append_child(border_id, desc_id).unwrap();
 
     let mut cmd1 = Node::new(NodeTag::Text);
-    cmd1.text = Some("Uruchom serwer z plikiem:".to_string());
+    cmd1.text = Some("Start the server with a file:".to_string());
     cmd1.style.fg = AnsiColor::Color256(244);
     cmd1.style.height = Some(1);
     cmd1.style.margin.top = 1;
@@ -63,7 +69,7 @@ pub fn build_placeholder_doc(cols: u16, rows: u16) -> THTMLDocument {
     doc.append_child(border_id, cmd2_id).unwrap();
 
     let mut exit_text = Node::new(NodeTag::Text);
-    exit_text.text = Some("[Q] Wyjście".to_string());
+    exit_text.text = Some("[Q] Exit".to_string());
     exit_text.style.fg = AnsiColor::Color256(240);
     exit_text.style.height = Some(1);
     exit_text.style.margin.top = 1;

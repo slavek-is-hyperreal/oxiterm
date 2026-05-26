@@ -1,3 +1,8 @@
+//! Node layout rendering engine.
+//!
+//! Coordinates layout outputs, border styling, text formatting, and media decoding
+//! to paint target DOM trees into screen cell buffers.
+
 use crate::document::THTMLDocument;
 use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
@@ -14,9 +19,11 @@ fn get_global_virtual_fs() -> &'static RwLock<HashMap<PathBuf, Vec<u8>>> {
     GLOBAL_VIRTUAL_FS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
+/// Thread-local cache proxy providing simulated file system storage for assets.
 pub struct VirtualFsProxy;
 
 impl VirtualFsProxy {
+    /// Executes a closure with access to the thread-local virtual file system.
     pub fn with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&std::cell::RefCell<HashMap<PathBuf, Vec<u8>>>) -> R,
@@ -43,8 +50,10 @@ impl VirtualFsProxy {
     }
 }
 
+/// Global virtual file system proxy instance.
 pub static VIRTUAL_FS: VirtualFsProxy = VirtualFsProxy;
 
+/// Engine translating DOM trees and styling specs to screen characters and graphic payloads.
 pub struct Renderer;
 
 impl Renderer {
@@ -82,7 +91,7 @@ impl Renderer {
         base_dir: Option<&Path>,
         scroll_offset: u16,
     ) {
-        // 1. Całkowite czyszczenie bufora do spacji (zapobiega duszkom jak "PROUALNA")
+        // 1. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous frames)
         for y in 0..buffer.height {
             for x in 0..buffer.width {
                 buffer.set(x, y, Cell {
@@ -94,7 +103,7 @@ impl Renderer {
             }
         }
         
-        // 2. Rekurencyjne rysowanie drzewa DOM z centrowaniem korzenia, jeśli ma sztywną mniejszą wielkość
+        // 2. Recursively draw the DOM tree, centering the root element if it has a smaller fixed size
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
         let start_x = offset_x as i32;
         let start_y = (offset_y as i32) - (scroll_offset as i32);
@@ -400,7 +409,7 @@ impl Renderer {
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
-            // BUG-SVG-01: Swap B (index 0) and R (index 2) to correctly map BGRA to RGBA
+            // Swap blue (index 0) and red (index 2) channels to convert tiny-skia's BGRA format to standard RGBA.
             pixel.swap(0, 2);
             let alpha = pixel[3];
             if alpha > 0 && alpha < 255 {
@@ -442,8 +451,8 @@ impl Renderer {
             let is_lottie = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "json")
                 .unwrap_or(false);
-            // BUG-RIVE-01: The .riv extension is checked to trigger a CPU-rendered procedural toggle button simulation
-            // rather than utilizing a full Rive runtime, maintaining low binary footprint.
+            // Check for the `.riv` extension to run a CPU-rendered procedural toggle button simulation
+            // rather than using a full Rive runtime, maintaining a low binary footprint.
             let is_rive = resolved_path.extension()
                 .map(|ext| ext.to_string_lossy().to_lowercase() == "riv")
                 .unwrap_or(false);
@@ -606,7 +615,7 @@ impl Renderer {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    // BUG-RIVE-01: Procedural Rive Toggle Button widget simulation.
+                    // Procedural Rive Toggle Button widget simulation.
                     // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
                     (|| -> anyhow::Result<image::RgbaImage> {
                         let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
@@ -894,7 +903,7 @@ impl Renderer {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(raw_rgba) = frame {
                 if profile.supports_kitty_gfx {
-                    // BUG-VIDEO-01: Zero-copy transmit path. Pass Arc slice reference directly to transmit_image.
+                    // Zero-copy transmit path. Pass Arc slice reference directly to transmit_image to avoid allocation.
                     let payload = super::kitty::KittyImageManager::transmit_image(
                         pixel_w,
                         pixel_h,

@@ -1,3 +1,7 @@
+//! Web canvas-based rendering terminal for OxiTerm.
+//!
+//! Provides WASM bindings for HTML Canvas terminal rendering and template playgrounds.
+
 #![allow(clippy::all, clippy::pedantic)]
 
 use wasm_bindgen::prelude::*;
@@ -6,7 +10,7 @@ use oxiterm_proto::style::AnsiColor;
 use oxiterm_renderer::render::diff::AnsiCommand;
 use oxiterm_renderer::DiffEngine;
 
-
+/// Canvas rendering WebTerminal WASM wrapper.
 #[wasm_bindgen]
 pub struct WebTerminal {
     canvas: HtmlCanvasElement,
@@ -27,6 +31,7 @@ pub struct WebTerminal {
 
 #[wasm_bindgen]
 impl WebTerminal {
+    /// Creates a new `WebTerminal` canvas bridge.
     #[wasm_bindgen(constructor)]
     pub fn new(canvas: HtmlCanvasElement, font: &str, line_height: f64) -> Result<WebTerminal, JsValue> {
         let ctx = canvas
@@ -57,6 +62,7 @@ impl WebTerminal {
         })
     }
 
+    /// Renders incoming binary ANSI commands directly to the 2D canvas context.
     #[wasm_bindgen]
     pub fn draw_commands(&mut self, bytes: &[u8]) -> Result<(), String> {
         let commands = DiffEngine::decode_binary(bytes).map_err(|e| e.to_string())?;
@@ -114,6 +120,7 @@ impl WebTerminal {
         Ok(())
     }
 
+    /// Resets the canvas sizing and fills background color.
     #[wasm_bindgen]
     pub fn clear(&mut self, cols: u16, rows: u16) {
         self.cols = cols;
@@ -128,6 +135,7 @@ impl WebTerminal {
         );
     }
 
+    /// Returns the active character cell rendering width and height dimensions.
     #[wasm_bindgen]
     pub fn get_char_dimensions(&self) -> Vec<f64> {
         vec![self.char_width, self.char_height]
@@ -161,7 +169,6 @@ impl WebTerminal {
         // 3. Draw Foreground Text
         let fg_str = get_color_str(&self.fg, true);
         
-
         self.ctx.set_fill_style_str(&fg_str);
         self.ctx.set_text_baseline("top");
         let ch_str = ch.to_string();
@@ -227,11 +234,13 @@ fn ansi_256_to_rgb(idx: u8) -> (u8, u8, u8) {
     }
 }
 
+/// Static template playground WASM endpoint.
 #[wasm_bindgen]
 pub struct Playground;
 
 #[wasm_bindgen]
 impl Playground {
+    /// Mounts raw file contents to the static playground virtual filesystem cache.
     #[wasm_bindgen]
     pub fn mount_asset(path: &str, data: &[u8]) {
         let path_buf = std::path::PathBuf::from(path);
@@ -372,4 +381,3 @@ mod tests {
         assert_eq!(read_data, Some(data.to_vec()));
     }
 }
-

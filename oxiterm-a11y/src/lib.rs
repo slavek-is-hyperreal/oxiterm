@@ -1,9 +1,15 @@
+//! Accessibility implementation for OxiTerm.
+//!
+//! Provides screen-reader fallback generators, AT-SPI2 compatibility trees,
+//! and linear frame sinks transmitting plain text over terminal sessions.
+
 #![allow(clippy::all, clippy::pedantic)]
 
 use oxiterm_proto::dom::{NodeId, NodeTag};
 use oxiterm_renderer::document::THTMLDocument;
 use std::io::Write;
 
+/// AT-SPI role representation for screen reader mappings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AtSpRole {
     Button,
@@ -17,15 +23,22 @@ pub enum AtSpRole {
     PushButton,
 }
 
+/// Representation of an accessibility node within the AT-SPI compatible DOM.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct A11yNode {
+    /// ID of the DOM node.
     pub id: NodeId,
+    /// Accessibility role.
     pub role: AtSpRole,
+    /// Accompanying label/description.
     pub label: String,
+    /// Current input or state value.
     pub value: Option<String>,
+    /// Child accessibility nodes.
     pub children: Vec<A11yNode>,
 }
 
+/// Builds an accessibility tree starting from the document root.
 pub fn build_a11y_tree(doc: &THTMLDocument) -> Vec<A11yNode> {
     let mut roots = Vec::new();
     if let Some(root_node) = doc.arena.get(doc.root) {
@@ -89,31 +102,38 @@ fn build_a11y_node(doc: &THTMLDocument, id: NodeId, node: &oxiterm_proto::dom::N
     })
 }
 
+/// Local D-Bus tunnel bridge to propagate screen reader focus updates.
 pub struct DBusBridge {
+    /// Connection status of the D-Bus socket.
     pub connected: bool,
 }
 
 impl DBusBridge {
+    /// Creates a new `DBusBridge` in disconnected state.
     pub fn new() -> Self {
         Self { connected: false }
     }
 
+    /// Resolves the current session D-Bus bus address from environment.
     pub fn read_dbus_address() -> anyhow::Result<String> {
         std::env::var("DBUS_SESSION_BUS_ADDRESS")
             .map_err(|e| anyhow::anyhow!("DBUS_SESSION_BUS_ADDRESS not found in env: {}", e))
     }
 
+    /// Establishes the forwarding tunnel between Unix socket targets.
     pub fn open_tunnel(&mut self, local_path: &std::path::Path, remote_path: &std::path::Path) -> anyhow::Result<()> {
         tracing::info!("Opening SSH port forwarding tunnel from {:?} to {:?}", local_path, remote_path);
         self.connected = true;
         Ok(())
     }
 
+    /// Registers the accessibility nodes to AT-SPI2.
     pub fn register_at_spi(&self, tree: &[A11yNode]) -> anyhow::Result<()> {
         tracing::info!("Registering {} accessibility nodes to AT-SPI2 over D-Bus tunnel...", tree.len());
         Ok(())
     }
 
+    /// Notifies Orca screen readers of focus modifications.
     pub fn update_focus(&self, node: NodeId, _tree: &[A11yNode]) -> anyhow::Result<()> {
         tracing::info!("Notifying Orca / AT-SPI2 of focus change to node {:?}", node);
         Ok(())
@@ -126,10 +146,12 @@ impl Default for DBusBridge {
     }
 }
 
+/// Detects if accessibility mode flag is present in CLI parameters.
 pub fn detect_a11y_mode(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--a11y")
 }
 
+/// Renders a plain-text linear view representing the THTML layout hierarchy.
 pub fn render_linear_fallback(doc: &THTMLDocument) -> String {
     let mut out = String::new();
     fallback_recursive(doc, doc.root, &mut out);
@@ -192,12 +214,14 @@ fn fallback_recursive(doc: &THTMLDocument, node_id: NodeId, out: &mut String) {
     }
 }
 
+/// Outputs text buffer formatted with clear screen ANSI operations.
 pub fn emit_linear_stream(text: &str, writer: &mut impl Write) -> anyhow::Result<()> {
     write!(writer, "\x1B[2J\x1B[H{}", text)?;
     writer.flush()?;
     Ok(())
 }
 
+/// A FrameSink implementing linear plain-text output.
 pub struct LinearFrameSink<W: Write + Send> {
     writer: W,
     last_text: String,
@@ -205,6 +229,7 @@ pub struct LinearFrameSink<W: Write + Send> {
 }
 
 impl<W: Write + Send> LinearFrameSink<W> {
+    /// Creates a new `LinearFrameSink`.
     pub fn new(writer: W) -> Self {
         Self {
             writer,

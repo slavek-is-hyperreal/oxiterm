@@ -1,3 +1,8 @@
+//! russh-based SSH session server implementation.
+//!
+//! Implements authentication hooks, PTY initialization, terminal dimensions tracking,
+//! input stream forwarding, and cleanup procedures on channel closure.
+
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -8,16 +13,24 @@ use tracing::{info, warn};
 use crate::session::{SessionRegistry, SessionId, THTMLDocument};
 use crate::ssh::keys::AuthorizedKeys;
 
+/// SSH Handler managing channel open, input loop coordination, and auth states.
 #[derive(Clone)]
 pub struct OxiServer {
+    /// Global application configurations.
     pub config: crate::config::OxiTermConfig,
+    /// Shared sessions registry.
     pub registry: Arc<SessionRegistry>,
+    /// Authorized public keys list.
     pub auth_keys: Arc<AuthorizedKeys>,
+    /// System rate limiter.
     pub rate_limiter: Arc<crate::ratelimit::RateLimiter>,
+    /// Socket address of the connected client.
     pub peer_addr: std::net::SocketAddr,
-    /// Map of SSH channels to `OxiTerm` session IDs
+    /// Map correlating SSH ChannelIds with internal OxiTerm SessionIds.
     pub channels: Arc<parking_lot::Mutex<HashMap<ChannelId, SessionId>>>,
+    /// Initial THTML document.
     pub initial_document: Option<THTMLDocument>,
+    /// Option source template file path to support hot reloads.
     pub source_path: Option<PathBuf>,
 }
 
@@ -67,9 +80,7 @@ impl Handler for OxiServer {
     async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, _session: &mut Session) -> Result<bool, Self::Error> {
         info!("Opening session on channel: {}", channel.id());
         
-        // BUG-H06: Rate limiting
-        // BUG-RATELIMIT-01: Removed double check here. 
-        // Rate limit is already checked at the TCP accept level in mod.rs.
+        // Rate limit checks are delegated to the TCP connection listener layer to reject overloads early.
         if let Some(client_session) = self.registry.create_session() {
             self.channels.lock().insert(channel.id(), client_session.id);
             Ok(true)
@@ -187,7 +198,7 @@ impl Handler for OxiServer {
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
                 session.resize_debouncer.write().push(new_dims);
-                // BUG-H03: Use ReactorMessage::Resize instead of empty Vec
+                // Trigger a resize event through the reactor channel to dynamically adapt cell buffer layout grids.
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
             }
         }
@@ -213,7 +224,6 @@ impl Handler for OxiServer {
         info!("SSH Data received on channel {:?}: len={}", channel, data.len());
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
-                // Send raw data to RRT
                 if let Err(e) = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Raw(data.to_vec())) {
                     warn!("Failed to send data to reactor for session {sid}: {e:?}");
                 }

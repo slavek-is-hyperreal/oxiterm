@@ -1,3 +1,8 @@
+//! Layout computation engine mapping DOM structures onto Taffy trees.
+//!
+//! Synchronizes OxiTerm node styles and parent-child hierarchies into a TaffyTree
+//! to calculate precise coordinates using the Flexbox layout algorithm.
+
 use taffy::prelude::*;
 use crate::document::THTMLDocument;
 use crate::layout::types::{LayoutResult, Rect as OxiRect};
@@ -5,14 +10,18 @@ use oxiterm_proto::dom::NodeId as OxiNodeId;
 use std::collections::HashMap;
 use anyhow::anyhow;
 
+/// Engine managing layout calculations and synchronization with the Taffy trees.
 pub struct LayoutEngine {
+    /// Internal Taffy tree used for layout calculations.
     pub taffy: TaffyTree<()>,
-    /// Persistent mapping from OxiTerm NodeId to Taffy NodeId
+    /// Mapping of active DOM node IDs to their corresponding Taffy tree node IDs.
     node_map: HashMap<OxiNodeId, taffy::NodeId>,
+    /// The cached result of the last layout calculation run.
     pub last_layout: Option<LayoutResult>,
 }
 
 impl LayoutEngine {
+    /// Creates a new layout engine with an empty Taffy tree.
     pub fn new() -> Self {
         Self {
             taffy: TaffyTree::new(),
@@ -21,7 +30,9 @@ impl LayoutEngine {
         }
     }
 
-    /// BUG-COMPACT-01: Clear the node map to ensure consistency after document compaction.
+    /// Resets the engine, discarding the current Taffy tree and node mappings.
+    ///
+    /// Required after document defragmentation (compaction) to prevent stale ID lookups.
     pub fn reset_nodes(&mut self) {
         self.taffy = TaffyTree::new();
         self.node_map.clear();
@@ -36,31 +47,33 @@ impl Default for LayoutEngine {
 }
 
 impl LayoutEngine {
-    /// Computes the layout of the document.
-    /// Note: `_scroll_offset` is accepted here to maintain API shape/compatibility,
-    /// but layout computation itself is independent of the scroll offset (which is handled by the renderer).
+    /// Computes positions and dimensions of all visible elements in the document.
+    ///
+    /// The `_scroll_offset` parameter is kept for signature compatibility but layout
+    /// coordinates remain independent of view scrolling (which is resolved at draw time).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Taffy fails to build or calculate styles inside the tree.
     pub fn compute(&mut self, doc: &mut THTMLDocument, cols: u16, _scroll_offset: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> anyhow::Result<LayoutResult> {
-        // BUG-BIND-SHOW-INCREMENTAL-01: Clear taffy cache to force recalculation of conditional visibility (bind-show)
+        // Clearing nodes on each run forces rebuild of the Taffy tree.
+        // This ensures correctness for elements whose visibility (bind-show)
+        // might have toggled since the last frame.
         self.reset_nodes();
 
-        // Step 1: Ensure all nodes are in the Taffy tree (Incremental Build)
         self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
 
-        // Step 2: Synchronize dirty nodes
         for &oxi_id in &doc.dirty_nodes {
             if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
                 if let Some(node) = doc.arena.get(oxi_id) {
-                    // Update style
                     let style = self.map_style(node, state_evaluator);
                     self.taffy.set_style(taffy_id, style)?;
 
-                    // Update children
                     let mut taffy_children = Vec::new();
                     for &child_id in &node.children {
                         if let Some(&t_child) = self.node_map.get(&child_id) {
                             taffy_children.push(t_child);
                         } else {
-                            // This should not happen if ensure_nodes_exist_recursive works
                             let t_child = self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?;
                             taffy_children.push(t_child);
                         }
@@ -70,7 +83,6 @@ impl LayoutEngine {
             }
         }
 
-        // Step 3: Compute layout
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
         
         let mut root_w = cols;
@@ -86,7 +98,6 @@ impl LayoutEngine {
             if let Some(h) = root_node.style.height {
                 root_h = h;
             } else {
-                // SPRINT SPECIFICATIONS: unconstrained height (u16::MAX) to allow measuring full layout height
                 style.size.height = taffy::style::Dimension::Length(u16::MAX as f32);
                 root_h = u16::MAX;
             }
@@ -103,7 +114,6 @@ impl LayoutEngine {
         let mut nodes = HashMap::new();
         self.flatten_layout_recursive(doc, doc.root, 0, 0, &mut nodes)?;
 
-        // BUG-H05: Clear dirty nodes after computation
         doc.clear_dirty();
 
         let mut max_bottom = 0;
@@ -166,6 +176,9 @@ impl LayoutEngine {
         Ok(())
     }
 
+    /// Queries the computed layout to find which node lies at coordinate (x, y).
+    ///
+    /// Returns the smallest (deepest nested) node covering the coordinates.
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
         let layout = self.last_layout.as_ref()?;
         let mut best_node = None;
@@ -173,7 +186,6 @@ impl LayoutEngine {
 
         for (&id, rect) in &layout.nodes {
             if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
-                // We want the smallest (deepest) node
                 let area = (rect.width as u32) * (rect.height as u32);
                 if area <= best_area {
                     best_area = area;
@@ -236,8 +248,7 @@ impl LayoutEngine {
                     display = Display::None;
                 }
             }
-            // BUG-PLAYGROUND-BIND-SHOW-01: If state_evaluator is None (e.g. static preview/playground),
-            // we default to keeping the node visible (Display::Flex) so conditional show boxes are not hidden.
+            // Keep visible during static previews/playground evaluations if state evaluator is absent.
         }
 
         Style {
@@ -332,9 +343,7 @@ mod tests {
         
         engine.compute(&mut doc, 80, 0, None).unwrap();
         
-        // Inside
         assert_eq!(engine.hit_test(6, 1), Some(child_id));
-        // Outside
         assert_eq!(engine.hit_test(1, 1), Some(doc.root));
     }
 
@@ -359,10 +368,7 @@ mod tests {
         
         engine.compute(&mut doc, 80, 0, None).unwrap();
         
-        // Child absolute coordinate: parent.left (10) + child.left (5) = 15.
-        // Inside nested child (e.g. x = 16, y = 1)
         assert_eq!(engine.hit_test(16, 1), Some(child_id));
-        // Outside child but inside parent (e.g. x = 11, y = 1)
         assert_eq!(engine.hit_test(11, 1), Some(parent_id));
     }
 
@@ -403,12 +409,10 @@ mod tests {
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
 
-        // 1. Evaluator says false -> node is hidden (absent from nodes)
         let eval_false = MockEvaluator { val: false };
         let result_hidden = engine.compute(&mut doc, 80, 0, Some(&eval_false)).unwrap();
         assert!(result_hidden.nodes.get(&child_id).is_none());
 
-        // 2. Evaluator says true -> node is visible
         let eval_true = MockEvaluator { val: true };
         let result_visible = engine.compute(&mut doc, 80, 0, Some(&eval_true)).unwrap();
         assert!(result_visible.nodes.get(&child_id).is_some());

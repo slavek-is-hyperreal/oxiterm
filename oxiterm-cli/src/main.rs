@@ -1,3 +1,7 @@
+//! CLI entrypoint for OxiTerm.
+//!
+//! Provides the Serve, Demo, and Check commands for starting the TUI server and validating templates.
+
 #![allow(clippy::all, clippy::pedantic)]
 
 use clap::{Parser, Subcommand};
@@ -8,6 +12,7 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::time::Duration;
 use oxiterm_proto::input::InputEvent;
 
+/// CLI command line parser configuration.
 #[derive(Parser)]
 #[command(name = "oxiterm")]
 #[command(about = "OxiTerm: Build TUI apps like web pages. Serve over SSH.", long_about = None)]
@@ -16,6 +21,7 @@ struct Cli {
     command: Commands,
 }
 
+/// Commands supported by the CLI.
 #[derive(Subcommand)]
 enum Commands {
     /// Start an SSH server to serve a THTML application
@@ -90,7 +96,7 @@ async fn main() -> Result<()> {
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
 
-            // SC-01: Setup Hot Reload watcher
+            // Anchored by spec [SC-01]. Setup Hot Reload watcher.
             let registry_clone = registry.clone();
             let file_path = PathBuf::from(&file);
             let file_path_clone = file_path.clone();
@@ -108,7 +114,6 @@ async fn main() -> Result<()> {
                                     registry_clone.broadcast_input_event(InputEvent::Reload);
                                 }
                             }
-                            // Keep debouncer alive
                             let _ = debouncer;
                         });
                     }

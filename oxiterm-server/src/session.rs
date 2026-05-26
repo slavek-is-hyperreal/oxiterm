@@ -1,3 +1,8 @@
+//! Client session representation and event loop processing.
+//!
+//! Exposes registries tracking interactive users, input event dispatchers, PTY configurations,
+//! screen double-buffering, and rendering coordinates updates.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use crate::ssh::reactor::ReactorMessage;
@@ -10,18 +15,24 @@ use oxiterm_renderer::layout::engine::LayoutEngine;
 use oxiterm_renderer::render::buffer::DoubleBuffer;
 use oxiterm_renderer::render::renderer::Renderer;
 
+/// Unique identifier type for a client session.
 pub type SessionId = usize;
 
+/// Registry holding active client session objects.
 pub struct SessionRegistry {
+    /// Active sessions map.
     pub sessions: RwLock<HashMap<SessionId, Arc<ClientSession>>>,
-    pub next_id: RwLock<SessionId>,
-    pub prometheus_registry: Arc<prometheus::Registry>,
-    pub max_sessions: usize,
+    next_id: RwLock<SessionId>,
+    prometheus_registry: Arc<prometheus::Registry>,
+    max_sessions: usize,
 }
 
+/// Pty dimensions configuration.
 #[derive(Debug, Clone, Copy)]
 pub struct PtyDimensions {
+    /// Number of terminal columns.
     pub cols: u16,
+    /// Number of terminal rows.
     pub rows: u16,
 }
 
@@ -29,20 +40,27 @@ use std::sync::mpsc;
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::input::InputEvent;
 
-/// S5-21: `PredictiveEcho` for local feedback.
+/// Predictive echo buffer for client side latency hiding.
+///
+/// Anchored by spec [S5-21].
 #[derive(Debug, Default)]
 pub struct PredictiveEcho {
+    /// Characters typed by the user but not yet confirmed by the server.
     pub buffer: String,
+    /// The input node currently targeted by the echo.
     pub active_node: Option<NodeId>,
 }
 
 impl PredictiveEcho {
+    /// Pushes a new character to the predictive buffer.
     pub fn push(&mut self, ch: char) {
         self.buffer.push(ch);
     }
 
+    /// Confirms a character from the predictive buffer.
+    ///
+    /// Removes character from the buffer in FIFO order if it matches the confirmed character.
     pub fn confirm(&mut self, ch: char) {
-        // BUG-H01: Proper FIFO confirmation
         let mut chars: Vec<char> = self.buffer.chars().collect();
         if let Some(&first) = chars.first() {
             if first == ch {
@@ -54,11 +72,13 @@ impl PredictiveEcho {
         }
     }
 
+    /// Drains and returns all pending buffered text.
     pub fn flush_to_server(&mut self) -> String {
         self.buffer.drain(..).collect()
     }
 }
 
+/// Debouncer to prevent rapid, redundant terminal layout recomputations on resizing.
 #[derive(Debug)]
 pub struct ResizeDebouncer {
     pub pending: Option<PtyDimensions>,
@@ -67,6 +87,7 @@ pub struct ResizeDebouncer {
 }
 
 impl ResizeDebouncer {
+    /// Creates a new debouncer.
     pub fn new() -> Self {
         Self {
             pending: None,
@@ -75,14 +96,17 @@ impl ResizeDebouncer {
         }
     }
 
+    /// Queues a new dimensions update.
     pub fn push(&mut self, dims: PtyDimensions) {
         self.pending = Some(dims);
         self.pushed_at = std::time::Instant::now();
     }
 
+    /// Polls for a debounced layout change.
+    ///
+    /// Returns the dimensions if the debouncing window has elapsed since the last push.
     pub fn poll(&mut self) -> Option<PtyDimensions> {
         if let Some(dims) = self.pending {
-            // BUG-M01: Check since push, not last update
             if self.pushed_at.elapsed() > Duration::from_millis(100) {
                 self.pending = None;
                 self.last_update = std::time::Instant::now();
@@ -93,47 +117,68 @@ impl ResizeDebouncer {
     }
 }
 
+/// Info details for active media elements.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MediaRenderInfo {
+    /// File path of the media resource.
     pub path: String,
+    /// X coordinate of layout position.
     pub x: u16,
+    /// Y coordinate of layout position.
     pub y: u16,
+    /// Width bounding box.
     pub width: u16,
+    /// Height bounding box.
     pub height: u16,
 }
 
+/// Represents an active interactive SSH client session.
 pub struct ClientSession {
+    /// Unique identifier.
     pub id: SessionId,
+    /// Shared terminal grid dimensions.
     pub dims: RwLock<PtyDimensions>,
+    /// Prometheus metrics tracker.
     pub metrics: Arc<crate::metrics::SessionMetrics>,
-    /// Channel to send raw bytes or commands to the `ReactorThread`
+    /// Channel to send raw bytes or commands to the `ReactorThread`.
     pub raw_input_tx: mpsc::Sender<ReactorMessage>,
-    /// Channel to receive processed `InputEvents` from the `ReactorThread`
+    /// Channel to receive processed `InputEvents` from the `ReactorThread`.
     pub event_rx: Arc<parking_lot::Mutex<crate::backpressure::Receiver<InputEvent>>>,
+    /// Input events sender.
     pub event_tx: crate::backpressure::BoundedFrameChannel<InputEvent>,
+    /// Predictive input echo engine.
     pub predictive_echo: RwLock<PredictiveEcho>,
+    /// Debouncer for terminal window changes.
     pub resize_debouncer: RwLock<ResizeDebouncer>,
+    /// Active terminal emulator profile capability features.
     pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
+    /// Instant of the last received input action.
     pub last_activity: RwLock<std::time::Instant>,
+    /// Session-wide local DOM state database.
     pub state: RwLock<crate::state::StateManager>,
+    /// Active media placement layout tracking list.
     pub active_media: RwLock<Vec<MediaRenderInfo>>,
 }
 
 impl ClientSession {
+    /// Closes input receiver streams, initiating shutdown.
     pub fn close(&self) {
         self.event_rx.lock().close();
     }
 
+    /// Evaluates dynamic client state change patches.
+    ///
+    /// Enforces limits on key lengths, array items, and payload sizes to mitigate DoS.
     pub fn apply_state_patch(&self, patch: serde_json::Value) {
         if let serde_json::Value::Object(obj) = patch {
-            // SEC-11a: limit 100 keys per patch
+            // Anchored by spec [SEC-11a]: limit 100 keys per patch
             if obj.len() > 100 {
                 warn!("Ignoring state patch with too many keys: {}", obj.len());
                 return;
             }
             let mut state = self.state.write();
             for (key, val) in obj {
-                // SEC-11b: limit 256 characters per key
+                // Anchored by spec [SEC-11b]: limit 256 characters per key
                 if key.len() > 256 {
                     warn!("Skipping key in state patch: key length exceeds 256 characters");
                     continue;
@@ -152,7 +197,7 @@ impl ClientSession {
                         }
                     }
                     serde_json::Value::String(s) => {
-                        // SEC-11c: limit 64KiB per string
+                        // Anchored by spec [SEC-11c]: limit 64KiB per string
                         if s.len() > 65536 {
                             warn!("Skipping key {}: string length exceeds 64KiB", key);
                             continue;
@@ -161,7 +206,7 @@ impl ClientSession {
                     }
                     serde_json::Value::Bool(b) => crate::state::StateValue::Bool(b),
                     serde_json::Value::Array(arr) => {
-                        // SEC-11c: limit 1000 items in list
+                        // Anchored by spec [SEC-11c]: limit 1000 items in list
                         if arr.len() > 1000 {
                             warn!("Skipping key {}: array size exceeds 1000 items", key);
                             continue;
@@ -204,6 +249,7 @@ impl ClientSession {
 }
 
 impl SessionRegistry {
+    /// Creates a new SessionRegistry with configured limits.
     pub fn new(prometheus_registry: Arc<prometheus::Registry>, max_sessions: usize) -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
@@ -213,6 +259,7 @@ impl SessionRegistry {
         }
     }
 
+    /// Allocates and spawns a new ClientSession, respecting capacity thresholds.
     pub fn create_session(&self) -> Option<Arc<ClientSession>> {
         {
             let count = self.sessions.read().len();
@@ -250,6 +297,7 @@ impl SessionRegistry {
         Some(session)
     }
 
+    /// Removes session from the registry and frees allocated resources.
     pub fn remove_session(&self, id: SessionId) {
         let count_before = self.sessions.read().len();
         if let Some(session) = self.sessions.write().remove(&id) {
@@ -262,6 +310,7 @@ impl SessionRegistry {
         }
     }
 
+    /// Broadcasts an input event to all active sessions.
     pub fn broadcast_input_event(&self, event: InputEvent) {
         let sessions = self.sessions.read();
         for session in sessions.values() {
@@ -269,6 +318,7 @@ impl SessionRegistry {
         }
     }
 
+    /// Gracefully waits for sessions to close during process drains.
     pub async fn drain_sessions(&self, timeout: Duration) {
         info!("Draining sessions with timeout: {}s", timeout.as_secs());
         
@@ -287,11 +337,13 @@ impl SessionRegistry {
     }
 }
 
+/// ANSI compatible frame writer.
 pub struct AnsiFrameSink {
     output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
 }
 
 impl AnsiFrameSink {
+    /// Creates a new `AnsiFrameSink`.
     pub fn new(output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>) -> Self {
         Self { output_tx }
     }
@@ -312,7 +364,7 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         // BSU: CSI ? 2026 h
         out.extend_from_slice(b"\x1b[?2026h");
 
-        // BUG-KITTY-GHOST-01: clear image placements when transitioning from graphics to no graphics
+        // When transitioning from graphics to no graphics, delete active placement handles.
         if !front.graphics.is_empty() && back.graphics.is_empty() {
             out.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
         }
@@ -348,16 +400,14 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn setup(&mut self) -> anyhow::Result<()> {
         debug!("AnsiFrameSink::setup called");
         let mut initial_clear = Vec::new();
-        // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
+        // Enable Alt Buffer, Clear screen (with scrollback history), Hide cursor.
         initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
         let _ = self.output_tx.try_send(initial_clear);
         Ok(())
     }
 
-
     fn clear_screen(&mut self) -> anyhow::Result<()> {
         let mut clear_seq = Vec::new();
-        // Send delete_all_placements before ESC[2J
         clear_seq.extend_from_slice(&oxiterm_renderer::render::kitty::KittyImageManager::delete_all_placements());
         clear_seq.extend_from_slice(b"\x1b[2J\x1b[H");
         let _ = self.output_tx.try_send(clear_seq);
@@ -390,29 +440,48 @@ impl std::io::Write for ChannelWriter {
     }
 }
 
+/// Standard processing loop coordination.
 pub struct EventLoop {
+    /// Session model reference.
     pub session: Arc<ClientSession>,
+    /// Global notification dispatcher.
     pub event_bus: Arc<crate::events::EventBus>,
+    /// Current loaded document tree.
     pub doc: THTMLDocument,
+    /// Rendering layout compiler.
     pub layout_engine: LayoutEngine,
+    /// Local frame buffer cache.
     pub buffer: DoubleBuffer,
+    /// Flag indicating if data output is paused.
     pub output_paused: bool,
+    /// Bounded channel delivering final frame sequences to transport endpoints.
     pub output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
+    /// Active frame receiver/renderer sink.
     pub frame_sink: Box<dyn oxiterm_renderer::FrameSink>,
+    /// Framerate throttling manager.
     pub frame_limiter: crate::ratelimit::FrameRateLimiter,
+    /// Pending mouse events map.
     pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
+    /// Template file path supporting hot reloads.
     pub source_path: Option<std::path::PathBuf>,
+    /// dbus a11y coordination bridge.
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
+    /// Correlation table maps child nodes to parent IDs.
     pub parent_map: HashMap<NodeId, NodeId>,
+    /// Active interactive nodes array.
     pub focusable_nodes: Vec<NodeId>,
+    /// Focused input node identifier.
     pub focused_node: Option<NodeId>,
+    /// Vertical scrolling offset.
     pub scroll_offset: u16,
+    /// Computed document height.
     pub total_height: u16,
     /// Optional dispatcher for external app server notifications.
     pub app_dispatcher: Option<crate::dispatcher::AppDispatcher>,
 }
 
 impl EventLoop {
+    /// Creates a new `EventLoop` with clean session parameters.
     pub fn new(
         session: Arc<ClientSession>, 
         event_bus: Arc<crate::events::EventBus>, 
@@ -460,11 +529,13 @@ impl EventLoop {
         event_loop
     }
 
+    /// Resets all compiled nodes and resets scroll margins.
     pub fn reset_layout_and_scroll(&mut self) {
         self.layout_engine.reset_nodes();
         self.scroll_offset = 0;
     }
 
+    /// Re-evaluates parent associations for all nodes.
     pub fn rebuild_parent_map(&mut self) {
         let mut parent_map = HashMap::new();
         let mut stack = vec![self.doc.root];
@@ -479,12 +550,14 @@ impl EventLoop {
         self.parent_map = parent_map;
     }
 
+    /// Updates active document node tree and updates mappings.
     pub fn update_doc(&mut self, new_doc: THTMLDocument) {
         self.doc = new_doc;
         self.rebuild_parent_map();
         self.rebuild_focusable_nodes();
     }
 
+    /// Resolves interactive elements respecting bind conditional rules.
     pub fn rebuild_focusable_nodes(&mut self) {
         use oxiterm_proto::dom::StateEvaluator;
         let state_guard = self.session.state.read();
@@ -492,27 +565,23 @@ impl EventLoop {
         let mut stack = vec![self.doc.root];
         while let Some(id) = stack.pop() {
             if let Some(node) = self.doc.arena.get(id) {
-                // Skip hidden nodes and their children
                 if let Some(ref cond) = node.attrs.bind_show {
                     if !state_guard.evaluate_bind_show(cond) {
                         continue;
                     }
                 }
 
-                // Focusable: any node with event_htmx OR an <input> with bind_value
                 let is_interactive = node.attrs.event_htmx.is_some()
                     || (node.tag == oxiterm_proto::dom::NodeTag::Input
                         && node.attrs.bind_value.is_some());
                 if is_interactive {
                     nodes.push(id);
                 }
-                // push children in reverse so left-to-right / top-to-bottom order
                 for &child in node.children.iter().rev() {
                     stack.push(child);
                 }
             }
         }
-        // If current focused node is gone, reset focus
         if let Some(focused) = self.focused_node {
             if !nodes.contains(&focused) {
                 self.focused_node = if nodes.is_empty() { None } else { Some(nodes[0]) };
@@ -580,12 +649,10 @@ impl EventLoop {
         None
     }
 
-    /// If an `AppDispatcher` is configured, snapshot the current state and fire a POST.
     fn try_dispatch(&self, action: &str) {
         if let Some(ref dispatcher) = self.app_dispatcher {
             let state_guard = self.session.state.read();
             let mut state_snapshot = std::collections::HashMap::new();
-            // Collect all known keys referenced in the DOM as bind_state or bind_value.
             for (_id, node) in self.doc.arena.iter() {
                 if let Some(ref key) = node.attrs.bind_state {
                     if let Some(val) = state_guard.get(key) {
@@ -598,7 +665,6 @@ impl EventLoop {
                     }
                 }
                 if let Some(ref key) = node.attrs.bind_show {
-                    // bind_show condition: extract key before '='
                     let key_part = key.split('=').next().unwrap_or(key);
                     if let Some(val) = state_guard.get(key_part) {
                         state_snapshot.insert(key_part.to_string(), val.to_string());
@@ -615,6 +681,7 @@ impl EventLoop {
         }
     }
 
+    /// Starts the main event loop thread driving keyboard and mouse coordinate reactions.
     pub fn run(&mut self) {
         {
             let mut state = self.session.state.write();
@@ -622,13 +689,12 @@ impl EventLoop {
             Self::inject_initial_state(&mut self.doc, &*state);
         }
 
-        // Initial clear screen and scrollback
         let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
         let mut pending_render = false;
         loop {
-            // SA-10: Idle timeout check (10 minutes). Explicitly return to close the session.
+            // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
             let elapsed = self.session.last_activity.read().elapsed();
             if elapsed > std::time::Duration::from_secs(600) {
                 info!("Session {} timed out ({}s idle)", self.session.id, elapsed.as_secs());
@@ -638,7 +704,6 @@ impl EventLoop {
             let mut needs_render = first_frame || pending_render;
             first_frame = false;
             pending_render = false;
-
 
             let has_animations = self.has_active_animations();
             let sleep_dur = if has_animations {
@@ -696,8 +761,6 @@ impl EventLoop {
                                 }
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
-                                    // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
-                                    // to avoid double allocation. We just signal that a render might be needed.
                                     needs_render = true;
                                 }
                                 InputEvent::Reload => {
@@ -715,7 +778,6 @@ impl EventLoop {
                                             }
                                             Err(e) => {
                                                 warn!("Hot Reload failed for session {}: {}", self.session.id, e);
-                                                // TODO: Show error overlay in TUI
                                             }
                                         }
                                     }
@@ -727,8 +789,6 @@ impl EventLoop {
                                         break;
                                     }
 
-                                    // Arrow keys / Tab: move focus between event-htmx nodes
-                                    // Browser sends 0xF700=Up, 0xF701=Down, 0xF702=Right, 0xF703=Left
                                     let is_nav_forward = key.codepoint == '\u{F701}'
                                         || key.codepoint == '\u{F702}'
                                         || key.codepoint == '\t';
@@ -751,7 +811,6 @@ impl EventLoop {
                                             needs_render = true;
                                         }
                                     } else if key.codepoint == '\r' || key.codepoint as u32 == 13 {
-                                        // Enter: activate focused node's HTMX action
                                         if let Some(focused) = self.focused_node {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
                                                 info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
@@ -768,7 +827,7 @@ impl EventLoop {
                                                         let canonical_base = base.canonicalize().ok()?;
                                                         let canonical_target = new_path.canonicalize().ok()?;
                                                         Some(canonical_target.starts_with(canonical_base))
-                                                    })().unwrap_or(false);
+                                                     })().unwrap_or(false);
                                                     if is_safe {
                                                         match crate::loader::load_thtml_file(&new_path) {
                                                             Ok(mut new_doc) => {
@@ -792,14 +851,12 @@ impl EventLoop {
                                             }
                                         }
                                     } else {
-                                        // Check if focused node is an <input> with bind_value
                                         let handled_by_input = if let Some(focused_id) = self.focused_node {
                                             if let Some(node) = self.doc.get_node(focused_id) {
                                                 if node.tag == oxiterm_proto::dom::NodeTag::Input {
                                                     if let Some(ref state_key) = node.attrs.bind_value.clone() {
                                                         let cp = key.codepoint;
                                                         if cp as u32 == 127 || cp as u32 == 8 {
-                                                            // Backspace: remove last char from state
                                                             let current = match self.session.state.read().get(state_key) {
                                                                 Some(crate::state::StateValue::Str(s)) => s.clone(),
                                                                 _ => String::new(),
@@ -813,11 +870,8 @@ impl EventLoop {
                                                             needs_render = true;
                                                             true
                                                         } else if cp == '\r' || cp as u32 == 13 {
-                                                            // Enter on input: fire event_htmx if present, but don't consume
-                                                            // (let the outer Enter branch handle it via get_htmx_node_and_target)
                                                             false
                                                         } else if !cp.is_control() {
-                                                            // Printable char: append to state
                                                             let current = match self.session.state.read().get(state_key) {
                                                                 Some(crate::state::StateValue::Str(s)) => s.clone(),
                                                                 _ => String::new(),
@@ -858,14 +912,12 @@ impl EventLoop {
                                         warn!("No last layout found!");
                                     }
                                     
-                                    // Handle hover and click coordinates mapping for Rive animations
                                     self.update_interactive_animations(&mouse);
 
                                     self.pending_mouse = Some(mouse.clone());
                                     
-                                    // SC-05: Handle HTMX navigation
+                                    // Anchored by spec [SC-05]. Handle interactive navigation or state updates based on htmx event targets.
                                     if mouse.action == oxiterm_proto::input::MouseAction::Press {
-                                        // Find node at coordinates
                                         if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
                                             info!("Hit test found node: {:?}", node_id);
                                             if let Some(node) = self.doc.get_node(node_id) {
@@ -874,7 +926,6 @@ impl EventLoop {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
                                                 info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
                                                 if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                    // BUG-SEC-01: Path Traversal prevention
                                                     let base_dir = self.source_path.as_ref()
                                                         .and_then(|p| p.parent())
                                                         .map(|p| p.to_path_buf())
@@ -912,7 +963,6 @@ impl EventLoop {
                                                         warn!("Blocked Path Traversal attempt to: {:?}", new_path);
                                                     }
                                                 } else {
-                                                    // Handle general HTMX action (inc, dec, toggle, set, etc.)
                                                     self.session.state.write().apply_action(&htmx_target);
                                                     self.try_dispatch(&htmx_target);
                                                 }
@@ -957,9 +1007,6 @@ impl EventLoop {
                                     needs_render = true;
                                 }
                                 InputEvent::TextInput(text) => {
-                                    // TextInput is generated when an external dispatcher routes
-                                    // typed text to a focused input node. Currently a no-op at
-                                    // session level; dispatching happens via AppDispatcher.
                                     info!("TextInput received (len={}): {:?}", text.len(), text);
                                 }
                                 _ => {}
@@ -977,7 +1024,6 @@ impl EventLoop {
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
                 info!("Resized session {} to {:?}", self.session.id, dims);
 
-                // Clear physical screen and cursor to home to match clean front buffer
                 let _ = self.frame_sink.clear_screen();
 
                 needs_render = true;
@@ -985,7 +1031,6 @@ impl EventLoop {
 
             if needs_render && !self.output_paused {
                 if self.frame_limiter.should_render() {
-                    // Sync reactive state before render
                     Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
                     self.rebuild_focusable_nodes();
 
@@ -1001,7 +1046,7 @@ impl EventLoop {
                         dims.rows
                     };
 
-                    // BUG-HTMX-ENTER-MISSING-SCROLL-01: Auto-scroll to focused node if it exists and is out of the viewport
+                    // Auto-scroll the viewport to keep the focused element fully visible inside layout boundaries.
                     if let Some(focused_id) = self.focused_node {
                         if let Some(rect) = layout.nodes.get(&focused_id) {
                             if rect.y < self.scroll_offset {
@@ -1012,11 +1057,9 @@ impl EventLoop {
                         }
                     }
 
-                    // Clamp scroll_offset to valid bounds
                     let max_scroll = self.total_height.saturating_sub(viewport_h);
                     self.scroll_offset = self.scroll_offset.min(max_scroll);
 
-                    // Traverse document to update active media info
                     {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                         let start_x = offset_x as i32;
@@ -1056,8 +1099,6 @@ impl EventLoop {
                         *self.session.active_media.write() = active;
                     }
 
-
-
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
                         let _ = bridge.register_at_spi(&tree);
@@ -1066,7 +1107,7 @@ impl EventLoop {
                         }
                     }
 
-                    // QUAL-01: Process pending mouse event now that we have layout
+                    // Anchored by spec [QUAL-01]. Dispatch deferred mouse inputs once a valid layout is available.
                     if let Some(mouse) = self.pending_mouse.take() {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
                     }
@@ -1076,17 +1117,15 @@ impl EventLoop {
                     self.buffer.back.clear();
                     Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, self.scroll_offset);
 
-                    // Focus ring: draw bright-cyan ▶/◀ markers on left/right edge of focused node
+                    // Focus ring: draw markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
                         if let Some(rect) = layout.nodes.get(&focused_id) {
                             let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
-                            // BUG-FOCUS-RING-SCROLLED-01: Restrict drawing to viewport_h and prevent overwriting status bar
                             if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
                                 let mid_row = mid_row_offset as u16;
                                 let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
                                 let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
-                                // Left bracket
                                 if rect.x > 0 {
                                     let lx = rect.x.saturating_sub(1) + offset_x;
                                     if lx < self.buffer.back.width {
@@ -1099,7 +1138,6 @@ impl EventLoop {
                                         });
                                     }
                                 }
-                                // Right bracket
                                 let right = rect.x + rect.width + offset_x;
                                 if right < self.buffer.back.width {
                                     self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
@@ -1127,7 +1165,6 @@ impl EventLoop {
                             }
                         }
 
-                        // Prevent drawing predictive echo on the status bar row
                         if cursor_y < viewport_h {
                             for ch in echo.buffer.chars() {
                                 if cursor_x < self.buffer.back.width {
@@ -1142,7 +1179,7 @@ impl EventLoop {
                         }
                     }
 
-                    // BUG-SCROLL-NO-INDICATOR-01: Draw scroll status bar if total_height > dims.rows
+                    // Renders a visual scroll progress indicator at the bottom of the viewport if content exceeds terminal rows.
                     if self.total_height > dims.rows {
                         let last_row = dims.rows.saturating_sub(1);
                         let mut status_parts = Vec::new();
@@ -1155,7 +1192,7 @@ impl EventLoop {
                         }
                         
                         let current_row = self.scroll_offset + 1;
-                        status_parts.push(format!("wiersz {}/{}", current_row, self.total_height));
+                        status_parts.push(format!("line {}/{}", current_row, self.total_height));
                         
                         let max_scroll = self.total_height.saturating_sub(viewport_h);
                         let pct = if max_scroll > 0 {
@@ -1303,21 +1340,17 @@ mod tests {
         let mut front = CellBuffer::new(10, 10);
         let mut back = CellBuffer::new(10, 10);
 
-        // Test 4: empty frame with no graphics changes
         let res = sink.send_frame(&front, &back).unwrap();
         assert!(!res);
 
-        // Test 3: transition from graphics to no graphics -> should contain delete_all_placements
         front.graphics.push(b"some_img".to_vec());
         let res = sink.send_frame(&front, &back).unwrap();
         assert!(res);
         let frame = rx.try_recv().expect("Should receive frame");
-        // Frame should contain delete_all_placements sequence: \x1b_Ga=d,d=A\x1b\\
         let delete_seq = b"\x1b_Ga=d,d=A\x1b\\";
         let seq_pos = frame.windows(delete_seq.len()).position(|w| w == delete_seq);
         assert!(seq_pos.is_some(), "delete_all_placements sequence not found in frame");
 
-        // Test 5: transition from no graphics to graphics -> no delete_all_placements, but contains back graphics
         front.graphics.clear();
         back.graphics.push(b"new_img_data".to_vec());
         let res = sink.send_frame(&front, &back).unwrap();
@@ -1328,7 +1361,6 @@ mod tests {
         let img_pos = frame2.windows(12).position(|w| w == b"new_img_data");
         assert!(img_pos.is_some(), "new_img_data not found in frame");
 
-        // Test 6: clear_screen -> should contain delete_all_placements before ESC[2J
         sink.clear_screen().unwrap();
         let frame3 = rx.try_recv().expect("Should receive clear screen");
         let seq_pos3 = frame3.windows(delete_seq.len()).position(|w| w == delete_seq);
@@ -1349,19 +1381,16 @@ mod tests {
         
         let mut arena = oxiterm_renderer::arena::NodeArena::new();
         
-        // Node 2: interactive, bind_show = show_node2
         let mut node2 = Node::new(NodeTag::Box);
         node2.attrs.event_htmx = Some("click_action".to_string());
         node2.attrs.bind_show = Some("show_node2".to_string());
         let id2 = arena.alloc(node2);
         
-        // Node 3: interactive, bind_show = show_node3
         let mut node3 = Node::new(NodeTag::Box);
         node3.attrs.event_htmx = Some("click_action2".to_string());
         node3.attrs.bind_show = Some("show_node3".to_string());
         let id3 = arena.alloc(node3);
         
-        // Root node
         let mut root = Node::new(NodeTag::Screen);
         root.children = vec![id2, id3];
         let root_id = arena.alloc(root);
@@ -1380,12 +1409,10 @@ mod tests {
             false,
         );
         
-        // Initially both absent / false. So neither should be focusable.
         event_loop.rebuild_focusable_nodes();
         assert!(!event_loop.focusable_nodes.contains(&id2));
         assert!(!event_loop.focusable_nodes.contains(&id3));
 
-        // Set state: show_node2=true, show_node3=false
         {
             let mut state = event_loop.session.state.write();
             state.set("show_node2".to_string(), crate::state::StateValue::Bool(true));
@@ -1396,7 +1423,6 @@ mod tests {
         assert!(event_loop.focusable_nodes.contains(&id2));
         assert!(!event_loop.focusable_nodes.contains(&id3));
         
-        // Set state: show_node2=false, show_node3=true
         {
             let mut state = event_loop.session.state.write();
             state.set("show_node2".to_string(), crate::state::StateValue::Bool(false));
@@ -1436,7 +1462,6 @@ mod tests {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let client_session = reg.create_session().unwrap();
         
-        // 1. Too many keys limit (>100)
         let mut huge_patch = serde_json::Map::new();
         for i in 0..105 {
             huge_patch.insert(format!("key{}", i), serde_json::json!(i));
@@ -1444,7 +1469,6 @@ mod tests {
         client_session.apply_state_patch(serde_json::Value::Object(huge_patch));
         assert!(client_session.state.read().get("key0").is_none());
 
-        // 2. Key too long (> 256)
         let long_key = "a".repeat(257);
         let patch_key_too_long = serde_json::json!({
             long_key.clone(): 42
@@ -1452,7 +1476,6 @@ mod tests {
         client_session.apply_state_patch(patch_key_too_long);
         assert!(client_session.state.read().get(&long_key).is_none());
 
-        // 3. String too long (> 64KiB)
         let long_val = "x".repeat(65537);
         let patch_val_too_long = serde_json::json!({
             "valid_key": long_val
@@ -1460,7 +1483,6 @@ mod tests {
         client_session.apply_state_patch(patch_val_too_long);
         assert!(client_session.state.read().get("valid_key").is_none());
 
-        // 4. Array too long (> 1000)
         let huge_arr: Vec<i32> = (0..1005).collect();
         let patch_arr_too_long = serde_json::json!({
             "arr_key": huge_arr

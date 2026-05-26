@@ -1,3 +1,10 @@
+//! OxiTerm Server daemon binary entrypoint.
+//!
+//! Initializes logging subscriptions, loads configurations, binds auxiliary prometheus
+//! metrics and HTTP/WS web servers, and runs the main SSH connection coordinator under OS signal handlers.
+
+#![allow(clippy::all, clippy::pedantic, clippy::doc_markdown)]
+
 use oxiterm_server::OxiTermConfig;
 use oxiterm_server::metrics::emit_prometheus_metrics;
 use oxiterm_server::session::SessionRegistry;
@@ -32,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     let prometheus_registry = Arc::new(Registry::new());
     let registry = Arc::new(SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
-    let rate_limiter = Arc::new(RateLimiter::new(60)); // 60 conn/min
+    let rate_limiter = Arc::new(RateLimiter::new(60)); // 60 connection attempts per minute
     
     // Start metrics server if enabled
     if config.metrics.enabled {

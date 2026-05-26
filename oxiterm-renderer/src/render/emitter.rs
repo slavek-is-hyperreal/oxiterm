@@ -1,22 +1,27 @@
+//! Frame emission and screen update traits.
+//!
+//! Defines the [`FrameSink`] trait used to write computed visual cell buffers
+//! and accessibility documents to various output terminals.
+
 use anyhow::Result;
 use crate::render::buffer::CellBuffer;
 
+/// A sink representing an output channel for rendering frames (e.g. SSH session, raw terminal).
 pub trait FrameSink: Send {
-    /// Compares front and back buffers, sends any frame update to the sink,
-    /// and returns Ok(true) if a frame was actually transmitted (i.e. diff was non-empty).
+    /// Compares front and back buffers, sends the diff update to the output channel.
+    ///
+    /// Returns `Ok(true)` if frame drawing commands were actually transmitted.
     fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> Result<bool>;
 
-    /// Update the current document for accessibility sinks.
+    /// Updates the accessibility tree or client document representation.
     fn update_document(&mut self, _doc: &crate::document::THTMLDocument) -> Result<()> { Ok(()) }
 
-    /// Perform any initial environment configuration/setup for the sink.
+    /// Initializes and configures the output terminal environment.
     fn setup(&mut self) -> Result<()> { Ok(()) }
 
-    /// Clears the physical display area.
+    /// Sends a clear screen sequence to the output terminal.
     fn clear_screen(&mut self) -> Result<()> { Ok(()) }
 
-    /// Clears any graphics placements.
+    /// Sends commands to clear existing graphics layout objects.
     fn clear_graphics(&mut self) -> Result<()> { Ok(()) }
 }
-
-

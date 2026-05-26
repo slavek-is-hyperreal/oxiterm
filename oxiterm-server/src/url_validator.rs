@@ -1,5 +1,12 @@
+//! URL validation helper to prevent SSRF.
+//!
+//! Validates schemes and blocks metadata/link-local IPv4/IPv6 addresses and domain patterns.
+
 use url::Url;
 
+/// Validates that a URL is HTTP/HTTPS and does not target link-local/cloud metadata IP space.
+///
+/// Reduces Server-Side Request Forgery (SSRF) risks on backend redirects.
 pub fn validate_app_server_url(url_str: &str) -> anyhow::Result<()> {
     let parsed = Url::parse(url_str)?;
     

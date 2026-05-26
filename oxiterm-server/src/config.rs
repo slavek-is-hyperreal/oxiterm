@@ -1,41 +1,66 @@
+//! OxiTerm configuration and validation schemas.
+//!
+//! Handles parsing of configuration structures from TOML configuration files or
+//! environment variable overrides, and validates inputs to prevent SSRF and security risks.
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
+/// Overall OxiTerm server and session configuration.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OxiTermConfig {
+    /// Networking and authentication config for the SSH service.
     pub server: ServerConfig,
+    /// Limits and frame rate config for interactive sessions.
     pub session: SessionConfig,
+    /// Settings for the metrics collection endpoint.
     pub metrics: MetricsConfig,
+    /// Target application backend server URL.
     pub app_server_url: Option<String>,
+    /// Base URL path prefix for resolving media assets.
     pub media_base_url: Option<String>,
 }
 
+/// Server network binding and authentication configuration.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ServerConfig {
+    /// Bind address (IP or hostname).
     pub host: String,
+    /// Bind port of the SSH terminal service.
     pub port: u16,
+    /// Path to the SSH host private key file.
     pub host_key_path: PathBuf,
+    /// Optional SSH password fallback.
     pub password: Option<String>,
+    /// Bypass SSH authentication checking entirely (WARNING: insecure!).
     pub no_auth: bool,
+    /// Bind port of the auxiliary HTTP/WebSocket web service.
     pub web_port: u16,
-    /// When true, EventLoop uses LinearFrameSink (plain-text a11y output) instead
-    /// of the default AnsiFrameSink. Activate via `oxiterm serve --a11y`.
+    /// Enable plain-text accessibility visual streams instead of default ANSI escape sequences.
     #[serde(default)]
     pub a11y_mode: bool,
+    /// Target application backend server URL override.
     pub app_server_url: Option<String>,
 }
 
+/// Dynamic session configuration limits.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionConfig {
+    /// Maximum concurrent active client connection sessions.
     pub max_sessions: usize,
+    /// Maximum frame update rendering rate.
     pub fps_limit: u32,
 }
 
+/// System metrics collector endpoint configuration.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetricsConfig {
+    /// Enable metrics collection and exposes endpoints.
     pub enabled: bool,
+    /// Bind address of the metrics reporting service.
     pub host: String,
+    /// Bind port of the metrics service.
     pub port: u16,
 }
 
@@ -68,6 +93,7 @@ impl Default for OxiTermConfig {
 }
 
 impl OxiTermConfig {
+    /// Loads and parses configuration from a TOML file.
     pub fn from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
@@ -77,8 +103,8 @@ impl OxiTermConfig {
         Ok(config)
     }
 
+    /// Loads configuration overrides from process environment variables.
     pub fn from_env() -> Result<Self> {
-        // Simple env override implementation
         let mut config = Self::default();
         if let Ok(host) = std::env::var("OXITERM_HOST") {
             config.server.host = host;
@@ -112,6 +138,7 @@ impl OxiTermConfig {
         Ok(config)
     }
 
+    /// Performs validation checks on ports, constraints, and backend URLs.
     pub fn validate(&self) -> Result<()> {
         if self.server.port == 0 {
             anyhow::bail!("Server port cannot be 0");
@@ -158,4 +185,3 @@ mod tests {
         assert!(validate_app_server_url("file:///etc/passwd").is_err());
     }
 }
-

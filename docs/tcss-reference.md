@@ -40,6 +40,9 @@ Subsequent rules with the same priority overwrite previous ones (determined by t
 | `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
 | `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
 | `border-color` | Color | Specifies or overrides the border color. |
+| `font-weight` | `bold` | Triggers bold text formatting (ANSI SGR 1). |
+| `font-style` | `italic` | Triggers italic text formatting (ANSI SGR 3). |
+| `text-decoration` | `underline` | Triggers underlined text formatting (ANSI SGR 4). |
 
 ---
 
@@ -99,5 +102,5 @@ To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
 
 * **No Units:** Dimensions, margins, and paddings are specified as pure integers (representing terminal character cells). Units such as `px`, `em`, `rem`, `%` are not supported.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
-* **No Text Formatting:** Properties like `font-size`, `font-family`, `font-weight` (e.g. bold), or `font-style` (e.g. italic) are not supported in TCSS because the terminal enforces a fixed-width monospace font.
+* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported in TCSS because the terminal enforces a fixed-width monospace font. However, basic formatting options such as `font-weight: bold;`, `font-style: italic;`, and `text-decoration: underline;` are fully supported.
 * **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.

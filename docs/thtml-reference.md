@@ -84,10 +84,11 @@ The `event-htmx` attribute supports a single action or a sequence of actions. In
 | `append:key=value` | Appends the specified text value to a list state (List) | `event-htmx="append:logs=new_event"` |
 | `clear:key` | Resets state to default value for its type (`0`, `false`, `""` or `[]`) | `event-htmx="clear:counter"` |
 | `file.thtml` | Switches the current application screen to another `.thtml` file | `event-htmx="dashboard.thtml"` |
+| `custom_action` | Dispatches action and state payload to the external App Server, receiving optional state patches | `event-htmx="validate_form"` |
 | `action1;action2` | Executes multiple actions sequentially | `event-htmx="set:tab=x;inc:views"` |
 
 > [!NOTE]
-> Navigating to another `.thtml` page **preserves** all state collected in the session `StateManager` cache. This ensures users do not lose their inputs or session context when transitioning between screens.
+> Navigating to another `.thtml` page **preserves** all state collected in the session `StateManager` cache. Similarly, custom actions dispatched to the App Server can return JSON state patches to update active session states in real-time.
 
 ---
 

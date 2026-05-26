@@ -1,3 +1,9 @@
+//! Rendering and layout engine for OxiTerm.
+//!
+//! Handles building and defragmenting the DOM tree (arena allocation),
+//! parsing THTML templates and TCSS stylesheets, computing flexbox layouts via Taffy,
+//! and generating optimized ANSI screen update sequences.
+
 #![allow(clippy::all, clippy::pedantic)]
 
 pub mod arena;

@@ -1,3 +1,8 @@
+//! Sixel graphics protocol encoder.
+//!
+//! Provides color quantization, RLE compression, palette declaration, and
+//! sixel band formatting to output images on compatible DEC terminals.
+
 use std::collections::HashMap;
 use image::RgbaImage;
 
@@ -8,15 +13,18 @@ struct Rgb {
     b: u8,
 }
 
+/// Codec to translate pixel images into Sixel graphics data blocks.
 pub struct SixelCodec;
 
 impl SixelCodec {
-    /// OxiTerm S6-10: Convert image to Sixel stream with quantization
+    /// Translates an RGBA image buffer to a quantized Sixel byte stream.
+    ///
+    /// Anchored by spec [S6-10]. Maps the image pixels to the most frequent colors
+    /// up to the configured palette size, defining DEC palette color register codes.
     pub fn encode_sixel(img: &RgbaImage, palette_size: u16) -> Vec<u8> {
         let width = img.width();
         let height = img.height();
         
-        // 1. Color Quantization: count colors and select the top palette_size colors
         let mut color_counts: HashMap<Rgb, usize> = HashMap::new();
         for pixel in img.pixels() {
             if pixel[3] >= 128 {
@@ -42,7 +50,6 @@ impl SixelCodec {
             palette.push(Rgb { r: 0, g: 0, b: 0 });
         }
         
-        // Helper to find index of closest palette color
         let get_color_index = |r: u8, g: u8, b: u8, a: u8| -> Option<usize> {
             if a < 128 {
                 return None;
@@ -65,7 +72,6 @@ impl SixelCodec {
             Some(best_idx)
         };
         
-        // 2. Format Sixel stream
         let mut output = Vec::new();
         
         // DCS P q " 1 ; 1 ; width ; height
@@ -81,12 +87,10 @@ impl SixelCodec {
             output.extend_from_slice(color_def.as_bytes());
         }
         
-        // Encode image in Sixel bands (6 pixels high)
         let num_bands = (height + 5) / 6;
         for band_idx in 0..num_bands {
             let y_start = band_idx * 6;
             
-            // Loop through each color in the palette to output its sixels for this band
             let mut band_has_colors = false;
             for color_idx in 0..palette.len() {
                 let mut char_row = Vec::with_capacity(width as usize);
@@ -109,22 +113,16 @@ impl SixelCodec {
                     char_row.push(63 + sixel_val);
                 }
                 
-                // Only write the color stream if it actually has set bits in this band
                 if color_present_in_band {
                     band_has_colors = true;
-                    // Select color index
                     output.extend_from_slice(format!("#{}", color_idx).as_bytes());
-                    // Compress and write character row
                     let compressed = Self::sixel_rle_compress(&char_row);
                     output.extend_from_slice(&compressed);
-                    // Carriage return to beginning of line
                     output.push(b'$');
                 }
             }
             
-            // Move to next band
             if band_has_colors {
-                // Replace the last carriage return with newline command
                 if output.last() == Some(&b'$') {
                     output.pop();
                 }
@@ -132,11 +130,13 @@ impl SixelCodec {
             output.push(b'-');
         }
         
-        // End of sequence (ST)
         output.extend_from_slice(b"\x1b\\");
         output
     }
 
+    /// Encodes an image with a static, pre-defined 240-color palette.
+    ///
+    /// Ideal for systems requesting static palette declarations or to avoid custom quantization overhead.
     pub fn encode_sixel_static(img: &RgbaImage) -> Vec<u8> {
         let width = img.width();
         let height = img.height();
@@ -145,7 +145,6 @@ impl SixelCodec {
             if a < 128 {
                 return None;
             }
-            // Check if gray
             let dr_g = (r as i32 - g as i32).abs();
             let dg_b = (g as i32 - b as i32).abs();
             let dr_b = (r as i32 - b as i32).abs();
@@ -187,13 +186,11 @@ impl SixelCodec {
             output.extend_from_slice(color_def.as_bytes());
         }
 
-        // Encode image in Sixel bands (6 pixels high)
         let num_bands = (height + 5) / 6;
         for band_idx in 0..num_bands {
             let y_start = band_idx * 6;
             let mut band_has_colors = false;
             
-            // Scan used colors in the band to avoid checking all 240 colors
             let mut used_colors = std::collections::HashSet::new();
             for x in 0..width {
                 for bit_idx in 0..6 {
@@ -249,7 +246,10 @@ impl SixelCodec {
         output
     }
 
-    /// OxiTerm S6-11: Sixel Run-Length Encoding compression
+    /// Compresses a pixel sequence using Sixel Run-Length Encoding.
+    ///
+    /// Anchored by spec [S6-11]. Replaces repeated occurrences of a character with a
+    /// repeat descriptor format `!<count><char>`.
     pub fn sixel_rle_compress(data: &[u8]) -> Vec<u8> {
         let mut compressed = Vec::new();
         let mut i = 0;
@@ -272,7 +272,7 @@ impl SixelCodec {
         compressed
     }
 
-    /// Old entrypoint wrapper for backwards compatibility
+    /// High-level convenience function to encode a raw RGBA buffer into a Sixel stream.
     pub fn encode_image(width: u32, height: u32, rgba_data: &[u8]) -> Vec<u8> {
         if let Some(img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, rgba_data.to_vec()) {
             Self::encode_sixel(&img, 256)
@@ -290,13 +290,11 @@ mod tests {
     fn test_sixel_rle_compress() {
         let input = b"AAAAABBBCC";
         let compressed = SixelCodec::sixel_rle_compress(input);
-        // "AAAAA" -> "!5A", "BBB" -> "!3B", "CC" -> "CC"
         assert_eq!(compressed, b"!5A!3BCC");
     }
 
     #[test]
     fn test_encode_sixel_basic() {
-        // Create a 2x2 red image
         let mut img = RgbaImage::new(2, 2);
         for pixel in img.pixels_mut() {
             *pixel = image::Rgba([255, 0, 0, 255]);
@@ -304,11 +302,8 @@ mod tests {
         let encoded = SixelCodec::encode_sixel(&img, 256);
         
         let s = String::from_utf8_lossy(&encoded);
-        // Check Sixel header and ST terminator
         assert!(s.starts_with("\x1bPq\"1;1;2;2"));
         assert!(s.ends_with("\x1b\\"));
-        // Check that red is defined (#0;2;100;0;0)
         assert!(s.contains("#0;2;100;0;0"));
     }
 }
-

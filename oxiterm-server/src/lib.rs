@@ -1,3 +1,8 @@
+//! OxiTerm SSH and Web Application Server.
+//!
+//! Provides the terminal user interface server, including SSH session handlers,
+//! HTTP/WS web interfaces, rate-limiting, and template loaders.
+
 #![allow(clippy::all, clippy::pedantic)]
 
 pub mod config;

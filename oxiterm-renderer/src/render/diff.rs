@@ -1,18 +1,45 @@
+//! ANSI frame difference generator.
+//!
+//! Generates minimal screen diff commands by comparing a previous frame buffer with
+//! a next frame buffer, optimizing bandwidth and cursor movement overheads.
+
 use crate::render::buffer::CellBuffer;
 use oxiterm_proto::style::AnsiColor;
 
+/// Action commands outputted to draw screen updates.
 #[derive(Debug, PartialEq, Clone)]
 pub enum AnsiCommand {
+    /// Moves the terminal cursor to coordinates (col, row).
     MoveCursor(u16, u16),
-    SetColor { fg: AnsiColor, bg: AnsiColor },
+    /// Configures the terminal foreground and background colors.
+    SetColor {
+        /// Foreground text color.
+        fg: AnsiColor,
+        /// Background cell color.
+        bg: AnsiColor,
+    },
+    /// Writes a single character to the screen at the current cursor position.
     WriteChar(char),
-    SetModifiers { bold: bool, underline: bool, italic: bool },
+    /// Configures font modifiers (bold, underline, italic).
+    SetModifiers {
+        /// Enables bold weight font.
+        bold: bool,
+        /// Enables text underlining.
+        underline: bool,
+        /// Enables italic weight font.
+        italic: bool,
+    },
+    /// Resets all color and font modifiers to terminal default states.
     Reset,
 }
 
+/// Computes differences between two cell buffers to produce drawing commands.
 pub struct DiffEngine;
 
 impl DiffEngine {
+    /// Compares two cell buffers, generating a list of [`AnsiCommand`] instructions.
+    ///
+    /// Optimizes output commands by avoiding cursor moves when writing contiguous cells.
     pub fn diff(prev: &CellBuffer, next: &CellBuffer) -> Vec<AnsiCommand> {
         let mut commands = Vec::new();
         
@@ -42,13 +69,11 @@ impl DiffEngine {
 
                 let prev_cell = prev.cells.get(idx);
                 if Some(next_cell) != prev_cell {
-                    // 1. Move Cursor
                     if cur_x != Some(x) || cur_y != Some(y) {
                         commands.push(AnsiCommand::MoveCursor(x, y));
                         cur_y = Some(y);
                     }
 
-                    // 2. Update Style
                     if next_cell.fg != cur_fg || next_cell.bg != cur_bg {
                         commands.push(AnsiCommand::SetColor { fg: next_cell.fg, bg: next_cell.bg });
                         cur_fg = next_cell.fg;
@@ -66,10 +91,8 @@ impl DiffEngine {
                         cur_italic = next_cell.italic;
                     }
 
-                    // 3. Write
                     commands.push(AnsiCommand::WriteChar(next_cell.ch));
                     
-                    // Update tracked position
                     cur_x = Some(x + char_w);
                     if cur_x.unwrap() >= next.width {
                         cur_x = None;
@@ -83,6 +106,7 @@ impl DiffEngine {
         commands
     }
 
+    /// Serializes drawing commands into standard ANSI escape code bytes.
     pub fn encode_ansi(commands: &[AnsiCommand]) -> Vec<u8> {
         let mut buf = Vec::new();
         let mut last_fg = AnsiColor::Reset;
@@ -108,8 +132,7 @@ impl DiffEngine {
                     buf.extend_from_slice(ch.encode_utf8(&mut b).as_bytes());
                 }
                 AnsiCommand::SetModifiers { bold, underline, italic } => {
-                    buf.extend_from_slice(b"\x1b[0m"); // Reset first to clear previous
-                    // Re-apply colors after reset
+                    buf.extend_from_slice(b"\x1b[0m");
                     buf.extend_from_slice(Self::encode_color(last_fg, true).as_bytes());
                     buf.extend_from_slice(Self::encode_color(last_bg, false).as_bytes());
                     
@@ -137,6 +160,7 @@ impl DiffEngine {
         }
     }
 
+    /// Serializes drawing commands into a custom compact binary protocol stream.
     pub fn encode_binary(commands: &[AnsiCommand]) -> Vec<u8> {
         let mut buf = Vec::new();
         for cmd in commands {
@@ -148,7 +172,6 @@ impl DiffEngine {
                 }
                 AnsiCommand::SetColor { fg, bg } => {
                     buf.push(0x02);
-                    // Encode fg
                     match fg {
                         AnsiColor::Reset => {
                             buf.push(0);
@@ -164,7 +187,6 @@ impl DiffEngine {
                             buf.push(*idx);
                         }
                     }
-                    // Encode bg
                     match bg {
                         AnsiColor::Reset => {
                             buf.push(0);
@@ -203,6 +225,11 @@ impl DiffEngine {
         buf
     }
 
+    /// Deserializes a custom binary protocol stream back into [`AnsiCommand`] instructions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a descriptive error message string if the binary stream is malformed or truncated.
     pub fn decode_binary(bytes: &[u8]) -> Result<Vec<AnsiCommand>, &'static str> {
         let mut commands = Vec::new();
         let mut i = 0;
@@ -291,6 +318,7 @@ impl DiffEngine {
         Ok(commands)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,7 +339,7 @@ mod tests {
         let mut next = CellBuffer::new(10, 1);
         next.cells[0].ch = 'H';
         let cmds = DiffEngine::diff(&prev, &next);
-        assert_eq!(cmds.len(), 2); // MoveCursor(0,0) + WriteChar('H')
+        assert_eq!(cmds.len(), 2);
         assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
         assert!(matches!(cmds[1], AnsiCommand::WriteChar('H')));
     }
@@ -323,7 +351,6 @@ mod tests {
         next.cells[0].ch = 'X';
         next.cells[0].fg = AnsiColor::Color256(1);
         let cmds = DiffEngine::diff(&prev, &next);
-        // MoveCursor + SetColor + WriteChar
         assert_eq!(cmds.len(), 3);
         assert!(matches!(cmds[1], AnsiCommand::SetColor { .. }));
     }
@@ -332,14 +359,11 @@ mod tests {
     fn test_diff_wide_character() {
         let prev = CellBuffer::new(10, 1);
         let mut next = CellBuffer::new(10, 1);
-        next.cells[0].ch = '🚀'; // Width 2
-        next.cells[2].ch = 'A'; // Width 1
+        next.cells[0].ch = '🚀';
+        next.cells[2].ch = 'A';
         
         let cmds = DiffEngine::diff(&prev, &next);
         
-        // 1. MoveCursor(0, 0)
-        // 2. WriteChar('🚀')
-        // 3. WriteChar('A') (Should NOT have MoveCursor because cursor naturally advanced to x=2)
         assert_eq!(cmds.len(), 3);
         assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
         assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));

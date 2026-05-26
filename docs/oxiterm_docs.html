@@ -979,7 +979,7 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 <tr><td>AnsiFrameSink::setup()</td><td>Wysyła: ESC[?1049h (alt buffer) + ESC[2J + ESC[3J + ESC[H + ESC[?25l (hide cursor)</td><td>—</td></tr>
 <tr><td>AnsiFrameSink::Drop</td><td>Cleanup: ESU + show cursor + disable mouse + disable Kitty kbd + disable alt buffer</td><td>—</td></tr>
 <tr><td>EventLoop::new()</td><td>Tworzy EventLoop z frame_sink (AnsiFrameSink lub LinearFrameSink wg a11y_mode). Inicjalizuje LayoutEngine, DoubleBuffer, FrameRateLimiter.</td><td>—</td></tr>
-<tr><td>EventLoop::run()</td><td>Główna pętla: setup() → pętla { idle timeout 10min, poll weather, recv_timeout(5ms|66ms), process events, render jeśli needs_render }.</td><td>—</td></tr>
+<tr><td>EventLoop::run()</td><td>Główna pętla: setup() → pętla { idle timeout 10min, recv_timeout(5ms|66ms), process events, render jeśli needs_render }.</td><td>—</td></tr>
 <tr><td>EventLoop::has_active_animations()</td><td>Sprawdza DOM czy są węzły &lt;img src=".json"&gt; (Lottie) lub ".riv" (Rive). Jeśli tak → tick 66ms (15 FPS).</td><td>—</td></tr>
 <tr><td>EventLoop::update_doc()</td><td>Zamienia doc + setup_state_subscriptions + inject_initial_state. Reset layout + scroll.</td><td>—</td></tr>
 </table>
@@ -1061,6 +1061,15 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 <tr><td>metrics.enabled / port (9090)</td><td>Prometheus endpoint.</td></tr>
 <tr><td>app_server_url</td><td>URL zewnętrznego serwera dla AppDispatcher.</td></tr>
 <tr><td>OxiTermConfig::from_env()</td><td>Env overrides: OXITERM_HOST, OXITERM_PORT, OXITERM_PASSWORD, OXITERM_MAX_SESSIONS, etc.</td></tr>
+</table>
+
+<h2>loader.rs, metrics.rs, placeholder.rs, url_validator.rs</h2>
+<table class="func-table">
+<tr><th>Moduł</th><th>Opis</th></tr>
+<tr><td>loader.rs</td><td>Bezpieczny moduł ładowania plików THTML/TCSS. Zapobiega Path Traversal poprzez walidację canonicalized paths.</td></tr>
+<tr><td>metrics.rs</td><td>Definicje metryk Prometheus i serwer HTTP (port 9090) udostępniający te metryki (np. liczba aktywnych sesji, FPS, rate limit drops).</td></tr>
+<tr><td>placeholder.rs</td><td>Dostarcza wbudowane szablony THTML dla ekranów oczekiwania na połączenie z serwerem aplikacji oraz ekranów błędów.</td></tr>
+<tr><td>url_validator.rs</td><td>Walidator adresów URL serwera aplikacji. Chroni przed SSRF poprzez blokowanie zapytań do adresów link-local oraz przestrzeni metadanych chmurowych (169.254.x.x), jednocześnie zezwalając na IP prywatne (RFC 1918) oraz pętlę zwrotną w celach deweloperskich.</td></tr>
 </table>
 </div>
 
@@ -1238,9 +1247,9 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 
 <tr>
 <td><span class="bug-id">BUG-NEW-05</span></td>
-<td><span class="bug-file">session.rs:EventLoop weather poll</span></td>
+<td><span class="bug-file">session.rs:EventLoop event poll</span></td>
 <td><span class="badge badge-fixed">FIXED</span></td>
-<td><strong>try_recv() busy-poll na weather_rx.</strong> W każdej iteracji pętli (co 5ms gdy brak animacji) wywoływane jest weather_rx.try_recv(). To nie blokuje, ale przy braku danych weather, generuje ciągłe "miss" calls. Akceptowalne przy 5ms tiku, ale nieoptymalne.</td>
+<td><strong>try_recv() busy-poll na event_rx.</strong> W starej wersji pętla mogła wykonywać niepotrzebne wywołania try_recv() na pustej kolejce.</td>
 <td>Zoptymalizowano pętlę zdarzeń EventLoop. Pierwsze zdarzenie odpytywane jest za pomocą recv_timeout (blokujące), a kolejne poprzez try_recv aż do wyczerpania kolejki (lub limitu 100 zdarzeń). Zapobiega to busy-poll i starvation.</td>
 </tr>
 

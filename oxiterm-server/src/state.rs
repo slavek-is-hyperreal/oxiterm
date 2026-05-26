@@ -1,11 +1,21 @@
+//! Client session state management.
+//!
+//! Exposes state storage, dirty cell tracking, event/node subscriptions, and
+//! parses state action expressions (e.g., set, toggle, increment) to evaluate binds.
+
 use std::collections::{HashMap, HashSet};
 use oxiterm_proto::dom::NodeId;
 
+/// State value representation supporting integer, string, boolean, and lists of strings.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateValue {
+    /// 64-bit signed integer value.
     Int(i64),
+    /// UTF-8 string value.
     Str(String),
+    /// Boolean value.
     Bool(bool),
+    /// Array of strings.
     List(Vec<String>),
 }
 
@@ -20,13 +30,21 @@ impl std::fmt::Display for StateValue {
     }
 }
 
+/// Dynamic manager tracking state variables, dirty updates, and node event subscriptions.
 pub struct StateManager {
     store: HashMap<String, StateValue>,
     subscriptions: HashMap<String, Vec<NodeId>>,
     dirty_keys: HashSet<String>,
 }
 
+impl Default for StateManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StateManager {
+    /// Creates an empty StateManager.
     pub fn new() -> Self {
         Self {
             store: HashMap::new(),
@@ -35,10 +53,12 @@ impl StateManager {
         }
     }
 
+    /// Retrieves the value of the given key.
     pub fn get(&self, key: &str) -> Option<&StateValue> {
         self.store.get(key)
     }
 
+    /// Sets the value of a key, marking the key dirty if it differs from the previous value.
     pub fn set(&mut self, key: String, value: StateValue) {
         if self.store.get(&key) != Some(&value) {
             self.store.insert(key.clone(), value);
@@ -46,14 +66,17 @@ impl StateManager {
         }
     }
 
+    /// Registers a node to be dirtied when the specified state key is modified.
     pub fn subscribe(&mut self, key: String, node_id: NodeId) {
         self.subscriptions.entry(key).or_default().push(node_id);
     }
 
+    /// Clears all existing node subscriptions.
     pub fn clear_subscriptions(&mut self) {
         self.subscriptions.clear();
     }
 
+    /// Resolves and drains nodes marked dirty by recent state mutations.
     pub fn get_dirty_nodes(&mut self) -> Vec<NodeId> {
         let mut nodes = Vec::new();
         for key in self.dirty_keys.drain() {
@@ -64,6 +87,7 @@ impl StateManager {
         nodes
     }
 
+    /// Processes compound action expressions (e.g. `cmd:key=val;cmd2:key2`).
     pub fn apply_action(&mut self, action: &str) {
         for sub_action in action.split(|c| c == ';' || c == ',') {
             let sub_action = sub_action.trim();
@@ -74,7 +98,6 @@ impl StateManager {
     }
 
     fn apply_action_single(&mut self, action: &str) {
-        // format: "cmd:key=val" or "cmd:key"
         let parts: Vec<&str> = action.splitn(2, ':').collect();
         if parts.len() < 2 { return; }
         
@@ -216,7 +239,6 @@ mod tests {
         assert_eq!(dirty.len(), 1);
         assert_eq!(dirty[0], node_id);
         
-        // After drain, should be empty
         assert!(sm.get_dirty_nodes().is_empty());
     }
 
@@ -224,23 +246,19 @@ mod tests {
     fn test_htmx_actions() {
         let mut sm = StateManager::new();
         
-        // Test inc
         sm.apply_action("inc:counter");
         assert_eq!(sm.get("counter"), Some(&StateValue::Int(1)));
         sm.apply_action("inc:counter");
         assert_eq!(sm.get("counter"), Some(&StateValue::Int(2)));
         
-        // Test toggle
         sm.apply_action("toggle:flag");
         assert_eq!(sm.get("flag"), Some(&StateValue::Bool(true)));
         sm.apply_action("toggle:flag");
         assert_eq!(sm.get("flag"), Some(&StateValue::Bool(false)));
         
-        // Test set
         sm.apply_action("set:name=OxiTerm");
         assert_eq!(sm.get("name"), Some(&StateValue::Str("OxiTerm".to_string())));
         
-        // Test list
         sm.apply_action("append:items=task1");
         sm.apply_action("append:items=task2");
         if let Some(StateValue::List(l)) = sm.get("items") {
@@ -256,7 +274,6 @@ mod tests {
             assert!(l.is_empty());
         }
 
-        // Test clear on other types (string, int, bool)
         sm.apply_action("set:str_val=hello");
         sm.apply_action("clear:str_val");
         assert_eq!(sm.get("str_val"), Some(&StateValue::Str(String::new())));
@@ -269,7 +286,6 @@ mod tests {
         sm.apply_action("clear:bool_val");
         assert_eq!(sm.get("bool_val"), Some(&StateValue::Bool(false)));
 
-        // Test clear on non-existent key (should be a no-op)
         sm.apply_action("clear:non_existent_key");
         assert_eq!(sm.get("non_existent_key"), None);
     }
@@ -279,30 +295,25 @@ mod tests {
         use oxiterm_proto::dom::StateEvaluator;
         let mut sm = StateManager::new();
 
-        // 1. Bare key tests
         assert_eq!(sm.evaluate_bind_show("logged_in"), false);
         sm.set("logged_in".to_string(), StateValue::Bool(true));
         assert_eq!(sm.evaluate_bind_show("logged_in"), true);
         sm.set("logged_in".to_string(), StateValue::Bool(false));
         assert_eq!(sm.evaluate_bind_show("logged_in"), false);
 
-        // 2. key=value tests
         assert_eq!(sm.evaluate_bind_show("tab=home"), false);
         sm.set("tab".to_string(), StateValue::Str("home".to_string()));
         assert_eq!(sm.evaluate_bind_show("tab=home"), true);
         assert_eq!(sm.evaluate_bind_show("tab=profile"), false);
 
-        // 3. key=false tests
-        assert_eq!(sm.evaluate_bind_show("show_details=false"), true); // absent is considered false
+        assert_eq!(sm.evaluate_bind_show("show_details=false"), true);
         sm.set("show_details".to_string(), StateValue::Bool(false));
         assert_eq!(sm.evaluate_bind_show("show_details=false"), true);
         sm.set("show_details".to_string(), StateValue::Bool(true));
         assert_eq!(sm.evaluate_bind_show("show_details=false"), false);
 
-        // 4. key=true tests
         assert_eq!(sm.evaluate_bind_show("show_details=true"), true);
         sm.set("show_details".to_string(), StateValue::Bool(false));
         assert_eq!(sm.evaluate_bind_show("show_details=true"), false);
     }
 }
-

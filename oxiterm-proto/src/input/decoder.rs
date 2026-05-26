@@ -1,26 +1,42 @@
+//! State machine decoder for raw terminal input streams.
+//!
+//! Parses incoming byte sequences into high-level [`InputEvent`] representations.
+//! Handles ANSI escape sequences, UTF-8 multi-byte characters, Kitty keyboard protocol,
+//! and SGR mouse tracking. Designed defensively to prevent state leaks or unbounded memory growth.
+
 use crate::input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseInput, MouseButton, MouseAction};
 use std::time::Instant;
 
+/// The parser states for decoding ANSI escape sequences.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
+    /// Idle state, parsing normal characters or waiting for escape start.
     Idle,
+    /// ESC character received; awaiting next escape command sequence.
     Escaped,
+    /// Parsing a Control Sequence Introducer (CSI) parameter string.
     Csi,
+    /// Reading Application Program Command (APC) blocks.
     Apc,
+    /// Encountered an ESC while reading APC blocks, awaiting string terminator backslash.
     ApcEscaped,
 }
 
-
+/// An error indicating that the internal input buffer has reached its capacity limit.
 #[derive(Debug)]
 pub struct OverflowError;
 
-/// S6-15: BoundedSubnegBuffer - Fixed capacity to prevent memory DoS
+/// Bounded input buffer with a strict capacity limit.
+///
+/// Anchored by spec [S6-15]. Prevents memory exhaustion attacks by refusing
+/// to grow beyond its predefined allocation limit.
 pub struct BoundedSubnegBuffer {
     buf: Vec<u8>,
     capacity: usize,
 }
 
 impl BoundedSubnegBuffer {
+    /// Creates a new buffer with the specified capacity limit.
     pub fn new(capacity: usize) -> Self {
         Self {
             buf: Vec::with_capacity(capacity),
@@ -28,7 +44,11 @@ impl BoundedSubnegBuffer {
         }
     }
     
-    /// S6-16: push that rejects on limit
+    /// Appends a byte to the end of the buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OverflowError`] if the buffer is full, as defined in spec [S6-16].
     pub fn push(&mut self, byte: u8) -> Result<(), OverflowError> {
         if self.buf.len() >= self.capacity {
             Err(OverflowError)
@@ -38,16 +58,21 @@ impl BoundedSubnegBuffer {
         }
     }
     
+    /// Clears the contents of the buffer.
     pub fn clear(&mut self) {
         self.buf.clear();
     }
     
+    /// Returns a read-only slice of the buffer.
     pub fn as_slice(&self) -> &[u8] {
         &self.buf
     }
 }
 
-/// S6-17: InputStateMachine for Defensive Parsing
+/// A stateful input decoder using defensive parsing.
+///
+/// Anchored by spec [S6-17]. Processes streams byte-by-byte and resets its
+/// internal state automatically upon encountering malformed sequences or timeouts.
 pub struct InputStateMachine {
     state: State,
     buffer: BoundedSubnegBuffer,
@@ -62,29 +87,39 @@ impl Default for InputStateMachine {
 }
 
 impl InputStateMachine {
+    /// Creates a new state machine.
+    ///
+    /// Allocates an internal buffer with a strict limit of 256 bytes [S6-15]
+    /// to avoid memory exhaustion from unclosed escape sequences.
     pub fn new() -> Self {
         Self {
             state: State::Idle,
-            // S6-15: Max 256 bytes buffer
             buffer: BoundedSubnegBuffer::new(256),
             utf8_buf: Vec::with_capacity(4),
             last_activity: Instant::now(),
         }
     }
 
-    /// S6-19: Reset to Idle state on error/overflow
+    /// Resets the state machine back to its idle state, clearing all temporary buffers.
+    ///
+    /// Anchored by spec [S6-19]. Used to recover from overflow errors and stream out-of-sync events.
     pub fn reset(&mut self) {
         self.state = State::Idle;
         self.buffer.clear();
         self.utf8_buf.clear();
     }
 
+    /// Resets the parser state if too much time has passed since the last received byte.
+    ///
+    /// This prevents the state machine from being permanently stuck in an incomplete
+    /// escape parsing state (e.g. CSI or APC) if a client terminates or drops a packet.
     pub fn sgr_timeout_guard(&mut self) {
         if self.state != State::Idle && self.last_activity.elapsed() > std::time::Duration::from_millis(200) {
             self.reset();
         }
     }
 
+    /// Feeds a slice of raw bytes into the state machine, returning all decoded events.
     pub fn feed_slice(&mut self, data: &[u8]) -> Vec<InputEvent> {
         let mut events = Vec::new();
         for &b in data {
@@ -95,7 +130,10 @@ impl InputStateMachine {
         events
     }
 
-    /// S6-18: feed step, panic-free
+    /// Feeds a single byte into the parser state machine.
+    ///
+    /// Processes the byte according to the current state, updating timeouts
+    /// and resetting buffers on overflow or state transitions [S6-18].
     pub fn feed(&mut self, byte: u8) -> Option<InputEvent> {
         self.sgr_timeout_guard();
         self.last_activity = Instant::now();
@@ -111,7 +149,8 @@ impl InputStateMachine {
                 } else if byte == 0x13 {
                     Some(InputEvent::Xoff)
                 } else if byte >= 0x80 {
-                    // Check if this is the start of a sequence
+                    // Handle multi-byte UTF-8 sequences.
+                    // Validate start byte range to prevent stale state memory leaks.
                     if self.utf8_buf.is_empty() {
                         let expected_len = if (0xc2..=0xdf).contains(&byte) {
                             2
@@ -123,7 +162,6 @@ impl InputStateMachine {
                             0
                         };
                         if expected_len == 0 {
-                            // Invalid UTF-8 start byte: discard to prevent state leak
                             return None;
                         }
                     }
@@ -185,7 +223,7 @@ impl InputStateMachine {
                     let term = byte;
                     let seq_len = data.len();
                     if seq_len > 3 {
-                        let seq = &data[2..seq_len - 1]; // Skip ESC [ and Terminator
+                        let seq = &data[2..seq_len - 1];
                         match term {
                             b'u' => Self::parse_kitty(seq).map(InputEvent::KeyPress).or_else(|| Some(InputEvent::Unknown(data.clone()))),
                             b'M' | b'm' => {
@@ -237,14 +275,12 @@ impl InputStateMachine {
                         Some(InputEvent::Unknown(data))
                     }
                 } else if byte == 0x1b {
-                    // Stay in ApcEscaped
                     None
                 } else {
                     self.state = State::Apc;
                     None
                 }
             }
-
         }
     }
 
@@ -336,7 +372,6 @@ mod tests {
     fn test_utf8_decoding_and_state_leaks() {
         let mut sm = InputStateMachine::new();
 
-        // 1. Decodes valid UTF-8 sequence (e.g. 'ł' which is 0xc5, 0x82)
         let ev1 = sm.feed(0xc5);
         assert!(ev1.is_none());
         let ev2 = sm.feed(0x82);
@@ -346,45 +381,38 @@ mod tests {
             panic!("Expected KeyEvent");
         }
 
-        // 2. Reject invalid UTF-8 start byte immediately to prevent leak
-        let ev_invalid = sm.feed(0x80); // Invalid start byte
+        let ev_invalid = sm.feed(0x80);
         assert!(ev_invalid.is_none());
-        assert!(sm.utf8_buf.is_empty()); // Should not leak / store this byte
+        assert!(sm.utf8_buf.is_empty());
 
-        // 3. Incomplete followed by ASCII char boundary reset
-        let ev3 = sm.feed(0xc5); // Incomplete ł
+        let ev3 = sm.feed(0xc5);
         assert!(ev3.is_none());
         assert_eq!(sm.utf8_buf.len(), 1);
-        let ev4 = sm.feed(0x61); // ASCII 'a'
-        assert_eq!(sm.utf8_buf.len(), 0); // Should be cleared!
+        let ev4 = sm.feed(0x61);
+        assert_eq!(sm.utf8_buf.len(), 0);
         if let Some(InputEvent::KeyPress(ke)) = ev4 {
             assert_eq!(ke.codepoint, 'a');
         } else {
             panic!("Expected KeyEvent 'a'");
         }
 
-        // 4. Incomplete followed by invalid continuation byte clears buffer
-        let ev5 = sm.feed(0xc5); // Incomplete ł
+        let ev5 = sm.feed(0xc5);
         assert!(ev5.is_none());
-        let ev6 = sm.feed(0xc5); // Another start byte instead of continuation -> invalid
+        let ev6 = sm.feed(0xc5);
         assert!(ev6.is_none());
-        assert!(sm.utf8_buf.is_empty()); // Should clear immediately
+        assert!(sm.utf8_buf.is_empty());
     }
 
     #[test]
     fn test_sgr_timeout_guard() {
         let mut sm = InputStateMachine::new();
         
-        // Feed partial escape sequence
-        sm.feed(0x1b); // ESC
-        sm.feed(b'['); // [
+        sm.feed(0x1b);
+        sm.feed(b'[');
         assert_eq!(sm.state, State::Csi);
         
-        // Wait for timeout (e.g. 250ms)
         std::thread::sleep(std::time::Duration::from_millis(250));
         
-        // Feed next character - should trigger sgr_timeout_guard, resetting state to Idle
-        // and treating the new character 'a' as normal input
         let ev = sm.feed(b'a');
         assert_eq!(sm.state, State::Idle);
         if let Some(InputEvent::KeyPress(ke)) = ev {

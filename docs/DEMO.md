@@ -1,75 +1,74 @@
-# OxiTerm Weather Dashboard Demo
+# OxiTerm Hello & Interactive Showcase Demo
 
-This document describes the Weather Dashboard application built as a showcase for the OxiTerm engine.
-
-## 🌟 Overview
-
-The Weather Dashboard demonstrates how to build a complex, multi-view TUI using server-side rendering. It fetches live data from the Open-Meteo API and renders it using OxiTerm's THTML/TCSS engine.
-
-## 🛠 Features
-
-### 1. Multi-View Navigation
-The application features three distinct views that can be toggled using keyboard shortcuts:
-- **[1] Current Weather**: Real-time temperature, wind speed, and weather condition.
-- **[2] 7-Day Forecast**: Daily high/low temperatures and conditions for the upcoming week.
-- **[3] Details**: Precise metrics including rain, pressure, and hourly trends.
-
-### 2. Responsive Layout
-The UI is built using a Flexbox-based layout system (Taffy). When you resize your terminal window, the application automatically:
-- Re-calculates node dimensions.
-- Repositions Header and Footer.
-- Adjusts content padding.
-- Clears the screen and scrollback to prevent artifacts.
-
-### 3. Predictive Local Echo
-To mitigate network latency, OxiTerm uses a predictive buffer. Typed characters appear instantly in the footer input area, providing immediate visual feedback even on slow SSH connections.
-
-## ⌨️ Controls
-
-| Key | Action |
-|-----|--------|
-| `1` | Switch to Current Weather view |
-| `2` | Switch to Forecast view |
-| `3` | Switch to Details view |
-| `Tab` | Cycle through views |
-| `R` | Force refresh data from API |
-| `Q` | Exit application and close SSH session |
-
-## 🏗 Implementation Details
-
-### API Integration
-Data is fetched using the `ureq` crate from `https://api.open-meteo.com/v1/forecast`. The results are cached in the `WeatherApp` struct to prevent excessive API calls.
-
-### Rendering
-The application builds a `THTMLDocument` programmatically:
-- **Header**: Fixed height (3 lines), dark blue background.
-- **Content**: Dynamic height, flex-column layout.
-- **Footer**: Fixed height (3 lines), grey background, contains help text and the predictive echo input field.
-
-### Performance
-For the best experience, run the server with the `--release` flag. This enables Taffy's optimized layout calculations and ensures 60 FPS rendering in the terminal.
-
-## 🔒 Security
-The demo uses a configurable password for SSH access. Ensure you set the `OXITERM_PASSWORD` environment variable before starting the server.
+This document describes the interactive showcase application (`examples/hello.thtml`) built as a comprehensive feature demonstration for the OxiTerm engine.
 
 ---
 
-## 🎨 Vector & Animation Showcase Demo
+## 🌟 Overview
 
-Alongside the programmatic weather app, OxiTerm provides a dedicated layout-driven vector graphics showcase demo.
+The interactive showcase demonstrates how to build rich, reactive terminal user interfaces using server-side rendered THTML/TCSS layouts. It features:
+- **Responsive Flexbox Grid**: Node layout calculated via the Taffy engine.
+- **Rich Vector Media**: Real-time rasterized SVG vector graphics, Lottie animations, and interactive Rive widgets.
+- **HTMX-style Event Actions**: Reactive buttons, input fields, and tab switching conditions.
 
-### 🚀 Running the Showcase
-To launch the THTML dashboard that hosts the vector showcase, run:
+---
+
+## 🛠 Features and Demos
+
+### 1. Tabbed Navigation Using `bind-show`
+The showcase features interactive tabs (e.g. **Home**, **Media Showcase**, **Interactive Controls**).
+- Clicking or focusing and pressing `Enter` on tab headers executes a `set:tab=value` action.
+- Content boxes use `bind-show="tab=value"` to conditionally mount layout blocks.
+
+### 2. Svg Vector Mascot (`mascot.svg`)
+- Displays OxiTerm's vector mascot on the terminal grid.
+- Rasterized on the server using `resvg` and `tiny-skia` library pipelines.
+- Transmitted in high-fidelity to compatible terminals using Kitty Graphics Protocol or Sixel.
+
+### 3. Active Lottie Vector Ticker (`bell.json`)
+- Runs a vector bell loop animation.
+- When the animation tab is active, OxiTerm automatically dynamically scales the session's event loop tick rate to 15 FPS (`66ms` tick) for smooth playback.
+- When inactive, the session drops back to an idle sleep state (`5ms` poll) to conserve server CPU cycles.
+
+### 4. Interactive Rive Slider (`toggle.riv`)
+- Renders an interactive slider toggle component.
+- Translates hovering and mouse clicks directly into Rive runtime inputs.
+- Automatically triggers state transitions and keyframe animations inside the cell grid.
+
+---
+
+## ⌨️ Controls & Navigation
+
+OxiTerm parses raw terminal input via a dedicated **Resilient Reactor Thread (RRT)**.
+
+| Action / Key | Function |
+|:---|:---|
+| `Tab` \| `↓` \| `→` | Focus the next interactive element (button, input, tab header) |
+| `Shift + Tab` \| `↑` \| `←` | Focus the previous interactive element |
+| `Enter` | Activate the focused button/element or submit an input |
+| Mouse Hover / Click | Interact with Rive components, buttons, and focused tabs |
+| `PgUp` / `PgDn` | Scroll the active page view up/down |
+| `Q` / `q` | Safely disconnect and close the active connection session |
+
+---
+
+## 🚀 Running the Showcase
+
+### 1. Launch the Server
+To run the interactive showcase on port `2222` with hot reloading active:
 ```bash
-cargo run --bin oxiterm-cli -- serve examples/hello.thtml --port 2222
+cargo run --bin oxiterm-cli -- serve examples/hello.thtml --port 2222 --no-auth
 ```
-Then connect via:
+
+### 2. Connect via SSH
+Connect from any standard terminal emulator:
 ```bash
 ssh localhost -p 2222
 ```
 
-### 💎 Showcase Elements
-Once connected, navigate to the **🎨 Vector & Animation Demo** card. It displays:
-1. **Rive Interactive Widget (`toggle.riv`)**: A custom interactive slider toggle. Hovering and clicking with mouse input dynamically triggers the slide translation animation.
-2. **Lottie Vector Animation (`bell.json`)**: An active vector bell animation. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
-3. **SVG Vector Mascot (`mascot.svg`)**: A high-fidelity rasterized SVG graphic drawing the OxiTerm rust mascot, cached and rendered via `resvg`.
+### 3. Connect via Web Browser
+OxiTerm also launches a Web/WebSocket server alongside SSH. Open your browser and navigate to:
+```
+http://localhost:8080/
+```
+The browser view embeds `xterm.js` to render the canvas-based visual interface.

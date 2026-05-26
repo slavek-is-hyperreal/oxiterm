@@ -1,3 +1,8 @@
+//! TCSS stylesheet parser and cascade resolver.
+//!
+//! Parses TCSS syntax, extracts selectors (tags, classes, IDs) and declarations,
+//! and applies computed style rules cascadingly to the DOM document tree.
+
 use anyhow::Result;
 use oxiterm_proto::style::{AnsiColor, FlexDirection, AlignItems, JustifyContent};
 use nom::{
@@ -10,46 +15,72 @@ use nom::{
     multi::many0,
 };
 
+/// Represents a TCSS selector used to match DOM elements.
 #[derive(Debug, Clone)]
 pub enum Selector {
+    /// Selects elements by class name (e.g., `.btn`).
     Class(String),
+    /// Selects elements by their unique ID (e.g., `#submit`).
     Id(String),
+    /// Selects elements by their tag name (e.g., `button`).
     Tag(String),
 }
 
+/// Represents a single TCSS style declaration property.
 #[derive(Debug, Clone)]
 pub enum Declaration {
+    /// Text foreground color.
     Fg(AnsiColor),
+    /// Background color.
     Bg(AnsiColor),
+    /// Width in columns.
     Width(u16),
+    /// Height in rows.
     Height(u16),
+    /// Flex direction.
     FlexDirection(FlexDirection),
+    /// Cross-axis alignment.
     AlignItems(AlignItems),
+    /// Main-axis content justification.
     JustifyContent(JustifyContent),
+    /// Padding for all sides.
     Padding(u16),
+    /// Top padding.
     PaddingTop(u16),
+    /// Right padding.
     PaddingRight(u16),
+    /// Bottom padding.
     PaddingBottom(u16),
+    /// Left padding.
     PaddingLeft(u16),
+    /// Margin for all sides.
     Margin(u16),
+    /// Top margin.
     MarginTop(u16),
+    /// Right margin.
     MarginRight(u16),
+    /// Bottom margin.
     MarginBottom(u16),
+    /// Left margin.
     MarginLeft(u16),
+    /// Border color (enables standard single border).
     Border(AnsiColor),
+    /// Border style character preset name (e.g., `rounded`, `double`).
     BorderStyle(String),
+    /// Border foreground color.
     BorderColor(AnsiColor),
 }
 
+/// Strips block comments (`/* ... */`) from the TCSS input string.
 pub fn strip_comments(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '/' && chars.peek() == Some(&'*') {
-            chars.next(); // consume '*'
+            chars.next();
             while let Some(c2) = chars.next() {
                 if c2 == '*' && chars.peek() == Some(&'/') {
-                    chars.next(); // consume '/'
+                    chars.next();
                     break;
                 }
             }
@@ -60,23 +91,36 @@ pub fn strip_comments(input: &str) -> String {
     result
 }
 
+/// A parsed stylesheet containing rule pairings of selectors and style declarations.
 #[derive(Debug, Clone, Default)]
 pub struct StyleSheet {
+    /// Rules defined in the stylesheet.
     pub rules: Vec<(Selector, Vec<Declaration>)>,
 }
 
+/// Parses a raw TCSS string into a [`StyleSheet`].
+///
+/// # Errors
+///
+/// Returns an error if the input string contains invalid TCSS rule syntax.
 pub fn parse_tcss(input: &str) -> Result<StyleSheet> {
     let stripped = strip_comments(input);
     let (_, rules) = parse_rules(&stripped).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
     Ok(StyleSheet { rules })
 }
 
+/// Parses an inline style string (e.g., `fg: red; padding: 1`) into a list of style declarations.
+///
+/// # Errors
+///
+/// Returns an error if the inline string contains invalid syntax.
 pub fn parse_inline_tcss(input: &str) -> Result<Vec<Declaration>> {
     let stripped = strip_comments(input);
     let (_, decls) = parse_declarations(&stripped).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
     Ok(decls)
 }
 
+/// Mutates the given style with values parsed from a TCSS declaration.
 pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: &Declaration) {
     match decl {
         Declaration::Fg(color) => style.fg = *color,
@@ -177,7 +221,6 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     let (input, _) = nom_char(':')(input)?;
     let (input, _) = multispace0(input)?;
     
-    // Take value until ; or } or end of input
     let end_idx = input.find(|c| c == ';' || c == '}').unwrap_or(input.len());
     let (value, input) = input.split_at(end_idx);
 
@@ -254,6 +297,13 @@ fn parse_color(value: &str) -> AnsiColor {
     AnsiColor::Reset
 }
 
+/// Applies stylesheet rules to all DOM nodes inside the document cascadingly.
+///
+/// Cascade order resolution:
+/// 1. Tag type selector rules (lowest priority).
+/// 2. Class name selector rules.
+/// 3. ID selector rules.
+/// 4. Inline element styles (highest priority).
 pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &StyleSheet) {
     for (_id, node) in doc.arena.iter_mut() {
         let tag_name = match node.tag {
@@ -301,7 +351,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
             }
         }
 
-        // 4. Inline styles (overwriting stylesheet styles)
+        // 4. Inline styles
         if let Some(ref style_str) = node.attrs.style_raw {
             if let Ok(decls) = parse_inline_tcss(style_str) {
                 for decl in decls {

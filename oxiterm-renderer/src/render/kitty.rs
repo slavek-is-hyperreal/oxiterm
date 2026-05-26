@@ -1,9 +1,18 @@
+//! Kitty Graphics Protocol encoder.
+//!
+//! Provides utilities to transmit compressed PNG and raw RGBA image/frame buffers
+//! using the Kitty Graphics Protocol with base64 chunking and cell alignment.
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
+/// Manager handling image formatting and command serialization for Kitty Graphics Protocol.
 pub struct KittyImageManager;
 
 impl KittyImageManager {
-    /// OxiTerm S6-04: Transmit PNG compressed image via Kitty Graphics Protocol with Base64 Chunking and Cell Sizing
+    /// Encodes and transmits an RGBA byte buffer to the client terminal using PNG compression.
+    ///
+    /// Anchored by spec [S6-04]. Performs base64 encoding and splits the payload into
+    /// 4096-byte chunks to fit within standard terminal input write limits.
     pub fn transmit_image(
         pixel_w: u32,
         pixel_h: u32,
@@ -11,7 +20,6 @@ impl KittyImageManager {
         rows: u32,
         rgba_data: &[u8],
     ) -> Vec<u8> {
-        // Compress RGBA to PNG
         let mut png_bytes = Vec::new();
         let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
         use image::ImageEncoder;
@@ -29,7 +37,6 @@ impl KittyImageManager {
             for (i, chunk) in chunks.enumerate() {
                 let m = if i == count - 1 { 0 } else { 1 };
                 if i == 0 {
-                    // a=T -> Transmit and display, f=100 -> PNG, c=cols, r=rows, m=more
                     let header = format!("\x1b_Ga=T,f=100,c={},r={},m={};", cols, rows, m);
                     output.extend_from_slice(header.as_bytes());
                 } else {
@@ -42,7 +49,6 @@ impl KittyImageManager {
             return output;
         }
 
-        // Fallback to uncompressed transmission if PNG encoding fails
         Self::transmit_image_rgba(pixel_w, pixel_h, cols, rows, rgba_data)
     }
 
@@ -73,7 +79,7 @@ impl KittyImageManager {
         output
     }
 
-    /// Delete all placements of all images on the screen
+    /// Generates a command sequence to clear all active Kitty image placements from screen.
     pub fn delete_all_placements() -> Vec<u8> {
         b"\x1b_Ga=d,d=A\x1b\\".to_vec()
     }
@@ -86,11 +92,10 @@ mod tests {
     #[test]
     fn test_delete_all_placements() {
         let bytes = KittyImageManager::delete_all_placements();
-        assert!(bytes.starts_with(&[0x1b, 0x5f, 0x47])); // ESC_G
-        assert!(bytes.ends_with(&[0x1b, 0x5c])); // ESC\
+        assert!(bytes.starts_with(&[0x1b, 0x5f, 0x47]));
+        assert!(bytes.ends_with(&[0x1b, 0x5c]));
         let s = std::str::from_utf8(&bytes).unwrap();
         assert!(s.contains("a=d"));
         assert!(s.contains("d=A"));
     }
 }
-

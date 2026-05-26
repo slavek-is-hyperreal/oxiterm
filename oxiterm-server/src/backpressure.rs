@@ -1,12 +1,21 @@
+//! Backpressure-aware bounded message channel.
+//!
+//! Provides a channel that drops the oldest frame on capacity overflow to prevent
+//! memory leakage under high latency, supporting asynchronous, blocking, and timed receives.
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 use parking_lot::{Mutex, Condvar};
 use tokio::sync::Notify;
 
+/// Outcome of attempting to send a message through the channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendResult {
+    /// Message successfully pushed to the queue.
     Sent,
+    /// Message was sent, but the oldest message in the queue was dropped to fit capacity.
     Dropped,
+    /// The channel has been closed; message was rejected.
     Closed,
 }
 
@@ -16,7 +25,9 @@ struct ChannelInner<T> {
     closed: bool,
 }
 
-/// S5-47: `BoundedFrameChannel` with real backpressure (drop oldest on overflow).
+/// A multi-sender, single-receiver channel enforcing real backpressure by dropping the oldest frame on overflow.
+///
+/// Anchored by spec [S5-47].
 #[derive(Clone)]
 pub struct BoundedFrameChannel<T> {
     inner: Arc<(Mutex<ChannelInner<T>>, Condvar)>,
@@ -24,12 +35,14 @@ pub struct BoundedFrameChannel<T> {
     senders: Arc<()>,
 }
 
+/// Receiving handle for the bounded frame channel.
 pub struct Receiver<T> {
     inner: Arc<(Mutex<ChannelInner<T>>, Condvar)>,
     notify: Arc<Notify>,
 }
 
 impl<T: Send + 'static> BoundedFrameChannel<T> {
+    /// Creates a new bounded frame channel with the specified capacity.
     pub fn new(capacity: usize) -> (Self, Receiver<T>) {
         let inner = Arc::new((
             Mutex::new(ChannelInner {
@@ -48,6 +61,7 @@ impl<T: Send + 'static> BoundedFrameChannel<T> {
         (tx, rx)
     }
 
+    /// Attempts to enqueue a message. Drops the oldest message if the queue is full.
     pub fn try_send(&self, item: T) -> SendResult {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();
@@ -69,6 +83,7 @@ impl<T: Send + 'static> BoundedFrameChannel<T> {
         res
     }
 
+    /// Returns `true` if the channel is open and has space for new elements.
     pub fn poll_ready(&self) -> bool {
         let (lock, _) = &*self.inner;
         let inner = lock.lock();
@@ -77,6 +92,7 @@ impl<T: Send + 'static> BoundedFrameChannel<T> {
 }
 
 impl<T> Receiver<T> {
+    /// Asynchronously receives the next message, yielding the task if empty.
     pub async fn recv(&mut self) -> Option<T> {
         loop {
             {
@@ -93,8 +109,10 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// S5-48: Blocking receive for use in dedicated threads (like EventLoop).
-    /// BUG-SPINLOCK-01 Fix: Using Condvar instead of sleep(5ms).
+    /// Blocks the current thread until a message is available.
+    ///
+    /// Anchored by spec [S5-48]. Uses a conditional variable (`Condvar`) to park the
+    /// thread while waiting, avoiding high CPU consumption spin-locks or arbitrary sleep polling.
     pub fn blocking_recv(&mut self) -> Option<T> {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();
@@ -109,6 +127,7 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Blocks the current thread waiting for a message, up to the specified timeout duration.
     pub fn recv_timeout(&mut self, timeout: std::time::Duration) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();
@@ -127,12 +146,14 @@ impl<T> Receiver<T> {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout)
     }
 
+    /// Non-blocking attempt to retrieve a message if immediately available.
     pub fn try_recv(&mut self) -> Option<T> {
         let (lock, _) = &*self.inner;
         let mut inner = lock.lock();
         inner.queue.pop_front()
     }
 
+    /// Closes the channel, notifying all blocked receivers.
     pub fn close(&mut self) {
         let (lock, cvar) = &*self.inner;
         let mut inner = lock.lock();
@@ -165,7 +186,6 @@ mod tests {
         assert_eq!(tx.try_send(1), SendResult::Sent);
         assert_eq!(tx.try_send(2), SendResult::Sent);
         
-        // This should drop 1 and keep 2, 3
         assert_eq!(tx.try_send(3), SendResult::Dropped);
         
         assert_eq!(rx.blocking_recv(), Some(2));

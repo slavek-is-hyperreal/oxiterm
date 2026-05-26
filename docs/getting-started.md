@@ -189,7 +189,7 @@ Run OxiTerm with the `OXITERM_APP_SERVER` variable:
 OXITERM_APP_SERVER=http://localhost:3000/events oxiterm serve app.thtml
 ```
 
-For every user action (`event-htmx`), OxiTerm will send an asynchronous (fire-and-forget) POST JSON to the defined URL:
+For every user action (`event-htmx`), OxiTerm will dispatch an asynchronous POST request in the background with the current state:
 ```json
 {
   "action": "save_profile",
@@ -197,6 +197,9 @@ For every user action (`event-htmx`), OxiTerm will send an asynchronous (fire-an
   "session_id": 42
 }
 ```
+
+The App Server can return a `200 OK` response with a JSON object to apply a **State Patch** back to the active session state. If no state changes are required, it can return a `204 No Content` status.
+
 For more information, see [app-server-guide.md](app-server-guide.md).
 
 ---
