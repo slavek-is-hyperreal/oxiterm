@@ -298,6 +298,8 @@
                 setTimeout(start, 3000);
             };
 
+            const mediaCache = {};
+
             socket.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
                     const bytes = new Uint8Array(event.data);
@@ -308,7 +310,35 @@
                         document.querySelector(".overlay-text").innerText = "Session terminated.";
                         return;
                     }
-                    term.draw_commands(bytes);
+                    if (bytes[0] === 0x20) {
+                        if (bytes.length >= 5) {
+                            const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
+                            const mediaBytes = bytes.subarray(5);
+                            const blob = new Blob([mediaBytes]);
+                            const url = URL.createObjectURL(blob);
+                            mediaCache[hash] = url;
+                        }
+                    } else if (bytes[0] === 0x21) {
+                        if (bytes.length >= 13) {
+                            const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
+                            const col = bytes[5] | (bytes[6] << 8);
+                            const row = bytes[7] | (bytes[8] << 8);
+                            const width = bytes[9] | (bytes[10] << 8);
+                            const height = bytes[11] | (bytes[12] << 8);
+
+                            const imageUrl = mediaCache[hash];
+                            if (imageUrl) {
+                                const img = new Image();
+                                img.src = imageUrl;
+                                img.onload = () => {
+                                    const ctx = canvas.getContext("2d");
+                                    ctx.drawImage(img, col * charWidth, row * charHeight, width * charWidth, height * charHeight);
+                                };
+                            }
+                        }
+                    } else {
+                        term.draw_commands(bytes);
+                    }
                 }
             };
 

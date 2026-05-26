@@ -40,13 +40,25 @@ impl AppDispatcher {
     /// Fire-and-forget POST of `payload` to the configured URL.
     ///
     /// Spawns a std thread so the event loop is never blocked.
-    pub fn dispatch(&self, payload: DispatchPayload) {
+    pub fn dispatch(&self, payload: DispatchPayload, session: std::sync::Arc<crate::session::ClientSession>) {
         let url = self.app_server_url.clone();
         std::thread::spawn(move || {
             info!("AppDispatcher: POST {} action={}", url, payload.action);
             match ureq::post(&url).send_json(&payload) {
                 Ok(resp) => {
                     info!("AppDispatcher: response {}", resp.status());
+                    if resp.status() == 200 {
+                        match resp.into_json::<serde_json::Value>() {
+                            Ok(json) => {
+                                info!("AppDispatcher: successfully parsed state patch JSON");
+                                session.apply_state_patch(json);
+                                let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
+                            }
+                            Err(e) => {
+                                warn!("AppDispatcher: failed to parse response JSON: {}", e);
+                            }
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!("AppDispatcher: POST failed: {}", e);
@@ -61,6 +73,7 @@ impl AppDispatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn make_payload(action: &str, session_id: usize) -> DispatchPayload {
         let mut state = HashMap::new();
@@ -103,9 +116,56 @@ mod tests {
     fn test_dispatch_unreachable_does_not_panic() {
         let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
         let payload = make_payload("toggle:flag", 0);
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let session = reg.create_session().unwrap();
         // Should not panic — failure is logged inside the spawned thread.
-        d.dispatch(payload);
+        d.dispatch(payload, session);
         // Give thread a moment to attempt and fail.
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
+
+    #[test]
+    fn test_dispatch_app_server_response_patch() {
+        use std::net::TcpListener;
+        use std::io::{Write, Read};
+        
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        
+        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
+        let payload = make_payload("click", 123);
+        
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let session = reg.create_session().unwrap();
+        
+        d.dispatch(payload, session.clone());
+        
+        // Accept the mock server connection
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf).unwrap();
+        
+        // Write mock response with state patch JSON
+        let body = "{\"new_key\":\"patched_val\"}";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        
+        // Wait up to 2 seconds for state patch to be applied
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_secs(2) {
+            if session.state.read().get("new_key").is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        
+        // Verify state patch was applied to session
+        let state = session.state.read();
+        assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
+    }
 }
+

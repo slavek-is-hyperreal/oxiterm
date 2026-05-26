@@ -93,6 +93,15 @@ impl ResizeDebouncer {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct MediaRenderInfo {
+    pub path: String,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
 pub struct ClientSession {
     pub id: SessionId,
     pub dims: RwLock<PtyDimensions>,
@@ -107,11 +116,47 @@ pub struct ClientSession {
     pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
     pub last_activity: RwLock<std::time::Instant>,
     pub state: RwLock<crate::state::StateManager>,
+    pub active_media: RwLock<Vec<MediaRenderInfo>>,
 }
 
 impl ClientSession {
     pub fn close(&self) {
         self.event_rx.lock().close();
+    }
+
+    pub fn apply_state_patch(&self, patch: serde_json::Value) {
+        if let serde_json::Value::Object(obj) = patch {
+            let mut state = self.state.write();
+            for (key, val) in obj {
+                let state_val = match val {
+                    serde_json::Value::Number(num) => {
+                        if let Some(i) = num.as_i64() {
+                            crate::state::StateValue::Int(i)
+                        } else {
+                            crate::state::StateValue::Str(num.to_string())
+                        }
+                    }
+                    serde_json::Value::String(s) => crate::state::StateValue::Str(s),
+                    serde_json::Value::Bool(b) => crate::state::StateValue::Bool(b),
+                    serde_json::Value::Array(arr) => {
+                        let list = arr.into_iter()
+                            .map(|v| match v {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            })
+                            .collect();
+                        crate::state::StateValue::List(list)
+                    }
+                    serde_json::Value::Null => {
+                        crate::state::StateValue::Str(String::new())
+                    }
+                    other => {
+                        crate::state::StateValue::Str(other.to_string())
+                    }
+                };
+                state.set(key, state_val);
+            }
+        }
     }
 }
 
@@ -156,6 +201,7 @@ impl SessionRegistry {
             terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
             last_activity: RwLock::new(std::time::Instant::now()),
             state: RwLock::new(crate::state::StateManager::new()),
+            active_media: RwLock::new(Vec::new()),
         });
         self.sessions.write().insert(id, session.clone());
         Some(session)
@@ -528,7 +574,7 @@ impl EventLoop {
                 state: state_snapshot,
                 session_id: self.session.id,
             };
-            dispatcher.dispatch(payload);
+            dispatcher.dispatch(payload, self.session.clone());
         }
     }
 
@@ -600,6 +646,9 @@ impl EventLoop {
                                 e => e,
                             };
                             match event {
+                                InputEvent::StatePatched => {
+                                    needs_render = true;
+                                }
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
                                     // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
@@ -966,6 +1015,44 @@ impl EventLoop {
                     let max_scroll = self.total_height.saturating_sub(viewport_h);
                     self.scroll_offset = self.scroll_offset.min(max_scroll);
 
+                    // Traverse document to update active media info
+                    {
+                        let mut active = Vec::new();
+                        let mut stack = vec![self.doc.root];
+                        while let Some(node_id) = stack.pop() {
+                            if let Some(node) = self.doc.arena.get(node_id) {
+                                let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
+                                let abs_x = rect.x as i32;
+                                let abs_y = rect.y as i32 - self.scroll_offset as i32;
+                                
+                                let has_border = node.style.border.is_some();
+                                let content_x = if has_border { abs_x + 1 } else { abs_x };
+                                let content_y = if has_border { abs_y + 1 } else { abs_y };
+                                let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
+                                let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
+
+                                if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
+                                    if let Some(ref src) = node.attrs.src {
+                                        active.push(MediaRenderInfo {
+                                            path: src.clone(),
+                                            x: content_x.max(0) as u16,
+                                            y: content_y.max(0) as u16,
+                                            width: content_w,
+                                            height: content_h,
+                                        });
+                                    }
+                                }
+                                
+                                for &child in &node.children {
+                                    stack.push(child);
+                                }
+                            }
+                        }
+                        *self.session.active_media.write() = active;
+                    }
+
+
+
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
                         let _ = bridge.register_at_spi(&tree);
@@ -1314,5 +1401,28 @@ mod tests {
         event_loop.rebuild_focusable_nodes();
         assert!(!event_loop.focusable_nodes.contains(&id2));
         assert!(event_loop.focusable_nodes.contains(&id3));
+    }
+
+    #[test]
+    fn test_apply_state_patch() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let client_session = reg.create_session().unwrap();
+        
+        let patch = serde_json::json!({
+            "count": 42,
+            "name": "OxiTerm",
+            "active": true,
+            "list": ["a", "b", "c"],
+            "empty": null
+        });
+        
+        client_session.apply_state_patch(patch);
+        
+        let state = client_session.state.read();
+        assert_eq!(state.get("count"), Some(&crate::state::StateValue::Int(42)));
+        assert_eq!(state.get("name"), Some(&crate::state::StateValue::Str("OxiTerm".to_string())));
+        assert_eq!(state.get("active"), Some(&crate::state::StateValue::Bool(true)));
+        assert_eq!(state.get("list"), Some(&crate::state::StateValue::List(vec!["a".to_string(), "b".to_string(), "c".to_string()])));
+        assert_eq!(state.get("empty"), Some(&crate::state::StateValue::Str(String::new())));
     }
 }

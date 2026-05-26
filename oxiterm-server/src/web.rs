@@ -6,7 +6,7 @@ pub mod web_impl {
     use tokio_tungstenite::tungstenite::Message;
     use futures::{StreamExt, SinkExt};
     use tracing::{info, warn, error};
-    use crate::session::{SessionRegistry, PtyDimensions, EventLoop};
+    use crate::session::{SessionRegistry, PtyDimensions, EventLoop, ClientSession};
     use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction};
     use oxiterm_renderer::FrameSink;
     use oxiterm_renderer::CellBuffer;
@@ -17,18 +17,67 @@ pub mod web_impl {
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
 
+    pub fn hash_path(path: &str) -> u32 {
+        let mut hash: u32 = 5381;
+        for c in path.chars() {
+            hash = ((hash << 5).wrapping_add(hash)).wrapping_add(c as u32);
+        }
+        hash
+    }
+
     pub struct WsFrameSink {
         frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+        session: Arc<ClientSession>,
+        sent_assets: std::collections::HashSet<u32>,
+        source_path: Option<std::path::PathBuf>,
     }
 
     impl WsFrameSink {
-        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>) -> Self {
-            Self { frame_tx }
+        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>, session: Arc<ClientSession>, source_path: Option<std::path::PathBuf>) -> Self {
+            Self {
+                frame_tx,
+                session,
+                sent_assets: std::collections::HashSet::new(),
+                source_path,
+            }
         }
     }
 
     impl FrameSink for WsFrameSink {
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            // Check active media, send payloads (0x20) if unsent
+            let media_base_url = crate::config::OxiTermConfig::from_env().ok().and_then(|c| c.media_base_url).map(std::path::PathBuf::from);
+            let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
+
+            let active_media = self.session.active_media.read().clone();
+            for media in &active_media {
+                let h = hash_path(&media.path);
+                if !self.sent_assets.contains(&h) {
+                    if let Some(ref base) = base_dir {
+                        let full_path = base.join(&media.path);
+                        if let Ok(file_bytes) = std::fs::read(&full_path) {
+                            let mut msg = vec![0x20];
+                            msg.extend_from_slice(&h.to_le_bytes());
+                            msg.extend_from_slice(&file_bytes);
+                            let _ = self.frame_tx.try_send(msg);
+                            self.sent_assets.insert(h);
+                        }
+                    }
+                }
+            }
+
+            // Send graphic coordinates (0x21)
+            for media in &active_media {
+                let h = hash_path(&media.path);
+                let mut msg = vec![0x21];
+                msg.extend_from_slice(&h.to_le_bytes());
+                msg.extend_from_slice(&media.x.to_le_bytes());
+                msg.extend_from_slice(&media.y.to_le_bytes());
+                msg.extend_from_slice(&media.width.to_le_bytes());
+                msg.extend_from_slice(&media.height.to_le_bytes());
+                let _ = self.frame_tx.try_send(msg);
+            }
+
             info!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             let commands = DiffEngine::diff(front, back);
             info!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
@@ -141,6 +190,7 @@ pub mod web_impl {
                 "/" | "/index.html" => {
                     ("200 OK", "text/html", HTML_ASSET)
                 }
+
                 "/oxiterm_web.js" => {
                     ("200 OK", "application/javascript", JS_ASSET)
                 }
@@ -217,7 +267,7 @@ pub mod web_impl {
             client_session_clone.close();
         });
 
-        let frame_sink = Box::new(WsFrameSink::new(frame_tx));
+        let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), source_path.clone()));
         let event_bus = Arc::new(crate::events::EventBus::new());
         
         let mut app_opt = None;
@@ -354,6 +404,62 @@ pub mod web_impl {
 
         client_session.close();
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_hash_path() {
+            assert_ne!(hash_path("a.png"), hash_path("b.png"));
+            assert_eq!(hash_path("logo.svg"), hash_path("logo.svg"));
+        }
+
+        #[tokio::test]
+        async fn test_ws_frame_sink_media_buffering() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let session = reg.create_session().unwrap();
+            
+            use crate::session::MediaRenderInfo;
+            session.active_media.write().push(MediaRenderInfo {
+                path: "test_media.png".to_string(),
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 8,
+            });
+
+            let temp_dir = std::env::temp_dir();
+            let test_file = temp_dir.join("test_media.png");
+            std::fs::write(&test_file, b"FAKE_PNG_BYTES").unwrap();
+
+            let session_path = temp_dir.join("session.thtml");
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let mut sink = WsFrameSink::new(tx, session, Some(session_path));
+
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            let _ = sink.send_frame(&front, &back);
+
+            let _ = std::fs::remove_file(test_file);
+
+            let msg1 = rx.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x20);
+            let expected_hash = hash_path("test_media.png");
+            assert_eq!(&msg1[1..5], &expected_hash.to_le_bytes());
+            assert_eq!(&msg1[5..], b"FAKE_PNG_BYTES");
+
+            let msg2 = rx.try_recv().unwrap();
+            assert_eq!(msg2[0], 0x21);
+            assert_eq!(&msg2[1..5], &expected_hash.to_le_bytes());
+            assert_eq!(u16::from_le_bytes([msg2[5], msg2[6]]), 10);
+            assert_eq!(u16::from_le_bytes([msg2[7], msg2[8]]), 5);
+            assert_eq!(u16::from_le_bytes([msg2[9], msg2[10]]), 20);
+            assert_eq!(u16::from_le_bytes([msg2[11], msg2[12]]), 8);
+        }
     }
 }
 

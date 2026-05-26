@@ -8,6 +8,7 @@ pub struct OxiTermConfig {
     pub session: SessionConfig,
     pub metrics: MetricsConfig,
     pub app_server_url: Option<String>,
+    pub media_base_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -59,6 +60,7 @@ impl Default for OxiTermConfig {
                 port: 9090,
             },
             app_server_url: None,
+            media_base_url: None,
         }
     }
 }
@@ -95,6 +97,9 @@ impl OxiTermConfig {
             config.server.app_server_url = Some(url.clone());
             config.app_server_url = Some(url);
         }
+        if let Ok(media_url) = std::env::var("OXITERM_MEDIA_BASE_URL") {
+            config.media_base_url = Some(media_url);
+        }
         config.validate()?;
         Ok(config)
     }
@@ -114,3 +119,17 @@ impl OxiTermConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_media_base_url_from_env() {
+        std::env::set_var("OXITERM_MEDIA_BASE_URL", "/tmp/media_test");
+        let config = OxiTermConfig::from_env().unwrap();
+        assert_eq!(config.media_base_url, Some("/tmp/media_test".to_string()));
+        std::env::remove_var("OXITERM_MEDIA_BASE_URL");
+    }
+}
+
