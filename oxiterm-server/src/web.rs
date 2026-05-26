@@ -2,7 +2,8 @@
 pub mod web_impl {
     use std::sync::Arc;
     use tokio::net::TcpListener;
-    use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::accept_async_with_config;
+    use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use tokio_tungstenite::tungstenite::Message;
     use futures::{StreamExt, SinkExt};
     use tracing::{info, warn, error};
@@ -28,7 +29,7 @@ pub mod web_impl {
     pub struct WsFrameSink {
         frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
         session: Arc<ClientSession>,
-        sent_assets: std::collections::HashSet<u32>,
+        sent_assets: std::collections::HashSet<String>,
         sent_coordinates: std::collections::HashMap<u32, crate::session::MediaRenderInfo>,
         source_path: Option<std::path::PathBuf>,
     }
@@ -83,15 +84,25 @@ pub mod web_impl {
 
                 for media in &active_media {
                     let h = hash_path(&media.path);
-                    if !self.sent_assets.contains(&h) {
+                    if !self.sent_assets.contains(&media.path) {
                         if let Some(ref base) = base_dir {
                             let full_path = base.join(&media.path);
-                            if let Ok(file_bytes) = std::fs::read(&full_path) {
-                                let mut msg = vec![0x20];
-                                msg.extend_from_slice(&h.to_le_bytes());
-                                msg.extend_from_slice(&file_bytes);
-                                let _ = self.frame_tx.try_send(msg);
-                                self.sent_assets.insert(h);
+                            let is_safe = (|| -> Option<bool> {
+                                let canonical_base = base.canonicalize().ok()?;
+                                let canonical_target = full_path.canonicalize().ok()?;
+                                Some(canonical_target.starts_with(canonical_base))
+                            })().unwrap_or(false);
+
+                            if is_safe {
+                                if let Ok(file_bytes) = std::fs::read(&full_path) {
+                                    let mut msg = vec![0x20];
+                                    msg.extend_from_slice(&h.to_le_bytes());
+                                    msg.extend_from_slice(&file_bytes);
+                                    let _ = self.frame_tx.try_send(msg);
+                                    self.sent_assets.insert(media.path.clone());
+                                }
+                            } else {
+                                warn!("Blocked media Path Traversal attempt: {:?}", full_path);
                             }
                         }
                     }
@@ -151,6 +162,7 @@ pub mod web_impl {
         host: String,
         port: u16,
         registry: Arc<SessionRegistry>,
+        rate_limiter: Arc<crate::ratelimit::RateLimiter>,
         initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         source_path: Option<std::path::PathBuf>,
     ) {
@@ -168,13 +180,26 @@ pub mod web_impl {
             };
 
             loop {
-                let (stream, _) = match listener.accept().await {
+                let (stream, peer_addr) = match listener.accept().await {
                     Ok(res) => res,
                     Err(e) => {
                         warn!("Web accept error: {:?}", e);
                         continue;
                     }
                 };
+
+                let limit_res = rate_limiter.check_and_record(peer_addr.ip());
+                match limit_res {
+                    crate::ratelimit::RateResult::Deny => {
+                        warn!("Web rate limit DENY for client: {}", peer_addr);
+                        continue;
+                    }
+                    crate::ratelimit::RateResult::Throttle(delay) => {
+                        warn!("Web rate limit THROTTLE ({:?}) for client: {}", delay, peer_addr);
+                        tokio::time::sleep(delay).await;
+                    }
+                    crate::ratelimit::RateResult::Allow => {}
+                }
 
                 let registry = registry.clone();
                 let initial_doc = initial_doc.clone();
@@ -200,7 +225,12 @@ pub mod web_impl {
         let header = String::from_utf8_lossy(&buf[..n]);
 
         if header.contains("Upgrade: websocket") || header.contains("upgrade: websocket") {
-            let ws_stream = accept_async(stream).await?;
+            let ws_config = WebSocketConfig {
+                max_message_size: Some(128 * 1024),
+                max_frame_size: Some(64 * 1024),
+                ..Default::default()
+            };
+            let ws_stream = accept_async_with_config(stream, Some(ws_config)).await?;
             handle_websocket(ws_stream, registry, initial_doc, source_path).await?;
         } else {
             let mut stream = stream;
@@ -305,7 +335,6 @@ pub mod web_impl {
         let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), source_path.clone()));
         let event_bus = Arc::new(crate::events::EventBus::new());
         
-        let mut app_opt = None;
         let mut dims = *client_session.dims.read();
 
         // Wait for the first resize message (0x10) from the client to set initial dimensions.
@@ -340,33 +369,16 @@ pub mod web_impl {
             }
         }
 
-        let (doc, input_id) = if let Some(ref initial) = initial_doc {
-            (initial.clone(), None)
+        let doc = if let Some(ref initial) = initial_doc {
+            initial.clone()
         } else {
-            let app = tokio::task::spawn_blocking(|| {
-                let mut a = crate::weather_app::WeatherApp::new();
-                a.refresh();
-                a
-            }).await.unwrap();
-            let (d, id) = app.build_document(dims.cols, dims.rows);
-            app_opt = Some(app);
-            (d, id)
+            crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
         };
 
-        client_session.predictive_echo.write().active_node = input_id;
-
-        let (weather_tx, weather_rx) = if initial_doc.is_none() {
-            let (tx, rx) = std::sync::mpsc::channel();
-            (Some(tx), Some(rx))
-        } else {
-            (None, None)
-        };
         let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
-        event_loop.weather_app = app_opt;
         event_loop.source_path = source_path;
-        event_loop.weather_tx = weather_tx;
-        event_loop.weather_rx = weather_rx;
+
 
         std::thread::spawn(move || {
             event_loop.run();
@@ -575,6 +587,44 @@ pub mod web_impl {
             assert!(!res);
             assert!(rx.try_recv().is_err());
         }
+
+        #[test]
+        fn test_sec_path_traversal_media_blocked() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            use crate::session::MediaRenderInfo;
+            // A path that escapes the base directory
+            session.active_media.write().push(MediaRenderInfo {
+                path: "../../../escaped_media.png".to_string(),
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 8,
+            });
+
+            let temp_dir = std::env::temp_dir();
+            let session_path = temp_dir.join("subdir").join("session.thtml");
+            // Create the directory for session_path to ensure canonicalize() on base doesn't fail
+            std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let mut sink = WsFrameSink::new(tx, session.clone(), Some(session_path));
+
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            let _ = sink.send_frame(&front, &back);
+
+            // Let's inspect the channel messages.
+            let msg0 = rx.try_recv().unwrap();
+            assert_eq!(msg0[0], 0x21); // clear
+            
+            // Second message should be coordinates (0x21) instead of asset payload (0x20)
+            let msg1 = rx.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x21); 
+            assert!(rx.try_recv().is_err());
+        }
     }
 }
 
@@ -587,6 +637,7 @@ pub mod web_impl {
         _host: String,
         _port: u16,
         _registry: Arc<SessionRegistry>,
+        _rate_limiter: Arc<crate::ratelimit::RateLimiter>,
         _initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         _source_path: Option<std::path::PathBuf>,
     ) {

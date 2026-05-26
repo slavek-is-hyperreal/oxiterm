@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic)]
+
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d};
 use oxiterm_proto::style::AnsiColor;

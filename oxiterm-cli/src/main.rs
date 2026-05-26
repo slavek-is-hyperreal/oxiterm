@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic)]
+
 use clap::{Parser, Subcommand};
 use anyhow::Result;
 use tracing::{info, warn};
@@ -80,6 +82,9 @@ async fn main() -> Result<()> {
             if no_auth {
                 config.server.no_auth = true;
             }
+            if config.server.no_auth {
+                warn!("⚠️ SECURITY WARNING: SSH authentication is disabled! Anyone can connect without a password.");
+            }
 
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
@@ -116,12 +121,12 @@ async fn main() -> Result<()> {
             // Start Web/WebSocket server
             let web_host = config.server.host.clone();
             let web_registry = registry.clone();
-            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, Some(doc.clone()), Some(file_path_clone.clone()));
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, rate_limiter.clone(), Some(doc.clone()), Some(file_path_clone.clone()));
 
             oxiterm_server::ssh::run_server(config, registry, rate_limiter, Some(doc), Some(file_path_clone)).await?;
         }
         Commands::Demo { port, web_port, a11y } => {
-            info!("Starting built-in weather demo on port {} (web on port {}){}", port, web_port, if a11y { " [a11y mode]" } else { "" });
+            info!("Starting interactive demo on port {} (web on port {}){}", port, web_port, if a11y { " [a11y mode]" } else { "" });
             let mut config = oxiterm_server::OxiTermConfig::default();
             config.server.port = port;
             config.server.web_port = web_port;
@@ -131,12 +136,27 @@ async fn main() -> Result<()> {
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
+            let doc_path = PathBuf::from("examples/hello.thtml");
+            let (doc, final_path) = if doc_path.exists() {
+                match oxiterm_server::loader::load_thtml_file(&doc_path) {
+                    Ok(d) => (Some(d), Some(doc_path)),
+                    Err(e) => {
+                        warn!("Failed to load examples/hello.thtml: {}. Using embedded fallback.", e);
+                        let embedded = include_str!("../../examples/hello.thtml");
+                        (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
+                    }
+                }
+            } else {
+                let embedded = include_str!("../../examples/hello.thtml");
+                (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
+            };
+
             // Start Web/WebSocket server
             let web_host = config.server.host.clone();
             let web_registry = registry.clone();
-            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
+            oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, rate_limiter.clone(), doc.clone(), final_path.clone());
 
-            oxiterm_server::ssh::run_server(config, registry, rate_limiter, None, None).await?;
+            oxiterm_server::ssh::run_server(config, registry, rate_limiter, doc, final_path).await?;
         }
         Commands::Check { file } => {
             info!("Checking file: {}", file);

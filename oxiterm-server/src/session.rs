@@ -126,32 +126,75 @@ impl ClientSession {
 
     pub fn apply_state_patch(&self, patch: serde_json::Value) {
         if let serde_json::Value::Object(obj) = patch {
+            // SEC-11a: limit 100 keys per patch
+            if obj.len() > 100 {
+                warn!("Ignoring state patch with too many keys: {}", obj.len());
+                return;
+            }
             let mut state = self.state.write();
             for (key, val) in obj {
+                // SEC-11b: limit 256 characters per key
+                if key.len() > 256 {
+                    warn!("Skipping key in state patch: key length exceeds 256 characters");
+                    continue;
+                }
                 let state_val = match val {
                     serde_json::Value::Number(num) => {
                         if let Some(i) = num.as_i64() {
                             crate::state::StateValue::Int(i)
                         } else {
-                            crate::state::StateValue::Str(num.to_string())
+                            let s = num.to_string();
+                            if s.len() > 65536 {
+                                warn!("Skipping key {}: number string length exceeds 64KiB", key);
+                                continue;
+                            }
+                            crate::state::StateValue::Str(s)
                         }
                     }
-                    serde_json::Value::String(s) => crate::state::StateValue::Str(s),
+                    serde_json::Value::String(s) => {
+                        // SEC-11c: limit 64KiB per string
+                        if s.len() > 65536 {
+                            warn!("Skipping key {}: string length exceeds 64KiB", key);
+                            continue;
+                        }
+                        crate::state::StateValue::Str(s)
+                    }
                     serde_json::Value::Bool(b) => crate::state::StateValue::Bool(b),
                     serde_json::Value::Array(arr) => {
-                        let list = arr.into_iter()
-                            .map(|v| match v {
-                                serde_json::Value::String(s) => s,
+                        // SEC-11c: limit 1000 items in list
+                        if arr.len() > 1000 {
+                            warn!("Skipping key {}: array size exceeds 1000 items", key);
+                            continue;
+                        }
+                        let mut list = Vec::new();
+                        let mut string_too_long = false;
+                        for v in arr {
+                            let s = match v {
+                                serde_json::Value::String(st) => st,
                                 other => other.to_string(),
-                            })
-                            .collect();
+                            };
+                            if s.len() > 65536 {
+                                string_too_long = true;
+                                break;
+                            }
+                            list.push(s);
+                        }
+                        if string_too_long {
+                            warn!("Skipping key {}: list item string length exceeds 64KiB", key);
+                            continue;
+                        }
                         crate::state::StateValue::List(list)
                     }
                     serde_json::Value::Null => {
                         crate::state::StateValue::Str(String::new())
                     }
                     other => {
-                        crate::state::StateValue::Str(other.to_string())
+                        let s = other.to_string();
+                        if s.len() > 65536 {
+                            warn!("Skipping key {}: serialized value length exceeds 64KiB", key);
+                            continue;
+                        }
+                        crate::state::StateValue::Str(s)
                     }
                 };
                 state.set(key, state_val);
@@ -359,9 +402,6 @@ pub struct EventLoop {
     pub frame_limiter: crate::ratelimit::FrameRateLimiter,
     pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
     pub source_path: Option<std::path::PathBuf>,
-    pub weather_app: Option<crate::weather_app::WeatherApp>,
-    pub weather_rx: Option<mpsc::Receiver<Result<crate::weather::WeatherData, String>>>,
-    pub weather_tx: Option<mpsc::Sender<Result<crate::weather::WeatherData, String>>>,
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
     pub parent_map: HashMap<NodeId, NodeId>,
     pub focusable_nodes: Vec<NodeId>,
@@ -407,9 +447,6 @@ impl EventLoop {
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
             pending_mouse: None,
             source_path: None,
-            weather_app: None,
-            weather_rx: None,
-            weather_tx: None,
             dbus_bridge,
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
@@ -602,28 +639,6 @@ impl EventLoop {
             first_frame = false;
             pending_render = false;
 
-            // Poll for weather updates
-            if let Some(ref rx) = self.weather_rx {
-                if let Ok(result) = rx.try_recv() {
-                    if let Some(ref mut app) = self.weather_app {
-                        match result {
-                            Ok(data) => {
-                                app.data = Some(data);
-                                app.error = None;
-                            }
-                            Err(e) => {
-                                app.error = Some(e);
-                            }
-                        }
-                        app.loading = false;
-                        let dims = *self.session.dims.read();
-                        let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                        self.update_doc(new_doc);
-                        self.reset_layout_and_scroll();
-                        needs_render = true;
-                    }
-                }
-            }
 
             let has_animations = self.has_active_animations();
             let sleep_dur = if has_animations {
@@ -774,31 +789,6 @@ impl EventLoop {
                                                     self.try_dispatch(&htmx_target);
                                                     needs_render = true;
                                                 }
-                                            }
-                                        }
-                                    } else if ('1'..='9').contains(&key.codepoint) || key.codepoint == 'r' || key.codepoint == 'R' {
-                                        // Group 1-9 for quick navigation (S6-nav / weather)
-                                        if let Some(ref mut app) = self.weather_app {
-                                            if key.codepoint == 'r' || key.codepoint == 'R' {
-                                                if !app.loading {
-                                                    if let Some(ref tx) = self.weather_tx {
-                                                        app.loading = true;
-                                                        let tx_clone = tx.clone();
-                                                        std::thread::spawn(move || {
-                                                            let res = crate::weather::fetch_krakow()
-                                                                .map_err(|e| e.to_string());
-                                                            let _ = tx_clone.send(res);
-                                                        });
-                                                        needs_render = true;
-                                                    }
-                                                }
-                                            } else if app.handle_key(key.codepoint) {
-                                                info!("WeatherApp handled key: {}", key.codepoint);
-                                                let dims = *self.session.dims.read();
-                                                let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                                                self.update_doc(new_doc);
-                                                self.reset_layout_and_scroll();
-                                                needs_render = true;
                                             }
                                         }
                                     } else {
@@ -986,12 +976,6 @@ impl EventLoop {
                 *self.session.dims.write() = dims;
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
                 info!("Resized session {} to {:?}", self.session.id, dims);
-
-                if let Some(ref mut app) = self.weather_app {
-                    let (new_doc, _) = app.build_document(dims.cols, dims.rows);
-                    self.update_doc(new_doc);
-                    self.reset_layout_and_scroll();
-                }
 
                 // Clear physical screen and cursor to home to match clean front buffer
                 let _ = self.frame_sink.clear_screen();
@@ -1445,5 +1429,43 @@ mod tests {
         assert_eq!(state.get("active"), Some(&crate::state::StateValue::Bool(true)));
         assert_eq!(state.get("list"), Some(&crate::state::StateValue::List(vec!["a".to_string(), "b".to_string(), "c".to_string()])));
         assert_eq!(state.get("empty"), Some(&crate::state::StateValue::Str(String::new())));
+    }
+
+    #[test]
+    fn test_sec_state_patch_limits() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        
+        // 1. Too many keys limit (>100)
+        let mut huge_patch = serde_json::Map::new();
+        for i in 0..105 {
+            huge_patch.insert(format!("key{}", i), serde_json::json!(i));
+        }
+        client_session.apply_state_patch(serde_json::Value::Object(huge_patch));
+        assert!(client_session.state.read().get("key0").is_none());
+
+        // 2. Key too long (> 256)
+        let long_key = "a".repeat(257);
+        let patch_key_too_long = serde_json::json!({
+            long_key.clone(): 42
+        });
+        client_session.apply_state_patch(patch_key_too_long);
+        assert!(client_session.state.read().get(&long_key).is_none());
+
+        // 3. String too long (> 64KiB)
+        let long_val = "x".repeat(65537);
+        let patch_val_too_long = serde_json::json!({
+            "valid_key": long_val
+        });
+        client_session.apply_state_patch(patch_val_too_long);
+        assert!(client_session.state.read().get("valid_key").is_none());
+
+        // 4. Array too long (> 1000)
+        let huge_arr: Vec<i32> = (0..1005).collect();
+        let patch_arr_too_long = serde_json::json!({
+            "arr_key": huge_arr
+        });
+        client_session.apply_state_patch(patch_arr_too_long);
+        assert!(client_session.state.read().get("arr_key").is_none());
     }
 }

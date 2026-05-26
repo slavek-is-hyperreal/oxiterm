@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic)]
+
 use oxiterm_proto::dom::{NodeId, NodeTag};
 use oxiterm_renderer::document::THTMLDocument;
 use std::io::Write;

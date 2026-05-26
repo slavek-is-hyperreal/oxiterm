@@ -4,4 +4,5 @@ Cargo.lock
 .env
 host_key
 authorized_keys
+/scratch
 

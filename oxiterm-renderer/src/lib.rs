@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic)]
+
 pub mod arena;
 pub mod document;
 pub mod parser;

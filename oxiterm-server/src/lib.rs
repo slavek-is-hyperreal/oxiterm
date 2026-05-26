@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic)]
+
 pub mod config;
 pub mod dispatcher;
 pub mod metrics;
@@ -7,8 +9,8 @@ pub mod events;
 pub mod ssh;
 pub mod backpressure;
 pub mod loader;
-pub mod weather;
-pub mod weather_app;
+pub mod placeholder;
+pub mod url_validator;
 pub mod state;
 pub mod web;
 

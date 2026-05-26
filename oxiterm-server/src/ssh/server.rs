@@ -37,11 +37,25 @@ impl Handler for OxiServer {
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<russh::server::Auth, Self::Error> {
         if self.config.server.no_auth {
+            warn!("╔══════════════════════════════════════════════════╗");
+            warn!("║  ⚠️  NO-AUTH MODE: accepting without credentials  ║");
+            warn!("║  NEVER USE THIS IN PRODUCTION ENVIRONMENTS!      ║");
+            warn!("╚══════════════════════════════════════════════════╝");
             return Ok(russh::server::Auth::Accept);
         }
 
         if let Some(ref required_password) = self.config.server.password {
-            if !password.is_empty() && password == required_password {
+            use subtle::ConstantTimeEq;
+            let password_bytes = password.as_bytes();
+            let required_bytes = required_password.as_bytes();
+            let len_match = password_bytes.len() == required_bytes.len();
+            let (to_compare_a, to_compare_b) = if len_match {
+                (password_bytes, required_bytes)
+            } else {
+                (required_bytes, required_bytes)
+            };
+            let match_bytes = to_compare_a.ct_eq(to_compare_b).unwrap_u8() == 1;
+            if !password.is_empty() && len_match && match_bytes {
                 return Ok(russh::server::Auth::Accept);
             }
         }
@@ -104,51 +118,26 @@ impl Handler for OxiServer {
                 let (output_tx, mut output_rx) = crate::backpressure::BoundedFrameChannel::<Vec<u8>>::new(32);
                 
                 let event_bus = Arc::new(crate::events::EventBus::new());
-                
                 let dims = *client_session.dims.read();
-                let mut app_opt = None;
-                
-                let (doc, input_id) = if let Some(ref path) = self.source_path {
+                let doc = if let Some(ref path) = self.source_path {
                     match crate::loader::load_thtml_file(path) {
-                        Ok(d) => (d, None),
+                        Ok(d) => d,
                         Err(e) => {
                             warn!("Failed to load document from source path {:?}: {}, falling back to initial_document", path, e);
                             if let Some(ref initial) = self.initial_document {
-                                (initial.clone(), None)
+                                initial.clone()
                             } else {
-                                let app = tokio::task::spawn_blocking(|| {
-                                    let mut a = crate::weather_app::WeatherApp::new();
-                                    a.refresh();
-                                    a
-                                }).await.unwrap();
-                                let (d, id) = app.build_document(dims.cols, dims.rows);
-                                app_opt = Some(app);
-                                (d, id)
+                                crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
                             }
                         }
                     }
                 } else if let Some(ref initial) = self.initial_document {
-                    (initial.clone(), None)
+                    initial.clone()
                 } else {
-                    let app = tokio::task::spawn_blocking(|| {
-                        let mut a = crate::weather_app::WeatherApp::new();
-                        a.refresh();
-                        a
-                    }).await.unwrap();
-                    let (d, id) = app.build_document(dims.cols, dims.rows);
-                    app_opt = Some(app);
-                    (d, id)
+                    crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
                 };
-                
-                client_session.predictive_echo.write().active_node = input_id;
 
                 let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
-                if let Some(app) = app_opt {
-                    let (weather_tx, weather_rx) = std::sync::mpsc::channel();
-                    event_loop.weather_app = Some(app);
-                    event_loop.weather_tx = Some(weather_tx);
-                    event_loop.weather_rx = Some(weather_rx);
-                }
                 event_loop.source_path = self.source_path.clone();
                 if let Some(ref url) = self.config.server.app_server_url {
                     event_loop.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(url.clone()));
@@ -221,7 +210,7 @@ impl Handler for OxiServer {
 
     async fn data(&mut self, channel: ChannelId, data: &[u8], _session: &mut Session) -> Result<(), Self::Error> {
         let sid = self.channels.lock().get(&channel).copied();
-        info!("SSH Data received on channel {:?}: len={}, bytes={:?}", channel, data.len(), data);
+        info!("SSH Data received on channel {:?}: len={}", channel, data.len());
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
                 // Send raw data to RRT

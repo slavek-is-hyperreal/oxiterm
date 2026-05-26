@@ -16,3 +16,10 @@ pub fn load_thtml_file<P: AsRef<Path>>(path: P) -> Result<THTMLDocument> {
     
     Ok(doc)
 }
+
+pub fn load_thtml_str(content: &str) -> Result<THTMLDocument> {
+    let doc = THTMLParser::parse(content)
+        .map_err(|e| anyhow::anyhow!("THTML Parsing Error: {}", e))?;
+    Ok(doc)
+}
+

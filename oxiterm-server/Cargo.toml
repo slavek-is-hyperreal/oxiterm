@@ -27,6 +27,9 @@ hyper-util = { workspace = true }
 async-trait = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 tokio-tungstenite = { version = "0.21", optional = true }
+subtle = { workspace = true }
+url = { workspace = true }
+
 
 [features]
 default = ["web"]

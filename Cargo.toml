@@ -32,3 +32,6 @@ async-trait = "0.1"
 nom = "7.1"
 regex = "1.10"
 unicode-width = "0.2"
+subtle = "2.6"
+url = "2"
+

@@ -1,0 +1,7 @@
+# authorized_keys.example
+#
+# Copy this file to 'authorized_keys' in the project root to enable SSH key authentication.
+# Add your SSH public keys (one per line) below:
+#
+# Example format:
+# ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ/vG24eD+1GRR4GAfJ25RUpeo5GcPV8RmPY7r/RznqC user@host

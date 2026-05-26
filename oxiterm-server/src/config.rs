@@ -35,6 +35,7 @@ pub struct SessionConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetricsConfig {
     pub enabled: bool,
+    pub host: String,
     pub port: u16,
 }
 
@@ -57,6 +58,7 @@ impl Default for OxiTermConfig {
             },
             metrics: MetricsConfig {
                 enabled: true,
+                host: "0.0.0.0".to_string(),
                 port: 9090,
             },
             app_server_url: None,
@@ -103,6 +105,9 @@ impl OxiTermConfig {
         if let Ok(max_sess) = std::env::var("OXITERM_MAX_SESSIONS") {
             config.session.max_sessions = max_sess.parse()?;
         }
+        if let Ok(metrics_host) = std::env::var("OXITERM_METRICS_HOST") {
+            config.metrics.host = metrics_host;
+        }
         config.validate()?;
         Ok(config)
     }
@@ -119,6 +124,12 @@ impl OxiTermConfig {
                 anyhow::bail!("Server password cannot be empty string");
             }
         }
+        if let Some(ref url) = self.app_server_url {
+            crate::url_validator::validate_app_server_url(url)?;
+        }
+        if let Some(ref url) = self.server.app_server_url {
+            crate::url_validator::validate_app_server_url(url)?;
+        }
         Ok(())
     }
 }
@@ -133,6 +144,18 @@ mod tests {
         let config = OxiTermConfig::from_env().unwrap();
         assert_eq!(config.media_base_url, Some("/tmp/media_test".to_string()));
         std::env::remove_var("OXITERM_MEDIA_BASE_URL");
+    }
+
+    #[test]
+    fn test_sec_ssrf_metadata_blocked() {
+        use crate::url_validator::validate_app_server_url;
+        assert!(validate_app_server_url("http://169.254.169.254/").is_err());
+        assert!(validate_app_server_url("http://169.254.10.20/").is_err());
+        assert!(validate_app_server_url("http://metadata.google.internal/").is_err());
+        assert!(validate_app_server_url("http://127.0.0.1/").is_ok());
+        assert!(validate_app_server_url("http://172.20.0.5:3000/").is_ok());
+        assert!(validate_app_server_url("https://example.com/").is_ok());
+        assert!(validate_app_server_url("file:///etc/passwd").is_err());
     }
 }
 

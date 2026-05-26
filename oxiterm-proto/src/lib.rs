@@ -1,3 +1,9 @@
+#![allow(
+    clippy::doc_markdown,
+    clippy::struct_excessive_bools,
+    clippy::too_many_lines
+)]
+
 pub mod dom;
 pub mod style;
 pub mod input;

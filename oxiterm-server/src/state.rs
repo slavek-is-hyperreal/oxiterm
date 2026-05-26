@@ -93,14 +93,14 @@ impl StateManager {
                     Some(StateValue::Int(i)) => *i,
                     _ => 0,
                 };
-                self.set(key.to_string(), StateValue::Int(current + 1));
+                self.set(key.to_string(), StateValue::Int(current.saturating_add(1)));
             }
             "dec" => {
                 let current = match self.store.get(key) {
                     Some(StateValue::Int(i)) => *i,
                     _ => 0,
                 };
-                self.set(key.to_string(), StateValue::Int(current - 1));
+                self.set(key.to_string(), StateValue::Int(current.saturating_sub(1)));
             }
             "toggle" => {
                 let current = match self.store.get(key) {

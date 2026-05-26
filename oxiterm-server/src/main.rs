@@ -18,17 +18,17 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_log::LogTracer::init().ok();
-    // Całkowicie odetnij logi od terminala - pisz do pliku, żeby nie śmiecić w SSH
-    let file_appender = std::fs::File::create("/tmp/oxiterm.log")?;
     tracing_subscriber::fmt()
-        .with_writer(Arc::new(file_appender))
+        .with_writer(std::io::stdout)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()
         .ok();
 
     let config = OxiTermConfig::from_env().unwrap_or_default();
     info!("Starting OxiTerm server with config: {:?}", config);
+    if config.server.no_auth {
+        warn!("⚠️ SECURITY WARNING: SSH authentication is disabled! Anyone can connect without a password.");
+    }
 
     let prometheus_registry = Arc::new(Registry::new());
     let registry = Arc::new(SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
@@ -37,7 +37,21 @@ async fn main() -> anyhow::Result<()> {
     // Start metrics server if enabled
     if config.metrics.enabled {
         let registry_clone = prometheus_registry.clone();
-        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.metrics.port));
+        let metrics_host = config.metrics.host.clone();
+        let addr_str = format!("{}:{}", metrics_host, config.metrics.port);
+        let addr = match addr_str.parse::<std::net::SocketAddr>() {
+            Ok(a) => a,
+            Err(e) => {
+                warn!("Invalid metrics address {}: {}. Falling back to 127.0.0.1", addr_str, e);
+                std::net::SocketAddr::from(([127, 0, 0, 1], config.metrics.port))
+            }
+        };
+        if metrics_host == "0.0.0.0" {
+            warn!("╔══════════════════════════════════════════════════╗");
+            warn!("║  ⚠️  METRICS SERVER BOUND TO 0.0.0.0              ║");
+            warn!("║  This exposes metrics to the public network!     ║");
+            warn!("╚══════════════════════════════════════════════════╝");
+        }
         tokio::spawn(async move {
             let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
             info!("Metrics server listening on http://{}", addr);
@@ -67,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     let web_host = config.server.host.clone();
     let web_port = config.server.web_port;
     let web_registry = registry.clone();
-    oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, None, None);
+    oxiterm_server::web::web_impl::start_web_server(web_host, web_port, web_registry, rate_limiter.clone(), None, None);
 
     // Start SSH server
     let ssh_config = config.clone();
