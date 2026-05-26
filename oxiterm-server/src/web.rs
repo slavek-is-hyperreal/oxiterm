@@ -486,7 +486,7 @@ pub mod web_impl {
 
         #[tokio::test]
         async fn test_ws_frame_sink_media_buffering() {
-            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
             let session = reg.create_session().unwrap();
             
             use crate::session::MediaRenderInfo;
@@ -535,7 +535,7 @@ pub mod web_impl {
 
         #[tokio::test]
         async fn test_ws_frame_sink_coordinate_caching() {
-            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
             let session = reg.create_session().unwrap();
             
             use crate::session::MediaRenderInfo;

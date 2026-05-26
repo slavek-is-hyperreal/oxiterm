@@ -161,12 +161,12 @@ impl ClientSession {
 }
 
 impl SessionRegistry {
-    pub fn new(prometheus_registry: Arc<prometheus::Registry>) -> Self {
+    pub fn new(prometheus_registry: Arc<prometheus::Registry>, max_sessions: usize) -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
             next_id: RwLock::new(0),
             prometheus_registry,
-            max_sessions: 20, // Default for demo
+            max_sessions,
         }
     }
 
@@ -636,16 +636,46 @@ impl EventLoop {
             {
                 let session = self.session.clone();
                 let mut rx_lock = session.event_rx.lock();
+                let mut processed_count = 0;
                 loop {
-                    match rx_lock.recv_timeout(sleep_dur) {
-                        Ok(event) => {
-                            *self.session.last_activity.write() = std::time::Instant::now();
-                            let event = match event {
-                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72E}' || key.codepoint == 'b' => InputEvent::ScrollUp,
-                                InputEvent::KeyPress(key) if key.codepoint == '\u{F72D}' || key.codepoint == ' ' => InputEvent::ScrollDown,
-                                e => e,
-                            };
-                            match event {
+                    if processed_count >= 100 {
+                        pending_render = true;
+                        break;
+                    }
+
+                    let event_opt = if processed_count == 0 {
+                        match rx_lock.recv_timeout(sleep_dur) {
+                            Ok(e) => Some(e),
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                if has_animations {
+                                    needs_render = true;
+                                }
+                                break;
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                info!("Event loop receiver disconnected. Exiting run loop.");
+                                disconnected = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        rx_lock.try_recv()
+                    };
+
+                    let event = match event_opt {
+                        Some(e) => e,
+                        None => break,
+                    };
+
+                    processed_count += 1;
+
+                    *self.session.last_activity.write() = std::time::Instant::now();
+                    let event = match event {
+                        InputEvent::KeyPress(key) if key.codepoint == '\u{F72E}' || key.codepoint == 'b' => InputEvent::ScrollUp,
+                        InputEvent::KeyPress(key) if key.codepoint == '\u{F72D}' || key.codepoint == ' ' => InputEvent::ScrollDown,
+                        e => e,
+                    };
+                    match event {
                                 InputEvent::StatePatched => {
                                     needs_render = true;
                                 }
@@ -944,19 +974,6 @@ impl EventLoop {
                                 }
                                 _ => {}
                             }
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            if has_animations {
-                                needs_render = true;
-                            }
-                            break;
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                            info!("Event loop receiver disconnected. Exiting run loop.");
-                            disconnected = true;
-                            break;
-                        }
-                    }
                 }
             }
 
@@ -1341,7 +1358,7 @@ mod tests {
     fn test_rebuild_focusable_nodes_respects_bind_show() {
         use oxiterm_proto::dom::{Node, NodeTag};
         
-        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let client_session = reg.create_session().unwrap();
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
@@ -1409,7 +1426,7 @@ mod tests {
 
     #[test]
     fn test_apply_state_patch() {
-        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let client_session = reg.create_session().unwrap();
         
         let patch = serde_json::json!({

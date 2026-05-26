@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting OxiTerm server with config: {:?}", config);
 
     let prometheus_registry = Arc::new(Registry::new());
-    let registry = Arc::new(SessionRegistry::new(prometheus_registry.clone()));
+    let registry = Arc::new(SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
     let rate_limiter = Arc::new(RateLimiter::new(60)); // 60 conn/min
     
     // Start metrics server if enabled

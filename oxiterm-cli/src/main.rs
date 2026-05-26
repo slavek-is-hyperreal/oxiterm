@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
             }
 
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
-            let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));
+            let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
 
             // SC-01: Setup Hot Reload watcher
@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
             config.server.a11y_mode = a11y;
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
-            let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone()));
+            let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
             // Start Web/WebSocket server

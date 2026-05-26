@@ -142,19 +142,32 @@ impl TerminalProfile {
     pub fn parse_da1_response(&mut self, response: &[u8]) {
         let s = String::from_utf8_lossy(response);
         tracing::debug!("Parsing DA1 response: {}", s);
-        if s.starts_with("\x1b_G") {
-            if s.contains("OK") {
-                self.supports_kitty_gfx = true;
-            }
-        } else {
-            if s.contains("?64") || s.contains("?62") || s.contains("?63") || s.contains("?65") {
-                self.supports_sgr_mouse = true;
-                self.color_depth = ColorDepth::TrueColor;
-            }
-            if s.contains(";4;") || s.contains(";4c") {
-                self.supports_sixel = true;
-            }
+        if s.contains("\x1b_G") && s.contains("OK") {
+            self.supports_kitty_gfx = true;
         }
+        if s.contains("?64") || s.contains("?62") || s.contains("?63") || s.contains("?65") {
+            self.supports_sgr_mouse = true;
+            self.color_depth = ColorDepth::TrueColor;
+        }
+        if s.contains(";4;") || s.contains(";4c") {
+            self.supports_sixel = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_da1_response_kitty_and_mouse() {
+        let mut profile = TerminalProfile::default();
+        // Combined Kitty APC response and standard DA1 response indicating SGR mouse support (?62)
+        let response = b"\x1b_Gi=31,s=1,v=1,a=q,t=d;OK\x1b\\\x1b[?62;c";
+        profile.parse_da1_response(response);
+        assert!(profile.supports_kitty_gfx);
+        assert!(profile.supports_sgr_mouse);
+        assert_eq!(profile.color_depth, ColorDepth::TrueColor);
     }
 }
 

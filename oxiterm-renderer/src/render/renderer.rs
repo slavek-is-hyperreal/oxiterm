@@ -6,9 +6,44 @@ use oxiterm_proto::style::TerminalProfile;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
-thread_local! {
-    pub static VIRTUAL_FS: std::cell::RefCell<HashMap<PathBuf, Vec<u8>>> = std::cell::RefCell::new(HashMap::new());
+use std::sync::{OnceLock, RwLock};
+
+static GLOBAL_VIRTUAL_FS: OnceLock<RwLock<HashMap<PathBuf, Vec<u8>>>> = OnceLock::new();
+
+fn get_global_virtual_fs() -> &'static RwLock<HashMap<PathBuf, Vec<u8>>> {
+    GLOBAL_VIRTUAL_FS.get_or_init(|| RwLock::new(HashMap::new()))
 }
+
+pub struct VirtualFsProxy;
+
+impl VirtualFsProxy {
+    pub fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&std::cell::RefCell<HashMap<PathBuf, Vec<u8>>>) -> R,
+    {
+        thread_local! {
+            static LOCAL_FS: std::cell::RefCell<HashMap<PathBuf, Vec<u8>>> = std::cell::RefCell::new(HashMap::new());
+        }
+
+        LOCAL_FS.with(|local| {
+            if let Ok(global) = get_global_virtual_fs().read() {
+                *local.borrow_mut() = global.clone();
+            }
+        });
+
+        let result = LOCAL_FS.with(f);
+
+        LOCAL_FS.with(|local| {
+            if let Ok(mut global) = get_global_virtual_fs().write() {
+                *global = local.borrow().clone();
+            }
+        });
+
+        result
+    }
+}
+
+pub static VIRTUAL_FS: VirtualFsProxy = VirtualFsProxy;
 
 pub struct Renderer;
 
@@ -212,6 +247,10 @@ impl Renderer {
                             } else {
                                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
                                 if char_w > 0 {
+                                    if char_w > 1 && cx + char_w > content_w && char_w <= content_w {
+                                        cx = 0;
+                                        cy += 1;
+                                    }
                                     if cx < content_w && cy < content_h {
                                         Self::safe_set(buffer, content_x + cx as i32, content_y + cy as i32, Cell {
                                             ch,

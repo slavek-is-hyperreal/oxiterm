@@ -72,8 +72,8 @@ impl DiffEngine {
                     // Update tracked position
                     cur_x = Some(x + char_w);
                     if cur_x.unwrap() >= next.width {
-                        cur_x = Some(0);
-                        cur_y = Some(y + 1);
+                        cur_x = None;
+                        cur_y = None;
                     }
                 }
                 x += char_w;

@@ -116,7 +116,7 @@ mod tests {
     fn test_dispatch_unreachable_does_not_panic() {
         let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
         let payload = make_payload("toggle:flag", 0);
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
         // Should not panic — failure is logged inside the spawned thread.
         d.dispatch(payload, session);
@@ -135,7 +135,7 @@ mod tests {
         let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
         let payload = make_payload("click", 123);
         
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
         
         d.dispatch(payload, session.clone());

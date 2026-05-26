@@ -100,6 +100,9 @@ impl OxiTermConfig {
         if let Ok(media_url) = std::env::var("OXITERM_MEDIA_BASE_URL") {
             config.media_base_url = Some(media_url);
         }
+        if let Ok(max_sess) = std::env::var("OXITERM_MAX_SESSIONS") {
+            config.session.max_sessions = max_sess.parse()?;
+        }
         config.validate()?;
         Ok(config)
     }
