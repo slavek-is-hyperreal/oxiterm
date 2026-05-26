@@ -29,6 +29,7 @@ pub mod web_impl {
         frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
         session: Arc<ClientSession>,
         sent_assets: std::collections::HashSet<u32>,
+        sent_coordinates: std::collections::HashMap<u32, crate::session::MediaRenderInfo>,
         source_path: Option<std::path::PathBuf>,
     }
 
@@ -38,6 +39,7 @@ pub mod web_impl {
                 frame_tx,
                 session,
                 sent_assets: std::collections::HashSet::new(),
+                sent_coordinates: std::collections::HashMap::new(),
                 source_path,
             }
         }
@@ -50,59 +52,92 @@ pub mod web_impl {
             let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
 
             let active_media = self.session.active_media.read().clone();
-            for media in &active_media {
-                let h = hash_path(&media.path);
-                if !self.sent_assets.contains(&h) {
-                    if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        if let Ok(file_bytes) = std::fs::read(&full_path) {
-                            let mut msg = vec![0x20];
-                            msg.extend_from_slice(&h.to_le_bytes());
-                            msg.extend_from_slice(&file_bytes);
-                            let _ = self.frame_tx.try_send(msg);
-                            self.sent_assets.insert(h);
+            
+            // Check if active media positions have changed
+            let mut coords_changed = false;
+            if active_media.len() != self.sent_coordinates.len() {
+                coords_changed = true;
+            } else {
+                for media in &active_media {
+                    let h = hash_path(&media.path);
+                    match self.sent_coordinates.get(&h) {
+                        Some(prev) => {
+                            if prev != media {
+                                coords_changed = true;
+                                break;
+                            }
+                        }
+                        None => {
+                            coords_changed = true;
+                            break;
                         }
                     }
                 }
             }
 
-            // Send graphic coordinates (0x21)
-            for media in &active_media {
-                let h = hash_path(&media.path);
-                let mut msg = vec![0x21];
-                msg.extend_from_slice(&h.to_le_bytes());
-                msg.extend_from_slice(&media.x.to_le_bytes());
-                msg.extend_from_slice(&media.y.to_le_bytes());
-                msg.extend_from_slice(&media.width.to_le_bytes());
-                msg.extend_from_slice(&media.height.to_le_bytes());
-                let _ = self.frame_tx.try_send(msg);
+            if coords_changed {
+                // Send clear command (tag 0x21, empty coordinates) to signal active media reset
+                let _ = self.frame_tx.try_send(vec![0x21]);
+                
+                self.sent_coordinates.clear();
+
+                for media in &active_media {
+                    let h = hash_path(&media.path);
+                    if !self.sent_assets.contains(&h) {
+                        if let Some(ref base) = base_dir {
+                            let full_path = base.join(&media.path);
+                            if let Ok(file_bytes) = std::fs::read(&full_path) {
+                                let mut msg = vec![0x20];
+                                msg.extend_from_slice(&h.to_le_bytes());
+                                msg.extend_from_slice(&file_bytes);
+                                let _ = self.frame_tx.try_send(msg);
+                                self.sent_assets.insert(h);
+                            }
+                        }
+                    }
+
+                    // Send graphic coordinates (0x21)
+                    let mut msg = vec![0x21];
+                    msg.extend_from_slice(&h.to_le_bytes());
+                    msg.extend_from_slice(&media.x.to_le_bytes());
+                    msg.extend_from_slice(&media.y.to_le_bytes());
+                    msg.extend_from_slice(&media.width.to_le_bytes());
+                    msg.extend_from_slice(&media.height.to_le_bytes());
+                    let _ = self.frame_tx.try_send(msg);
+                    
+                    self.sent_coordinates.insert(h, media.clone());
+                }
             }
 
             info!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             let commands = DiffEngine::diff(front, back);
             info!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
-            if commands.is_empty() && back.graphics.is_empty() {
+            
+            if commands.is_empty() && !coords_changed {
                 return Ok(false);
             }
             if !back.graphics.is_empty() {
                 warn!("WsFrameSink::send_frame: graphics data ignored (not supported over WS)");
             }
-            let bytes = DiffEngine::encode_binary(&commands);
-            info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
-            match self.frame_tx.try_send(bytes) {
-                Ok(_) => {
-                    info!("WsFrameSink::send_frame: send successful");
-                    Ok(true)
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    warn!("WsFrameSink::send_frame: channel full (backpressure)");
-                    Ok(false)
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    warn!("WsFrameSink::send_frame: channel closed");
-                    anyhow::bail!("WebSocket send channel closed")
+            
+            if !commands.is_empty() {
+                let bytes = DiffEngine::encode_binary(&commands);
+                info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
+                match self.frame_tx.try_send(bytes) {
+                    Ok(_) => {
+                        info!("WsFrameSink::send_frame: send successful");
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                        warn!("WsFrameSink::send_frame: channel full (backpressure)");
+                        return Ok(false);
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        warn!("WsFrameSink::send_frame: channel closed");
+                        anyhow::bail!("WebSocket send channel closed")
+                    }
                 }
             }
+            Ok(true)
         }
     }
 
@@ -271,7 +306,40 @@ pub mod web_impl {
         let event_bus = Arc::new(crate::events::EventBus::new());
         
         let mut app_opt = None;
-        let dims = *client_session.dims.read();
+        let mut dims = *client_session.dims.read();
+
+        // Wait for the first resize message (0x10) from the client to set initial dimensions.
+        // This prevents a first-frame race condition where the server renders at default 80x24
+        // before the correct client dimensions are known.
+        while let Some(msg_res) = ws_read.next().await {
+            let msg = match msg_res {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("WS read error during init for session {}: {:?}", client_session.id, e);
+                    break;
+                }
+            };
+            info!("Received message during init: {:?}", msg);
+            if msg.is_close() {
+                break;
+            }
+            if let Message::Binary(bytes) = msg {
+                if !bytes.is_empty() {
+                    info!("Received binary tag: 0x{:02X}, len: {}", bytes[0], bytes.len());
+                }
+                if !bytes.is_empty() && bytes[0] == 0x10 {
+                    if bytes.len() >= 5 {
+                        let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
+                        let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
+                        info!("Received initial resize from client: {}x{}", cols, rows);
+                        *client_session.dims.write() = PtyDimensions { cols, rows };
+                        dims = PtyDimensions { cols, rows };
+                        break;
+                    }
+                }
+            }
+        }
+
         let (doc, input_id) = if let Some(ref initial) = initial_doc {
             (initial.clone(), None)
         } else {
@@ -446,6 +514,10 @@ pub mod web_impl {
 
             let _ = std::fs::remove_file(test_file);
 
+            let msg0 = rx.try_recv().unwrap();
+            assert_eq!(msg0.len(), 1);
+            assert_eq!(msg0[0], 0x21);
+
             let msg1 = rx.try_recv().unwrap();
             assert_eq!(msg1[0], 0x20);
             let expected_hash = hash_path("test_media.png");
@@ -459,6 +531,49 @@ pub mod web_impl {
             assert_eq!(u16::from_le_bytes([msg2[7], msg2[8]]), 5);
             assert_eq!(u16::from_le_bytes([msg2[9], msg2[10]]), 20);
             assert_eq!(u16::from_le_bytes([msg2[11], msg2[12]]), 8);
+        }
+
+        #[tokio::test]
+        async fn test_ws_frame_sink_coordinate_caching() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let session = reg.create_session().unwrap();
+            
+            use crate::session::MediaRenderInfo;
+            session.active_media.write().push(MediaRenderInfo {
+                path: "cached_media.png".to_string(),
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 8,
+            });
+
+            let temp_dir = std::env::temp_dir();
+            let test_file = temp_dir.join("cached_media.png");
+            std::fs::write(&test_file, b"CACHED_BYTES").unwrap();
+
+            let session_path = temp_dir.join("session.thtml");
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let mut sink = WsFrameSink::new(tx, session.clone(), Some(session_path));
+
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            // First frame: should send clear (1 byte), asset payload (0x20), and coordinates (0x21)
+            let _ = sink.send_frame(&front, &back);
+            let _ = std::fs::remove_file(test_file);
+
+            let msg0 = rx.try_recv().unwrap();
+            assert_eq!(msg0.len(), 1); // clear
+            let msg1 = rx.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x20); // payload
+            let msg2 = rx.try_recv().unwrap();
+            assert_eq!(msg2[0], 0x21); // coordinates
+
+            // Second frame (no changes): should NOT send any messages, and send_frame should return false
+            let res = sink.send_frame(&front, &back).unwrap();
+            assert!(!res);
+            assert!(rx.try_recv().is_err());
         }
     }
 }

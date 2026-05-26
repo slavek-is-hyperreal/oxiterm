@@ -1,13 +1,12 @@
 ================================================================================
 PROJECT: OxiTerm
-GENERATED: nie, 24 maj 2026, 20:28:38 CEST
+GENERATED: wto, 26 maj 2026, 17:40:20 CEST
 ================================================================================
 
 === DIRECTORY STRUCTURE (Up to Level 5) ===
 --------------------------------------------------------------------------------
 .
 ├── authorized_keys
-├── bugs.md
 ├── bundle_code.sh
 ├── Cargo.lock
 ├── Cargo.toml
@@ -15,12 +14,23 @@ GENERATED: nie, 24 maj 2026, 20:28:38 CEST
 ├── demo.sh
 ├── deploy
 │   └── oxiterm.service
+├── diffs.txt
 ├── docs
+│   ├── app-server-guide.md
 │   ├── ARCHITECTURE.md
 │   ├── DEMO.md
-│   ├── DEVELOPMENT_GUIDE.md
-│   └── SPRINT_REPORTS.md
+│   ├── getting-started.md
+│   ├── images
+│   │   ├── counter.png
+│   │   ├── hello.png
+│   │   ├── input_demo.png
+│   │   ├── todo.png
+│   │   └── video_demo.png
+│   ├── SPRINT_REPORTS.md
+│   ├── tcss-reference.md
+│   └── thtml-reference.md
 ├── examples
+│   ├── bell.json
 │   ├── clip.mp4
 │   ├── counter.thtml
 │   ├── hello.thtml
@@ -37,8 +47,6 @@ GENERATED: nie, 24 maj 2026, 20:28:38 CEST
 │   ├── toggle.riv
 │   └── video_demo.thtml
 ├── host_key
-├── neo_exa
-│   └── files.zip
 ├── oxiterm-a11y
 │   ├── Cargo.toml
 │   └── src
@@ -120,41 +128,34 @@ GENERATED: nie, 24 maj 2026, 20:28:38 CEST
 ├── project_bundle.txt
 ├── README.md
 ├── rust-toolchain.toml
+├── scratch
+│   └── check_pixels.py
 ├── scripts
+│   ├── generate_docs_screenshots.sh
+│   ├── test_screen_debug.sh
+│   ├── test_screenshot_import.sh
+│   ├── test_screenshot.sh
 │   └── test_terminals.sh
-├── server_kitty_counter.log
-├── server_kitty_hello.log
-├── server_kitty_image_demo.log
-├── server_kitty_showcase.log
-├── server_kitty_todo.log
-├── server_kitty_vector_demo.log
-├── server_kitty_video_demo.log
-├── server.log
-├── server_xterm_counter.log
-├── server_xterm_hello.log
-├── server_xterm_image_demo.log
-├── server_xterm_showcase.log
 ├── setup_demo.sh
 ├── Specyfikacja Terminal+ Amendment.md
 ├── Terminalowy HTML_CSS_ Nowy Mainframe.md
 └── test_screenshots
     ├── kitty_counter.png
     ├── kitty_hello.png
-    ├── kitty_image_demo.png
+    ├── kitty_input_demo.png
+    ├── kitty_media_demo.png
+    ├── kitty_navigation_demo.png
     ├── kitty_showcase.png
+    ├── kitty_state_demo.png
+    ├── kitty_styles_demo.png
     ├── kitty_todo.png
-    ├── kitty_vector_demo_frame_1.png
-    ├── kitty_vector_demo_frame_2.png
-    ├── kitty_vector_demo_frame_3.png
-    ├── kitty_vector_demo_frame_4.png
-    ├── kitty_vector_demo_frame_5.png
     ├── kitty_video_demo_frame_1.png
     ├── kitty_video_demo_frame_2.png
     ├── kitty_video_demo_frame_3.png
     ├── kitty_video_demo_frame_4.png
     └── kitty_video_demo_frame_5.png
 
-27 directories, 121 files
+28 directories, 121 files
 
 === RUST SOURCE FILES (.rs) ===
 --------------------------------------------------------------------------------
@@ -472,7 +473,7 @@ mod tests {
 --- FILE: ./oxiterm-cli/src/main.rs ---
 use clap::{Parser, Subcommand};
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 use std::path::PathBuf;
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::time::Duration;
@@ -560,23 +561,30 @@ async fn main() -> Result<()> {
             // SC-01: Setup Hot Reload watcher
             let registry_clone = registry.clone();
             let file_path = PathBuf::from(&file);
-            let (tx, rx) = std::sync::mpsc::channel();
-            let mut debouncer = new_debouncer(Duration::from_millis(100), tx)?;
-            debouncer.watcher().watch(&file_path, RecursiveMode::NonRecursive)?;
-
-            info!("Hot Reload active for {}", file);
-            
             let file_path_clone = file_path.clone();
-            tokio::spawn(async move {
-                while let Ok(events) = rx.recv() {
-                    if let Ok(_evs) = events {
-                        info!("File change detected, broadcasting Reload signal...");
-                        registry_clone.broadcast_input_event(InputEvent::Reload);
+            let (tx, rx) = std::sync::mpsc::channel();
+            match new_debouncer(Duration::from_millis(100), tx) {
+                Ok(mut debouncer) => {
+                    if let Err(e) = debouncer.watcher().watch(&file_path, RecursiveMode::NonRecursive) {
+                        warn!("Failed to watch file for hot reload (OS limit reached?): {}", e);
+                    } else {
+                        info!("Hot Reload active for {}", file);
+                        tokio::spawn(async move {
+                            while let Ok(events) = rx.recv() {
+                                if let Ok(_evs) = events {
+                                    info!("File change detected, broadcasting Reload signal...");
+                                    registry_clone.broadcast_input_event(InputEvent::Reload);
+                                }
+                            }
+                            // Keep debouncer alive
+                            let _ = debouncer;
+                        });
                     }
                 }
-                // Keep debouncer alive
-                let _ = debouncer;
-            });
+                Err(e) => {
+                    warn!("Failed to create hot reload debouncer: {}", e);
+                }
+            }
 
             // Start Web/WebSocket server
             let web_host = config.server.host.clone();
@@ -1112,8 +1120,24 @@ pub enum InputEvent {
     /// Text typed into a focused `<input>` node.
     /// Generated by the session when the focused node has `bind_value` set.
     TextInput(String),
+    StatePatched,
     Unknown(Vec<u8>),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_state_patched_serialization() {
+        let event = InputEvent::StatePatched;
+        let serialized = serde_json::to_string(&event).unwrap();
+        assert_eq!(serialized, "\"StatePatched\"");
+        let deserialized: InputEvent = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, InputEvent::StatePatched);
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyEvent {
@@ -2152,18 +2176,39 @@ pub enum Declaration {
     BorderColor(AnsiColor),
 }
 
+pub fn strip_comments(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next(); // consume '*'
+            while let Some(c2) = chars.next() {
+                if c2 == '*' && chars.peek() == Some(&'/') {
+                    chars.next(); // consume '/'
+                    break;
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct StyleSheet {
     pub rules: Vec<(Selector, Vec<Declaration>)>,
 }
 
 pub fn parse_tcss(input: &str) -> Result<StyleSheet> {
-    let (_, rules) = parse_rules(input).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
+    let stripped = strip_comments(input);
+    let (_, rules) = parse_rules(&stripped).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
     Ok(StyleSheet { rules })
 }
 
 pub fn parse_inline_tcss(input: &str) -> Result<Vec<Declaration>> {
-    let (_, decls) = parse_declarations(input).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
+    let stripped = strip_comments(input);
+    let (_, decls) = parse_declarations(&stripped).map_err(|e| anyhow::anyhow!("TCSS Inline Parse Error: {:?}", e))?;
     Ok(decls)
 }
 
@@ -2478,6 +2523,23 @@ mod tests {
         assert_eq!(final_btn.style.bg, AnsiColor::TrueColor(255, 0, 255));
         assert_eq!(final_btn.style.fg, AnsiColor::TrueColor(255, 0, 0));
     }
+
+    #[test]
+    fn test_comments_stripping() {
+        let tcss = "
+            /* Comment at start */
+            button {
+                /* Inner comment */
+                width: 10;
+            }
+            /* Comment between rules */
+            .btn {
+                width: 20;
+            }
+        ";
+        let stylesheet = parse_tcss(tcss).unwrap();
+        assert_eq!(stylesheet.rules.len(), 2);
+    }
 }
 
 --- END OF FILE: ./oxiterm-renderer/src/parser/tcss.rs ---
@@ -2517,6 +2579,15 @@ pub fn sanitize_htmx_value(input: &str) -> String {
             !c.is_control() && !matches!(c, '(' | ')' | '\'' | '"' | '<' | '>' | '\\' | '`')
         })
         .collect()
+}
+
+pub fn decode_entities(input: &str) -> String {
+    input
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 pub fn extract_style_block(html: &str) -> (String, String) {
@@ -2575,7 +2646,7 @@ impl THTMLParser {
     fn insert_node_recursive(doc: &mut THTMLDocument, parent_id: NodeId, parsed: ParsedNode) -> Result<()> {
         let mut node = Node::new(parsed.tag);
         node.attrs = parsed.attrs;
-        node.text = parsed.text;
+        node.text = parsed.text.map(|t| decode_entities(&t));
         
         // NOTE: Inline styles are NOT applied here. They are applied in THTMLParser::parse
         // via apply_styles (which handles all selector levels including inline) for documents
@@ -2910,6 +2981,15 @@ mod tests {
         assert!(cleaned.contains("<box class=\"btn\">Hello</box>"));
         assert!(styles.contains(".btn { fg: red; }"));
         assert!(styles.contains("#main { bg: blue; }"));
+    }
+
+    #[test]
+    fn test_entity_decoding() {
+        let input = r#"<text>Arc&lt;Vec&lt;u8&gt;&gt; &amp; &quot;test&quot;</text>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(node.text.as_deref(), Some("Arc<Vec<u8>> & \"test\""));
     }
 }
 
@@ -5532,6 +5612,7 @@ pub struct OxiTermConfig {
     pub session: SessionConfig,
     pub metrics: MetricsConfig,
     pub app_server_url: Option<String>,
+    pub media_base_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -5583,6 +5664,7 @@ impl Default for OxiTermConfig {
                 port: 9090,
             },
             app_server_url: None,
+            media_base_url: None,
         }
     }
 }
@@ -5619,6 +5701,9 @@ impl OxiTermConfig {
             config.server.app_server_url = Some(url.clone());
             config.app_server_url = Some(url);
         }
+        if let Ok(media_url) = std::env::var("OXITERM_MEDIA_BASE_URL") {
+            config.media_base_url = Some(media_url);
+        }
         config.validate()?;
         Ok(config)
     }
@@ -5638,6 +5723,20 @@ impl OxiTermConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_media_base_url_from_env() {
+        std::env::set_var("OXITERM_MEDIA_BASE_URL", "/tmp/media_test");
+        let config = OxiTermConfig::from_env().unwrap();
+        assert_eq!(config.media_base_url, Some("/tmp/media_test".to_string()));
+        std::env::remove_var("OXITERM_MEDIA_BASE_URL");
+    }
+}
+
 
 --- END OF FILE: ./oxiterm-server/src/config.rs ---
 
@@ -5684,13 +5783,25 @@ impl AppDispatcher {
     /// Fire-and-forget POST of `payload` to the configured URL.
     ///
     /// Spawns a std thread so the event loop is never blocked.
-    pub fn dispatch(&self, payload: DispatchPayload) {
+    pub fn dispatch(&self, payload: DispatchPayload, session: std::sync::Arc<crate::session::ClientSession>) {
         let url = self.app_server_url.clone();
         std::thread::spawn(move || {
             info!("AppDispatcher: POST {} action={}", url, payload.action);
             match ureq::post(&url).send_json(&payload) {
                 Ok(resp) => {
                     info!("AppDispatcher: response {}", resp.status());
+                    if resp.status() == 200 {
+                        match resp.into_json::<serde_json::Value>() {
+                            Ok(json) => {
+                                info!("AppDispatcher: successfully parsed state patch JSON");
+                                session.apply_state_patch(json);
+                                let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
+                            }
+                            Err(e) => {
+                                warn!("AppDispatcher: failed to parse response JSON: {}", e);
+                            }
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!("AppDispatcher: POST failed: {}", e);
@@ -5705,6 +5816,7 @@ impl AppDispatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn make_payload(action: &str, session_id: usize) -> DispatchPayload {
         let mut state = HashMap::new();
@@ -5747,12 +5859,59 @@ mod tests {
     fn test_dispatch_unreachable_does_not_panic() {
         let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
         let payload = make_payload("toggle:flag", 0);
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let session = reg.create_session().unwrap();
         // Should not panic — failure is logged inside the spawned thread.
-        d.dispatch(payload);
+        d.dispatch(payload, session);
         // Give thread a moment to attempt and fail.
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
+
+    #[test]
+    fn test_dispatch_app_server_response_patch() {
+        use std::net::TcpListener;
+        use std::io::{Write, Read};
+        
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        
+        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
+        let payload = make_payload("click", 123);
+        
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let session = reg.create_session().unwrap();
+        
+        d.dispatch(payload, session.clone());
+        
+        // Accept the mock server connection
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf).unwrap();
+        
+        // Write mock response with state patch JSON
+        let body = "{\"new_key\":\"patched_val\"}";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        
+        // Wait up to 2 seconds for state patch to be applied
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_secs(2) {
+            if session.state.read().get("new_key").is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        
+        // Verify state patch was applied to session
+        let state = session.state.read();
+        assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
+    }
 }
+
 
 --- END OF FILE: ./oxiterm-server/src/dispatcher.rs ---
 
@@ -6140,7 +6299,7 @@ use std::sync::Arc;
 use crate::ssh::reactor::ReactorMessage;
 use parking_lot::RwLock;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 pub use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_renderer::layout::engine::LayoutEngine;
@@ -6230,6 +6389,15 @@ impl ResizeDebouncer {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct MediaRenderInfo {
+    pub path: String,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
 pub struct ClientSession {
     pub id: SessionId,
     pub dims: RwLock<PtyDimensions>,
@@ -6244,11 +6412,47 @@ pub struct ClientSession {
     pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
     pub last_activity: RwLock<std::time::Instant>,
     pub state: RwLock<crate::state::StateManager>,
+    pub active_media: RwLock<Vec<MediaRenderInfo>>,
 }
 
 impl ClientSession {
     pub fn close(&self) {
         self.event_rx.lock().close();
+    }
+
+    pub fn apply_state_patch(&self, patch: serde_json::Value) {
+        if let serde_json::Value::Object(obj) = patch {
+            let mut state = self.state.write();
+            for (key, val) in obj {
+                let state_val = match val {
+                    serde_json::Value::Number(num) => {
+                        if let Some(i) = num.as_i64() {
+                            crate::state::StateValue::Int(i)
+                        } else {
+                            crate::state::StateValue::Str(num.to_string())
+                        }
+                    }
+                    serde_json::Value::String(s) => crate::state::StateValue::Str(s),
+                    serde_json::Value::Bool(b) => crate::state::StateValue::Bool(b),
+                    serde_json::Value::Array(arr) => {
+                        let list = arr.into_iter()
+                            .map(|v| match v {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            })
+                            .collect();
+                        crate::state::StateValue::List(list)
+                    }
+                    serde_json::Value::Null => {
+                        crate::state::StateValue::Str(String::new())
+                    }
+                    other => {
+                        crate::state::StateValue::Str(other.to_string())
+                    }
+                };
+                state.set(key, state_val);
+            }
+        }
     }
 }
 
@@ -6293,6 +6497,7 @@ impl SessionRegistry {
             terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
             last_activity: RwLock::new(std::time::Instant::now()),
             state: RwLock::new(crate::state::StateManager::new()),
+            active_media: RwLock::new(Vec::new()),
         });
         self.sessions.write().insert(id, session.clone());
         Some(session)
@@ -6349,6 +6554,9 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
     fn send_frame(&mut self, front: &oxiterm_renderer::CellBuffer, back: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
         let commands = oxiterm_renderer::DiffEngine::diff(front, back);
         let transitioning_graphics_cleanup = !front.graphics.is_empty() && back.graphics.is_empty();
+        
+        debug!("send_frame: commands count = {}, graphics count = {}, transitioning_graphics_cleanup = {}", commands.len(), back.graphics.len(), transitioning_graphics_cleanup);
+        
         if commands.is_empty() && back.graphics.is_empty() && !transitioning_graphics_cleanup {
             return Ok(false);
         }
@@ -6363,6 +6571,7 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         }
         
         let bytes = oxiterm_renderer::DiffEngine::encode_ansi(&commands);
+        debug!("send_frame: encoded ANSI size = {} bytes", bytes.len());
         out.extend_from_slice(&bytes);
         
         for g in &back.graphics {
@@ -6372,17 +6581,32 @@ impl oxiterm_renderer::FrameSink for AnsiFrameSink {
         // ESU: CSI ? 2026 l
         out.extend_from_slice(b"\x1b[?2026l");
         
-        let _ = self.output_tx.try_send(out);
-        Ok(true)
+        let sent_len = out.len();
+        match self.output_tx.try_send(out) {
+            crate::backpressure::SendResult::Sent => {
+                debug!("send_frame: successfully sent frame ({} bytes) to output_tx", sent_len);
+                Ok(true)
+            }
+            crate::backpressure::SendResult::Dropped => {
+                warn!("send_frame: frame dropped due to backpressure");
+                Ok(false)
+            }
+            crate::backpressure::SendResult::Closed => {
+                warn!("send_frame: frame closed");
+                Ok(false)
+            }
+        }
     }
 
     fn setup(&mut self) -> anyhow::Result<()> {
+        debug!("AnsiFrameSink::setup called");
         let mut initial_clear = Vec::new();
         // Włącz Alt Buffer, Wyczyść ekran (wraz z historią), Schowaj kursor
         initial_clear.extend_from_slice(b"\x1b[?1049h\x1b[2J\x1b[3J\x1b[H\x1b[?25l");
         let _ = self.output_tx.try_send(initial_clear);
         Ok(())
     }
+
 
     fn clear_screen(&mut self) -> anyhow::Result<()> {
         let mut clear_seq = Vec::new();
@@ -6521,10 +6745,19 @@ impl EventLoop {
     }
 
     pub fn rebuild_focusable_nodes(&mut self) {
+        use oxiterm_proto::dom::StateEvaluator;
+        let state_guard = self.session.state.read();
         let mut nodes = Vec::new();
         let mut stack = vec![self.doc.root];
         while let Some(id) = stack.pop() {
             if let Some(node) = self.doc.arena.get(id) {
+                // Skip hidden nodes and their children
+                if let Some(ref cond) = node.attrs.bind_show {
+                    if !state_guard.evaluate_bind_show(cond) {
+                        continue;
+                    }
+                }
+
                 // Focusable: any node with event_htmx OR an <input> with bind_value
                 let is_interactive = node.attrs.event_htmx.is_some()
                     || (node.tag == oxiterm_proto::dom::NodeTag::Input
@@ -6637,7 +6870,7 @@ impl EventLoop {
                 state: state_snapshot,
                 session_id: self.session.id,
             };
-            dispatcher.dispatch(payload);
+            dispatcher.dispatch(payload, self.session.clone());
         }
     }
 
@@ -6652,6 +6885,7 @@ impl EventLoop {
         let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
+        let mut pending_render = false;
         loop {
             // SA-10: Idle timeout check (10 minutes). Explicitly return to close the session.
             let elapsed = self.session.last_activity.read().elapsed();
@@ -6660,8 +6894,9 @@ impl EventLoop {
                 return;
             }
 
-            let mut needs_render = first_frame;
+            let mut needs_render = first_frame || pending_render;
             first_frame = false;
+            pending_render = false;
 
             // Poll for weather updates
             if let Some(ref rx) = self.weather_rx {
@@ -6707,6 +6942,9 @@ impl EventLoop {
                                 e => e,
                             };
                             match event {
+                                InputEvent::StatePatched => {
+                                    needs_render = true;
+                                }
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
                                     // BUG-RESIZE-01: We handle buffer recreation in resize_debouncer.poll()
@@ -7040,13 +7278,15 @@ impl EventLoop {
                 needs_render = true;
             }
 
-            if needs_render && !self.output_paused && self.frame_limiter.should_render() {
-                // Sync reactive state before render
-                Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+            if needs_render && !self.output_paused {
+                if self.frame_limiter.should_render() {
+                    // Sync reactive state before render
+                    Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+                    self.rebuild_focusable_nodes();
 
-                let dims = *self.session.dims.read();
-                let state_guard = self.session.state.read();
-                if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
+                    let dims = *self.session.dims.read();
+                    let state_guard = self.session.state.read();
+                    if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
                     self.total_height = layout.total_height;
 
                     let has_scroll = self.total_height > dims.rows;
@@ -7070,6 +7310,48 @@ impl EventLoop {
                     // Clamp scroll_offset to valid bounds
                     let max_scroll = self.total_height.saturating_sub(viewport_h);
                     self.scroll_offset = self.scroll_offset.min(max_scroll);
+
+                    // Traverse document to update active media info
+                    {
+                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                        let start_x = offset_x as i32;
+                        let start_y = (offset_y as i32) - (self.scroll_offset as i32);
+
+                        let mut active = Vec::new();
+                        let mut stack = vec![(self.doc.root, start_x, start_y)];
+                        while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+                            if let Some(node) = self.doc.arena.get(node_id) {
+                                let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
+                                let abs_x = parent_x + rect.x as i32;
+                                let abs_y = parent_y + rect.y as i32;
+                                
+                                let has_border = node.style.border.is_some();
+                                let content_x = if has_border { abs_x + 1 } else { abs_x };
+                                let content_y = if has_border { abs_y + 1 } else { abs_y };
+                                let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
+                                let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
+
+                                if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
+                                    if let Some(ref src) = node.attrs.src {
+                                        active.push(MediaRenderInfo {
+                                            path: src.clone(),
+                                            x: content_x.max(0) as u16,
+                                            y: content_y.max(0) as u16,
+                                            width: content_w,
+                                            height: content_h,
+                                        });
+                                    }
+                                }
+                                
+                                for &child in &node.children {
+                                    stack.push((child, abs_x, abs_y));
+                                }
+                            }
+                        }
+                        *self.session.active_media.write() = active;
+                    }
+
+
 
                     if let Some(ref mut bridge) = self.dbus_bridge {
                         let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
@@ -7229,6 +7511,9 @@ impl EventLoop {
                         self.frame_limiter.record_frame();
                     }
                 }
+                } else {
+                    pending_render = true;
+                }
             }
         }
     }
@@ -7346,6 +7631,99 @@ mod tests {
         assert!(seq_pos3.is_some(), "delete_all_placements not found in clear_screen");
         assert!(clear_pos.is_some(), "ESC[2J not found in clear_screen");
         assert!(seq_pos3.unwrap() < clear_pos.unwrap(), "delete_all_placements must be before ESC[2J");
+    }
+
+    #[test]
+    fn test_rebuild_focusable_nodes_respects_bind_show() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let client_session = reg.create_session().unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        
+        // Node 2: interactive, bind_show = show_node2
+        let mut node2 = Node::new(NodeTag::Box);
+        node2.attrs.event_htmx = Some("click_action".to_string());
+        node2.attrs.bind_show = Some("show_node2".to_string());
+        let id2 = arena.alloc(node2);
+        
+        // Node 3: interactive, bind_show = show_node3
+        let mut node3 = Node::new(NodeTag::Box);
+        node3.attrs.event_htmx = Some("click_action2".to_string());
+        node3.attrs.bind_show = Some("show_node3".to_string());
+        let id3 = arena.alloc(node3);
+        
+        // Root node
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![id2, id3];
+        let root_id = arena.alloc(root);
+        
+        let doc = THTMLDocument {
+            arena,
+            root: root_id,
+            dirty_nodes: Vec::new(),
+        };
+        
+        let mut event_loop = EventLoop::new(
+            client_session,
+            event_bus,
+            output_tx,
+            doc,
+            false,
+        );
+        
+        // Initially both absent / false. So neither should be focusable.
+        event_loop.rebuild_focusable_nodes();
+        assert!(!event_loop.focusable_nodes.contains(&id2));
+        assert!(!event_loop.focusable_nodes.contains(&id3));
+
+        // Set state: show_node2=true, show_node3=false
+        {
+            let mut state = event_loop.session.state.write();
+            state.set("show_node2".to_string(), crate::state::StateValue::Bool(true));
+            state.set("show_node3".to_string(), crate::state::StateValue::Bool(false));
+        }
+        
+        event_loop.rebuild_focusable_nodes();
+        assert!(event_loop.focusable_nodes.contains(&id2));
+        assert!(!event_loop.focusable_nodes.contains(&id3));
+        
+        // Set state: show_node2=false, show_node3=true
+        {
+            let mut state = event_loop.session.state.write();
+            state.set("show_node2".to_string(), crate::state::StateValue::Bool(false));
+            state.set("show_node3".to_string(), crate::state::StateValue::Bool(true));
+        }
+        
+        event_loop.rebuild_focusable_nodes();
+        assert!(!event_loop.focusable_nodes.contains(&id2));
+        assert!(event_loop.focusable_nodes.contains(&id3));
+    }
+
+    #[test]
+    fn test_apply_state_patch() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+        let client_session = reg.create_session().unwrap();
+        
+        let patch = serde_json::json!({
+            "count": 42,
+            "name": "OxiTerm",
+            "active": true,
+            "list": ["a", "b", "c"],
+            "empty": null
+        });
+        
+        client_session.apply_state_patch(patch);
+        
+        let state = client_session.state.read();
+        assert_eq!(state.get("count"), Some(&crate::state::StateValue::Int(42)));
+        assert_eq!(state.get("name"), Some(&crate::state::StateValue::Str("OxiTerm".to_string())));
+        assert_eq!(state.get("active"), Some(&crate::state::StateValue::Bool(true)));
+        assert_eq!(state.get("list"), Some(&crate::state::StateValue::List(vec!["a".to_string(), "b".to_string(), "c".to_string()])));
+        assert_eq!(state.get("empty"), Some(&crate::state::StateValue::Str(String::new())));
     }
 }
 
@@ -7847,7 +8225,26 @@ impl Handler for OxiServer {
                 let dims = *client_session.dims.read();
                 let mut app_opt = None;
                 
-                let (doc, input_id) = if let Some(ref initial) = self.initial_document {
+                let (doc, input_id) = if let Some(ref path) = self.source_path {
+                    match crate::loader::load_thtml_file(path) {
+                        Ok(d) => (d, None),
+                        Err(e) => {
+                            warn!("Failed to load document from source path {:?}: {}, falling back to initial_document", path, e);
+                            if let Some(ref initial) = self.initial_document {
+                                (initial.clone(), None)
+                            } else {
+                                let app = tokio::task::spawn_blocking(|| {
+                                    let mut a = crate::weather_app::WeatherApp::new();
+                                    a.refresh();
+                                    a
+                                }).await.unwrap();
+                                let (d, id) = app.build_document(dims.cols, dims.rows);
+                                app_opt = Some(app);
+                                (d, id)
+                            }
+                        }
+                    }
+                } else if let Some(ref initial) = self.initial_document {
                     (initial.clone(), None)
                 } else {
                     let app = tokio::task::spawn_blocking(|| {
@@ -8629,7 +9026,7 @@ pub mod web_impl {
     use tokio_tungstenite::tungstenite::Message;
     use futures::{StreamExt, SinkExt};
     use tracing::{info, warn, error};
-    use crate::session::{SessionRegistry, PtyDimensions, EventLoop};
+    use crate::session::{SessionRegistry, PtyDimensions, EventLoop, ClientSession};
     use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction};
     use oxiterm_renderer::FrameSink;
     use oxiterm_renderer::CellBuffer;
@@ -8640,43 +9037,127 @@ pub mod web_impl {
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
 
+    pub fn hash_path(path: &str) -> u32 {
+        let mut hash: u32 = 5381;
+        for c in path.chars() {
+            hash = ((hash << 5).wrapping_add(hash)).wrapping_add(c as u32);
+        }
+        hash
+    }
+
     pub struct WsFrameSink {
         frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+        session: Arc<ClientSession>,
+        sent_assets: std::collections::HashSet<u32>,
+        sent_coordinates: std::collections::HashMap<u32, crate::session::MediaRenderInfo>,
+        source_path: Option<std::path::PathBuf>,
     }
 
     impl WsFrameSink {
-        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>) -> Self {
-            Self { frame_tx }
+        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>, session: Arc<ClientSession>, source_path: Option<std::path::PathBuf>) -> Self {
+            Self {
+                frame_tx,
+                session,
+                sent_assets: std::collections::HashSet::new(),
+                sent_coordinates: std::collections::HashMap::new(),
+                source_path,
+            }
         }
     }
 
     impl FrameSink for WsFrameSink {
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            // Check active media, send payloads (0x20) if unsent
+            let media_base_url = crate::config::OxiTermConfig::from_env().ok().and_then(|c| c.media_base_url).map(std::path::PathBuf::from);
+            let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
+
+            let active_media = self.session.active_media.read().clone();
+            
+            // Check if active media positions have changed
+            let mut coords_changed = false;
+            if active_media.len() != self.sent_coordinates.len() {
+                coords_changed = true;
+            } else {
+                for media in &active_media {
+                    let h = hash_path(&media.path);
+                    match self.sent_coordinates.get(&h) {
+                        Some(prev) => {
+                            if prev != media {
+                                coords_changed = true;
+                                break;
+                            }
+                        }
+                        None => {
+                            coords_changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if coords_changed {
+                // Send clear command (tag 0x21, empty coordinates) to signal active media reset
+                let _ = self.frame_tx.try_send(vec![0x21]);
+                
+                self.sent_coordinates.clear();
+
+                for media in &active_media {
+                    let h = hash_path(&media.path);
+                    if !self.sent_assets.contains(&h) {
+                        if let Some(ref base) = base_dir {
+                            let full_path = base.join(&media.path);
+                            if let Ok(file_bytes) = std::fs::read(&full_path) {
+                                let mut msg = vec![0x20];
+                                msg.extend_from_slice(&h.to_le_bytes());
+                                msg.extend_from_slice(&file_bytes);
+                                let _ = self.frame_tx.try_send(msg);
+                                self.sent_assets.insert(h);
+                            }
+                        }
+                    }
+
+                    // Send graphic coordinates (0x21)
+                    let mut msg = vec![0x21];
+                    msg.extend_from_slice(&h.to_le_bytes());
+                    msg.extend_from_slice(&media.x.to_le_bytes());
+                    msg.extend_from_slice(&media.y.to_le_bytes());
+                    msg.extend_from_slice(&media.width.to_le_bytes());
+                    msg.extend_from_slice(&media.height.to_le_bytes());
+                    let _ = self.frame_tx.try_send(msg);
+                    
+                    self.sent_coordinates.insert(h, media.clone());
+                }
+            }
+
             info!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             let commands = DiffEngine::diff(front, back);
             info!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
-            if commands.is_empty() && back.graphics.is_empty() {
+            
+            if commands.is_empty() && !coords_changed {
                 return Ok(false);
             }
             if !back.graphics.is_empty() {
                 warn!("WsFrameSink::send_frame: graphics data ignored (not supported over WS)");
             }
-            let bytes = DiffEngine::encode_binary(&commands);
-            info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
-            match self.frame_tx.try_send(bytes) {
-                Ok(_) => {
-                    info!("WsFrameSink::send_frame: send successful");
-                    Ok(true)
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    warn!("WsFrameSink::send_frame: channel full (backpressure)");
-                    Ok(false)
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    warn!("WsFrameSink::send_frame: channel closed");
-                    anyhow::bail!("WebSocket send channel closed")
+            
+            if !commands.is_empty() {
+                let bytes = DiffEngine::encode_binary(&commands);
+                info!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
+                match self.frame_tx.try_send(bytes) {
+                    Ok(_) => {
+                        info!("WsFrameSink::send_frame: send successful");
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                        warn!("WsFrameSink::send_frame: channel full (backpressure)");
+                        return Ok(false);
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        warn!("WsFrameSink::send_frame: channel closed");
+                        anyhow::bail!("WebSocket send channel closed")
+                    }
                 }
             }
+            Ok(true)
         }
     }
 
@@ -8764,6 +9245,7 @@ pub mod web_impl {
                 "/" | "/index.html" => {
                     ("200 OK", "text/html", HTML_ASSET)
                 }
+
                 "/oxiterm_web.js" => {
                     ("200 OK", "application/javascript", JS_ASSET)
                 }
@@ -8840,11 +9322,44 @@ pub mod web_impl {
             client_session_clone.close();
         });
 
-        let frame_sink = Box::new(WsFrameSink::new(frame_tx));
+        let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), source_path.clone()));
         let event_bus = Arc::new(crate::events::EventBus::new());
         
         let mut app_opt = None;
-        let dims = *client_session.dims.read();
+        let mut dims = *client_session.dims.read();
+
+        // Wait for the first resize message (0x10) from the client to set initial dimensions.
+        // This prevents a first-frame race condition where the server renders at default 80x24
+        // before the correct client dimensions are known.
+        while let Some(msg_res) = ws_read.next().await {
+            let msg = match msg_res {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("WS read error during init for session {}: {:?}", client_session.id, e);
+                    break;
+                }
+            };
+            info!("Received message during init: {:?}", msg);
+            if msg.is_close() {
+                break;
+            }
+            if let Message::Binary(bytes) = msg {
+                if !bytes.is_empty() {
+                    info!("Received binary tag: 0x{:02X}, len: {}", bytes[0], bytes.len());
+                }
+                if !bytes.is_empty() && bytes[0] == 0x10 {
+                    if bytes.len() >= 5 {
+                        let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
+                        let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
+                        info!("Received initial resize from client: {}x{}", cols, rows);
+                        *client_session.dims.write() = PtyDimensions { cols, rows };
+                        dims = PtyDimensions { cols, rows };
+                        break;
+                    }
+                }
+            }
+        }
+
         let (doc, input_id) = if let Some(ref initial) = initial_doc {
             (initial.clone(), None)
         } else {
@@ -8977,6 +9492,109 @@ pub mod web_impl {
 
         client_session.close();
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_hash_path() {
+            assert_ne!(hash_path("a.png"), hash_path("b.png"));
+            assert_eq!(hash_path("logo.svg"), hash_path("logo.svg"));
+        }
+
+        #[tokio::test]
+        async fn test_ws_frame_sink_media_buffering() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let session = reg.create_session().unwrap();
+            
+            use crate::session::MediaRenderInfo;
+            session.active_media.write().push(MediaRenderInfo {
+                path: "test_media.png".to_string(),
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 8,
+            });
+
+            let temp_dir = std::env::temp_dir();
+            let test_file = temp_dir.join("test_media.png");
+            std::fs::write(&test_file, b"FAKE_PNG_BYTES").unwrap();
+
+            let session_path = temp_dir.join("session.thtml");
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let mut sink = WsFrameSink::new(tx, session, Some(session_path));
+
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            let _ = sink.send_frame(&front, &back);
+
+            let _ = std::fs::remove_file(test_file);
+
+            let msg0 = rx.try_recv().unwrap();
+            assert_eq!(msg0.len(), 1);
+            assert_eq!(msg0[0], 0x21);
+
+            let msg1 = rx.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x20);
+            let expected_hash = hash_path("test_media.png");
+            assert_eq!(&msg1[1..5], &expected_hash.to_le_bytes());
+            assert_eq!(&msg1[5..], b"FAKE_PNG_BYTES");
+
+            let msg2 = rx.try_recv().unwrap();
+            assert_eq!(msg2[0], 0x21);
+            assert_eq!(&msg2[1..5], &expected_hash.to_le_bytes());
+            assert_eq!(u16::from_le_bytes([msg2[5], msg2[6]]), 10);
+            assert_eq!(u16::from_le_bytes([msg2[7], msg2[8]]), 5);
+            assert_eq!(u16::from_le_bytes([msg2[9], msg2[10]]), 20);
+            assert_eq!(u16::from_le_bytes([msg2[11], msg2[12]]), 8);
+        }
+
+        #[tokio::test]
+        async fn test_ws_frame_sink_coordinate_caching() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()));
+            let session = reg.create_session().unwrap();
+            
+            use crate::session::MediaRenderInfo;
+            session.active_media.write().push(MediaRenderInfo {
+                path: "cached_media.png".to_string(),
+                x: 10,
+                y: 5,
+                width: 20,
+                height: 8,
+            });
+
+            let temp_dir = std::env::temp_dir();
+            let test_file = temp_dir.join("cached_media.png");
+            std::fs::write(&test_file, b"CACHED_BYTES").unwrap();
+
+            let session_path = temp_dir.join("session.thtml");
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let mut sink = WsFrameSink::new(tx, session.clone(), Some(session_path));
+
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            // First frame: should send clear (1 byte), asset payload (0x20), and coordinates (0x21)
+            let _ = sink.send_frame(&front, &back);
+            let _ = std::fs::remove_file(test_file);
+
+            let msg0 = rx.try_recv().unwrap();
+            assert_eq!(msg0.len(), 1); // clear
+            let msg1 = rx.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x20); // payload
+            let msg2 = rx.try_recv().unwrap();
+            assert_eq!(msg2[0], 0x21); // coordinates
+
+            // Second frame (no changes): should NOT send any messages, and send_frame should return false
+            let res = sink.send_frame(&front, &back).unwrap();
+            assert!(!res);
+            assert!(rx.try_recv().is_err());
+        }
     }
 }
 
@@ -9378,61 +9996,6 @@ mod tests {
 === IMPORTANT PROJECT FILES (Cargo.toml, .thtml, .md) ===
 --------------------------------------------------------------------------------
 
---- FILE: ./bugs.md ---
-# OxiTerm — Raport Po-Audytowy (Weryfikacja: 2026-05-06)
-
-> **Status:** ✅ Krytyczne błędy (Security & Reliability) naprawione.  
-> **Ocena po poprawkach:** 8.5 / 10
-
----
-
-## ✅ NAPRAWIONE BŁĘDY KRYTYCZNE (Fixed)
-
-### BUG-C01 — Luka auth_password
-**Status:** ✅ NAPRAWIONE  
-Wdrożono realną weryfikację hasła w `server.rs` przeciwko konfiguracji. Tryb "test user" został usunięty.
-
-### BUG-C02 — Persystencja kluczy hosta
-**Status:** ✅ NAPRAWIONE  
-`keys.rs` poprawnie zapisuje wygenerowane klucze na dysku (`fs::write`) i ustawia uprawnienia `600`.
-
-### BUG-C03 — Cleanup terminala (Dead Code)
-**Status:** ✅ NAPRAWIONE  
-Wdrożono `TerminalCleanupGuard` w `session.rs`. Dzięki RAII (trait `Drop`), terminal jest przywracany do stanu początkowego (pokazanie kursora, wyjście z Alt Buffer) przy każdym zakończeniu pętli zdarzeń.
-
-### BUG-C04 — Duplikacja BSU/ESU
-**Status:** ✅ NAPRAWIONE  
-Usunięto mylące komentarze. Emisja sekwencji Synchronized Update jest teraz scentralizowana w `SyncedEmitter`.
-
----
-
-## ✅ NAPRAWIONE BŁĘDY WYSOKIEJ/ŚREDNIEJ WAGI
-
-- **BUG-H01 (PredictiveEcho FIFO)**: Wdrożono poprawne potwierdzanie znaków z przodu kolejki.
-- **BUG-H02 (Overlay Position)**: Predykcyjne echo używa teraz rect.x/y aktywnego węzła input.
-- **BUG-H04 (Diff Engine cur_x)**: Dodano brakujące aktualizacje pozycji kursora po `MoveCursor`.
-- **BUG-H05 (Layout Cache)**: `clear_dirty()` jest teraz wywoływane poprawnie po każdym przeliczeniu layoutu.
-- **BUG-M07 (Unicode PUA)**: Zakres VTM modifier został poprawiony na `U+D0000` (zgodnie ze specyfikacją VTM).
-- **DUPLICATION**: Usunięto nadmiarowy plik `limiter.rs` z renderer-a.
-
----
-
-## ⚠️ POZOSTAŁE DO NAPRAWIENIA (Odpady po-audytowe)
-
-### QUAL-03 — SixelCodec Placeholder
-**Powaga:** 🟠 WYSOKA  
-Obecnie `SixelCodec` zwraca statyczny czarny prostokąt. Wymagana pełna implementacja enkodera Sixel dla dynamicznych obrazów.
-
-### QUAL-06 — Brak testów jednostkowych
-**Powaga:** 🔴 KRYTYCZNA (Jakość)  
-Projekt wymaga wdrożenia testów dla `Renderer::render_node` i `DiffEngine`. Obecne pokrycie to 0%.
-
-### QUAL-08 — Negocjator możliwości terminala
-**Powaga:** 🟡 ŚREDNIA  
-Mechanizm `DA1/DA2` jest zaimplementowany, ale wymaga testów z większą liczbą emulatorów (XTerm, iTerm2, WezTerm).
-
---- END OF FILE: ./bugs.md ---
-
 --- FILE: ./Cargo.toml ---
 [workspace]
 members = [
@@ -9520,54 +10083,346 @@ unicode-width = "0.2"
 
 --- END OF FILE: ./CHANGELOG.md ---
 
+--- FILE: ./docs/app-server-guide.md ---
+# Integration with an External Application Server (App Server)
+
+OxiTerm is responsible for the user interface layer (THTML/TCSS), handling terminal events (keyboard/mouse), and managing basic session state (`StateManager`). However, for operations that go beyond built-in actions — such as form validation, database queries, or external API integration — you must connect an external application server (**App Server**).
+
+---
+
+## 1. Communication Protocol
+
+Communication between OxiTerm and the external server takes place using HTTP POST requests. On every `event-htmx` event, OxiTerm sends an asynchronous request with a JSON payload to the URL defined in the `OXITERM_APP_SERVER` environment variable.
+
+### JSON Payload Schema (OxiTerm → App Server)
+
+```json
+{
+  "action": "validate_form",
+  "state": {
+    "email": "user@example.com",
+    "step": "2"
+  },
+  "session_id": 42
+}
+```
+
+### Field Descriptions
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | string | The raw value of the `event-htmx` attribute (e.g. `"login"`, `"save_record"`) that triggered the event. |
+| `state` | object | A key-value dictionary representing the current session state. All state values are sent as strings. |
+| `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
+
+> [!WARNING]
+> Event propagation by OxiTerm operates in a **fire-and-forget** mode. The OxiTerm server does not wait for an HTTP response from the application server before re-rendering the screen. The response from the application server should have a status code of `204 No Content` or `200 OK` with an empty body.
+
+---
+
+## 2. Python Implementation
+
+### Flask (simple example)
+```bash
+pip install flask
+```
+
+```python
+from flask import Flask, request
+app = Flask(__name__)
+
+@app.route("/events", methods=["POST"])
+def handle_event():
+    payload    = request.json
+    action     = payload["action"]
+    state      = payload["state"]
+    session_id = payload["session_id"]
+
+    if action == "validate_form":
+        email = state.get("email", "")
+        if "@" not in email:
+            print(f"Session {session_id}: Invalid email format")
+
+    elif action == "save_record":
+        print(f"Saving record for session {session_id}: {state}")
+
+    return "", 204
+
+if __name__ == "__main__":
+    app.run(port=3000)
+```
+
+### FastAPI (asynchronous server with Pydantic)
+```bash
+pip install fastapi uvicorn
+```
+
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class OxiEvent(BaseModel):
+    action: str
+    state: dict[str, str]
+    session_id: int
+
+@app.post("/events")
+async def handle(ev: OxiEvent):
+    match ev.action:
+        case "validate_form":
+            await validate_email(ev.session_id, ev.state)
+        case "save_record":
+            await save_to_db(ev.session_id, ev.state)
+    return {}
+
+async def validate_email(session_id: int, state: dict[str, str]):
+    # Validation logic...
+    pass
+
+async def save_to_db(session_id: int, state: dict[str, str]):
+    # DB Save...
+    pass
+
+# Run with: uvicorn server:app --port 3000
+```
+
+---
+
+## 3. Node.js Implementation (JavaScript / TypeScript)
+
+### Express
+```bash
+npm install express
+```
+
+```javascript
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+app.post("/events", (req, res) => {
+  const { action, state, session_id } = req.body;
+
+  switch (action) {
+    case "login":
+      if (state.username === "admin" && state.password === "secret") {
+        console.log(`Session ${session_id}: authentication succeeded`);
+      }
+      break;
+
+    case "fetch_data":
+      fetchFromDB(state).then(data => {
+        console.log(`Session ${session_id}: data fetched`, data);
+      });
+      break;
+  }
+  res.status(204).send();
+});
+
+app.listen(3000);
+```
+
+### Hono (Bun / Edge)
+```javascript
+import { Hono } from "hono"
+const app = new Hono()
+
+app.post("/events", async c => {
+  const { action, state, session_id } = await c.req.json()
+  console.log(`[Session ${session_id}] Event: ${action}`, state)
+  return c.body(null, 204)
+})
+
+export default { port: 3000, fetch: app.fetch }
+```
+
+---
+
+## 4. Rust Implementation (Axum)
+
+Running your application server in Rust allows you to share event structure types (e.g., through a shared crate in a workspace).
+
+```toml
+[dependencies]
+axum       = "0.7"
+tokio      = { version = "1", features = ["full"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+```rust
+use axum::{Router, Json, http::StatusCode, routing::post};
+use serde::Deserialize;
+use std::collections::HashMap;
+
+#[derive(Deserialize)]
+struct OxiEvent {
+    action:     String,
+    state:      HashMap<String, String>,
+    session_id: usize,
+}
+
+async fn handle(Json(ev): Json<OxiEvent>) -> StatusCode {
+    match ev.action.as_str() {
+        "save_config" => {
+            let k = ev.state.get("config_key").cloned().unwrap_or_default();
+            let v = ev.state.get("config_val").cloned().unwrap_or_default();
+            println!("[Session {}] Saved: {}={}", ev.session_id, k, v);
+        }
+        "run_job" => {
+            tokio::spawn(async move {
+                // Execute long-running background task...
+            });
+        }
+        _ => {}
+    }
+    StatusCode::NO_CONTENT
+}
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route("/events", post(handle));
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+```
+
+---
+
+## 5. Complete Flow (Login Form Example)
+
+Here is how to construct a THTML interface to pass input values to your application server:
+
+```html
+<style>
+  .field { border-style: single; border-color: #334155;
+           height: 1; padding-left: 1; margin-top: 1; }
+  .btn   { border-style: single; border-color: #4ade80;
+           padding: 1; height: 3; align-items: center; }
+</style>
+
+<box style="flex-direction: column; width: 60; height: 24; bg: #0f172a;">
+  <text style="fg: #38bdf8; height: 1; margin-bottom: 2;">Login Panel</text>
+
+  <text style="fg: #94a3b8; height: 1;">Username:</text>
+  <input bind-value="username" class="field" placeholder="Enter username..."/>
+
+  <text style="fg: #94a3b8; height: 1; margin-top: 1;">Password:</text>
+  <input bind-value="password" class="field" placeholder="••••••"/>
+
+  <!-- Clicking will trigger the "login" action -->
+  <box class="btn" style="margin-top: 2;" event-htmx="login">
+    <text style="fg: #4ade80; height: 1;">Log In</text>
+  </box>
+</box>
+```
+
+When the user fills in the fields and clicks the "Log In" button, OxiTerm will send the following POST request to the App Server:
+```json
+{
+  "action": "login",
+  "state": {
+    "username": "admin",
+    "password": "mysecretpassword"
+  },
+  "session_id": 1
+}
+```
+
+---
+
+## 6. Concurrency and Multi-Session Patterns
+
+When the OxiTerm server handles multiple users concurrently, the application server must properly distinguish between sessions:
+* **User Identification:** Always use the `session_id` field as the unique key to identify the current connection. You can map `session_id` to a logged-in user identifier in a cache (e.g. in Redis or an in-memory HashMap).
+* **State Isolation:** OxiTerm automatically isolates and maintains a separate `StateManager` state for each connected SSH/Web session. Your App Server should also maintain complete data isolation between different `session_id` values.
+
+--- END OF FILE: ./docs/app-server-guide.md ---
+
 --- FILE: ./docs/ARCHITECTURE.md ---
 # OxiTerm Architecture
 
+This document details the architecture of the OxiTerm system — a TUI (Terminal User Interface) framework operating in a Server-Side Rendering (SSR) model.
+
+---
+
 ## 1. THTML (Terminal HTML)
-THTML is a subset of HTML optimized for the character grid.
-- `<screen>`: The root container.
-- `<box>`: Layout container (equivalent to `div`).
-- `<text>`: Text content with wrapping support.
-- `<input>`: Text input field.
-- `<button>`: Interactive button.
-- `<img>`: Graphic element. Supports SVG (`.svg`), Lottie (`.json`), and interactive Rive (`.riv`) formats. Rasterized natively using `resvg` and `tiny-skia` before protocol transmission.
+
+The THTML markup language is used to declaratively describe the structure of the terminal interface.
+* **`<screen>`**: The implicit top-level container (root) of the document, representing the entire terminal workspace.
+* **`<box>`**: A universal layout container (equivalent to `<div>`). Supports full Flexbox positioning.
+* **`<text>`**: Represents text content. Supports automatic line wrapping (future/work-in-progress), Unicode characters, double-width characters (e.g. CJK), and emojis.
+* **`<input>`**: An interactive text field for keyboard character input.
+* **`<button>`**: A focusable button that triggers action events.
+* **`<img>`**: Embeds SVG vector graphics (`.svg`), Lottie animations (`.json`), and interactive Rive controls (`.riv`). Vector graphics are rasterized in real-time to pixels using `resvg` and `tiny-skia` libraries, and then transmitted using the terminal's graphics protocol.
+* **`<video>`**: Enables smooth video playback (`.mp4` and others). Video frames are decoded and rasterized in the background using the `ffmpeg` tool.
+
+---
 
 ## 2. TCSS (Terminal CSS)
-TCSS provides styling for THTML elements.
-- **Units**: `ch` (character width), `lh` (line height).
-- **Layout**: Full Flexbox support.
-- **Colors**: TrueColor (24-bit RGB) and 256-color fallbacks.
-- **Borders**: Unicode Box Drawing characters.
 
-## 3. SSR Engine
-The Server-Side Rendering engine follows these steps:
-1. **Parsing**: THTML is parsed into an Abstract Syntax Tree (AST).
-2. **Styling**: TCSS rules are applied to the AST.
-3. **Layout**: Taffy calculates the position and size of each element.
-4. **Rendering**: The AST is drawn onto a `CellBuffer`.
-5. **Diffing**: The current `CellBuffer` is compared to the previous one to generate minimal ANSI commands.
+TCSS is a simplified CSS dialect tailored for character grids.
+* **Units:** Dimensions (width, height, margin, padding) are expressed as integers representing character cells.
+* **Layout:** Supports Flexbox (directions, alignment, gaps).
+* **Colors:** Supports TrueColor (24-bit RGB), 256-color ANSI palette, named colors, and special values (`reset`, `transparent`).
+* **Borders:** Generated using Unicode semigraphics (Box Drawing Characters) in the following styles: `single`, `double`, and `rounded`.
 
-## 4. SSH Transport
-Communication is handled by a custom `russh` server.
-- **PTY**: Captures terminal dimensions and resize events.
-- **Input**: Keyboard and mouse events are streamed back to the server.
-- **Output**: ANSI diffs are streamed to the client.
+---
 
-## 5. Resilience & Optimization
-- **Resilient Reactor Thread (RRT)**: Dedicated thread for I/O to prevent blocking the event loop. Uses `InputDecoder` with Kitty and SGR support.
-- **Vector Rendering Engine**: Multi-tier pipeline using `resvg` for static SVGs, and procedural generators for Lottie loading spinners (.json) and interactive Rive toggles (.riv).
-- **Asset Caching System**: Dual cache structures: `SvgCache` storing once-parsed `usvg::Tree` structures, and `AssetCache` storing resolution-keyed Sixel/Kitty graphic byte streams to bypass redundant rendering cycles.
-- **Ticking Animation Loop**: Dynamically adjusts event loop timeout to `66ms` (15 FPS) when Lottie or Rive sources are present in the DOM, returning to a low-overhead `5ms` sleep state when idle.
-- **Client-Relative Mouse Mapping**: Translates terminal cell grid coordinates to relative canvas offsets inside Rive interactives, driving hover and click toggle animations.
-- **Fast Sixel Encoder**: Uses a pre-allocated static 256-color palette to quantize raw RGBA pixel data rapidly, avoiding CPU-heavy palette searches.
-- **Predictive Local Echo**: Mitigation for high-latency connections.
-- **Synchronized Updates**: Prevents screen tearing via BSU/ESU (Synchronized Updates protocol).
-- **Backpressure**: Frame dropping to prevent memory exhaustion during slow rendering.
-- **Deep Screen Clearing**: Uses `\x1b[3J` to clear the terminal's scrollback buffer, ensuring a clean slate on startup and resize.
+## 3. SSR Rendering Pipeline (Server-Side Rendering)
 
-## 6. Diagnostics & Debugging
-- **Log Isolation**: All server-side logs are redirected to `/tmp/oxiterm.log` to prevent interference with the SSH TUI data stream.
-- **Event Tracing**: Detailed tracing of keyboard and resize events for easier debugging of client-server interactions.
+The process of generating the frame and sending it to the client proceeds in the following steps:
+
+```mermaid
+graph TD
+    THTML[THTML File] --> Parser[nom THTML Parser]
+    Parser --> AST[AST Tree / DOM Arena]
+    CSS[TCSS Rules] --> Cascade[Style Application & Cascade]
+    AST --> Cascade
+    Cascade --> Layout[Taffy Layout Engine]
+    Layout --> Render[Render to CellBuffer]
+    Render --> Diff[Diffing & ANSI Generation]
+    Diff --> Transport[SSH/WS Client Transport]
+```
+
+1. **THTML Parsing:** The parser, based on the `nom` library, builds a DOM tree inside an optimized memory arena (`DOM Arena`), filtering and sanitizing dangerous tags and attributes.
+2. **Style Cascade:** TCSS rules from the `<style>` block and inline `style` attributes are applied to nodes in a single cascade pass, resolving priorities (tag < class < id < inline).
+3. **Layout Calculation (Layout Engine):** The **Taffy** engine calculates the final positions and sizes of each element on the terminal grid. At this stage, `bind-show` conditions are evaluated — invisible nodes are marked as `Display::None` and consume no space.
+4. **Rendering to Buffer:** The built tree with calculated dimensions is drawn to a two-dimensional frame buffer (`CellBuffer`). Multimedia elements (SVG/Lottie/Rive/Video) are rasterized to pixels and compressed to Kitty/Sixel formats.
+5. **ANSI Generation (Diffing Engine):** The final frame in the buffer (`DoubleBuffer`) is compared with the previous frame sent to the client. A minimal sequence of ANSI escape codes is generated to control the cursor and colors, dramatically reducing network overhead.
+
+---
+
+## 4. Transport Architecture
+
+OxiTerm supports two independent TUI image distribution channels:
+* **SSH Server (russh):** An asynchronous SSH daemon. It negotiates PTY parameters (window dimensions, Kitty Graphics, SGR mouse) and captures input byte streams from the client, returning compressed ANSI diffs.
+* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers using the xterm.js terminal on the frontend.
+
+---
+
+## 5. Resilience and Optimizations
+
+OxiTerm's performance and stability in a network environment rely on several key mechanisms:
+* **Resilient Reactor Thread (RRT):** A dedicated, non-blocking OS thread used to read user input from SSH. The RRT parses the raw byte stream into keyboard and mouse events (Kitty/SGR) using the `InputStateMachine`, preventing the event loop from blocking and mitigating DoS attacks (e.g., excessively long escape sequences are rejected in `sanitize_frame`).
+* **Dynamic Ticking Loop:** In an idle state, the rendering loop sleeps for `5ms` awaiting events. If there are active Lottie or Rive animations in the DOM tree, OxiTerm dynamically raises the refresh rate to 15 FPS (`66ms` tick) for smooth animation playback.
+* **Dual-Tier Graphic Cache:**
+  - `SvgCache`: Stores once-parsed `usvg::Tree` vector structures to avoid repeating expensive XML parsing.
+  - `AssetCache`: Stores pre-compressed Sixel/Kitty graphic byte streams matching the current frame resolution, bypassing the entire rasterization process when there are no changes.
+* **Synchronized Updates (BSU/ESU):** Prevents screen tearing by wrapping ANSI diff packets in the terminal frame synchronization protocol (`\x1b[?2026h` / `\x1b[?2026l`).
+* **Predictive Local Echo:** A local text prediction buffer that minimizes network latency for users typing in `<input>` fields.
+* **Backpressure (Congestion Control):** A bounded frame channel (`BoundedFrameChannel`). Slow client terminals that cannot keep up with receiving diffs cause safe frame dropping on the server, preventing memory leaks.
+* **Scrollback Buffer Clearing:** Upon startup and resize, a `\x1b[3J` sequence is sent to clear the client's scrollback history, preventing graphic artifacts.
+
+---
+
+## 6. Accessibility
+
+When launching the server with the `--a11y` flag, the engine switches to the **LinearFrameSink** mode:
+* Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
+* OxiTerm can integrate with the DBus system bus on Linux systems to communicate directly with speech synthesizers and Braille displays.
 
 --- END OF FILE: ./docs/ARCHITECTURE.md ---
 
@@ -9645,134 +10500,230 @@ ssh localhost -p 2222
 ### 💎 Showcase Elements
 Once connected, navigate to the **🎨 Vector & Animation Demo** card. It displays:
 1. **Rive Interactive Widget (`toggle.riv`)**: A custom interactive slider toggle. Hovering and clicking with mouse input dynamically triggers the slide translation animation.
-2. **Lottie Vector Spinner (`loader.json`)**: An active vector loader spinner. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
+2. **Lottie Vector Animation (`bell.json`)**: An active vector bell animation. When active, it automatically sets the session ticking frame cycle to 15 FPS to drive redraw frames.
 3. **SVG Vector Mascot (`mascot.svg`)**: A high-fidelity rasterized SVG graphic drawing the OxiTerm rust mascot, cached and rendered via `resvg`.
 
 --- END OF FILE: ./docs/DEMO.md ---
 
---- FILE: ./docs/DEVELOPMENT_GUIDE.md ---
-# OxiTerm Development Guide: THTML & TCSS
+--- FILE: ./docs/getting-started.md ---
+# Guide: Creating Applications with OxiTerm
 
-Welcome to the OxiTerm developer guide. This document explains how to build server-side rendered terminal applications using the OxiTerm engine.
-
-## 🏗 Core Concepts
-
-OxiTerm apps use a declarative approach similar to web development, but optimized for the character grid of a terminal.
-
-### 1. THTML (Terminal HTML)
-The UI is represented as a tree of **Nodes**. Each node has a `NodeTag` and a `Style`.
-
-| Tag | Purpose | Equivalent |
-|-----|---------|------------|
-| `Box` | Container for other nodes. Supports Flexbox layout. | `<div>` |
-| `Text` | Displays string content. Supports wrapping. | `<span>` / `<p>` |
-| `Input` | Designated area for predictive echo and user typing. | `<input>` |
-| `Image` | Displays high-fidelity SVG graphics, Lottie spinners, and Rive toggles. | `<img>` |
-
-### 2. TCSS (Terminal CSS)
-Styling is done via the `Style` struct attached to each `Node`.
-
-#### Layout Properties
-- **Width/Height**: Defined in characters (`u16`).
-- **Flex Direction**: `Row` (horizontal) or `Column` (vertical).
-- **Justify Content**: `Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`.
-- **Align Items**: `Start`, `Center`, `End`, `Stretch`.
-- **Padding**: `left`, `right`, `top`, `bottom` margins inside the node.
-
-#### Visual Properties
-- **fg**: Foreground color (Text color).
-- **bg**: Background color.
-- **Colors**: Use `AnsiColor::Color256(n)` for 256-color palette or `AnsiColor::TrueColor(r, g, b)` for 24-bit color.
+OxiTerm is a framework for creating server-side rendered TUI (Terminal User Interface) applications. You describe the interface declaratively using the **THTML** markup language and style it using **TCSS**. The OxiTerm server parses these files, computes the layout using Flexbox, and then sends minimal ANSI instructions (diffs) to the client via SSH or WebSocket. The client only needs a standard terminal — no dedicated software needs to be installed.
 
 ---
 
-## 🚀 Building an Application
+## 1. Installation
 
-### 1. Define your State
-Create a struct to hold your application data.
+A Rust environment is required to build OxiTerm from source. If you don't have it, install it from: [https://rustup.rs](https://rustup.rs)
 
-```rust
-pub struct MyApp {
-    pub counter: i32,
-}
+Then clone the repository and build the project:
+```bash
+git clone https://github.com/slavek-is-hyperreal/oxiterm && cd oxiterm
+cargo build --release
+```
+You can find the compiled executable in: `target/release/oxiterm`
+
+---
+
+## 2. Quick Start (First Application)
+
+Create a file named `hello.thtml` with the following content:
+
+```html
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+  <box style="height: 3; bg: #1e293b; align-items: center;
+              padding-left: 2; border-style: single; border-color: #334155;">
+    <text style="fg: #38bdf8; height: 1;">Welcome to OxiTerm!</text>
+  </box>
+  <box style="padding: 2;">
+    <text style="fg: #e2e8f0; height: 1;">This is a server-side rendered TUI application.</text>
+  </box>
+</box>
 ```
 
-### 2. Implement the Document Builder
-This function should take terminal dimensions (`cols`, `rows`) and return a `THTMLDocument`.
-
-```rust
-pub fn build_document(&self, cols: u16, rows: u16) -> (THTMLDocument, Option<NodeId>) {
-    let mut doc = THTMLDocument::new();
-    
-    // 1. Create Root Container
-    let mut main_box = Node::new(NodeTag::Box);
-    main_box.style.width = Some(cols);
-    main_box.style.height = Some(rows);
-    main_box.style.flex_direction = FlexDirection::Column;
-    main_box.style.bg = AnsiColor::Color256(234);
-    let main_id = doc.arena.alloc(main_box);
-    doc.append_child(doc.root, main_id).unwrap();
-
-    // 2. Add Content
-    let mut text_node = Node::new(NodeTag::Text);
-    text_node.text_content = Some(format!("Counter: {}", self.counter));
-    text_node.style.fg = AnsiColor::Color256(46); // Green
-    text_node.style.height = Some(1);
-    let text_id = doc.arena.alloc(text_node);
-    doc.append_child(main_id, text_id).unwrap();
-
-    (doc, None)
-}
+Start the server in development mode (without authentication):
+```bash
+oxiterm serve hello.thtml --port 2222 --no-auth
 ```
 
-### 3. Handle Events
-Update your state based on key presses. Return `true` if the UI needs to be rebuilt.
-
-```rust
-pub fn handle_key(&mut self, ch: char) -> bool {
-    match ch {
-        '+' => { self.counter += 1; true }
-        '-' => { self.counter -= 1; true }
-        _ => false,
-    }
-}
+Now you can connect to the application from any terminal using SSH:
+```bash
+ssh localhost -p 2222
 ```
 
 ---
 
-## 💡 Best Practices
+## 3. Hot Reload
 
-### Responsive Design
-Always use the `cols` and `rows` passed to `build_document`. 
-For fixed-size elements (like headers), use `Some(3)`. For flexible content, use `rows.saturating_sub(fixed_parts)`.
-
-### Character Grid Constraints
-- Remember that characters are roughly 2x taller than they are wide.
-- Use `FlexDirection::Column` for vertical lists to ensure proper alignment.
-- Always set an explicit `height: Some(1)` for `Text` nodes to avoid zero-height layout collapses.
-
-### Predictive Echo
-To provide a lag-free experience on high-latency connections:
-1. Create an `Input` node in your layout.
-2. Return its `NodeId` from `build_document`.
-3. OxiTerm will automatically position the user's typed characters at that location.
-
-### Vector Graphics & Animations
-OxiTerm allows embedding scalable graphics directly into layout hierarchies:
-1. **Static SVG**: Declare static vector files (e.g. `<img src="mascot.svg" style="width: 32; height: 16;" />`). They are automatically scaled to the tag's target cell-to-pixel bounds and rendered via `resvg`.
-2. **Lottie Animations**: Use the `.json` extension (e.g. `<img src="loader.json" style="width: 12; height: 6;" />`). Active animations trigger a 15 FPS redraw frame ticking loop.
-3. **Interactive Rive Widgets**: Use the `.riv` extension (e.g. `<img src="toggle.riv" style="width: 24; height: 6;" />`). They support relative sub-cell hover and click event coordinates.
+OxiTerm automatically monitors the served `.thtml` file. After editing and saving the file to disk, all active SSH and Web connection sessions will be **instantly updated** without needing to reconnect. Crucially, the application state (stored in `StateManager`) is fully preserved during layout reloads!
 
 ---
 
-## 🎨 Color Reference
-OxiTerm supports the full 256-color ANSI palette. Common codes:
-- `17-21`: Dark Blues
-- `46`: Bright Green
-- `226`: Bright Yellow
-- `232-255`: Grayscale (Black to White)
+## 4. Adding State and Actions
 
---- END OF FILE: ./docs/DEVELOPMENT_GUIDE.md ---
+You manage state and interaction using `bind-state` and `event-htmx` attributes:
+
+```html
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+  <!-- bind-state binds text content to the state key "n" -->
+  <text bind-state="n" style="fg: #fbbf24; height: 1; margin: 2;">0</text>
+  
+  <box style="flex-direction: row; padding-left: 2;">
+    <!-- event-htmx defines the action when clicked or submitted with Enter -->
+    <box style="border-style: single; border-color: #f87171; padding: 1; height: 3;
+               align-items: center; margin-right: 1;" event-htmx="dec:n">
+      <text style="fg: #f87171; height: 1;">−</text>
+    </box>
+    <box style="border-style: single; border-color: #4ade80; padding: 1; height: 3;
+               align-items: center;" event-htmx="inc:n">
+      <text style="fg: #4ade80; height: 1;">+</text>
+    </box>
+  </box>
+</box>
+```
+
+---
+
+## 5. CSS Classes
+
+To avoid repeating inline styles, you can define a `<style>` block containing TCSS rules:
+
+```html
+<style>
+  .card  { border-style: rounded; padding: 1; flex-direction: column; }
+  .blue  { border-color: #38bdf8; }
+  .muted { fg: #64748b; height: 1; }
+</style>
+
+<box class="card blue" style="height: 8;">
+  <text style="fg: #38bdf8; height: 1;">Blue Card</text>
+  <text class="muted">Sample card content.</text>
+</box>
+```
+
+---
+
+## 6. Tabs Using `bind-show`
+
+The `bind-show` attribute allows you to conditionally hide or show elements based on state:
+
+```html
+<box style="flex-direction: row; height: 3;">
+  <box event-htmx="set:tab=info" style="border-style: single; padding: 1; height: 3;">
+    <text style="height: 1;">Info</text>
+  </box>
+  <box event-htmx="set:tab=logs" style="border-style: single; padding: 1; height: 3;">
+    <text style="height: 1;">Logs</text>
+  </box>
+</box>
+
+<!-- tab=false means the element is visible when the key "tab" is absent in state (visible by default) -->
+<box bind-show="tab=false" style="padding: 2;">
+  <text style="height: 1;">Info tab content.</text>
+</box>
+
+<box bind-show="tab=logs" style="padding: 2;">
+  <text style="height: 1;">Logs tab content.</text>
+</box>
+```
+
+---
+
+## 7. Text Input Fields (Input)
+
+The `<input>` tag allows you to collect data typed by the user:
+
+```html
+<input bind-value="query" placeholder="Search..."
+       style="height: 1; border-style: single; border-color: #38bdf8;"/>
+<text bind-state="query" style="fg: #94a3b8; height: 1;"/>
+```
+
+* Use the `Tab` key to focus on the `<input>` element.
+* Start typing — the Predictive Echo input buffer will immediately update the view (locally).
+* The `Backspace` key deletes the last character.
+* The `Enter` key commits the typed text and saves it in the state under the key defined in `bind-value` (e.g. `"query"`), and also triggers the `event-htmx` action if defined.
+
+---
+
+## 8. Images and Media
+
+OxiTerm enables directly embedding vector graphics, animations, and video files:
+
+```html
+<img src="logo.svg"    alt="Project logo" style="width: 20; height: 10;"/>
+<img src="bell.json"   alt="Vector bell animation" style="width: 12; height: 6;"/>
+<video src="clip.mp4"  alt="Video presentation" style="width: 40; height: 20;"/>
+```
+
+* **Automatic Protocol Detection:** OxiTerm dynamically matches the graphic format to your terminal capabilities (Kitty Graphics Protocol → Sixel → Unicode character blocks `▀▄█`).
+* **Formats:** SVG, PNG, JPG images and Lottie animations (`.json`) are supported.
+* **Video:** Video playback requires the `ffmpeg` tool to be present in your environment's `PATH`.
+
+---
+
+## 9. Key Bindings
+
+| Key | Action |
+|---------|-----------|
+| `Tab` / `↓` / `→` | Go to the next interactive element (focus) |
+| `Shift + Tab` / `↑` / `←` | Return to the previous element |
+| `Enter` | Activate the focused element |
+| `PgUp` / `b` | Scroll view one page up |
+| `PgDn` / `Space` | Scroll view one page down |
+| `Q` / `q` | Close session and disconnect |
+
+---
+
+## 10. Page Navigation
+
+You can switch entire screens by pointing to a `.thtml` file in the `event-htmx` action:
+
+```html
+<text event-htmx="settings.thtml" style="height: 1;">→ Go to settings</text>
+```
+
+> [!TIP]
+> The session state (`StateManager`) is shared and **preserved** during navigation between `.thtml` pages. Variables set on one page will be available on the newly loaded page.
+
+---
+
+## 11. Integration with an External Application Server (App Server)
+
+If your application requires complex business logic, database access, or external APIs, you can connect an external application server.
+
+Run OxiTerm with the `OXITERM_APP_SERVER` variable:
+```bash
+OXITERM_APP_SERVER=http://localhost:3000/events oxiterm serve app.thtml
+```
+
+For every user action (`event-htmx`), OxiTerm will send an asynchronous (fire-and-forget) POST JSON to the defined URL:
+```json
+{
+  "action": "save_profile",
+  "state": { "username": "admin", "email": "user@example.com" },
+  "session_id": 42
+}
+```
+For more information, see [app-server-guide.md](app-server-guide.md).
+
+---
+
+## 12. Environment Variables
+
+You can configure the server behavior using the following environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OXITERM_PORT` | `2222` | Port on which the SSH server listens |
+| `OXITERM_HOST` | `0.0.0.0` | SSH listening IP address |
+| `OXITERM_PASSWORD` | (none) | SSH login password (if set, enables password authentication) |
+| `OXITERM_NO_AUTH` | `false` | Disables SSH authentication (required in dev mode when authorized_keys are missing) |
+| `OXITERM_WEB_PORT` | `8080` | HTTP/WebSocket server port for web browser access |
+| `OXITERM_APP_SERVER` | (none) | URL of the external application server for event-htmx actions |
+| `RUST_LOG` | `warn` | Server logging level (e.g. `debug`, `info`, `warn`, `error`) |
+
+--- END OF FILE: ./docs/getting-started.md ---
 
 --- FILE: ./docs/SPRINT_REPORTS.md ---
 # OxiTerm Sprint Report
@@ -9847,6 +10798,270 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 
 --- END OF FILE: ./docs/SPRINT_REPORTS.md ---
 
+--- FILE: ./docs/tcss-reference.md ---
+# TCSS — Terminal CSS Styling Reference
+
+TCSS (Terminal CSS) is the styling language used in OxiTerm to control the layout, spacing, and colors of THTML elements. Its syntax directly mirrors standard CSS, but is adapted to the terminal character grid and the graphical constraints of text-based environments.
+
+---
+
+## 1. Syntax and Cascade
+
+Styling can be defined in two ways:
+1. In a `<style>` block placed inside the THTML document.
+2. Directly on nodes using the `style` attribute (inline styles).
+
+### Selectors and Specificity (Cascade Priority)
+
+Styles are applied in a single unified phase according to the following ascending priority (from weakest to strongest):
+1. **Tag Selector:** e.g., `text { fg: green; }` (applies to all tags of this type).
+2. **Class Selector:** e.g., `.btn { bg: blue; }` (applies to nodes with a `class="btn"` attribute).
+3. **ID Selector:** e.g., `#main { width: 80; }` (applies to the node with `id="main"`).
+4. **Inline Styles:** e.g., `<box style="height: 3;">` (defined directly in the node's `style` attribute).
+
+Subsequent rules with the same priority overwrite previous ones (determined by the order of appearance in the file).
+
+---
+
+## 2. Supported Properties
+
+| Property | Allowed Values | Description |
+|---|---|---|
+| `width` | Integer | Element width expressed as the number of terminal columns. |
+| `height` | Integer | Element height expressed as the number of terminal rows. |
+| `fg` \| `color` | Color | Text color (foreground). |
+| `bg` \| `background-color` | Color | Background color. |
+| `flex-direction` | `row` (default), `column` | The direction in which child elements are laid out in a Flexbox container. |
+| `align-items` | `flex-start` (default), `flex-end`, `center`, `stretch` | Alignment of child elements cross the main axis. |
+| `justify-content` | `flex-start` (default), `flex-end`, `center`, `space-between`, `space-around` | Spacing of child elements along the main axis. |
+| `padding` | Integer | Inner padding (all sides) expressed in character cells. |
+| `padding-top` \| `padding-right` \| `padding-bottom` \| `padding-left` | Integer | Detailed inner padding for individual sides. |
+| `margin` | Integer | Outer margin (all sides) expressed in character cells. |
+| `margin-top` \| `margin-right` \| `margin-bottom` \| `margin-left` | Integer | Detailed outer margins for individual sides. |
+| `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
+| `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
+| `border-color` | Color | Specifies or overrides the border color. |
+
+---
+
+## 3. Defining Colors
+
+In TCSS, colors can be defined in four ways:
+
+| Color Format | Description | Example |
+|---|---|---|
+| **CSS Color Name** | A basic color name (automatically mapped to TrueColor RGB) | `fg: red;`, `bg: blue;` |
+| **Hex RGB** | 7-character hexadecimal string (24-bit TrueColor) | `fg: #ff5500;`, `bg: #0f172a;` |
+| **0-255 Number** | Index from the 256-color ANSI palette (useful fallback for older terminals) | `fg: 46;` (bright green), `bg: 234;` (dark gray) |
+| **Reset / Transparent** | Restores the default terminal color or makes the background transparent | `fg: reset;`, `bg: transparent;` |
+
+### Supported Named Colors (CSS Color Names)
+OxiTerm recognizes exactly the following color names:
+* `black` (RGB 0, 0, 0)
+* `red` (RGB 255, 0, 0)
+* `green` (RGB 0, 255, 0)
+* `yellow` (RGB 255, 255, 0)
+* `blue` (RGB 0, 0, 255)
+* `magenta` (RGB 255, 0, 255)
+* `cyan` (RGB 0, 255, 255)
+* `white` (RGB 255, 255, 255)
+
+---
+
+## 4. Drawing Borders
+
+Enabling a border on an element is done using the `border` or `border-color` properties. The border occupies **exactly 1 character cell** of width and height on the element's edges.
+
+### Border Styles (`border-style`):
+To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
+
+* **`single`** (default):
+  ```text
+  ┌──────┐
+  │      │
+  └──────┘
+  ```
+* **`double`**:
+  ```text
+  ╔══════╗
+  ║      ║
+  ╚══════╝
+  ```
+* **`rounded`**:
+  ```text
+  ╭──────╮
+  │      │
+  ╰──────╯
+  ```
+
+---
+
+## 5. What TCSS Does NOT Support (compared to browser CSS)
+
+* **No Units:** Dimensions, margins, and paddings are specified as pure integers (representing terminal character cells). Units such as `px`, `em`, `rem`, `%` are not supported.
+* **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
+* **No Text Formatting:** Properties like `font-size`, `font-family`, `font-weight` (e.g. bold), or `font-style` (e.g. italic) are not supported in TCSS because the terminal enforces a fixed-width monospace font.
+* **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.
+
+--- END OF FILE: ./docs/tcss-reference.md ---
+
+--- FILE: ./docs/thtml-reference.md ---
+# THTML — Terminal HTML Language Reference
+
+THTML (Terminal HTML) is OxiTerm's declarative markup language used to build server-side rendered TUI (Terminal User Interface) applications. It is a subset of XML with a strict tag structure and a small, specialized dictionary of attributes.
+
+---
+
+## 1. Document Structure
+
+Every THTML document is parsed into a tree of nodes, where the default, implicit root is the `<screen>` node. An optional `<style>` block containing TCSS styling rule definitions can appear anywhere in the document (usually at the beginning).
+
+```html
+<!-- Optional style block -->
+<style>
+  .btn { border-style: single; border-color: #4ade80; }
+  .header-text { fg: #38bdf8; height: 1; }
+</style>
+
+<!-- UI components tree -->
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+  <text class="header-text">Welcome to OxiTerm!</text>
+</box>
+```
+
+Files must not contain elements specific to browser HTML, such as `<!DOCTYPE>`, `<html>`, `<head>`, or `<body>`.
+
+---
+
+## 2. Supported Tags
+
+OxiTerm supports exactly seven tags. Using an unknown tag will cause a document parsing error.
+
+| Tag | Role | Children | Notes |
+|---|---|---|---|
+| `<screen>` | Implicit root | Any | Created automatically by the parser, never written directly. |
+| `<box>` | Layout container | Any | Equivalent to HTML `<div>`. Operates as a Flexbox container by default. |
+| `<text>` | Inline text | None (text only) | Displays text content. Supports Unicode, double-width characters (CJK), and emojis. |
+| `<input>` | Text field | None | Used to collect user input. Requires the `bind-value` attribute. |
+| `<button>` | Interactive button | None (text only) | Focusable keyboard node; triggers the action defined in `event-htmx`. |
+| `<img>` | Image or animation | None | Displays SVG, PNG, JPG files and Lottie animations (`.json`). |
+| `<video>` | Video player | None | Play video files smoothly in the background. Requires `ffmpeg` in the system. |
+
+> [!WARNING]
+> The `<img>` and `<input>` tags can be self-closing (`<img />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
+
+---
+
+## 3. Universal Attributes
+
+The following attributes can be applied to any node type:
+
+| Attribute | Value Type | Description |
+|---|---|---|
+| `id` | Text | Unique identifier of the node in the tree. Used by the CSS `#id` selector. |
+| `class` | Text (space-separated) | TCSS style classes. Applied in the order they appear in the stylesheet. |
+| `style` | TCSS Style | Inline style declarations (semicolon-separated). Have the highest priority in the cascade. |
+| `event-htmx` | Action text | Action (or sequence of actions) triggered when the element is clicked or when `Enter` is pressed. |
+| `bind-state` | State key | Reactively displays the current value of the associated key from `StateManager` as text content. |
+| `bind-show` | Condition text | Conditionally hides/shows the node. Hidden nodes are completely removed from the layout. |
+
+---
+
+## 4. Tag-Specific Attributes
+
+| Tag | Attribute | Description |
+|---|---|---|
+| `<img>`, `<video>` | `src` | Relative path to the resource file (relative to the directory containing the `.thtml` file). Paths are checked for Path Traversal attack attempts. |
+| `<img>`, `<video>` | `alt` | Textual description of the media element, used in accessibility mode (`--a11y`). |
+| `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
+| `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |
+| `<input>` | `bind-value` | State key in `StateManager` where the typed text is saved **in real-time** (on every keystroke). |
+
+---
+
+## 5. `event-htmx` Actions
+
+The `event-htmx` attribute supports a single action or a sequence of actions. Instructions are executed from left to right. Both **semicolon** (`;`) and **comma** (`,`) can be used as instruction separators.
+
+| Action Format | Effect | Example |
+|---|---|---|
+| `inc:key` | Increments the integer state (Int) value by 1 | `event-htmx="inc:counter"` |
+| `dec:key` | Decrements the integer state (Int) value by 1 | `event-htmx="dec:counter"` |
+| `toggle:key` | Flips the boolean state (Bool) value | `event-htmx="toggle:sidebar_open"` |
+| `set:key=value` | Sets the state (Str) to the specified text | `event-htmx="set:tab=settings"` |
+| `append:key=value` | Appends the specified text value to a list state (List) | `event-htmx="append:logs=new_event"` |
+| `clear:key` | Resets state to default value for its type (`0`, `false`, `""` or `[]`) | `event-htmx="clear:counter"` |
+| `file.thtml` | Switches the current application screen to another `.thtml` file | `event-htmx="dashboard.thtml"` |
+| `action1;action2` | Executes multiple actions sequentially | `event-htmx="set:tab=x;inc:views"` |
+
+> [!NOTE]
+> Navigating to another `.thtml` page **preserves** all state collected in the session `StateManager` cache. This ensures users do not lose their inputs or session context when transitioning between screens.
+
+---
+
+## 6. `bind-show` Conditions
+
+The `bind-show` attribute is used to reactively hide interface elements. Nodes whose conditions evaluate to `false` are completely excluded from Taffy layout calculations (they consume no space in the terminal).
+
+| Condition Syntax | Condition is `true` when: |
+|---|---|
+| `bind-show="key"` | The associated key has a boolean value of `true`, a non-zero integer (Int != 0), a non-empty string (Str != "" and Str != "false"), or a non-empty list. |
+| `bind-show="key=value"` | The text representation of the state value under this key is exactly equal to `"value"`. If the state value is a `List`, the condition is satisfied if the list contains the element `"value"`. |
+| `bind-show="key=false"` | The associated key value is falsy or **the key does not exist in the state**. |
+| `bind-show="key=true"` | The associated key value is truthy. If the key does not exist, `false` is returned. |
+
+> [!IMPORTANT]
+> If a state key does not exist in the session cache, all condition formats (except `key=false`) evaluate to `false` by default. Using `bind-show="menu=false"` allows a panel to be visible by default at session startup, before the state is initialized by any actions.
+
+---
+
+## 7. State Types
+
+`StateManager` stores typed state values. The table below illustrates how different types are rendered on screen by the `bind-state` attribute:
+
+| State Type | Internal Rust Type | Representation by `bind-state` | Example Output |
+|---|---|---|---|
+| **Int** | `i64` | Numeric notation | `42` |
+| **Bool** | `bool` | Word form: `true` or `false` | `true` |
+| **Str** | `String` | Raw string contents | `Hello world` |
+| **List** | `Vec<String>` | List of values enclosed in square brackets | `[item1, item2, item3]` |
+
+---
+
+## 8. Interacting with `<input>` Fields
+
+The data entry flow in input fields is as follows:
+1. The user moves focus to the `<input>` field using the `Tab` key or arrow keys.
+2. The user starts typing. Character by character, the input content is **instantly saved** in the state under the key defined in the `bind-value` attribute. Other elements bound to the same key via `bind-state` will react in real-time to each keystroke.
+3. The `Backspace` key deletes the last character from the buffer and updates the state.
+4. The `Enter` key commits the field and triggers the action defined in the `event-htmx` attribute (if any).
+
+Example binding input with reactive text:
+```html
+<input bind-value="email" placeholder="Enter your email..."
+       style="height: 1; border-style: single; border-color: #38bdf8;"/>
+<text bind-state="email" style="fg: #94a3b8; height: 1;"/>
+```
+
+---
+
+## 9. Comments
+
+Standard HTML comments are completely skipped when parsing the document tree:
+```html
+<!-- This comment will be stripped and will not end up in the DOM tree -->
+```
+
+---
+
+## 10. Data Safety and Sanitization
+
+OxiTerm ensures that input provided by THTML files and user interaction does not disrupt terminal output or lead to rendering errors:
+* **Styles (`style="..."`):** Any ANSI escape sequences are detected and stripped using regex. This prevents injection attacks with destructive terminal control codes.
+* **Action Attributes (`event-htmx`, `bind-state`, `bind-show`):** All control characters and symbols like brackets, quotes, and backslashes (`(`, `)`, `'`, `"`, `<`, `>`, `\`, `` ` ``) are removed. Only alphanumeric characters, spaces, equal signs, and URL-safe characters are allowed.
+
+--- END OF FILE: ./docs/thtml-reference.md ---
+
 --- FILE: ./examples/counter.thtml ---
 <style>
 .panel {
@@ -9869,21 +11084,21 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
 
-    <!-- Nagłówek -->
+    <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #f59e0b; height: 1;">🔢 Licznik — inc / dec / clear</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #f59e0b; height: 1;">🔢 Counter — inc / dec / clear</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
     </box>
 
-    <!-- Treść -->
+    <!-- Content -->
     <box style="flex-direction: row; padding: 2; flex: 1;">
 
-        <!-- Duży licznik -->
+        <!-- Large Counter -->
         <box class="panel" style="border-color: #f59e0b; width: 36; align-items: center;
                                   justify-content: center; margin-right: 2;">
-            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Bieżąca wartość:</text>
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Current value:</text>
             <box style="border-style: double; border-color: #f59e0b; padding: 2;
                         justify-content: center; align-items: center;">
                 <text style="fg: #fbbf24; height: 1;" bind-state="counter">0</text>
@@ -9901,24 +11116,24 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
             </box>
         </box>
 
-        <!-- Opis akcji -->
+        <!-- Action Description -->
         <box class="panel" style="border-color: #334155; flex: 1;">
-            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Obsługiwane akcje event-htmx:</text>
-            <text style="fg: #4ade80;  height: 1;">inc:klucz   — liczba += 1</text>
-            <text style="fg: #f87171;  height: 1;">dec:klucz   — liczba -= 1</text>
-            <text style="fg: #94a3b8;  height: 1;">clear:klucz — reset do 0</text>
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Supported event-htmx actions:</text>
+            <text style="fg: #4ade80;  height: 1;">inc:key   — number += 1</text>
+            <text style="fg: #f87171;  height: 1;">dec:key   — number -= 1</text>
+            <text style="fg: #94a3b8;  height: 1;">clear:key — reset to 0</text>
             <box style="height: 1;"></box>
-            <text style="fg: #64748b; height: 1;">Stan Int(i64) żyje w</text>
-            <text style="fg: #64748b; height: 1;">StateManager serwera.</text>
-            <text style="fg: #64748b; height: 1;">bind-state odświeża</text>
-            <text style="fg: #64748b; height: 1;">reaktywnie tylko ten węzeł.</text>
+            <text style="fg: #64748b; height: 1;">Int(i64) state lives in</text>
+            <text style="fg: #64748b; height: 1;">the server StateManager.</text>
+            <text style="fg: #64748b; height: 1;">bind-state updates only</text>
+            <text style="fg: #64748b; height: 1;">this node reactively.</text>
         </box>
 
     </box>
 
-    <!-- Stopka -->
+    <!-- Footer -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation  [Enter] Action</text>
     </box>
 
 </box>
@@ -9946,50 +11161,58 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
 
-    <!-- Nagłówek -->
+    <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interaktywne TUI przez SSH  🚀</text>
+        <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interactive TUI over SSH  🚀</text>
     </box>
 
-    <!-- Siatka kart nawigacyjnych -->
-    <box style="flex-direction: column; padding: 1; flex-direction: column;">
+    <!-- Center container for alignment (pushes footer down and centers content) -->
+    <box style="flex: 1; align-items: center; justify-content: center;">
+        
+        <!-- Main wrapper panel (one big box for all cards) -->
+        <box style="border-style: single; border-color: #334155; padding: 1;
+                    width: 76; height: 15; flex-direction: column;">
+            
+            <!-- First row of cards -->
+            <box style="flex-direction: row; height: 6; margin-bottom: 1;">
+                <box class="card card-counter" style="width: 24; margin-right: 1;" event-htmx="counter.thtml">
+                    <text style="fg: #f59e0b; height: 1;">🔢 Counter and State</text>
+                    <text class="muted label">Inc / dec / clear</text>
+                </box>
+                <box class="card card-state" style="width: 24; margin-right: 1;" event-htmx="state_demo.thtml">
+                    <text style="fg: #4ade80; height: 1;">🔄 All State Types</text>
+                    <text class="muted label">Int Bool Str List</text>
+                </box>
+                <box class="card card-style" style="width: 24;" event-htmx="styles_demo.thtml">
+                    <text style="fg: #c084fc; height: 1;">🎨 CSS Classes &amp; Cascade</text>
+                    <text class="muted label">&lt;style&gt; block</text>
+                </box>
+            </box>
 
-        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
-            <box class="card card-counter" style="width: 24; margin-right: 1;" event-htmx="counter.thtml">
-                <text style="fg: #f59e0b; height: 1;">🔢 Licznik i stan</text>
-                <text class="muted label">Inc / dec / clear</text>
+            <!-- Second row of cards -->
+            <box style="flex-direction: row; height: 6;">
+                <box class="card card-nav" style="width: 24; margin-right: 1;" event-htmx="navigation_demo.thtml">
+                    <text style="fg: #38bdf8; height: 1;">📑 Navigation &amp; bind-show</text>
+                    <text class="muted label">Tabs without reload</text>
+                </box>
+                <box class="card card-media" style="width: 24; margin-right: 1;" event-htmx="media_demo.thtml">
+                    <text style="fg: #f87171; height: 1;">🖼️ Graphics &amp; Animations</text>
+                    <text class="muted label">SVG Lottie Kitty</text>
+                </box>
+                <box class="card card-a11y" style="width: 24;" event-htmx="video_demo.thtml">
+                    <text style="fg: #fb923c; height: 1;">🎬 Video</text>
+                    <text class="muted label">ffmpeg → terminal</text>
+                </box>
             </box>
-            <box class="card card-state" style="width: 24; margin-right: 1;" event-htmx="state_demo.thtml">
-                <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu</text>
-                <text class="muted label">Int Bool Str List</text>
-            </box>
-            <box class="card card-style" style="width: 24;" event-htmx="styles_demo.thtml">
-                <text style="fg: #c084fc; height: 1;">🎨 CSS klasy i kaskada</text>
-                <text class="muted label">Blok &lt;style&gt;</text>
-            </box>
+            
         </box>
-
-        <box style="flex-direction: row; height: 6; margin-bottom: 1;">
-            <box class="card card-nav" style="width: 24; margin-right: 1;" event-htmx="navigation_demo.thtml">
-                <text style="fg: #38bdf8; height: 1;">📑 Nawigacja i bind-show</text>
-                <text class="muted label">Zakładki bez reload</text>
-            </box>
-            <box class="card card-media" style="width: 24; margin-right: 1;" event-htmx="media_demo.thtml">
-                <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje</text>
-                <text class="muted label">SVG Lottie Kitty</text>
-            </box>
-            <box class="card card-a11y" style="width: 24;" event-htmx="video_demo.thtml">
-                <text style="fg: #fb923c; height: 1;">🎬 Wideo</text>
-                <text class="muted label">ffmpeg → terminal</text>
-            </box>
-        </box>
-
+        
     </box>
 
-    <!-- Stopka -->
+    <!-- Footer (navigation info bar at the absolute bottom) -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted label">[Q] Wyjście   [Tab] / [↑↓] Nawigacja klawiaturą   [Enter] Wybierz</text>
+        <text class="muted label">[Q] Exit   [Tab] / [↑↓] Keyboard Navigation   [Enter] Select</text>
     </box>
 
 </box>
@@ -10020,7 +11243,7 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
         <text style="fg: #4ade80; height: 1;">⌨ Input Demo — bind-value</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
@@ -10030,25 +11253,25 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 
             <!-- Name field -->
             <box class="panel" style="flex-direction: column;">
-                <text class="label">Imię (Tab → tu, wpisz, Enter → zatwierdź):</text>
-                <input bind-value="name_input" placeholder="np. Slavek"
+                <text class="label">Name (Tab → here, type, Enter → submit):</text>
+                <input bind-value="name_input" placeholder="e.g. Slavek"
                        event-htmx="set:name=name_input_val"
                        style="height: 1; border-style: single; border-color: #38bdf8;
                               padding-left: 1; margin-top: 1;"/>
                 <box style="flex-direction: row; margin-top: 1;">
-                    <text class="muted">Wpisane: </text>
+                    <text class="muted">Typed: </text>
                     <text class="value" bind-state="name_input"> </text>
                 </box>
             </box>
 
             <!-- Search field -->
             <box class="panel" style="flex-direction: column;">
-                <text class="label">Szukaj:</text>
-                <input bind-value="search_input" placeholder="wpisz frazę..."
+                <text class="label">Search:</text>
+                <input bind-value="search_input" placeholder="type a phrase..."
                        style="height: 1; border-style: single; border-color: #a78bfa;
                               padding-left: 1; margin-top: 1;"/>
                 <box style="flex-direction: row; margin-top: 1;">
-                    <text class="muted">Fraza: </text>
+                    <text class="muted">Phrase: </text>
                     <text style="fg: #a78bfa; height: 1;" bind-state="search_input"> </text>
                 </box>
             </box>
@@ -10057,10 +11280,10 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
             <box style="flex-direction: row; margin-top: 1;">
                 <box class="btn" event-htmx="clear:name_input"
                      style="margin-right: 1;">
-                    <text style="fg: #4ade80; height: 1;">Wyczyść imię</text>
+                    <text style="fg: #4ade80; height: 1;">Clear name</text>
                 </box>
                 <box class="btn-danger" event-htmx="clear:search_input">
-                    <text style="fg: #f87171; height: 1;">Wyczyść szukaj</text>
+                    <text style="fg: #f87171; height: 1;">Clear search</text>
                 </box>
             </box>
 
@@ -10071,19 +11294,19 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
                     padding: 1; flex-direction: column;">
             <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">bind-value</text>
             <text class="muted">Tab → focus input</text>
-            <text class="muted">Wpisz tekst...</text>
-            <text class="muted">Backspace usuwa.</text>
+            <text class="muted">Type text...</text>
+            <text class="muted">Backspace deletes.</text>
             <text class="muted">Enter = event-htmx</text>
             <box style="height: 1;"></box>
-            <text class="muted">bind-state wyświetla</text>
-            <text class="muted">wartość na żywo.</text>
+            <text class="muted">bind-state displays</text>
+            <text class="muted">value in real-time.</text>
         </box>
 
     </box>
 
     <!-- Footer -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Zatwierdź</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Submit</text>
     </box>
 
 </box>
@@ -10107,8 +11330,8 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #f87171; height: 1;">🖼️ Grafika i animacje — SVG · Lottie · PNG</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #f87171; height: 1;">🖼️ Graphics and Animations — SVG · Lottie · PNG</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
@@ -10116,31 +11339,31 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
         <!-- SVG -->
         <box class="panel" style="border-color: #38bdf8; width: 26; margin-right: 1;">
             <text class="panel-title" style="fg: #38bdf8;">SVG (resvg)</text>
-            <img src="mascot.svg" alt="Rustowy krab — Ferris" style="width: 20; height: 10;" />
-            <text class="caption">Renderowany przez resvg+tiny_skia</text>
-            <text class="caption">BGRA→RGBA, pełna alpha</text>
+            <img src="mascot.svg" alt="Rust crab — Ferris" style="width: 20; height: 10;" />
+            <text class="caption">Rendered by resvg+tiny_skia</text>
+            <text class="caption">BGRA→RGBA, full alpha</text>
         </box>
 
         <!-- PNG/JPG -->
         <box class="panel" style="border-color: #4ade80; width: 26; margin-right: 1;">
-            <text class="panel-title" style="fg: #4ade80;">Obraz rastrowy</text>
-            <img src="logo.jpg" alt="Logo projektu" style="width: 20; height: 10;" />
+            <text class="panel-title" style="fg: #4ade80;">Raster Image</text>
+            <img src="logo.jpg" alt="Project logo" style="width: 20; height: 10;" />
             <text class="caption">Auto: Kitty → Sixel → Unicode</text>
-            <text class="caption">Negocjacja przez DA1</text>
+            <text class="caption">Negotiated via DA1</text>
         </box>
 
         <!-- Lottie -->
         <box class="panel" style="border-color: #fbbf24; width: 20;">
             <text class="panel-title" style="fg: #fbbf24;">Lottie JSON</text>
-            <img src="loader.json" alt="Animacja ładowania" style="width: 14; height: 7;" />
-            <text class="caption">Klatki przez rlottie</text>
-            <text class="caption">60fps na Kitty</text>
-            <text class="caption">RGBA bez alpha bug</text>
+            <img src="bell.json" alt="Bell animation" style="width: 14; height: 7;" />
+            <text class="caption">Frames via rlottie</text>
+            <text class="caption">60fps on Kitty</text>
+            <text class="caption">RGBA without alpha bug</text>
         </box>
 
     </box>
 
-    <!-- Wiersz protokołów -->
+    <!-- Protocols row -->
     <box style="flex-direction: row; padding-left: 1; padding-right: 1;
                 height: 4; border-style: single; border-color: #1e293b;
                 margin-left: 1; margin-right: 1; align-items: center;">
@@ -10156,12 +11379,12 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
         <box style="width: 1; bg: #334155;"></box>
         <box style="flex: 1; align-items: center; flex-direction: column;">
             <text style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
-            <text style="fg: #334155; height: 1;">Wszystkie terminale</text>
+            <text style="fg: #334155; height: 1;">All terminals</text>
         </box>
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja</text>
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation</text>
     </box>
 
 </box>
@@ -10197,11 +11420,11 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #38bdf8; height: 1;">📑 Nawigacja klawiaturą i bind-show</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #38bdf8; height: 1;">📑 Keyboard Navigation and bind-show</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
-    <!-- Pasek zakładek — set:tab zmienia widoczność przez bind-show -->
+    <!-- Tab bar — set:tab changes visibility via bind-show -->
     <box style="flex-direction: row; padding-left: 2; padding-right: 2;
                 padding-top: 1; height: 5; align-items: center;">
         <!-- Info Tab Options -->
@@ -10215,15 +11438,15 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
             <text style="height: 1;">ℹ Info</text>
         </box>
 
-        <!-- Klawisze Tab Options -->
+        <!-- Keys Tab Options -->
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=false">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
         <box class="tab-btn tab-active" event-htmx="set:tab=keys" bind-show="tab=keys">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
         <box class="tab-btn tab-inactive" event-htmx="set:tab=keys" bind-show="tab=bind">
-            <text style="height: 1;">⌨ Klawisze</text>
+            <text style="height: 1;">⌨ Keys</text>
         </box>
 
         <!-- bind-show Tab Options -->
@@ -10237,48 +11460,48 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
             <text style="height: 1;">🔗 bind-show</text>
         </box>
         <box style="flex: 1;"></box>
-        <text class="muted">Aktywna zakładka: </text>
+        <text class="muted">Active tab: </text>
         <text style="fg: #38bdf8; height: 1;" bind-state="tab">info</text>
     </box>
 
-    <!-- Treść zakładek — tylko jedna widoczna dzięki bind-show -->
+    <!-- Tab content — only one visible thanks to bind-show -->
     <box style="flex-direction: column; padding-left: 2; padding-right: 2;
                 padding-bottom: 1; flex: 1;">
 
-        <!-- Zakładka: info -->
+        <!-- Tab: info -->
         <box class="content-panel" bind-show="tab=false">
-            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Zakładki bez przeładowania strony</text>
-            <text class="muted">Kliknij zakładkę → event-htmx="set:tab=xxx"</text>
-            <text class="muted">StateManager zapisuje nową wartość "tab".</text>
-            <text class="muted">bind-show="tab=info" chowa/pokazuje węzeł.</text>
-            <text class="muted">LayoutEngine całkowicie pomija ukryte węzły.</text>
-            <text class="muted">Zero opóźnienia — logika po stronie serwera.</text>
+            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Tabs without page reload</text>
+            <text class="muted">Click tab → event-htmx="set:tab=xxx"</text>
+            <text class="muted">StateManager saves the new "tab" value.</text>
+            <text class="muted">bind-show="tab=info" hides/shows the node.</text>
+            <text class="muted">LayoutEngine completely skips hidden nodes.</text>
+            <text class="muted">Zero latency — server-side logic.</text>
         </box>
 
-        <!-- Zakładka: keys -->
+        <!-- Tab: keys -->
         <box class="content-panel" bind-show="tab=keys">
-            <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Nawigacja klawiaturą</text>
-            <text class="muted">Tab / ↓ / →  — następny focusable węzeł</text>
-            <text class="muted">Shift+Tab / ↑ / ←  — poprzedni węzeł</text>
-            <text class="muted">Enter  — aktywuj event-htmx focused węzła</text>
-            <text class="muted">Q      — wyjście z sesji</text>
-            <text class="muted">Focus ring: ▶ i ◀ po bokach aktywnego węzła.</text>
+            <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Keyboard Navigation</text>
+            <text class="muted">Tab / ↓ / →  — next focusable node</text>
+            <text class="muted">Shift+Tab / ↑ / ←  — previous node</text>
+            <text class="muted">Enter  — activate event-htmx of focused node</text>
+            <text class="muted">Q      — exit session</text>
+            <text class="muted">Focus ring: ▶ and ◀ around the active node.</text>
         </box>
 
-        <!-- Zakładka: bind -->
+        <!-- Tab: bind -->
         <box class="content-panel" bind-show="tab=bind">
-            <text style="fg: #c084fc; height: 1; margin-bottom: 1;">Składnia bind-show</text>
-            <text class="muted">bind-show="klucz"       — true gdy Bool(true)</text>
-            <text class="muted">bind-show="klucz=true"  — explicit true</text>
-            <text class="muted">bind-show="klucz=false" — odwrotność</text>
-            <text class="muted">bind-show="tab=home"    — równość Str</text>
-            <text class="muted">bind-show="count=0"     — równość Int</text>
+            <text style="fg: #c084fc; height: 1; margin-bottom: 1;">bind-show Syntax</text>
+            <text class="muted">bind-show="key"       — true when Bool(true)</text>
+            <text class="muted">bind-show="key=true"  — explicit true</text>
+            <text class="muted">bind-show="key=false" — opposite (falsy or absent)</text>
+            <text class="muted">bind-show="tab=home"    — Str equality</text>
+            <text class="muted">bind-show="count=0"     — Int equality</text>
         </box>
 
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Zmień zakładkę</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Change Tab</text>
     </box>
 
 </box>
@@ -10287,13 +11510,13 @@ OxiTerm supports the full 256-color ANSI palette. Common codes:
 
 --- FILE: ./examples/showcase.thtml ---
 <style>
-/* Showcase używa maksimum funkcji CSS pipeline */
+/* Showcase uses maximum CSS pipeline features */
 
-/* Tag selektory */
+/* Tag selectors */
 text { fg: #e2e8f0; }
 button { border-style: single; }
 
-/* Klasy */
+/* Classes */
 .panel {
     border-style: rounded;
     padding: 1;
@@ -10306,7 +11529,7 @@ button { border-style: single; }
 .warn          { fg: #f59e0b; height: 1; }
 .err           { fg: #f87171; height: 1; }
 
-/* Id selektor */
+/* ID selector */
 #unicode-panel { border-color: #c084fc; }
 #border-panel  { border-color: #38bdf8; }
 #state-panel   { border-color: #f59e0b; }
@@ -10318,44 +11541,44 @@ button { border-style: single; }
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #38bdf8; height: 1;">🧪 Showcase — wszystkie funkcje silnika</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #38bdf8; height: 1;">🧪 Showcase — all engine features</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
 
-        <!-- Kolumna 1 -->
+        <!-- Column 1 -->
         <box style="flex-direction: column; width: 28; margin-right: 1;">
 
-            <!-- Unicode i emoji -->
+            <!-- Unicode and emoji -->
             <box id="unicode-panel" class="panel" style="margin-bottom: 1; height: 10;">
-                <text class="section-title">Wide chars i emoji</text>
-                <text class="mono">🚀 = 2 kolumny</text>
-                <text class="mono">日本語 = 2×3</text>
-                <text class="mono">A = 1 kolumna</text>
+                <text class="section-title">Wide chars and emoji</text>
+                <text class="mono">🚀 = 2 columns</text>
+                <text class="mono">日本語 = 6 columns</text>
+                <text class="mono">A = 1 column</text>
                 <text class="mono">🚀A = [🚀][A]</text>
                 <text class="muted">UnicodeWidthCache</text>
             </box>
 
-            <!-- Kolory -->
+            <!-- Colors -->
             <box class="panel" style="border-color: #334155; height: 10;">
-                <text class="section-title">Paleta kolorów</text>
+                <text class="section-title">Color palette</text>
                 <text style="fg: #38bdf8; height: 1;">TrueColor #38bdf8</text>
                 <text style="fg: #4ade80; height: 1;">TrueColor #4ade80</text>
                 <text style="fg: #f87171; height: 1;">TrueColor #f87171</text>
-                <text style="fg: 226;     height: 1;">Color256(226) żółty</text>
-                <text style="fg: 46;      height: 1;">Color256(46) zieleń</text>
-                <text class="muted">dziedziczone przez dzieci</text>
+                <text style="fg: 226;     height: 1;">Color256(226) yellow</text>
+                <text style="fg: 46;      height: 1;">Color256(46) green</text>
+                <text class="muted">inherited by children</text>
             </box>
 
         </box>
 
-        <!-- Kolumna 2 -->
+        <!-- Column 2 -->
         <box style="flex-direction: column; width: 28; margin-right: 1;">
 
-            <!-- Ramki -->
+            <!-- Borders -->
             <box id="border-panel" class="panel" style="margin-bottom: 1; height: 9;">
-                <text class="section-title">Style ramek</text>
+                <text class="section-title">Border styles</text>
                 <box style="border-style: single;  border-color: #38bdf8;
                             height: 1; padding-left: 1; margin-bottom: 1;">
                     <text style="fg: #38bdf8; height: 1;">single ┌─┐</text>
@@ -10372,7 +11595,7 @@ button { border-style: single; }
 
             <!-- Padding/margin -->
             <box class="panel" style="border-color: #334155; height: 11;">
-                <text class="section-title">Padding i margin</text>
+                <text class="section-title">Padding and margin</text>
                 <box style="border-style: single; border-color: #475569;
                             padding-top: 1; padding-left: 2; margin-bottom: 1;">
                     <text class="mono">padding-top:1</text>
@@ -10385,29 +11608,29 @@ button { border-style: single; }
 
         </box>
 
-        <!-- Kolumna 3 -->
+        <!-- Column 3 -->
         <box style="flex-direction: column; flex: 1;">
 
-            <!-- Interaktywność + bind-show -->
+            <!-- Interactivity + bind-show -->
             <box id="state-panel" class="panel" style="margin-bottom: 1; height: 10;">
-                <text class="section-title">Stan i bind-show</text>
+                <text class="section-title">State and bind-show</text>
                 <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
-                    <text class="muted" style="width: 10;">licznik:</text>
+                    <text class="muted" style="width: 10;">counter:</text>
                     <text style="fg: #fbbf24; height: 1; width: 6;" bind-state="sc">0</text>
                     <button style="border-color: #4ade80; padding-left: 1; padding-right: 1;
                                    height: 1; fg: #4ade80;" event-htmx="inc:sc">[+]</button>
                     <button style="border-color: #f87171; padding-left: 1; padding-right: 1;
                                    height: 1; fg: #f87171;" event-htmx="dec:sc">[-]</button>
                 </box>
-                <!-- bind-show z kondycją liczbową -->
+                <!-- bind-show with numeric condition -->
                 <box bind-show="sc=0">
-                    <text class="muted">Licznik = 0 (bind-show="sc=0")</text>
+                    <text class="muted">Counter = 0 (bind-show="sc=0")</text>
                 </box>
                 <box bind-show="sc=false">
-                    <text class="ok">Licznik != 0 (bind-show="sc=false")</text>
+                    <text class="ok">Counter != 0 (bind-show="sc=false")</text>
                 </box>
-                <text class="muted" style="margin-top: 1;">Węzły nie istnieją w layoutcie</text>
-                <text class="muted">gdy warunek = false.</text>
+                <text class="muted" style="margin-top: 1;">Nodes do not exist in layout</text>
+                <text class="muted">when condition = false.</text>
             </box>
 
             <!-- Layout -->
@@ -10440,7 +11663,7 @@ button { border-style: single; }
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  Kliknij przyciski myszą lub Enter</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation  Click buttons with mouse or Enter</text>
     </box>
 
 </box>
@@ -10479,18 +11702,18 @@ button { border-style: single; }
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #4ade80; height: 1;">🔄 Wszystkie typy stanu — Int Bool Str List</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #4ade80; height: 1;">🔄 All State Types — Int Bool Str List</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 2; flex: 1;">
 
-        <!-- Lewa kolumna: stany + kontrolki -->
+        <!-- Left column: states + controls -->
         <box style="flex-direction: column; width: 44; margin-right: 2;">
 
             <!-- Int -->
             <box class="row">
-                <text class="label-col">Int (licznik):</text>
+                <text class="label-col">Int (counter):</text>
                 <text class="value-col" style="fg: #38bdf8;" bind-state="demo_int">0</text>
                 <text class="action" style="fg: #4ade80;" event-htmx="inc:demo_int">[+1]</text>
                 <text class="action" style="fg: #f87171;" event-htmx="dec:demo_int">[-1]</text>
@@ -10501,15 +11724,15 @@ button { border-style: single; }
             <box class="row">
                 <text class="label-col">Bool (toggle):</text>
                 <text class="value-col" style="fg: #fbbf24;" bind-state="demo_bool">false</text>
-                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[przełącz]</text>
+                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[toggle]</text>
             </box>
 
             <!-- Str set -->
             <box class="row">
                 <text class="label-col">Str (set):</text>
                 <text class="value-col" style="fg: #c084fc;" bind-state="demo_str">—</text>
-                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=aktywny">[aktywny]</text>
-                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=błąd">[błąd]</text>
+                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=active">[active]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=error">[error]</text>
                 <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_str">[x]</text>
             </box>
 
@@ -10524,18 +11747,18 @@ button { border-style: single; }
             <!-- Separator -->
             <box style="height: 1; border-style: single; border-color: #1e293b; margin-bottom: 1;"></box>
 
-            <!-- Legenda typów -->
-            <text style="fg: #64748b; height: 1;">Stany żyją w StateManager serwera.</text>
-            <text style="fg: #64748b; height: 1;">bind-state odświeża węzeł reaktywnie.</text>
-            <text style="fg: #64748b; height: 1;">clear: zeruje do wartości domyślnej</text>
-            <text style="fg: #64748b; height: 1;">dla danego typu (0, false, "", []).</text>
+            <!-- Type legend -->
+            <text style="fg: #64748b; height: 1;">States live in the server StateManager.</text>
+            <text style="fg: #64748b; height: 1;">bind-state updates the node reactively.</text>
+            <text style="fg: #64748b; height: 1;">clear: resets to default value</text>
+            <text style="fg: #64748b; height: 1;">for the given type (0, false, "", []).</text>
 
         </box>
 
-        <!-- Prawa kolumna: tabela typów -->
+        <!-- Right column: types table -->
         <box style="flex-direction: column; flex: 1; border-style: rounded;
                     border-color: #334155; padding: 1;">
-            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Typy StateValue:</text>
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">StateValue Types:</text>
             <text style="fg: #38bdf8;  height: 1;">Int(i64)       inc dec clear</text>
             <text style="fg: #fbbf24;  height: 1;">Bool(bool)     toggle clear</text>
             <text style="fg: #c084fc;  height: 1;">Str(String)    set clear</text>
@@ -10548,7 +11771,7 @@ button { border-style: single; }
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Wyjście  [Tab] Nawigacja  [Enter] Akcja</text>
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation  [Enter] Action</text>
     </box>
 
 </box>
@@ -10557,12 +11780,12 @@ button { border-style: single; }
 
 --- FILE: ./examples/styles_demo.thtml ---
 <style>
-/* Selektor tagu — wszystkie text dostają domyślny kolor */
+/* Tag selector — all text nodes get a default color */
 text {
     fg: #e2e8f0;
 }
 
-/* Klasy kart */
+/* Card classes */
 .card {
     border-style: rounded;
     padding: 1;
@@ -10570,28 +11793,28 @@ text {
     margin-right: 1;
 }
 
-/* Warianty kolorystyczne */
+/* Color variants */
 .blue   { border-color: #38bdf8; }
 .green  { border-color: #4ade80; }
 .amber  { border-color: #f59e0b; }
 .red    { border-color: #f87171; }
 .purple { border-color: #c084fc; }
 
-/* Nagłówek karty — nadpisuje tag selektor */
+/* Card header — overrides tag selector */
 .card-title {
     fg: #f8fafc;
     height: 1;
     margin-bottom: 1;
 }
 
-/* Selektory id */
+/* ID selectors */
 #cascade-demo {
     border-style: double;
     border-color: #c084fc;
     padding: 2;
 }
 
-/* Klasa wyciszona */
+/* Muted class */
 .muted {
     fg: #64748b;
     height: 1;
@@ -10603,49 +11826,49 @@ text {
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #c084fc; height: 1;">🎨 CSS klasy, id i kaskada — blok &lt;style&gt;</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #c084fc; height: 1;">🎨 CSS Classes, ID and Cascade — &lt;style&gt; block</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
 
-        <!-- Kolumna 1: karty z klasami -->
+        <!-- Column 1: cards with classes -->
         <box style="flex-direction: column; width: 36; margin-right: 1;">
 
             <box class="card blue" style="height: 7; margin-bottom: 1;">
-                <text class="card-title" style="fg: #38bdf8;">Karta .blue</text>
-                <text class="muted">Klasy nadają styl wielokrotnie</text>
+                <text class="card-title" style="fg: #38bdf8;">Card .blue</text>
+                <text class="muted">Classes apply style repeatedly</text>
             </box>
 
             <box class="card green" style="height: 7;">
-                <text class="card-title" style="fg: #4ade80;">Karta .green</text>
-                <text class="muted">Ten sam layout, inna klasa</text>
+                <text class="card-title" style="fg: #4ade80;">Card .green</text>
+                <text class="muted">Same layout, different class</text>
             </box>
 
         </box>
 
-        <!-- Kolumna 2: kaskada i priorytety -->
+        <!-- Column 2: cascade and priorities -->
         <box style="flex-direction: column; flex: 1;">
 
-            <text class="muted" style="margin-bottom: 1;">Kaskada (od najniższego priorytetu):</text>
+            <text class="muted" style="margin-bottom: 1;">Cascade (from lowest priority):</text>
 
-            <!-- Demo kaskady -->
+            <!-- Cascade demo -->
             <box id="cascade-demo" style="flex-direction: column; margin-bottom: 1;">
                 <text style="height: 1; fg: #94a3b8;">tag text { fg: #e2e8f0 }</text>
-                <text class="card-title">↑ klasa .card-title nadpisuje tag</text>
-                <text style="fg: #4ade80; height: 1;">↑ inline style="fg: #4ade80" wygrywa</text>
-                <text class="muted">Ten box ma id="cascade-demo"</text>
-                <text class="muted">→ double border z #cascade-demo</text>
+                <text class="card-title">↑ class .card-title overrides tag</text>
+                <text style="fg: #4ade80; height: 1;">↑ inline style="fg: #4ade80" wins</text>
+                <text class="muted">This box has id="cascade-demo"</text>
+                <text class="muted">→ double border from #cascade-demo</text>
             </box>
 
-            <!-- Tabela priorytetów -->
+            <!-- Priority table -->
             <box style="border-style: single; border-color: #334155; padding: 1;
                         flex-direction: column;">
-                <text style="fg: #94a3b8; height: 1;">Priorytety (rosnąco):</text>
+                <text style="fg: #94a3b8; height: 1;">Priorities (ascending):</text>
                 <text style="fg: #475569; height: 1;">1. tag     { }</text>
-                <text style="fg: #64748b; height: 1;">2. .klasa  { }</text>
+                <text style="fg: #64748b; height: 1;">2. .class  { }</text>
                 <text style="fg: #94a3b8; height: 1;">3. #id     { }</text>
-                <text style="fg: #e2e8f0; height: 1;">4. style=""  ← wygrywa zawsze</text>
+                <text style="fg: #e2e8f0; height: 1;">4. style=""  ← always wins</text>
             </box>
 
         </box>
@@ -10653,7 +11876,7 @@ text {
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation</text>
     </box>
 
 </box>
@@ -10689,76 +11912,76 @@ text {
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #4ade80; height: 1;">📝 Lista zadań — append i List state</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #4ade80; height: 1;">📝 Todo List — append and List state</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
 
-        <!-- Lista -->
+        <!-- List -->
         <box style="flex: 1; flex-direction: column; margin-right: 1;">
 
             <box style="flex-direction: row; justify-content: space-between;
                         align-items: center; margin-bottom: 1;">
-                <text style="fg: #4ade80; height: 1;">Zadania</text>
+                <text style="fg: #4ade80; height: 1;">Tasks</text>
                 <box style="flex-direction: row; align-items: center;">
-                    <text class="muted">Lista: </text>
+                    <text class="muted">List: </text>
                     <text style="fg: #4ade80; height: 1;" bind-state="task_list">[]</text>
                 </box>
             </box>
 
             <box class="task-row task-done">
-                <text style="height: 1;">[✓] Naprawić auth bug</text>
+                <text style="height: 1;">[✓] Fix auth bug</text>
                 <box class="badge" style="border-color: #334155;">
                     <text style="fg: #475569; height: 1;">DONE</text>
                 </box>
             </box>
 
             <box class="task-row task-active">
-                <text style="height: 1;">[→] Implementacja Hot Reload</text>
+                <text style="height: 1;">[→] Implement Hot Reload</text>
                 <box class="badge" style="border-color: #38bdf8;">
                     <text style="fg: #38bdf8; height: 1;">ACTIVE</text>
                 </box>
             </box>
 
             <box class="task-row task-todo">
-                <text style="height: 1;">[ ] Napisać dokumentację</text>
+                <text style="height: 1;">[ ] Write documentation</text>
                 <box class="badge" style="border-color: #1e293b;">
                     <text class="muted">TODO</text>
                 </box>
             </box>
 
-            <!-- Dodaj do listy przez append: -->
+            <!-- Add to list via append: -->
             <box style="height: 3; border-style: single; border-color: #4ade80;
                         justify-content: center; align-items: center;
-                        margin-top: 1;" event-htmx="append:task_list=nowe zadanie">
-                <text style="fg: #4ade80; height: 1;">[ + Dodaj do state listy ]</text>
+                        margin-top: 1;" event-htmx="append:task_list=new task">
+                <text style="fg: #4ade80; height: 1;">[ + Add to state list ]</text>
             </box>
 
             <box style="height: 1; margin-top: 1;">
-                <text class="muted">append:task_list=nowe dodaje do List state</text>
+                <text class="muted">append:task_list=new adds to List state</text>
             </box>
 
         </box>
 
-        <!-- Opis wzorca -->
+        <!-- Pattern description -->
         <box style="width: 24; border-style: rounded; border-color: #334155;
                     padding: 1; flex-direction: column;">
             <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">List state</text>
             <text class="muted">append:k=v</text>
-            <text class="muted">dodaje do listy.</text>
-            <text class="muted">clear:k czyści.</text>
+            <text class="muted">adds to list.</text>
+            <text class="muted">clear:k clears.</text>
             <text class="muted">bind-state="k"</text>
-            <text class="muted">pokazuje [a, b].</text>
+            <text class="muted">shows [a, b].</text>
             <box style="height: 1;"></box>
-            <text class="muted">Stan żyje</text>
-            <text class="muted">przez nawigację.</text>
+            <text class="muted">State persists</text>
+            <text class="muted">through navigation.</text>
         </box>
 
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście  [Tab] Nawigacja  [Enter] Dodaj element</text>
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Add Item</text>
     </box>
 
 </box>
@@ -10778,27 +12001,27 @@ text {
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
-        <text style="fg: #fb923c; height: 1;">🎬 Wideo — ffmpeg → CellBuffer → SSH</text>
-        <text class="muted" event-htmx="hello.thtml">← Wróć</text>
+        <text style="fg: #fb923c; height: 1;">🎬 Video — ffmpeg → CellBuffer → SSH</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">
 
-        <!-- Odtwarzacz -->
+        <!-- Player -->
         <box style="flex: 1; border-style: rounded; border-color: #fb923c;
                     justify-content: center; align-items: center;
                     bg: #000000; margin-right: 1;">
-            <video src="clip.mp4" alt="Demo wideo" style="width: 40; height: 18;" />
+            <video src="clip.mp4" alt="Video demo" style="width: 40; height: 18;" />
         </box>
 
-        <!-- Panel informacyjny -->
+        <!-- Information panel -->
         <box style="width: 30; flex-direction: column;">
 
             <box style="border-style: rounded; border-color: #38bdf8;
                         padding: 1; flex-direction: column; margin-bottom: 1;">
                 <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Pipeline</text>
                 <box class="stat-row">
-                    <text class="stat-key">Dekoder:</text>
+                    <text class="stat-key">Decoder:</text>
                     <text class="stat-val">ffmpeg stdin</text>
                 </box>
                 <box class="stat-row">
@@ -10811,19 +12034,19 @@ text {
                 </box>
                 <box class="stat-row">
                     <text class="stat-key">Eviction:</text>
-                    <text class="stat-val">5s bezczynności</text>
+                    <text class="stat-val">5s idle</text>
                 </box>
             </box>
 
             <box style="border-style: rounded; border-color: #4ade80;
                         padding: 1; flex-direction: column;">
-                <text style="fg: #4ade80; height: 1; margin-bottom: 1;">FPS wg protokołu</text>
+                <text style="fg: #4ade80; height: 1; margin-bottom: 1;">FPS by protocol</text>
                 <text class="muted">Kitty Graphics: 30fps</text>
                 <text class="muted">Sixel:          10fps</text>
                 <text class="muted">Unicode blocks:  2fps</text>
                 <box style="height: 1;"></box>
                 <text class="muted">Zero buf.clone()</text>
-                <text class="muted">RwLock na frame</text>
+                <text class="muted">RwLock per frame</text>
             </box>
 
         </box>
@@ -10831,7 +12054,7 @@ text {
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Wyjście — wymaga ffmpeg w systemie</text>
+        <text class="muted">[Q] Exit — requires ffmpeg on the system</text>
     </box>
 
 </box>

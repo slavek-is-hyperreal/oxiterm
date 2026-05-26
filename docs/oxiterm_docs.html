@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OxiTerm — Pełna Dokumentacja</title>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #161b27; --bg3: #1e2533;
+  --border: #2a3145; --border2: #3a4560;
+  --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+  --blue: #38bdf8; --blue-d: #0ea5e9; --blue-bg: #0c1e2e;
+  --green: #4ade80; --green-bg: #0a1e12;
+  --amber: #fbbf24; --amber-bg: #1e1600;
+  --red: #f87171; --red-bg: #1e0a0a;
+  --purple: #a78bfa; --purple-bg: #120e1e;
+  --teal: #2dd4bf; --teal-bg: #0a1a18;
+  --orange: #fb923c;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --sans: system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+
+/* NAV */
+nav { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; gap: 2px; padding: 8px 12px; flex-wrap: wrap; }
+nav button { background: none; border: 1px solid transparent; color: var(--text2); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all .15s; }
+nav button:hover { background: var(--bg3); color: var(--text); }
+nav button.active { background: var(--blue-bg); border-color: var(--blue-d); color: var(--blue); }
+
+/* SECTIONS */
+.section { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
+.section.active { display: block; }
+
+/* TYPOGRAPHY */
+h1 { font-size: 22px; font-weight: 600; color: var(--blue); margin-bottom: 8px; }
+h2 { font-size: 17px; font-weight: 600; color: var(--text); margin: 28px 0 12px; border-left: 3px solid var(--blue-d); padding-left: 10px; }
+h3 { font-size: 14px; font-weight: 600; color: var(--teal); margin: 18px 0 8px; }
+p { color: var(--text2); margin-bottom: 10px; }
+code { font-family: var(--mono); font-size: 12px; background: var(--bg3); padding: 2px 6px; border-radius: 4px; color: var(--amber); }
+pre { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text); margin: 10px 0; }
+
+/* CARDS */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin: 16px 0; }
+
+/* CRATE BADGE */
+.crate-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-family: var(--mono); color: var(--purple); margin-bottom: 12px; }
+
+/* FUNC TABLE */
+.func-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
+.func-table th { background: var(--bg3); color: var(--text2); padding: 8px 10px; text-align: left; font-weight: 500; border-bottom: 1px solid var(--border); }
+.func-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.func-table td:first-child { font-family: var(--mono); color: var(--amber); font-size: 12px; white-space: nowrap; }
+.func-table td:nth-child(2) { color: var(--text2); }
+.func-table td:nth-child(3) { color: var(--text3); font-size: 11.5px; }
+.func-table tr:hover td { background: var(--bg3); }
+
+/* BUG TABLE */
+.bug-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.bug-table th { background: var(--bg3); padding: 8px 12px; text-align: left; color: var(--text2); border-bottom: 1px solid var(--border); }
+.bug-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.bug-id { font-family: var(--mono); font-size: 11px; color: var(--red); }
+.bug-file { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.badge-fixed { background: var(--green-bg); color: var(--green); border: 1px solid #1a4a2a; }
+.badge-partial { background: var(--amber-bg); color: var(--amber); border: 1px solid #3a2a00; }
+.badge-open { background: var(--red-bg); color: var(--red); border: 1px solid #3a1010; }
+.badge-new { background: var(--purple-bg); color: var(--purple); border: 1px solid #2a1a4a; }
+
+/* SVG DIAGRAM */
+.diagram-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; overflow-x: auto; }
+svg text { font-family: var(--sans); }
+
+/* FLOW STEP */
+.pipeline-step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.step-num { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--blue-bg); border: 1px solid var(--blue-d); color: var(--blue); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.step-body { flex: 1; }
+.step-title { color: var(--text); font-weight: 500; font-size: 13px; }
+.step-desc { color: var(--text2); font-size: 12.5px; margin-top: 2px; }
+
+/* TERMINAL TABS */
+.term-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.term-tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border2); background: none; color: var(--text2); cursor: pointer; font-size: 12px; }
+.term-tab.active { background: var(--blue-bg); border-color: var(--blue-d); color: var(--blue); }
+.term-panel { display: none; }
+.term-panel.active { display: block; }
+
+/* NOTICE */
+.notice { background: var(--amber-bg); border: 1px solid #3a2a00; border-radius: 8px; padding: 12px 14px; margin: 12px 0; color: var(--amber); font-size: 13px; }
+.notice-red { background: var(--red-bg); border-color: #3a1010; color: var(--red); }
+.notice-green { background: var(--green-bg); border-color: #1a3a1a; color: var(--green); }
+
+/* ARROW */
+.arr-down { text-align: center; color: var(--border2); font-size: 18px; margin: 4px 0; }
+
+/* LEGEND */
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 16px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <button class="active" onclick="show('overview')">🏗 Architektura</button>
+  <button onclick="show('flow')">🔄 Przepływ danych</button>
+  <button onclick="show('pipeline')">🖥 Pipeline renderowania</button>
+  <button onclick="show('proto')">📦 oxiterm-proto</button>
+  <button onclick="show('renderer')">🎨 oxiterm-renderer</button>
+  <button onclick="show('server')">🖧 oxiterm-server</button>
+  <button onclick="show('web')">🌐 oxiterm-web</button>
+  <button onclick="show('cli')">💻 oxiterm-cli</button>
+  <button onclick="show('a11y')">♿ oxiterm-a11y</button>
+  <button onclick="show('bugs')">🐛 Błędy</button>
+  <button onclick="show('examples')">📄 THTML/TCSS</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════ OVERVIEW ═══ -->
+<div id="overview" class="section active">
+<h1>OxiTerm — Mapa Architektoniczna</h1>
+<p>OxiTerm to platforma TUI (Terminal User Interface) działająca w modelu SSR (Server-Side Rendering). Serwer parsuje pliki THTML, oblicza layout, renderuje do bufora komórek, tworzy ANSI diff i przesyła przez SSH lub WebSocket. Klient nie potrzebuje żadnej instalacji.</p>
+
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 960 680" role="img">
+<title>OxiTerm Architecture Overview</title>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- CLIENTS LEFT -->
+<rect x="10" y="60" width="130" height="44" rx="8" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="75" y="82" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="500">SSH Client</text>
+<text x="75" y="96" text-anchor="middle" font-size="10" fill="#64748b">kitty / wezterm</text>
+
+<rect x="10" y="120" width="130" height="44" rx="8" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="75" y="142" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="500">Web Browser</text>
+<text x="75" y="156" text-anchor="middle" font-size="10" fill="#64748b">xterm.js + WASM</text>
+
+<rect x="10" y="180" width="130" height="44" rx="8" fill="#120e1e" stroke="#7c3aed" stroke-width="0.8"/>
+<text x="75" y="202" text-anchor="middle" font-size="12" fill="#a78bfa" font-weight="500">Screen Reader</text>
+<text x="75" y="216" text-anchor="middle" font-size="10" fill="#64748b">DBus / AT-SPI</text>
+
+<!-- CLIENT → SERVER ARROWS -->
+<line x1="140" y1="82" x2="195" y2="82" stroke="#0ea5e9" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="140" y1="142" x2="195" y2="142" stroke="#0ea5e9" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="140" y1="202" x2="195" y2="202" stroke="#7c3aed" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- TRANSPORT LAYER -->
+<rect x="195" y="45" width="120" height="220" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="4,3"/>
+<text x="255" y="62" text-anchor="middle" font-size="11" fill="#64748b">Transport</text>
+
+<rect x="205" y="68" width="100" height="36" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="255" y="86" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">russh</text>
+<text x="255" y="98" text-anchor="middle" font-size="10" fill="#64748b">SSH daemon</text>
+
+<rect x="205" y="115" width="100" height="36" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="255" y="133" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">WebSocket</text>
+<text x="255" y="147" text-anchor="middle" font-size="10" fill="#64748b">tokio-tungstenite</text>
+
+<rect x="205" y="160" width="100" height="36" rx="6" fill="#120e1e" stroke="#6d28d9" stroke-width="0.8"/>
+<text x="255" y="178" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="500">LinearSink</text>
+<text x="255" y="192" text-anchor="middle" font-size="10" fill="#64748b">A11y output</text>
+
+<rect x="205" y="207" width="100" height="36" rx="6" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="255" y="225" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">RateLimiter</text>
+<text x="255" y="239" text-anchor="middle" font-size="10" fill="#64748b">60 conn/min</text>
+
+<!-- TRANSPORT → SESSION REGISTRY -->
+<line x1="315" y1="155" x2="345" y2="155" stroke="#4b5563" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- SESSION REGISTRY -->
+<rect x="345" y="45" width="150" height="230" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="4,3"/>
+<text x="420" y="62" text-anchor="middle" font-size="11" fill="#64748b">Session Registry</text>
+
+<rect x="355" y="68" width="130" height="50" rx="6" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="420" y="88" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">ClientSession</text>
+<text x="420" y="102" text-anchor="middle" font-size="10" fill="#64748b">state, dims, metrics</text>
+<text x="420" y="114" text-anchor="middle" font-size="10" fill="#64748b">predictive_echo</text>
+
+<rect x="355" y="128" width="130" height="36" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="420" y="146" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">ReactorThread</text>
+<text x="420" y="160" text-anchor="middle" font-size="10" fill="#64748b">InputStateMachine</text>
+
+<rect x="355" y="174" width="130" height="36" rx="6" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="420" y="192" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">BoundedFrameChannel</text>
+<text x="420" y="206" text-anchor="middle" font-size="10" fill="#64748b">backpressure cap=128</text>
+
+<rect x="355" y="220" width="130" height="36" rx="6" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="420" y="238" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">StateManager</text>
+<text x="420" y="252" text-anchor="middle" font-size="10" fill="#64748b">inc/dec/toggle/set</text>
+
+<!-- SESSION → EVENTLOOP -->
+<line x1="495" y1="155" x2="525" y2="155" stroke="#4b5563" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- EVENT LOOP -->
+<rect x="525" y="45" width="160" height="370" rx="10" fill="#161b27" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="4,3"/>
+<text x="605" y="62" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="600">EventLoop</text>
+
+<rect x="535" y="70" width="140" height="36" rx="6" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="605" y="88" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">THTMLDocument</text>
+<text x="605" y="102" text-anchor="middle" font-size="10" fill="#64748b">DOM Arena + root</text>
+
+<rect x="535" y="116" width="140" height="36" rx="6" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="605" y="134" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">LayoutEngine (Taffy)</text>
+<text x="605" y="148" text-anchor="middle" font-size="10" fill="#64748b">Flexbox compute</text>
+
+<rect x="535" y="162" width="140" height="36" rx="6" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="605" y="180" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">Renderer</text>
+<text x="605" y="194" text-anchor="middle" font-size="10" fill="#64748b">CellBuffer fill</text>
+
+<rect x="535" y="208" width="140" height="36" rx="6" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="605" y="226" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">DoubleBuffer + Diff</text>
+<text x="605" y="240" text-anchor="middle" font-size="10" fill="#64748b">minimal ANSI diff</text>
+
+<rect x="535" y="254" width="140" height="36" rx="6" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="605" y="272" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">FrameSink (trait)</text>
+<text x="605" y="286" text-anchor="middle" font-size="10" fill="#64748b">AnsiSink / WsSink</text>
+
+<rect x="535" y="300" width="140" height="36" rx="6" fill="#120e1e" stroke="#6d28d9" stroke-width="0.8"/>
+<text x="605" y="318" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="500">AppDispatcher</text>
+<text x="605" y="332" text-anchor="middle" font-size="10" fill="#64748b">fire-and-forget POST</text>
+
+<rect x="535" y="346" width="140" height="36" rx="6" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="605" y="364" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">HitTester + EventBus</text>
+<text x="605" y="378" text-anchor="middle" font-size="10" fill="#64748b">click / focus / mouse</text>
+
+<!-- EVENTLOOP → RENDERER DETAIL RIGHT -->
+<line x1="685" y1="155" x2="715" y2="155" stroke="#4b5563" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- RENDERER CRATE -->
+<rect x="715" y="45" width="155" height="290" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="4,3"/>
+<text x="792" y="62" text-anchor="middle" font-size="11" fill="#64748b">oxiterm-renderer</text>
+
+<rect x="725" y="70" width="135" height="36" rx="6" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="792" y="88" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">THTMLParser (nom)</text>
+<text x="792" y="102" text-anchor="middle" font-size="10" fill="#64748b">→ DOM Arena</text>
+
+<rect x="725" y="116" width="135" height="36" rx="6" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="792" y="134" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">TCSSParser (nom)</text>
+<text x="792" y="148" text-anchor="middle" font-size="10" fill="#64748b">→ ComputedStyle</text>
+
+<rect x="725" y="162" width="135" height="36" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="792" y="180" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">SvgCache + AssetCache</text>
+<text x="792" y="194" text-anchor="middle" font-size="10" fill="#64748b">usvg tree / px stream</text>
+
+<rect x="725" y="208" width="135" height="36" rx="6" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="792" y="226" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">KittyImageManager</text>
+<text x="792" y="240" text-anchor="middle" font-size="10" fill="#64748b">PNG → APC base64</text>
+
+<rect x="725" y="254" width="135" height="36" rx="6" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="792" y="272" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">SixelCodec</text>
+<text x="792" y="286" text-anchor="middle" font-size="10" fill="#64748b">quant + DCS encoding</text>
+
+<rect x="725" y="300" width="135" height="36" rx="6" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="792" y="318" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">DiffEngine</text>
+<text x="792" y="332" text-anchor="middle" font-size="10" fill="#64748b">ANSI cmds + binary</text>
+
+<!-- FILES source area -->
+<rect x="715" y="370" width="230" height="80" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="4,3"/>
+<text x="830" y="387" text-anchor="middle" font-size="11" fill="#64748b">Source Assets</text>
+<rect x="725" y="395" width="70" height="28" rx="4" fill="#0f1117" stroke="#2a3145"/>
+<text x="760" y="413" text-anchor="middle" font-size="10" fill="#94a3b8">.thtml files</text>
+<rect x="805" y="395" width="70" height="28" rx="4" fill="#0f1117" stroke="#2a3145"/>
+<text x="840" y="413" text-anchor="middle" font-size="10" fill="#94a3b8">.svg / .json</text>
+<rect x="885" y="395" width="50" height="28" rx="4" fill="#0f1117" stroke="#2a3145"/>
+<text x="910" y="413" text-anchor="middle" font-size="10" fill="#94a3b8">.riv / .mp4</text>
+
+<line x1="830" y1="370" x2="792" y2="335" stroke="#2a3145" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+
+<!-- WASM BOX -->
+<rect x="10" y="300" width="130" height="80" rx="8" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="4,3"/>
+<text x="75" y="318" text-anchor="middle" font-size="11" fill="#64748b">oxiterm-web</text>
+<rect x="20" y="325" width="110" height="44" rx="6" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="75" y="343" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">WebTerminal</text>
+<text x="75" y="357" text-anchor="middle" font-size="10" fill="#64748b">WASM Canvas</text>
+
+<!-- WS SINK → WASM -->
+<line x1="605" y1="295" x2="605" y2="470" stroke="#0ea5e9" stroke-width="0.8" stroke-dasharray="4,2"/>
+<line x1="605" y1="470" x2="75" y2="470" stroke="#0ea5e9" stroke-width="0.8" stroke-dasharray="4,2"/>
+<line x1="75" y1="470" x2="75" y2="380" stroke="#0ea5e9" stroke-width="0.8" stroke-dasharray="4,2" marker-end="url(#arr)"/>
+<text x="340" y="484" text-anchor="middle" font-size="10" fill="#64748b">binary diff frames (WebSocket)</text>
+
+<!-- METRICS -->
+<rect x="345" y="310" width="150" height="50" rx="8" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="420" y="330" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">Prometheus Metrics</text>
+<text x="420" y="345" text-anchor="middle" font-size="10" fill="#64748b">:9090/metrics</text>
+<text x="420" y="357" text-anchor="middle" font-size="10" fill="#64748b">bytes/frames/drops</text>
+
+<!-- HOT RELOAD -->
+<rect x="345" y="375" width="150" height="50" rx="8" fill="#120e1e" stroke="#6d28d9" stroke-width="0.8"/>
+<text x="420" y="395" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="500">Hot Reload (inotify)</text>
+<text x="420" y="408" text-anchor="middle" font-size="10" fill="#64748b">file watcher</text>
+<text x="420" y="420" text-anchor="middle" font-size="10" fill="#64748b">→ InputEvent::Reload</text>
+
+<!-- APP DISPATCHER -->
+<rect x="525" y="440" width="160" height="50" rx="8" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="605" y="460" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">External App Server</text>
+<text x="605" y="473" text-anchor="middle" font-size="10" fill="#64748b">POST /events</text>
+<text x="605" y="485" text-anchor="middle" font-size="10" fill="#64748b">JSON state patch ← resp.</text>
+<line x1="605" y1="382" x2="605" y2="440" stroke="#6d28d9" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+
+<!-- LEGEND -->
+<rect x="10" y="500" width="940" height="1" fill="#2a3145"/>
+<text x="20" y="525" font-size="11" fill="#64748b">Legenda:</text>
+<rect x="70" y="514" width="10" height="10" rx="2" fill="#0c1e2e" stroke="#0ea5e9"/>
+<text x="85" y="525" font-size="11" fill="#94a3b8">SSH/WS transport</text>
+<rect x="180" y="514" width="10" height="10" rx="2" fill="#0a1a18" stroke="#0d9488"/>
+<text x="195" y="525" font-size="11" fill="#94a3b8">Render/Layout</text>
+<rect x="280" y="514" width="10" height="10" rx="2" fill="#1a0800" stroke="#c2410c"/>
+<text x="295" y="525" font-size="11" fill="#94a3b8">Graphics (Kitty/Sixel)</text>
+<rect x="420" y="514" width="10" height="10" rx="2" fill="#120e1e" stroke="#6d28d9"/>
+<text x="435" y="525" font-size="11" fill="#94a3b8">Accessibility</text>
+<rect x="520" y="514" width="10" height="10" rx="2" fill="#1e1600" stroke="#d97706"/>
+<text x="535" y="525" font-size="11" fill="#94a3b8">Backpressure/Rate limit</text>
+<rect x="680" y="514" width="10" height="10" rx="2" fill="#0a1e12" stroke="#16a34a"/>
+<text x="695" y="525" font-size="11" fill="#94a3b8">Metrics/Monitoring</text>
+
+<!-- TITLE LABELS FOR ZONES -->
+<text x="20" y="42" font-size="10" fill="#0ea5e9" font-weight="600">KLIENCI</text>
+<text x="200" y="42" font-size="10" fill="#2dd4bf" font-weight="600">TRANSPORT</text>
+<text x="350" y="42" font-size="10" fill="#38bdf8" font-weight="600">SESJE</text>
+<text x="530" y="42" font-size="10" fill="#2dd4bf" font-weight="600">EVENT LOOP</text>
+<text x="720" y="42" font-size="10" fill="#94a3b8" font-weight="600">RENDERER</text>
+</svg>
+</div>
+
+<div class="card-grid">
+  <div class="card">
+    <h3>🔑 Kluczowe właściwości</h3>
+    <ul style="color:var(--text2);padding-left:18px;font-size:13px;line-height:2">
+      <li>SSR — rendering całkowicie po stronie serwera</li>
+      <li>THTML/TCSS — markup jak HTML/CSS, ale dla terminala</li>
+      <li>Auto-negocjacja: Kitty → Sixel → Unicode half-blocks</li>
+      <li>Backpressure: BoundedFrameChannel (drop oldest)</li>
+      <li>Hot Reload: inotify → InputEvent::Reload</li>
+      <li>Predictive Echo: lokalne echo przed potwierdzeniem</li>
+      <li>BSU/ESU: synchronized update (brak tearingu)</li>
+      <li>A11y: LinearFrameSink + DBus/AT-SPI</li>
+      <li>Metryki Prometheus na :9090</li>
+      <li>Zewnętrzny App Server: fire-and-forget POST JSON</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>📦 Workspace Crates</h3>
+    <table class="func-table">
+      <tr><th>Crate</th><th>Rola</th></tr>
+      <tr><td>oxiterm-proto</td><td>Typy danych: DOM, Input, Style, TerminalProfile</td></tr>
+      <tr><td>oxiterm-renderer</td><td>Parser THTML/TCSS, layout (Taffy), rendering, diff</td></tr>
+      <tr><td>oxiterm-server</td><td>SSH/WS serwer, EventLoop, SessionRegistry, State</td></tr>
+      <tr><td>oxiterm-web</td><td>WASM frontend — WebTerminal Canvas renderer</td></tr>
+      <tr><td>oxiterm-cli</td><td>CLI: serve / check / demo</td></tr>
+      <tr><td>oxiterm-a11y</td><td>Drzewo A11y, LinearFrameSink, DBusBridge</td></tr>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ FLOW ═══ -->
+<div id="flow" class="section">
+<h1>Przepływ Danych — Pełny Cykl</h1>
+
+<h2>1. Inicjalizacja połączenia SSH</h2>
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 860 320" role="img">
+<title>SSH connection initialization flow</title>
+<defs><marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<!-- boxes -->
+<rect x="10" y="60" width="100" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="60" y="82" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">Terminal</text>
+<text x="60" y="96" text-anchor="middle" font-size="10" fill="#64748b">ssh :2222</text>
+
+<rect x="140" y="60" width="110" height="44" rx="7" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="195" y="82" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">russh / OxiServer</text>
+<text x="195" y="96" text-anchor="middle" font-size="10" fill="#64748b">auth + pty_request</text>
+
+<rect x="280" y="60" width="110" height="44" rx="7" fill="#161b27" stroke="#2a3145" stroke-width="0.8"/>
+<text x="335" y="82" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">SessionRegistry</text>
+<text x="335" y="96" text-anchor="middle" font-size="10" fill="#64748b">create_session()</text>
+
+<rect x="420" y="60" width="110" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="475" y="82" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">ClientSession</text>
+<text x="475" y="96" text-anchor="middle" font-size="10" fill="#64748b">spawn ReactorThread</text>
+
+<rect x="560" y="60" width="110" height="44" rx="7" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="615" y="82" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">Negotiator</text>
+<text x="615" y="96" text-anchor="middle" font-size="10" fill="#64748b">DA1+Kitty probe</text>
+
+<rect x="700" y="60" width="120" height="44" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="760" y="82" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">EventLoop::run()</text>
+<text x="760" y="96" text-anchor="middle" font-size="10" fill="#64748b">main tick loop</text>
+
+<!-- arrows -->
+<line x1="110" y1="82" x2="138" y2="82" stroke="#0ea5e9" stroke-width="1" marker-end="url(#arr2)"/>
+<line x1="250" y1="82" x2="278" y2="82" stroke="#4b5563" stroke-width="1" marker-end="url(#arr2)"/>
+<line x1="390" y1="82" x2="418" y2="82" stroke="#4b5563" stroke-width="1" marker-end="url(#arr2)"/>
+<line x1="530" y1="82" x2="558" y2="82" stroke="#0ea5e9" stroke-width="1" marker-end="url(#arr2)"/>
+<line x1="670" y1="82" x2="698" y2="82" stroke="#16a34a" stroke-width="1" marker-end="url(#arr2)"/>
+
+<!-- labels below arrows -->
+<text x="125" y="132" text-anchor="middle" font-size="9" fill="#64748b">TCP accept</text>
+<text x="264" y="132" text-anchor="middle" font-size="9" fill="#64748b">RateLimit check</text>
+<text x="404" y="132" text-anchor="middle" font-size="9" fill="#64748b">mpsc::channel</text>
+<text x="544" y="132" text-anchor="middle" font-size="9" fill="#64748b">ESC[c + ESC_G probe</text>
+<text x="684" y="132" text-anchor="middle" font-size="9" fill="#64748b">TerminalProfile ready</text>
+
+<!-- negotiate responses -->
+<rect x="140" y="160" width="540" height="80" rx="8" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="410" y="180" text-anchor="middle" font-size="11" fill="#64748b">Negocjacja zdolności terminala (DA1 response)</text>
+<rect x="155" y="192" width="110" height="28" rx="5" fill="#1a0800" stroke="#c2410c"/>
+<text x="210" y="210" text-anchor="middle" font-size="10" fill="#fb923c">Kitty gfx → PNG</text>
+<rect x="275" y="192" width="110" height="28" rx="5" fill="#1a0800" stroke="#c2410c"/>
+<text x="330" y="210" text-anchor="middle" font-size="10" fill="#fb923c">Sixel → DCS quant</text>
+<rect x="395" y="192" width="130" height="28" rx="5" fill="#0f1117" stroke="#2a3145"/>
+<text x="460" y="210" text-anchor="middle" font-size="10" fill="#64748b">Unicode half-blocks</text>
+<rect x="535" y="192" width="130" height="28" rx="5" fill="#0c1e2e" stroke="#0ea5e9"/>
+<text x="600" y="210" text-anchor="middle" font-size="10" fill="#38bdf8">Kitty kbd + SGR mouse</text>
+</svg>
+</div>
+
+<h2>2. Główna pętla renderowania (EventLoop::run)</h2>
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 860 420" role="img">
+<title>EventLoop main render loop</title>
+<defs><marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<rect x="350" y="20" width="140" height="36" rx="18" fill="#0a1a18" stroke="#0d9488" stroke-width="1"/>
+<text x="420" y="43" text-anchor="middle" font-size="12" fill="#2dd4bf" font-weight="500">START: EventLoop</text>
+<line x1="420" y1="56" x2="420" y2="75" stroke="#0d9488" stroke-width="1" marker-end="url(#arr3)"/>
+
+<!-- recv_timeout -->
+<rect x="300" y="75" width="240" height="50" rx="8" fill="#161b27" stroke="#2a3145" stroke-width="0.8"/>
+<text x="420" y="97" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">recv_timeout(5ms | 66ms)</text>
+<text x="420" y="112" text-anchor="middle" font-size="10" fill="#64748b">BoundedFrameChannel blokuje na Condvar</text>
+<line x1="420" y1="125" x2="420" y2="150" stroke="#4b5563" stroke-width="1" marker-end="url(#arr3)"/>
+
+<!-- events branch -->
+<text x="420" y="146" text-anchor="middle" font-size="10" fill="#64748b">event type?</text>
+<!-- KeyPress -->
+<rect x="20" y="155" width="130" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="85" y="175" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">KeyPress</text>
+<text x="85" y="188" text-anchor="middle" font-size="10" fill="#64748b">focus / HTMX / input</text>
+<!-- Mouse -->
+<rect x="165" y="155" width="130" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="230" y="175" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">MouseEvent</text>
+<text x="230" y="188" text-anchor="middle" font-size="10" fill="#64748b">HitTester → HTMX</text>
+<!-- Resize -->
+<rect x="310" y="155" width="130" height="44" rx="7" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="375" y="175" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">Resize</text>
+<text x="375" y="188" text-anchor="middle" font-size="10" fill="#64748b">debounce 100ms</text>
+<!-- Reload -->
+<rect x="455" y="155" width="130" height="44" rx="7" fill="#120e1e" stroke="#6d28d9" stroke-width="0.8"/>
+<text x="520" y="175" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="500">Reload</text>
+<text x="520" y="188" text-anchor="middle" font-size="10" fill="#64748b">re-parse .thtml</text>
+<!-- StatePatched -->
+<rect x="600" y="155" width="130" height="44" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="665" y="175" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">StatePatched</text>
+<text x="665" y="188" text-anchor="middle" font-size="10" fill="#64748b">from AppDispatcher</text>
+
+<!-- arrows from branch -->
+<line x1="420" y1="150" x2="85" y2="155" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+<line x1="420" y1="150" x2="230" y2="155" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+<line x1="420" y1="150" x2="375" y2="155" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+<line x1="420" y1="150" x2="520" y2="155" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+<line x1="420" y1="150" x2="665" y2="155" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+
+<!-- all converge to needs_render=true -->
+<line x1="85" y1="199" x2="85" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="230" y1="199" x2="230" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="375" y1="199" x2="375" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="520" y1="199" x2="520" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="665" y1="199" x2="665" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="85" y1="240" x2="665" y2="240" stroke="#4b5563" stroke-width="0.8"/>
+<line x1="420" y1="240" x2="420" y2="258" stroke="#4b5563" stroke-width="0.8" marker-end="url(#arr3)"/>
+
+<!-- RENDER PIPELINE -->
+<rect x="270" y="258" width="300" height="120" rx="10" fill="#0a1e12" stroke="#16a34a" stroke-width="1"/>
+<text x="420" y="278" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="600">Pipeline renderowania (gdy needs_render)</text>
+<text x="420" y="296" text-anchor="middle" font-size="10" fill="#64748b">1. StateManager.inject_text() → DOM nodes</text>
+<text x="420" y="310" text-anchor="middle" font-size="10" fill="#64748b">2. LayoutEngine.compute() → LayoutResult</text>
+<text x="420" y="324" text-anchor="middle" font-size="10" fill="#64748b">3. Renderer.render_node() → CellBuffer (back)</text>
+<text x="420" y="338" text-anchor="middle" font-size="10" fill="#64748b">4. DiffEngine.diff(front, back) → AnsiCommands</text>
+<text x="420" y="352" text-anchor="middle" font-size="10" fill="#64748b">5. FrameSink.send_frame() → BSU + ANSI + ESU</text>
+<text x="420" y="366" text-anchor="middle" font-size="10" fill="#64748b">6. DoubleBuffer.swap() — back → front</text>
+
+<line x1="420" y1="378" x2="420" y2="395" stroke="#16a34a" stroke-width="1" marker-end="url(#arr3)"/>
+<!-- loop back -->
+<rect x="340" y="395" width="160" height="20" rx="10" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="420" y="408" text-anchor="middle" font-size="10" fill="#2dd4bf">↺ powrót do recv_timeout</text>
+</svg>
+</div>
+
+<h2>3. Przepływ input → state → render</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div class="card">
+<h3>Klikięcie przycisku (event-htmx)</h3>
+<div class="pipeline-step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Terminal → ReactorThread</div><div class="step-desc">Raw bytes SSH → <code>sanitize_frame()</code> → <code>InputStateMachine.feed_slice()</code> → <code>InputEvent::KeyPress</code> lub <code>MouseEvent</code></div></div></div>
+<div class="pipeline-step"><div class="step-num">2</div><div class="step-body"><div class="step-title">EventLoop odbiera event</div><div class="step-desc"><code>recv_timeout()</code> zwraca event, <code>last_activity</code> reset. Dla mouse: <code>HitTester.find_node(col, row)</code> → NodeId</div></div></div>
+<div class="pipeline-step"><div class="step-num">3</div><div class="step-body"><div class="step-title">HTMX action lookup</div><div class="step-desc">Na znalezionej node: czytamy <code>attrs.event_htmx</code>, np. <code>"inc:count"</code>. Wywołujemy <code>StateManager.apply_action()</code></div></div></div>
+<div class="pipeline-step"><div class="step-num">4</div><div class="step-body"><div class="step-title">State dirty → needs_render</div><div class="step-desc"><code>StateManager.get_dirty_nodes()</code> zwraca subskrybentów. <code>doc.mark_dirty()</code>. Ustawia <code>needs_render = true</code></div></div></div>
+<div class="pipeline-step"><div class="step-num">5</div><div class="step-body"><div class="step-title">Re-render → diff → send</div><div class="step-desc">Pełny pipeline: layout → renderer → diff. Tylko zmienione komórki generują ANSI commands. Owija BSU/ESU.</div></div></div>
+<div class="pipeline-step"><div class="step-num">6</div><div class="step-body"><div class="step-title">AppDispatcher (opcjonalnie)</div><div class="step-desc">Fire-and-forget POST do zewnętrznego serwera. Odpowiedź JSON → <code>apply_state_patch()</code> → <code>InputEvent::StatePatched</code></div></div></div>
+</div>
+<div class="card">
+<h3>Wpisywanie tekstu (&lt;input bind-value&gt;)</h3>
+<div class="pipeline-step"><div class="step-num">1</div><div class="step-body"><div class="step-title">PredictiveEcho</div><div class="step-desc">Znak pojawia się natychmiastowo lokalnie przez <code>PredictiveEcho.push(ch)</code> bez oczekiwania na re-render. Zero-latency feedback.</div></div></div>
+<div class="pipeline-step"><div class="step-num">2</div><div class="step-body"><div class="step-title">StateManager update</div><div class="step-desc">EventLoop wykrywa <code>focused_node</code> z <code>bind_value</code>, aktualizuje klucz w StateManager. Triggeruje dirty.</div></div></div>
+<div class="pipeline-step"><div class="step-num">3</div><div class="step-body"><div class="step-title">inject_initial_state()</div><div class="step-desc">Przed każdym renderem: wartości state wstrzykiwane do text-content węzłów z <code>bind-state</code>.</div></div></div>
+<div class="pipeline-step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Confirm / BUG-H01</div><div class="step-desc"><code>PredictiveEcho.confirm(ch)</code> — FIFO usunięcie pierwszego znaku z bufora po potwierdzeniu. Ostrzeżenie jeśli niezgodność.</div></div></div>
+</div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PIPELINE ═══ -->
+<div id="pipeline" class="section">
+<h1>Pipeline Renderowania — wg Terminala Docelowego</h1>
+<p>OxiTerm auto-negocjuje zdolności terminala przez DA1 query (<code>ESC[c</code>) i Kitty Graphics probe (<code>ESC_Gi=31...</code>). Wybiera najlepszy backend graficzny.</p>
+
+<div class="term-tabs">
+  <button class="term-tab active" onclick="showTerm('kitty')">🐱 Kitty Protocol</button>
+  <button class="term-tab" onclick="showTerm('sixel')">📊 Sixel (iTerm2/mlterm)</button>
+  <button class="term-tab" onclick="showTerm('unicode')">🔷 Unicode half-blocks</button>
+  <button class="term-tab" onclick="showTerm('web')">🌐 Web (xterm.js + WASM)</button>
+  <button class="term-tab" onclick="showTerm('a11y')">♿ A11y (Screen Reader)</button>
+</div>
+
+<!-- KITTY -->
+<div id="term-kitty" class="term-panel active">
+<h2>Kitty Graphics Protocol — pełna grafika pikselowa</h2>
+<div class="notice-green notice">✓ Najwyższa jakość. Obsługiwane przez: kitty, WezTerm (częściowo), Ghostty.</div>
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 860 400" role="img">
+<title>Kitty terminal rendering pipeline</title>
+<defs><marker id="ak" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<!-- Step boxes horizontal -->
+<rect x="10" y="60" width="110" height="56" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="65" y="82" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">THTML DOM</text>
+<text x="65" y="95" text-anchor="middle" font-size="10" fill="#64748b">&lt;img src=".svg"&gt;</text>
+<text x="65" y="108" text-anchor="middle" font-size="10" fill="#64748b">&lt;img src=".json"&gt;</text>
+
+<line x1="120" y1="88" x2="148" y2="88" stroke="#0ea5e9" stroke-width="1" marker-end="url(#ak)"/>
+
+<rect x="148" y="60" width="110" height="56" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="203" y="82" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">Layout</text>
+<text x="203" y="95" text-anchor="middle" font-size="10" fill="#64748b">Rect {x,y,w,h}</text>
+<text x="203" y="108" text-anchor="middle" font-size="10" fill="#64748b">w px = cols*cell_px</text>
+
+<line x1="258" y1="88" x2="286" y2="88" stroke="#16a34a" stroke-width="1" marker-end="url(#ak)"/>
+
+<rect x="286" y="60" width="130" height="56" rx="7" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="351" y="80" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">Rasteryzacja</text>
+<text x="351" y="93" text-anchor="middle" font-size="10" fill="#64748b">SVG: resvg+tiny-skia</text>
+<text x="351" y="107" text-anchor="middle" font-size="10" fill="#64748b">Lottie: rlottie frame N</text>
+<text x="351" y="119" text-anchor="middle" font-size="10" fill="#64748b">Rive: custom tick</text>
+
+<line x1="416" y1="88" x2="444" y2="88" stroke="#0d9488" stroke-width="1" marker-end="url(#ak)"/>
+
+<rect x="444" y="60" width="130" height="56" rx="7" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="509" y="80" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">KittyImageManager</text>
+<text x="509" y="93" text-anchor="middle" font-size="10" fill="#64748b">RGBA → PNG encode</text>
+<text x="509" y="107" text-anchor="middle" font-size="10" fill="#64748b">→ base64 chunks 4096B</text>
+<text x="509" y="119" text-anchor="middle" font-size="10" fill="#64748b">ESC_Ga=T,f=100,c=,r=</text>
+
+<line x1="574" y1="88" x2="602" y2="88" stroke="#c2410c" stroke-width="1" marker-end="url(#ak)"/>
+
+<rect x="602" y="60" width="120" height="56" rx="7" fill="#161b27" stroke="#2a3145" stroke-width="0.8"/>
+<text x="662" y="80" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">CellBuffer</text>
+<text x="662" y="93" text-anchor="middle" font-size="10" fill="#64748b">cells[] + graphics[]</text>
+<text x="662" y="107" text-anchor="middle" font-size="10" fill="#64748b">skip=true na px cells</text>
+
+<line x1="722" y1="88" x2="750" y2="88" stroke="#4b5563" stroke-width="1" marker-end="url(#ak)"/>
+
+<rect x="750" y="60" width="100" height="56" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="800" y="80" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">DiffEngine</text>
+<text x="800" y="93" text-anchor="middle" font-size="10" fill="#64748b">ANSI diff cells</text>
+<text x="800" y="107" text-anchor="middle" font-size="10" fill="#64748b">+ append gfx bytes</text>
+
+<!-- BSU/ESU -->
+<rect x="10" y="160" width="840" height="80" rx="8" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="430" y="178" text-anchor="middle" font-size="11" fill="#64748b">Wyjście do terminala (owinięte BSU/ESU)</text>
+<text x="430" y="196" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="400">ESC[?2026h  →  [ANSI diff] → [ESC_Ga=T,f=100,c=X,r=Y,m=0;BASE64ESC\]  →  ESC[?2026l</text>
+<text x="430" y="212" text-anchor="middle" font-size="10" fill="#64748b">* delete_all_placements() = ESC_Ga=d,d=A ESC\ — wywoływane przy przejściu gfx → brak gfx (BUG-KITTY-GHOST-01)</text>
+<text x="430" y="226" text-anchor="middle" font-size="10" fill="#64748b">* przy pierwszym ramce: ESC[?1049h (alt buffer) + ESC[2J + ESC[3J + ESC[H + ESC[?25l (ukryj kursor)</text>
+
+<!-- AssetCache -->
+<rect x="10" y="270" width="840" height="100" rx="8" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="430" y="288" text-anchor="middle" font-size="11" fill="#2dd4bf">AssetCache — pominięcie całej rasteryzacji gdy brak zmian</text>
+<rect x="30" y="298" width="180" height="36" rx="6" fill="#0f1117" stroke="#2a3145"/>
+<text x="120" y="315" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="500">SvgCache (OnceLock)</text>
+<text x="120" y="328" text-anchor="middle" font-size="10" fill="#64748b">usvg::Tree — parsowanie 1× (drogie XML)</text>
+<rect x="230" y="298" width="200" height="36" rx="6" fill="#0f1117" stroke="#2a3145"/>
+<text x="330" y="315" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="500">AssetCache (FIFO, cap=100)</text>
+<text x="330" y="328" text-anchor="middle" font-size="10" fill="#64748b">CacheKey{path, w_px, h_px, frame_idx} → bytes</text>
+<rect x="450" y="298" width="200" height="36" rx="6" fill="#0f1117" stroke="#2a3145"/>
+<text x="550" y="315" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="500">PlaybackRegistry (OnceLock)</text>
+<text x="550" y="328" text-anchor="middle" font-size="10" fill="#64748b">hover/click/toggled/lottie_animation</text>
+<rect x="670" y="298" width="170" height="36" rx="6" fill="#0f1117" stroke="#2a3145"/>
+<text x="755" y="315" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="500">VideoPlayerRegistry</text>
+<text x="755" y="328" text-anchor="middle" font-size="10" fill="#64748b">ffmpeg pipe → RGBA frames</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>Szczegóły protokołu Kitty (APC sequence)</h3>
+<pre>ESC_G a=T, f=100, c={cols}, r={rows}, m={more}; {base64_chunk} ESC\
+     ^       ^       ^         ^         ^
+     |       |       |         |         0=last chunk, 1=more
+     |       |       |         ilość wierszy terminala
+     |       |       ilość kolumn terminala
+     |       f=100: PNG, f=32: raw RGBA 
+     a=T: Transmit+Display (a=q: query, a=d: delete)</pre>
+<p>Każdy chunk ma maks. 4096 bajtów base64. Duże obrazy są dzielone na wiele fragmentów (m=1), ostatni m=0.</p>
+</div>
+</div>
+
+<!-- SIXEL -->
+<div id="term-sixel" class="term-panel">
+<h2>Sixel Graphics — terminale Sixel-compatible</h2>
+<div class="notice notice">⚠ Obsługiwane przez: iTerm2, mlterm, xterm +sixel, VTE 0.67+. Niższa jakość koloru niż Kitty.</div>
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 860 300" role="img">
+<title>Sixel rendering pipeline</title>
+<defs><marker id="as" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="10" y="40" width="100" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="60" y="62" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">RGBA pixels</text>
+<text x="60" y="76" text-anchor="middle" font-size="10" fill="#64748b">(po rasteryzacji)</text>
+<line x1="110" y1="62" x2="138" y2="62" stroke="#4b5563" stroke-width="1" marker-end="url(#as)"/>
+<rect x="138" y="40" width="140" height="44" rx="7" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="208" y="60" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">Color Quantization</text>
+<text x="208" y="76" text-anchor="middle" font-size="10" fill="#64748b">top-N (256) wg. freq</text>
+<line x1="278" y1="62" x2="306" y2="62" stroke="#c2410c" stroke-width="1" marker-end="url(#as)"/>
+<rect x="306" y="40" width="140" height="44" rx="7" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="376" y="60" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">Nearest-color match</text>
+<text x="376" y="76" text-anchor="middle" font-size="10" fill="#64748b">Euklid. dist w RGB</text>
+<line x1="446" y1="62" x2="474" y2="62" stroke="#c2410c" stroke-width="1" marker-end="url(#as)"/>
+<rect x="474" y="40" width="160" height="44" rx="7" fill="#1a0800" stroke="#c2410c" stroke-width="0.8"/>
+<text x="554" y="60" text-anchor="middle" font-size="11" fill="#fb923c" font-weight="500">Sixel band encode</text>
+<text x="554" y="76" text-anchor="middle" font-size="10" fill="#64748b">6px bands, per-color</text>
+<line x1="634" y1="62" x2="662" y2="62" stroke="#4b5563" stroke-width="1" marker-end="url(#as)"/>
+<rect x="662" y="40" width="170" height="44" rx="7" fill="#161b27" stroke="#2a3145" stroke-width="0.8"/>
+<text x="747" y="60" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">DCS stream</text>
+<text x="747" y="76" text-anchor="middle" font-size="10" fill="#64748b">ESC P q " 1;1;W;H ...</text>
+
+<rect x="10" y="120" width="820" height="60" rx="8" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="420" y="140" text-anchor="middle" font-size="11" fill="#64748b">Format DCS Sixel</text>
+<text x="420" y="157" font-size="10" fill="#94a3b8" text-anchor="middle">ESC P q " 1;1;{width};{height}  #{i};2;{r%};{g%};{b%}  #{i}{sixel_chars}$  ST(ESC\)</text>
+
+<rect x="10" y="200" width="820" height="80" rx="8" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="420" y="220" text-anchor="middle" font-size="11" fill="#2dd4bf">Sixel character encoding</text>
+<text x="420" y="237" text-anchor="middle" font-size="10" fill="#64748b">Każdy znak Sixel = 1 kolumna, 6 pikseli pionowo. Wartość = suma bitów 0x3F...0x7E (bit 0 = piksel u góry)</text>
+<text x="420" y="254" text-anchor="middle" font-size="10" fill="#64748b">$ = carriage return (nowa kolumna, ta sama banda). - = nowa banda (następne 6 px). ! = run-length encoding</text>
+<text x="420" y="268" text-anchor="middle" font-size="10" fill="#64748b">Transparencja (alpha &lt; 128) = pomijanie piksela (nie rysowany dla danego koloru)</text>
+</svg>
+</div>
+</div>
+
+<!-- UNICODE -->
+<div id="term-unicode" class="term-panel">
+<h2>Unicode Half-blocks — fallback dla każdego terminala</h2>
+<div class="notice">⚠ Najmniejsza jakość graficzna. Działa wszędzie. Używane gdy brak Kitty i Sixel.</div>
+<div class="card">
+<h3>Mechanizm</h3>
+<p>Każda komórka terminala = 2 "piksele" pionowo. Górny piksel = <code>▀</code> (U+2580 UPPER HALF BLOCK), dolny = <code>▄</code> (U+2584). Kolor fg to kolor górnego piksela, bg to kolor dolnego.</p>
+<pre>Każda cell terminala (1 kol × 1 wiersz) → 2 piksele:
+  ┌──────────────┐
+  │ ▀ fg=color_1 │  ← pixel (x, y*2)
+  │   bg=color_2 │  ← pixel (x, y*2+1)  
+  └──────────────┘
+Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ ┘ ╭ ╮ ╰ ╯</pre>
+<p>OxiTerm używa PUA-B (Private Use Area B) do stabilizacji layoutu na różnych emulatorach — znaki z zakresu U+100000+ mają gwarantowaną szerokość 1 komórki, unikając problemów z dwuszerokimi znakami CJK.</p>
+</div>
+<div class="card">
+<h3>Limity</h3>
+<p>Brak wsparcia dla obrazów, SVG, Lottie, Rive ani video. Renderer w <code>renderer.rs</code> sprawdza <code>profile.supports_kitty_gfx</code> i <code>profile.supports_sixel</code> — jeśli oba false, pomija rasteryzację całkowicie i renderuje tylko komórki tekstowe + half-blocks dla tła.</p>
+</div>
+</div>
+
+<!-- WEB -->
+<div id="term-web" class="term-panel">
+<h2>Web — xterm.js + WASM Canvas</h2>
+<div class="notice-green notice">✓ Działa w każdej przeglądarce bez instalacji. Frontend: xterm.js. Renderer: <code>oxiterm-web</code> WASM.</div>
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 860 360" role="img">
+<title>Web rendering pipeline</title>
+<defs><marker id="aw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<!-- Server side -->
+<rect x="10" y="20" width="380" height="300" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="200" y="40" text-anchor="middle" font-size="11" fill="#64748b">SERWER (Rust)</text>
+<rect x="25" y="50" width="160" height="44" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="105" y="70" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">EventLoop</text>
+<text x="105" y="84" text-anchor="middle" font-size="10" fill="#64748b">render → CellBuffer</text>
+<line x1="185" y1="72" x2="213" y2="72" stroke="#4b5563" stroke-width="1" marker-end="url(#aw)"/>
+<rect x="213" y="50" width="165" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="295" y="70" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">WsFrameSink</text>
+<text x="295" y="84" text-anchor="middle" font-size="10" fill="#64748b">diff → binary encode</text>
+
+<rect x="25" y="108" width="360" height="80" rx="7" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="205" y="128" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">Binarny protokół diff (custom)</text>
+<text x="205" y="144" text-anchor="middle" font-size="10" fill="#64748b">tag 0x01: AnsiCommand::MoveCursor(x,y)</text>
+<text x="205" y="157" text-anchor="middle" font-size="10" fill="#64748b">tag 0x02: SetColor{fg,bg}   0x03: SetModifiers{bold,...}</text>
+<text x="205" y="170" text-anchor="middle" font-size="10" fill="#64748b">tag 0x04: WriteChar(ch)      0x05: Reset</text>
+
+<rect x="25" y="200" width="160" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="105" y="220" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">Media payload</text>
+<text x="105" y="234" text-anchor="middle" font-size="10" fill="#64748b">tag 0x20: asset bytes</text>
+<rect x="210" y="200" width="165" height="44" rx="7" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
+<text x="292" y="220" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="500">Clear coords</text>
+<text x="292" y="234" text-anchor="middle" font-size="10" fill="#64748b">tag 0x21: media reset</text>
+
+<rect x="25" y="258" width="360" height="50" rx="7" fill="#0a1a18" stroke="#0d9488" stroke-width="0.8"/>
+<text x="205" y="278" text-anchor="middle" font-size="11" fill="#2dd4bf" font-weight="500">tokio-tungstenite WebSocket</text>
+<text x="205" y="293" text-anchor="middle" font-size="10" fill="#64748b">binary frames → klient</text>
+
+<!-- arrow between server and client -->
+<line x1="390" y1="180" x2="430" y2="180" stroke="#0d9488" stroke-width="1.5" marker-end="url(#aw)"/>
+<text x="410" y="173" text-anchor="middle" font-size="9" fill="#64748b">WS</text>
+
+<!-- Client side -->
+<rect x="430" y="20" width="420" height="300" rx="10" fill="#161b27" stroke="#2a3145" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="640" y="40" text-anchor="middle" font-size="11" fill="#64748b">PRZEGLĄDARKA (JS + WASM)</text>
+<rect x="445" y="50" width="190" height="44" rx="7" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="540" y="70" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">oxiterm_web.js</text>
+<text x="540" y="84" text-anchor="middle" font-size="10" fill="#64748b">WebSocket client</text>
+<line x1="635" y1="72" x2="663" y2="72" stroke="#4b5563" stroke-width="1" marker-end="url(#aw)"/>
+<rect x="663" y="50" width="175" height="44" rx="7" fill="#1e1600" stroke="#d97706" stroke-width="0.8"/>
+<text x="750" y="70" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500">WebTerminal (WASM)</text>
+<text x="750" y="84" text-anchor="middle" font-size="10" fill="#64748b">draw_commands(bytes)</text>
+
+<rect x="445" y="110" width="390" height="120" rx="7" fill="#0f1117" stroke="#2a3145" stroke-width="0.8"/>
+<text x="640" y="130" text-anchor="middle" font-size="11" fill="#94a3b8" font-weight="500">WebTerminal Canvas Renderer</text>
+<text x="640" y="148" text-anchor="middle" font-size="10" fill="#64748b">DiffEngine::decode_binary(bytes) → Vec&lt;AnsiCommand&gt;</text>
+<text x="640" y="162" text-anchor="middle" font-size="10" fill="#64748b">MoveCursor: cx/cy = x/y, canvas.resize() jeśli overflow</text>
+<text x="640" y="176" text-anchor="middle" font-size="10" fill="#64748b">SetColor: ctx.fillStyle = ansi_to_css(fg/bg)</text>
+<text x="640" y="190" text-anchor="middle" font-size="10" fill="#64748b">WriteChar: fillRect(bg) + fillText(ch) na Canvas 2D</text>
+<text x="640" y="204" text-anchor="middle" font-size="10" fill="#64748b">Czcionka: "12px 'JetBrains Mono'" / bold / italic</text>
+<text x="640" y="218" text-anchor="middle" font-size="10" fill="#64748b">Szerokość znaków: UnicodeWidthCache (CJK = 2× cell_w)</text>
+
+<rect x="445" y="242" width="390" height="60" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
+<text x="640" y="262" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">Input path (klient → serwer)</text>
+<text x="640" y="278" text-anchor="middle" font-size="10" fill="#64748b">xterm.js onKey → WS binary → serwer → ReactorThread</text>
+<text x="640" y="292" text-anchor="middle" font-size="10" fill="#64748b">resize Observer → WS resize msg → InputEvent::Resize</text>
+</svg>
+</div>
+</div>
+
+<!-- A11Y -->
+<div id="term-a11y" class="term-panel">
+<h2>Accessibility — Screen Reader / DBus</h2>
+<div class="notice">Aktywowane przez <code>oxiterm serve --a11y</code> lub <code>a11y_mode: true</code> w config.</div>
+<div class="card">
+<h3>LinearFrameSink</h3>
+<p>Zamiast bufora 2D ANSI, dokument jest renderowany jako linearna sekwencja tekstowa. <code>build_a11y_tree(doc)</code> buduje drzewo <code>A11yNode</code> z rolami AT-SPI (<code>Button</code>, <code>TextInput</code>, <code>Label</code>, <code>Container</code>, itd.).</p>
+<pre>THTMLDocument → build_a11y_tree() → Vec&lt;A11yNode&gt;
+   Screen  (role: Application)
+   └── Box (role: Panel)
+       ├── Text "Counter: 5" (role: Label)
+       └── Button "Increment" (role: PushButton)</pre>
+</div>
+<div class="card">
+<h3>DBusBridge</h3>
+<p><code>DBusBridge::new()</code> + <code>open_tunnel()</code> — otwiera proxy do lokalnego socket DBus. Wysyła zdarzenia AT-SPI2 (focus, text-changed, action) bezpośrednio do syntezatora mowy (Orca, Braille display).</p>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>build_a11y_tree(doc)</td><td>Rekurencyjnie buduje drzewo A11yNode z DOM, przypisuje role wg NodeTag</td></tr>
+<tr><td>DBusBridge::read_dbus_address()</td><td>Czyta DBUS_SESSION_BUS_ADDRESS ze środowiska</td></tr>
+<tr><td>DBusBridge::open_tunnel()</td><td>Otwiera lokalny socket proxy do DBus</td></tr>
+<tr><td>LinearFrameSink::send_frame()</td><td>Serializuje A11y tree do plain text, zapisuje do ChannelWriter</td></tr>
+</table>
+</div>
+</div>
+
+</div><!-- /pipeline section -->
+
+<!-- ═══════════════════════════════════════════════ PROTO ═══ -->
+<div id="proto" class="section">
+<h1>oxiterm-proto — Typy Protokołu</h1>
+<span class="crate-badge">📦 oxiterm-proto</span>
+<p>Crate z typami danych współdzielonymi przez wszystkie inne crates: DOM, style, eventy wejścia, profil terminala.</p>
+
+<h2>dom.rs</h2>
+<table class="func-table">
+<tr><th>Typ/Funkcja</th><th>Opis</th><th>Pola kluczowe</th></tr>
+<tr><td>NodeTag</td><td>Enum tagów elementów THTML. Każdy wariant odpowiada tagowi HTML-like.</td><td>Screen, Box, Text, Input, Button, Img, Video</td></tr>
+<tr><td>NodeAttributes</td><td>Atrybuty parsowanego węzła. Wszystkie opcjonalne.</td><td>id, class, src, event_htmx, bind_state, bind_show, bind_value, placeholder</td></tr>
+<tr><td>NodeId</td><td>Newtype u32 — indeks w NodeArena. Copy, Hash, Ord.</td><td>NodeId(u32)</td></tr>
+<tr><td>Node</td><td>Jeden węzeł DOM z tagiem, atrybutami, dziećmi, textem i computed style.</td><td>tag, attrs, children: Vec&lt;NodeId&gt;, text, style: ComputedStyle</td></tr>
+<tr><td>Node::new(tag)</td><td>Konstruktor z domyślnymi wartościami pól.</td><td>—</td></tr>
+<tr><td>StateEvaluator (trait)</td><td>Interfejs do ewaluacji warunku bind-show przez StateManager.</td><td>evaluate_bind_show(condition: &amp;str) → bool</td></tr>
+</table>
+
+<h2>style.rs</h2>
+<table class="func-table">
+<tr><th>Typ</th><th>Opis</th><th>Warianty/pola</th></tr>
+<tr><td>AnsiColor</td><td>Kolor ANSI. TrueColor = 24-bit RGB. Color256 = paleta 256. Reset = domyślny.</td><td>TrueColor(u8,u8,u8), Color256(u8), Reset</td></tr>
+<tr><td>ComputedStyle</td><td>Styl obliczony po kaskadzie CSS. Dołączony do każdego Node.</td><td>fg, bg, width, height, flex_direction, align_items, justify_content, padding, margin, border</td></tr>
+<tr><td>BorderChars</td><td>Znaki ramki Unicode dla stylu single/rounded/double.</td><td>single() → ┌─┐│└┘, rounded() → ╭╮╰╯, double() → ╔═╗║╚╝</td></tr>
+<tr><td>TerminalProfile</td><td>Zdolności terminala wykryte podczas negocjacji.</td><td>supports_kitty_kbd, supports_kitty_gfx, supports_sixel, supports_sgr_mouse, color_depth</td></tr>
+<tr><td>TerminalProfile::parse_da1_response()</td><td>Parsuje odpowiedź DA1 (ESC[c) terminala. Wykrywa Kitty APC (ESC_GOK), Sixel (;4;), SGR mouse (?64/?62/?63/?65).</td><td><span class="badge badge-open">BUG: APC i DA1 w jednym if-else — przy APC nie ustawia supports_sgr_mouse</span></td></tr>
+<tr><td>ColorDepth</td><td>Głębia kolorów: TrueColor (24-bit), Color256, Color16.</td><td>—</td></tr>
+</table>
+
+<h2>input/mod.rs + input/decoder.rs</h2>
+<table class="func-table">
+<tr><th>Typ</th><th>Opis</th><th>Warianty</th></tr>
+<tr><td>InputEvent</td><td>Przetworzone zdarzenie wejścia. Produkowane przez InputStateMachine.</td><td>KeyPress, MouseEvent, Resize, CapabilityResponse, Reload, TextInput, StatePatched, ScrollUp/Down</td></tr>
+<tr><td>KeyEvent</td><td>Zdarzenie klawiszowe z codepoint Unicode, modifiers i kind.</td><td>codepoint: char, modifiers: KeyModifiers, kind: KeyKind(Press/Repeat/Release)</td></tr>
+<tr><td>MouseInput</td><td>Zdarzenie myszy z pozycją, przyciskiem i akcją.</td><td>col, row, button: MouseButton, action: MouseAction, modifiers</td></tr>
+<tr><td>InputStateMachine</td><td>Automat stanów parsujący surowe bajty SSH do InputEvent. Obsługuje Kitty keyboard protocol i SGR mouse escape sequences.</td><td>feed_slice(&amp;[u8]) → Vec&lt;InputEvent&gt;</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════ RENDERER ═══ -->
+<div id="renderer" class="section">
+<h1>oxiterm-renderer — Parser, Layout, Render</h1>
+<span class="crate-badge">📦 oxiterm-renderer</span>
+
+<div class="card-grid">
+<div class="card">
+<h3>arena.rs — NodeArena</h3>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>alloc(node) → NodeId</td><td>Alokuje węzeł. Używa free_list (slotted arena) — O(1).</td></tr>
+<tr><td>get(id) / get_mut(id)</td><td>Dostęp do węzła przez NodeId. Returns Option.</td></tr>
+<tr><td>remove(id)</td><td>Usuwa węzeł, dodaje do free_list. Slot = None.</td></tr>
+<tr><td>compact() → HashMap</td><td>Defragmentuje arene, pakuje aktywne węzły. Zwraca mapę old_id→new_id. Aktualizuje dzieci.</td></tr>
+<tr><td>occupancy() → f32</td><td>Stosunek aktywnych węzłów do wszystkich slotów. Przydatne do triggera compact().</td></tr>
+<tr><td>iter() / iter_mut()</td><td>Iteratory po wszystkich żywych węzłach.</td></tr>
+</table>
+</div>
+<div class="card">
+<h3>document.rs — THTMLDocument</h3>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>new()</td><td>Tworzy dokument z pre-alokowanym węzłem Screen jako root.</td></tr>
+<tr><td>append_child(parent, child)</td><td>Dodaje dziecko do rodzica. Markuje rodzica jako dirty.</td></tr>
+<tr><td>detach_child(parent, child)</td><td>Odłącza dziecko. Error jeśli nie znaleziono. Markuje dirty.</td></tr>
+<tr><td>mark_dirty(id)</td><td>Dodaje id do dirty_nodes (deduplikacja).</td></tr>
+<tr><td>compact()</td><td>Wywołuje arena.compact(), aktualizuje root i dirty_nodes przez remap. (BUG-M02 fix)</td></tr>
+<tr><td>clone_subtree(root_id)</td><td>Głęboka kopia pod-drzewa do nowego THTMLDocument.</td></tr>
+</table>
+</div>
+</div>
+
+<h2>parser/thtml.rs — THTMLParser</h2>
+<table class="func-table">
+<tr><th>Funkcja</th><th>Opis</th><th>Uwagi</th></tr>
+<tr><td>THTMLParser::parse(input)</td><td>Główny entry point. Wyciąga blok &lt;style&gt;, parsuje HTML przez nom, buduje THTMLDocument.</td><td>nom VerboseError dla czytelnych błędów</td></tr>
+<tr><td>extract_style_block(html)</td><td>Regex wyciąga wszystkie bloki &lt;style&gt;...&lt;/style&gt; (case-insensitive, multiline).</td><td>Obsługuje wiele bloków style</td></tr>
+<tr><td>sanitize_style_raw(input)</td><td>Usuwa escape sequences ANSI z wartości atrybutu style (bezpieczeństwo).</td><td>Regex: [\x1b\x9b][...]</td></tr>
+<tr><td>sanitize_htmx_value(input)</td><td>Filtruje event-htmx: tylko URL-safe chars, brak control chars ani niebezpiecznych znaków. (BUG-M03)</td><td>Filtr: .filter(!c.is_control() &amp;&amp; ...)</td></tr>
+<tr><td>decode_entities(input)</td><td>Dekoduje HTML entities: &amp;lt; &amp;gt; &amp;quot; &amp;apos; &amp;amp;</td><td>—</td></tr>
+<tr><td>parse_node(input)</td><td>nom parser pojedynczego węzła: tag + atrybuty + dzieci lub text content.</td><td>Rekurencyjny, obsługuje self-closing</td></tr>
+</table>
+
+<h2>parser/tcss.rs — TCSSParser</h2>
+<table class="func-table">
+<tr><th>Funkcja</th><th>Opis</th><th>Uwagi</th></tr>
+<tr><td>parse_tcss(input)</td><td>Parsuje pełny arkusz TCSS → StyleSheet {rules}.</td><td>Najpierw strip_comments()</td></tr>
+<tr><td>parse_inline_tcss(input)</td><td>Parsuje inline style attribute → Vec&lt;Declaration&gt;.</td><td>Używane dla style="..."</td></tr>
+<tr><td>apply_declaration(style, decl)</td><td>Aplikuje jedną deklarację do ComputedStyle. Obsługuje wszystkie warianty Declaration.</td><td>—</td></tr>
+<tr><td>strip_comments(input)</td><td>Usuwa komentarze /* ... */ ze wejścia CSS.</td><td>Stan: ręczny automat, nie regex</td></tr>
+<tr><td>Selector</td><td>Class(".foo") / Id("#bar") / Tag("box"). Priorytety jak w CSS.</td><td>—</td></tr>
+<tr><td>Declaration</td><td>Enum wszystkich właściwości TCSS: Fg, Bg, Width, Height, FlexDirection, Padding*, Margin*, Border, itd.</td><td>20+ wariantów</td></tr>
+</table>
+
+<h2>layout/engine.rs — LayoutEngine</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th><th>Uwagi</th></tr>
+<tr><td>compute(doc, cols, scroll_offset, evaluator)</td><td>Główna metoda. reset_nodes() → ensure_nodes → sync dirty → taffy.compute_layout() → wyciąg Rect dla każdego OxiNode.</td><td>BUG-BIND-SHOW: zawsze reset dla bind-show</td></tr>
+<tr><td>ensure_nodes_exist_recursive()</td><td>Rekurencyjnie buduje drzewo Taffy z drzewa DOM. Ewaluuje bind-show (Display::None jeśli false).</td><td>Używa StateEvaluator</td></tr>
+<tr><td>map_style(node, evaluator)</td><td>Konwertuje ComputedStyle OxiTerm → taffy::Style (Flexbox). Mapuje FlexDirection, AlignItems, JustifyContent, padding/margin/width/height.</td><td>Jednostki: char cells</td></tr>
+<tr><td>reset_nodes()</td><td>Czyści TaffyTree i node_map. (BUG-COMPACT-01)</td><td>—</td></tr>
+</table>
+
+<h2>layout/types.rs</h2>
+<table class="func-table">
+<tr><th>Typ</th><th>Opis</th></tr>
+<tr><td>Rect {x,y,width,height: u16}</td><td>Pozycja i rozmiar węzła w siatce char cells. contains(x,y) do hit-testingu.</td></tr>
+<tr><td>LayoutResult</td><td>HashMap&lt;NodeId, Rect&gt; + total_height. Wynik compute().</td></tr>
+<tr><td>LayoutResult::get_centering_offset()</td><td>Oblicza offset (ox, oy) do centrowania root-content w oknie terminala.</td></tr>
+<tr><td>HitTester::find_node(col, row)</td><td>Znajduje najmniejszy węzeł zawierający dane (col, row). Iteruje wszystkie Recty — O(n nodes). Zwraca NodeId.</td></tr>
+<tr><td>HitTester::is_interactive(id, doc)</td><td>True jeśli Button/Input lub ma event_htmx.</td></tr>
+</table>
+
+<h2>render/renderer.rs — Renderer (główna logika renderowania)</h2>
+<table class="func-table">
+<tr><th>Metoda/Stała</th><th>Opis</th><th>Uwagi</th></tr>
+<tr><td>VIRTUAL_FS (thread_local)</td><td>Wirtualny filesystem: HashMap&lt;PathBuf, Vec&lt;u8&gt;&gt;. Używany dla WASM (brak dostępu do dysku) i testów. Populowany przez set_virtual_asset().</td><td>thread_local: działa tylko na tym samym wątku co populacja</td></tr>
+<tr><td>read_asset(path)</td><td>Czyta plik z VIRTUAL_FS lub (non-wasm) z dysku. Błąd "AssetNotFound" gdy brak.</td><td>cfg(target_arch="wasm32") fallback</td></tr>
+<tr><td>render_node(doc, layout, buffer, profile, base_dir, scroll_offset)</td><td>Czyści cały buffer, liczy centering offset, wywołuje render_recursive od root. Korekta scroll_offset na start_y.</td><td>Clears buffer to spaces first (fix ghost chars)</td></tr>
+<tr><td>render_recursive(...)</td><td>Rekurencyjny rysownik węzła DOM → CellBuffer. Wypełnia tło, rysuje border, text (z inject state), obsługuje img/video (rasteryzacja lub AssetCache hit), recurse na dzieci.</td><td>Dziedziczenie fg/bg przez drzewo</td></tr>
+<tr><td>render_text_node()</td><td>Rysuje tekst komórka po komórce. Obsługuje Unicode wide chars (CJK = skip cell). Wyróżnienie focused node (odwrócone kolory).</td><td>UnicodeWidthCache dla szerokości</td></tr>
+<tr><td>render_img_node()</td><td>Sprawdza AssetCache. Rasteryzuje SVG (resvg), animacje Lottie (rlottie, frame = elapsed/frame_dur), Rive (custom tick). Koduje do Kitty lub Sixel zależnie od profile. Dodaje do buffer.graphics.</td><td>Rive mouse input: click_coord mapowany do normalnych koordynatów</td></tr>
+<tr><td>render_video_node()</td><td>VideoPlayerRegistry: spawn ffmpeg pipe, czytaj RGBA frames. Koduje jak img. Frame timing z elapsed.</td><td>Tylko non-wasm</td></tr>
+<tr><td>render_border()</td><td>Rysuje ramkę wokół Rect używając BorderChars z ComputedStyle.</td><td>single/rounded/double</td></tr>
+</table>
+
+<h2>render/diff.rs — DiffEngine</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th><th>Uwagi</th></tr>
+<tr><td>diff(prev, next) → Vec&lt;AnsiCommand&gt;</td><td>Porównuje front vs back buffer komórka po komórce. Emituje minimalne komendy: MoveCursor gdy pozycja inna, SetColor gdy styl inny, WriteChar.</td><td>Śledzi cur_x/cur_y, cur_fg/bg — unika zbędnych escape</td></tr>
+<tr><td>encode_ansi(cmds) → Vec&lt;u8&gt;</td><td>Konwertuje AnsiCommands → bajty ANSI. MoveCursor → ESC[y+1;x+1H. TrueColor → ESC[38;2;r;g;bm / ESC[48;2;r;g;bm. Bold/underline/italic → ESC[1m/4m/3m. Reset → ESC[0m.</td><td>Emitter: AnsiEmitter</td></tr>
+<tr><td>encode_binary(cmds) → Vec&lt;u8&gt;</td><td>Custom binary encoding dla WebSocket transport. Każda komenda = tag byte + pola. Szybszy parse niż ANSI w WASM.</td><td>tag 0x01-0x05</td></tr>
+<tr><td>decode_binary(bytes) → Vec&lt;AnsiCommand&gt;</td><td>Dekoder po stronie WASM/Web. Używany przez WebTerminal::draw_commands().</td><td>—</td></tr>
+</table>
+
+<h2>render/buffer.rs — CellBuffer + DoubleBuffer</h2>
+<table class="func-table">
+<tr><th>Typ/Metoda</th><th>Opis</th></tr>
+<tr><td>Cell {ch, fg, bg, bold, underline, italic, skip}</td><td>Pojedyncza komórka terminala. skip=true dla dodatkowych kolumn wide char (CJK).</td></tr>
+<tr><td>CellBuffer::new(w, h)</td><td>Alokuje Vec&lt;Cell&gt; o rozmiarze w×h + Vec&lt;Vec&lt;u8&gt;&gt; graphics.</td></tr>
+<tr><td>flat_idx(x, y)</td><td>Konwertuje (x,y) → indeks liniowy. Returns None jeśli poza zakresem.</td></tr>
+<tr><td>DoubleBuffer {front, back}</td><td>Front = ostatnio wysłany do klienta. Back = renderowany. swap() po wysłaniu.</td></tr>
+<tr><td>CellBuffer.graphics</td><td>Vec binarnych sekwencji graficznych (Kitty APC / Sixel DCS). Appendowane po ANSI diff.</td></tr>
+</table>
+
+<h2>render/cache.rs — AssetCache + PlaybackRegistry + VideoPlayerRegistry</h2>
+<table class="func-table">
+<tr><th>Typ/Metoda</th><th>Opis</th></tr>
+<tr><td>AssetCache (OnceLock, FIFO cap=100)</td><td>Globalny cache skompresowanych frame-ów graficznych. CacheKey = {path, w_px, h_px, frame_idx}. lookup() / insert(). Eviction: pop_front() gdy len≥100.</td></tr>
+<tr><td>SvgCache (OnceLock)</td><td>Globalny cache sparsowanych usvg::Tree. HashMap&lt;PathBuf, Arc&lt;usvg::Tree&gt;&gt;. Drogi XML parse tylko raz.</td></tr>
+<tr><td>PlaybackRegistry (OnceLock)</td><td>Globalny rejestr stanu odtwarzania animacji. Klucz = PathBuf. get_or_create(), set_hover(), set_click(). Przechowuje rlottie::Animation (SafeAnimation: unsafe Send impl).</td></tr>
+<tr><td>PlaybackState</td><td>start_time, hover, click_active, click_coord, toggled, lottie_animation: Option&lt;Arc&lt;Mutex&lt;SafeAnimation&gt;&gt;&gt;</td></tr>
+<tr><td>VideoPlayerRegistry::get_or_spawn()</td><td>Spawnuje proces ffmpeg z pipelined RGBA output dla danego pliku video.</td></tr>
+</table>
+
+<h2>render/kitty.rs i sixel.rs</h2>
+<div class="card-grid">
+<div class="card">
+<h3>KittyImageManager</h3>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>transmit_image(pixel_w, pixel_h, cols, rows, rgba)</td><td>RGBA → PNG (image::PngEncoder) → base64 → chunki 4096B → APC sequences. a=T,f=100 (PNG format).</td></tr>
+<tr><td>transmit_image_rgba()</td><td>Fallback gdy PNG encode zawiedzie. a=T,f=32 (raw RGBA), s=pixel_w, v=pixel_h.</td></tr>
+<tr><td>delete_all_placements()</td><td>ESC_Ga=d,d=A ESC\ — usuwa wszystkie placement Kitty. BUG-KITTY-GHOST-01.</td></tr>
+</table>
+</div>
+<div class="card">
+<h3>SixelCodec</h3>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>encode_sixel(img, palette_size)</td><td>1. Policz kolory. 2. Wybierz top palette_size wg. częstości. 3. Dla każdego piksela: nearest color (Euclidean RGB). 4. Koduj bands 6px. Emituj DCS stream.</td></tr>
+</table>
+</div>
+</div>
+
+<h2>render/unicode.rs — UnicodeWidthCache</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>UnicodeWidthCache::get()</td><td>OnceLock singleton. Używa crate unicode-width.</td></tr>
+<tr><td>width(ch: char) → u8</td><td>Zwraca 0 (combining), 1 (normal), 2 (CJK/emoji full-width). Krytyczne dla poprawnego skipowania komórek.</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SERVER ═══ -->
+<div id="server" class="section">
+<h1>oxiterm-server — Serwer SSH + WebSocket + EventLoop</h1>
+<span class="crate-badge">📦 oxiterm-server</span>
+
+<h2>main.rs — punkt wejścia</h2>
+<table class="func-table">
+<tr><th>Funkcja</th><th>Opis</th></tr>
+<tr><td>main()</td><td>Inicjalizuje tracing (log do /tmp/oxiterm.log). Ładuje config. Startuje: Prometheus HTTP server (:9090), WebSocket server, SSH server. Obsługuje SIGUSR1/SIGTERM/SIGINT z graceful drain.</td></tr>
+</table>
+
+<h2>session.rs — SessionRegistry + ClientSession + EventLoop</h2>
+<table class="func-table">
+<tr><th>Typ/Metoda</th><th>Opis</th><th>Bug/Uwaga</th></tr>
+<tr><td>SessionRegistry::new()</td><td>Tworzy rejestr z max_sessions=20 (hardkodowane! config ma 100). Prometheus registry.</td><td><span class="badge badge-new">BUG-NEW: max_sessions hardkodowane, ignoruje config</span></td></tr>
+<tr><td>create_session()</td><td>Sprawdza limit, alokuje SessionId, tworzy ClientSession, spawnuje ReactorThread, dodaje do map.</td><td>—</td></tr>
+<tr><td>remove_session(id)</td><td>Usuwa z map, close(), cleanup VideoPlayerRegistry gdy 0 sesji.</td><td>—</td></tr>
+<tr><td>ClientSession</td><td>Główny obiekt sesji. Zawiera: dims (RwLock), state (RwLock StateManager), predictive_echo, resize_debouncer, terminal_profile, raw_input_tx, event_rx/tx.</td><td>—</td></tr>
+<tr><td>PredictiveEcho::push/confirm/flush</td><td>Lokalny bufor do zero-latency echo dla &lt;input&gt;. confirm() usuwa pierwszy znak FIFO. (BUG-H01)</td><td>—</td></tr>
+<tr><td>ResizeDebouncer::push/poll</td><td>Debounce resize events 100ms. poll() sprawdza elapsed od push (nie od last_update). (BUG-M01 fix)</td><td>—</td></tr>
+<tr><td>AnsiFrameSink::send_frame()</td><td>Diff front↔back → encode ANSI → BSU + bytes + graphics + ESU → BoundedFrameChannel.try_send(). Obsługuje dropped/closed.</td><td>BUG-KITTY-GHOST-01: usuwa placements przy przejściu gfx→no-gfx</td></tr>
+<tr><td>AnsiFrameSink::setup()</td><td>Wysyła: ESC[?1049h (alt buffer) + ESC[2J + ESC[3J + ESC[H + ESC[?25l (hide cursor)</td><td>—</td></tr>
+<tr><td>AnsiFrameSink::Drop</td><td>Cleanup: ESU + show cursor + disable mouse + disable Kitty kbd + disable alt buffer</td><td>—</td></tr>
+<tr><td>EventLoop::new()</td><td>Tworzy EventLoop z frame_sink (AnsiFrameSink lub LinearFrameSink wg a11y_mode). Inicjalizuje LayoutEngine, DoubleBuffer, FrameRateLimiter.</td><td>—</td></tr>
+<tr><td>EventLoop::run()</td><td>Główna pętla: setup() → pętla { idle timeout 10min, poll weather, recv_timeout(5ms|66ms), process events, render jeśli needs_render }.</td><td>—</td></tr>
+<tr><td>EventLoop::has_active_animations()</td><td>Sprawdza DOM czy są węzły &lt;img src=".json"&gt; (Lottie) lub ".riv" (Rive). Jeśli tak → tick 66ms (15 FPS).</td><td>—</td></tr>
+<tr><td>EventLoop::update_doc()</td><td>Zamienia doc + setup_state_subscriptions + inject_initial_state. Reset layout + scroll.</td><td>—</td></tr>
+</table>
+
+<h2>ssh/server.rs — OxiServer (russh Handler)</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>auth_publickey()</td><td>Weryfikuje klucz przez AuthorizedKeys::verify(). Accept/Reject.</td></tr>
+<tr><td>auth_password()</td><td>Akceptuje jeśli no_auth=true lub password match. Reject z logiem ostrzeżenia.</td></tr>
+<tr><td>channel_open_session()</td><td>registry.create_session() → map channel_id→session_id. Reject gdy registry full.</td></tr>
+<tr><td>pty_request()</td><td>Ustawia dims. resize_debouncer.push(). Negocjuje capabilities. Spawnuje EventLoop wątek.</td></tr>
+<tr><td>data()</td><td>Raw bytes z SSH → raw_input_tx.send(ReactorMessage::Raw(data)). Parsuje CapabilityResponse (parse_da1_response).</td></tr>
+<tr><td>window_change_request()</td><td>Wysyła ReactorMessage::Resize, aktualizuje dims.</td></tr>
+<tr><td>channel_close()</td><td>remove_session() + join output thread.</td></tr>
+</table>
+
+<h2>ssh/reactor.rs — ReactorThread</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>spawn(rx, tx) → ReactorThread</td><td>Spawnuje dedykowany OS thread. Odbiera ReactorMessage z raw_rx, parsuje InputStateMachine, wysyła InputEvent do BoundedFrameChannel.</td></tr>
+<tr><td>sanitize_frame(raw)</td><td>Odrzuca ramki &gt; 4096 bajtów (DoS protection). S4-04.</td></tr>
+</table>
+
+<h2>ssh/negotiator.rs — negocjacja zdolności</h2>
+<table class="func-table">
+<tr><th>Funkcja</th><th>Opis</th></tr>
+<tr><td>send_da1_query()</td><td>Wysyła ESC[c do terminala. Odpowiedź = ESC[?{caps}c.</td></tr>
+<tr><td>probe_kitty_graphics()</td><td>Wysyła testową sekwencję APC Kitty z 1×1 pikselem (dummy). Odpowiedź: ESC_GOK lub brak.</td></tr>
+<tr><td>parse_kitty_ack(buf)</td><td>True jeśli starts_with ESC_G i contains "OK".</td></tr>
+<tr><td>enable_kitty_protocol()</td><td>ESC[=1u — włącza Kitty Keyboard Protocol (rozszerzone kody klawiszy).</td></tr>
+<tr><td>enable_sgr_mouse()</td><td>ESC[?1006h + ESC[?1000h — SGR mouse mode + tracking.</td></tr>
+<tr><td>send_bsu() / send_esu()</td><td>ESC[?2026h / ESC[?2026l — Begin/End Synchronized Update.</td></tr>
+<tr><td>negotiate_capabilities()</td><td>Wywołuje: send_da1_query + probe_kitty_graphics + enable_sgr_mouse.</td></tr>
+</table>
+
+<h2>state.rs — StateManager</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>get(key) / set(key, value)</td><td>Pobiera/ustawia wartość. set() markuje dirty_keys jeśli wartość się zmieniła (optymalizacja).</td></tr>
+<tr><td>subscribe(key, node_id)</td><td>Subskrypcja: gdy klucz dirty → ten node potrzebuje re-renderu.</td></tr>
+<tr><td>get_dirty_nodes()</td><td>Drain dirty_keys → zbierz subskrybentów. Czyści dirty_keys.</td></tr>
+<tr><td>apply_action(action)</td><td>Parsuje łańcuch akcji (separator ; lub ,). Np. "inc:count;set:tab=info".</td></tr>
+<tr><td>apply_action_single()</td><td>Format "cmd:key" lub "cmd:key=val". Commands: inc, dec, toggle, set, append, clear.</td></tr>
+<tr><td>evaluate_bind_show(condition)</td><td>Impl StateEvaluator. Parsuje "key=val" lub "!key". Porównuje z store.</td></tr>
+</table>
+
+<h2>backpressure.rs — BoundedFrameChannel</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>BoundedFrameChannel::new(capacity)</td><td>Tworzy (Sender, Receiver). Wewnętrznie: Arc(Mutex(VecDeque) + Condvar) + Arc(Notify) dla async recv.</td></tr>
+<tr><td>try_send(item) → SendResult</td><td>Jeśli len≥capacity: pop_front() (drop oldest!), push_back. Jeśli closed: Closed. Zawsze notify_one().</td></tr>
+<tr><td>Receiver::recv() → async</td><td>Tokio async: pętla { pop_front() lub notified().await }. Dla EventLoop output thread.</td></tr>
+<tr><td>Receiver::blocking_recv()</td><td>Blokujące recv dla OS thread (Reactor). Condvar.wait() zamiast sleep(5ms). (BUG-SPINLOCK-01 fix)</td></tr>
+<tr><td>recv_timeout(timeout)</td><td>Z timeout przez cvar.wait_for(). RecvTimeoutError::Timeout lub Disconnected.</td></tr>
+</table>
+
+<h2>dispatcher.rs — AppDispatcher</h2>
+<table class="func-table">
+<tr><th>Metoda</th><th>Opis</th></tr>
+<tr><td>dispatch(payload, session)</td><td>Fire-and-forget: spawnuje std::thread, POST JSON {action, state, session_id} przez ureq do app_server_url. Przy 200: parse JSON → session.apply_state_patch() → event_tx.try_send(StatePatched).</td></tr>
+</table>
+
+<h2>ratelimit.rs</h2>
+<table class="func-table">
+<tr><th>Typ/Metoda</th><th>Opis</th></tr>
+<tr><td>RateLimiter::check_and_record(ip)</td><td>Sliding window per IP. 60 conn/min. Cleanup gdy windows.len()&gt;1000. Throttle przy &gt;80% limitu (delay 100ms × overage).</td></tr>
+<tr><td>FrameRateLimiter::should_render()</td><td>Non-blocking check: elapsed ≥ min_interval. Nigdy sleep.</td></tr>
+<tr><td>FrameRateLimiter::record_frame()</td><td>Aktualizuje last_frame timestamp po faktycznym wysłaniu ramki.</td></tr>
+</table>
+
+<h2>config.rs</h2>
+<table class="func-table">
+<tr><th>Pole</th><th>Opis</th></tr>
+<tr><td>server.host / port (2222)</td><td>Bind address serwera SSH.</td></tr>
+<tr><td>server.web_port (8080)</td><td>Port WebSocket.</td></tr>
+<tr><td>server.no_auth / password</td><td>Auth SSH: brak auth lub password.</td></tr>
+<tr><td>server.a11y_mode</td><td>Przełącza na LinearFrameSink. Aktywuje przez --a11y.</td></tr>
+<tr><td>session.max_sessions (100)</td><td>Limit sesji. <span class="badge badge-new">BUG: SessionRegistry::new() ignoruje to, używa 20.</span></td></tr>
+<tr><td>metrics.enabled / port (9090)</td><td>Prometheus endpoint.</td></tr>
+<tr><td>app_server_url</td><td>URL zewnętrznego serwera dla AppDispatcher.</td></tr>
+<tr><td>OxiTermConfig::from_env()</td><td>Env overrides: OXITERM_HOST, OXITERM_PORT, OXITERM_PASSWORD, OXITERM_MAX_SESSIONS, etc.</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════ WEB ═══ -->
+<div id="web" class="section">
+<h1>oxiterm-web — WASM Frontend</h1>
+<span class="crate-badge">📦 oxiterm-web (wasm32)</span>
+<p>Kompilowany do WebAssembly. Używany przez <code>oxiterm-server/assets/</code> (pre-built WASM binary dołączany do serwera).</p>
+<table class="func-table">
+<tr><th>Metoda (WebTerminal)</th><th>Opis</th></tr>
+<tr><td>new(canvas, font, line_height)</td><td>Inicjalizuje Canvas 2D context. Mierzy szerokość "M" jako char_width. Ustawia cols=80, rows=24.</td></tr>
+<tr><td>draw_commands(bytes)</td><td>Główna metoda. Decode_binary(bytes) → iteruje AnsiCommands. Obsługuje: MoveCursor (resize canvas jeśli overflow), SetColor, SetModifiers, WriteChar, Reset.</td></tr>
+<tr><td>draw_cell(cx, cy, ch, w)</td><td>Rysuje tło (fillRect bg) + tekst (fillText ch). Czcionka: "{bold}{italic} 12px monospace". Wide chars: w=2 → 2× cell_width.</td></tr>
+<tr><td>ansi_color_to_css(color)</td><td>AnsiColor::TrueColor(r,g,b) → "rgb(r,g,b)". Color256 → lookup table 256 kolorów ANSI. Reset → "inherit".</td></tr>
+<tr><td>resize(cols, rows)</td><td>Aktualizuje cols, rows. Canvas.set_width/height.</td></tr>
+</table>
+
+<div class="notice">
+<b>Uwaga:</b> Plik <code>oxiterm_web_bg.wasm</code> w assets/ to pre-built binary. Nie jest budowany podczas normalnego <code>cargo build</code>. Rebuild wymaga <code>wasm-pack build</code> w katalogu <code>oxiterm-web/</code>.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ CLI ═══ -->
+<div id="cli" class="section">
+<h1>oxiterm-cli — Narzędzie CLI</h1>
+<span class="crate-badge">📦 oxiterm-cli</span>
+<table class="func-table">
+<tr><th>Komenda</th><th>Opis</th></tr>
+<tr><td>oxiterm serve &lt;file.thtml&gt;</td><td>Startuje lokalny serwer SSH (port 2222). Hot Reload przez inotify. Opcje: --port, --no-auth, --a11y.</td></tr>
+<tr><td>oxiterm check &lt;file.thtml&gt;</td><td>Walidacja składni THTML/TCSS. Raportuje błędy parsera bez uruchamiania serwera.</td></tr>
+<tr><td>oxiterm demo</td><td>Uruchamia showcase.thtml z przykładami wszystkich komponentów.</td></tr>
+</table>
+<div class="card">
+<h3>Hot Reload mechanizm</h3>
+<p>CLI używa <code>notify</code> crate do obserwowania pliku .thtml. Przy zmianie: wysyła <code>InputEvent::Reload</code> do wszystkich aktywnych sesji przez <code>SessionRegistry::broadcast_input_event()</code>. EventLoop odbiera → re-parses plik → <code>update_doc()</code> → re-render.</p>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ A11Y ═══ -->
+<div id="a11y" class="section">
+<h1>oxiterm-a11y — Accessibility</h1>
+<span class="crate-badge">📦 oxiterm-a11y</span>
+<table class="func-table">
+<tr><th>Typ/Funkcja</th><th>Opis</th></tr>
+<tr><td>AtSpRole</td><td>Enum ról AT-SPI2: Button, TextInput, Label, Container, Image, Application, Panel, Entry, PushButton.</td></tr>
+<tr><td>A11yNode</td><td>Węzeł drzewa dostępności. id (NodeId), role, label (String), value (Option), children (Vec).</td></tr>
+<tr><td>build_a11y_tree(doc)</td><td>Buduje Vec&lt;A11yNode&gt; z THTMLDocument. Mapuje NodeTag → AtSpRole: Button→PushButton, Input→TextInput, Text→Label, Box→Panel, Img→Image, Screen→Application.</td></tr>
+<tr><td>build_a11y_node(doc, id, node)</td><td>Rekurencyjnie buduje A11yNode. Label = text content lub alt attribute. Value = bind_state wartość z StateManager.</td></tr>
+<tr><td>LinearFrameSink::send_frame()</td><td>Buduje a11y tree, serializuje do plain text, wysyła przez ChannelWriter. Format: "{role}: {label}\n". Zagłębienie przez wcięcia.</td></tr>
+<tr><td>DBusBridge::new()</td><td>Tworzy bridge do DBus session bus.</td></tr>
+<tr><td>DBusBridge::read_dbus_address()</td><td>Czyta DBUS_SESSION_BUS_ADDRESS.</td></tr>
+<tr><td>DBusBridge::open_tunnel(local, remote)</td><td>Otwiera proxy socket między lokalnym socketem a DBus address.</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════ BUGS ═══ -->
+<div id="bugs" class="section">
+<h1>Zidentyfikowane Błędy i Problemy</h1>
+<p>Błędy oznaczone komentarzami BUG-* w kodzie plus nowe wykryte podczas analizy.</p>
+
+<table class="bug-table">
+<tr><th>ID</th><th>Plik</th><th>Status</th><th>Opis</th><th>Fix</th></tr>
+
+<tr>
+<td><span class="bug-id">BUG-M01</span></td>
+<td><span class="bug-file">session.rs:ResizeDebouncer</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>ResizeDebouncer.poll() powinien mierzyć czas od push (pushed_at), nie od last_update. Bez fixa: debounce nie działał po pierwszym resize.</td>
+<td>Kod używa <code>self.pushed_at.elapsed()</code> — poprawnie.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-M02</span></td>
+<td><span class="bug-file">document.rs:compact()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Arena compact() musi zaktualizować root i dirty_nodes przez remap. Bez tego: NodeId wskazują na złe węzły po kompakcji.</td>
+<td>document.compact() aktualizuje root i dirty_nodes przez HashMap remap.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-M03</span></td>
+<td><span class="bug-file">parser/thtml.rs:sanitize_htmx_value</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Bez sanityzacji event-htmx: możliwe wstrzyknięcie escape sequences lub kontrolnych znaków w akcjach.</td>
+<td>sanitize_htmx_value() filtruje control chars i niebezpieczne znaki.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-H01</span></td>
+<td><span class="bug-file">session.rs:PredictiveEcho</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>PredictiveEcho::confirm() musi usuwać pierwszy znak (FIFO), nie ostatni. Stary kod usuwał cały bufor przy mismatch.</td>
+<td>Implementacja FIFO z Vec chars i remove(0) przy match.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-H06 / RATELIMIT-01</span></td>
+<td><span class="bug-file">ssh/server.rs, ratelimit.rs</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Duplikacja sprawdzenia rate limit: raz w TCP accept (mod.rs), raz w channel_open_session. Podwójne sprawdzenie prowadzi do inconsystencji.</td>
+<td>Usunięto duplikat z channel_open_session. Jedyne sprawdzenie przy TCP accept.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-BIND-SHOW-INCREMENTAL-01</span></td>
+<td><span class="bug-file">layout/engine.rs:compute()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Taffy cache powoduje, że bind-show nie przelicza gdy state zmienia widoczność węzła. Incremental update nie wykrywa zmiany Display::None.</td>
+<td>compute() zawsze wywołuje reset_nodes() (full rebuild). Wolniejsze, ale poprawne.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-COMPACT-01</span></td>
+<td><span class="bug-file">layout/engine.rs:reset_nodes()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Po document.compact() node_map zawiera stare OxiNodeId → TaffyNodeId. Nowe NodeId po remap nie mają wpisów. Layout fails.</td>
+<td>reset_nodes() czyści TaffyTree i node_map (full rebuild przy następnym compute).</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-KITTY-GHOST-01</span></td>
+<td><span class="bug-file">session.rs:AnsiFrameSink::send_frame()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Przy przejściu z ramki z grafiką Kitty do ramki bez grafiki: stare image placement pozostają na ekranie jako "duch".</td>
+<td>Wykryto: front.graphics.is_empty() &amp;&amp; back.graphics → delete_all_placements() przed diff.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-SPINLOCK-01</span></td>
+<td><span class="bug-file">backpressure.rs:blocking_recv()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>Stara implementacja: sleep(5ms) w pętli = busy-wait + dodatkowe 5ms latency. Zużywała CPU na idle sesje.</td>
+<td>parking_lot::Condvar.wait() — blokuje bez CPU burn, wakeup natychmiastowy przez try_send notify.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-RESIZE-01</span></td>
+<td><span class="bug-file">session.rs:EventLoop::run()</span></td>
+<td><span class="badge badge-fixed">FIXED</span></td>
+<td>DoubleBuffer resize przy każdym InputEvent::Resize powodował podwójną alokację. Debouncer teraz triggeruje jedną realokację.</td>
+<td>resize_debouncer.poll() w pętli render, nie przy odbiorze eventu.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-NEW-01</span></td>
+<td><span class="bug-file">session.rs:SessionRegistry::new()</span></td>
+<td><span class="badge badge-open">OPEN</span></td>
+<td><strong>max_sessions hardkodowane na 20.</strong> OxiTermConfig::session.max_sessions (domyślnie 100) jest ignorowane. SessionRegistry::new() nie przyjmuje konfiguracji. W produkcji pozwala na max 20 sesji bez względu na config.</td>
+<td>Dodać parametr <code>max_sessions: usize</code> do SessionRegistry::new() i przekazać z config.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-NEW-02</span></td>
+<td><span class="bug-file">style.rs:parse_da1_response()</span></td>
+<td><span class="badge badge-open">OPEN</span></td>
+<td><strong>Kitty APC i DA1 w if-else.</strong> Gdy terminal wysyła Kitty APC response (starts_with ESC_G) — ustawia tylko supports_kitty_gfx, pomija cały blok parsowania DA1 (?64, SGR mouse, Sixel). Jeśli terminal łączy obie odpowiedzi w jednym buforze, SGR mouse może nie zostać wykryty.</td>
+<td>Rozdzielić detekcję Kitty APC i DA1 na niezależne sprawdzenia (bez else).</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-NEW-03</span></td>
+<td><span class="bug-file">render/renderer.rs:VIRTUAL_FS</span></td>
+<td><span class="badge badge-partial">PARTIAL</span></td>
+<td><strong>thread_local! VIRTUAL_FS.</strong> HashMap jest thread-lokalny. W async runtime Tokio, render może być wykonywany na różnych worker threads. Jeśli VIRTUAL_FS jest populowany na jednym wątku (np. przy ładowaniu assets), inny wątek go nie widzi.</td>
+<td>Dla non-WASM: używa std::fs::read() (brak problemu). Dla WASM: single-threaded. Problem potencjalny przy multi-thread populate + render. Rozważyć OnceLock globalny cache zamiast thread_local.</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-NEW-04</span></td>
+<td><span class="bug-file">render/diff.rs:diff() wide chars</span></td>
+<td><span class="badge badge-partial">PARTIAL</span></td>
+<td><strong>Pozycja kursora po wide char na końcu wiersza.</strong> Gdy wide char (CJK, width=2) jest na ostatniej lub przedostatniej kolumnie: cur_x = x + 2, ale sprawdzenie <code>if cur_x &gt;= next.width</code> resetuje do (0, y+1). Przy kolejnym innym znaku, MoveCursor do (0, y+1) jest pomijany jeśli cur_x/y = 0/y+1 (fałszywy cache hit).</td>
+<td>Rozważyć czyszczenie cur_x/cur_y na None po każdym wrap, nie ustawianie na (0,y+1).</td>
+</tr>
+
+<tr>
+<td><span class="bug-id">BUG-NEW-05</span></td>
+<td><span class="bug-file">session.rs:EventLoop weather poll</span></td>
+<td><span class="badge badge-partial">PARTIAL</span></td>
+<td><strong>try_recv() busy-poll na weather_rx.</strong> W każdej iteracji pętli (co 5ms gdy brak animacji) wywoływane jest weather_rx.try_recv(). To nie blokuje, ale przy braku danych weather, generuje ciągłe "miss" calls. Akceptowalne przy 5ms tiku, ale nieoptymalne.</td>
+<td>Można użyć mpsc::channel z timeout zamiast try_recv, lub flagi pending_weather_update.</td>
+</tr>
+
+</table>
+
+<div class="notice-green notice" style="margin-top:20px">
+<b>Podsumowanie:</b> 9 z 10 zidentyfikowanych bugów jest naprawionych (FIXED). BUG-NEW-01 (max_sessions) jest kluczowy do poprawki przed produkcją. BUG-NEW-02 może powodować brak myszy na niektórych terminalach.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ EXAMPLES ═══ -->
+<div id="examples" class="section">
+<h1>THTML/TCSS — Język Szablonów</h1>
+
+<div class="card-grid">
+<div class="card">
+<h3>Elementy THTML</h3>
+<table class="func-table">
+<tr><th>Tag</th><th>Opis</th><th>Kluczowe atrybuty</th></tr>
+<tr><td>&lt;screen&gt;</td><td>Root container. Implicit — nie piszemy bezpośrednio. NodeTag::Screen.</td><td>—</td></tr>
+<tr><td>&lt;box&gt;</td><td>Flexbox container. Odpowiednik &lt;div&gt;. Domyślnie flex-direction: row.</td><td>style, id, class, bind-show</td></tr>
+<tr><td>&lt;text&gt;</td><td>Tekst. Obsługuje bind-state (zastępuje text content wartością ze StateManager).</td><td>bind-state="key", style</td></tr>
+<tr><td>&lt;input&gt;</td><td>Pole tekstowe. Bind-value przechowuje wpisaną wartość w StateManager.</td><td>bind-value="key", placeholder, name</td></tr>
+<tr><td>&lt;button&gt;</td><td>Przycisk z akcją HTMX. Enter lub klik wykonuje event-htmx.</td><td>event-htmx="inc:count"</td></tr>
+<tr><td>&lt;img&gt;</td><td>SVG/Lottie/Rive/PNG. Rasteryzacja w locie. Width/height w char cells.</td><td>src="file.svg", style="width:20;height:10"</td></tr>
+<tr><td>&lt;video&gt;</td><td>MP4/inne przez ffmpeg pipe. Frame-rate = animation tick (15fps).</td><td>src="clip.mp4", style="width:40;height:20"</td></tr>
+<tr><td>&lt;style&gt;</td><td>Blok TCSS. Wyciągany przed parserem, aplikowany jako kaskada.</td><td>—</td></tr>
+</table>
+</div>
+<div class="card">
+<h3>Właściwości TCSS</h3>
+<table class="func-table">
+<tr><th>Właściwość</th><th>Wartości</th></tr>
+<tr><td>color / background-color</td><td>#rrggbb, #rgb, rgb(r,g,b), ansi-{0-255}, named colors</td></tr>
+<tr><td>width / height</td><td>Liczba całkowita = char cells. Np. width: 40</td></tr>
+<tr><td>padding / margin</td><td>1 wartość lub padding-top/right/bottom/left</td></tr>
+<tr><td>flex-direction</td><td>row (domyślnie) | column</td></tr>
+<tr><td>align-items</td><td>flex-start | flex-end | center | stretch</td></tr>
+<tr><td>justify-content</td><td>flex-start | flex-end | center | space-between | space-around</td></tr>
+<tr><td>border</td><td>single | rounded | double + kolor</td></tr>
+<tr><td>font-weight</td><td>bold (mapuje na ANSI SGR 1)</td></tr>
+<tr><td>text-decoration</td><td>underline (SGR 4)</td></tr>
+<tr><td>font-style</td><td>italic (SGR 3)</td></tr>
+</table>
+</div>
+</div>
+
+<h2>Akcje HTMX (event-htmx)</h2>
+<div class="card">
+<pre>event-htmx="inc:count"           → StateManager.apply_action("inc:count")
+event-htmx="dec:count"           → counter - 1
+event-htmx="toggle:show_panel"   → bool flip
+event-htmx="set:tab=info"        → StateValue::Str("info")
+event-htmx="append:items=new"    → StateValue::List push "new"
+event-htmx="clear:input_text"    → reset do domyślnej wartości
+
+Łańcuchy akcji (separator ; lub ,):
+event-htmx="inc:count;set:status=active"
+
+Nawigacja do innego widoku:
+event-htmx="about.thtml"         → ładuje about.thtml jako nowy dokument</pre>
+</div>
+
+<h2>Warunek bind-show</h2>
+<div class="card">
+<pre>&lt;box bind-show="tab=info"&gt;...&lt;/box&gt;     → widoczne gdy state["tab"] == "info"
+&lt;box bind-show="!logged_in"&gt;...&lt;/box&gt;   → widoczne gdy state["logged_in"] == false
+&lt;box bind-show="count=0"&gt;...&lt;/box&gt;      → widoczne gdy state["count"] == "0"
+
+Ewaluacja: StateManager::evaluate_bind_show() przez StateEvaluator trait.
+LayoutEngine ustawia Display::None dla False → węzeł nie zajmuje miejsca.</pre>
+</div>
+
+<h2>Przykład: counter.thtml</h2>
+<pre>&lt;style&gt;
+  box { flex-direction: column; align-items: center; padding: 2; }
+  button { background-color: #1e40af; color: #fff; padding: 0 2; margin: 1; }
+  .value { color: #38bdf8; font-weight: bold; }
+&lt;/style&gt;
+&lt;box style="background-color: #0f172a; width: 30; height: 10;"&gt;
+  &lt;text&gt;Counter: &lt;text class="value" bind-state="count"&gt;0&lt;/text&gt;&lt;/text&gt;
+  &lt;button event-htmx="inc:count"&gt;[ + ] Increment&lt;/button&gt;
+  &lt;button event-htmx="dec:count"&gt;[ - ] Decrement&lt;/button&gt;
+  &lt;button event-htmx="clear:count"&gt;[ R ] Reset&lt;/button&gt;
+&lt;/box&gt;</pre>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+  window.scrollTo(0,0);
+}
+function showTerm(id) {
+  document.querySelectorAll('.term-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.term-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('term-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

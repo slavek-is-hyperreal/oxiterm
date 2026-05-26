@@ -1,5 +1,0 @@
-[2m2026-05-22T21:00:43.421029Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Serving examples/showcase.thtml on 0.0.0.0:8022 (web on port 8080)
-[2m2026-05-22T21:00:43.421140Z[0m [32m INFO[0m [2moxiterm_server::loader[0m[2m:[0m Loading THTML file: "examples/showcase.thtml"
-[2m2026-05-22T21:00:43.430536Z[0m [32m INFO[0m [2moxiterm_cli[0m[2m:[0m Hot Reload active for examples/showcase.thtml
-[2m2026-05-22T21:00:43.431250Z[0m [32m INFO[0m [2moxiterm_server::web::web_impl[0m[2m:[0m Web/WS server listening on http://0.0.0.0:8080
-[2m2026-05-22T21:00:43.431415Z[0m [32m INFO[0m [2moxiterm_server::ssh[0m[2m:[0m SSH server listening on 0.0.0.0:8022

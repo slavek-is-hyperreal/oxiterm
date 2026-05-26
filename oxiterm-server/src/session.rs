@@ -1017,13 +1017,17 @@ impl EventLoop {
 
                     // Traverse document to update active media info
                     {
+                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                        let start_x = offset_x as i32;
+                        let start_y = (offset_y as i32) - (self.scroll_offset as i32);
+
                         let mut active = Vec::new();
-                        let mut stack = vec![self.doc.root];
-                        while let Some(node_id) = stack.pop() {
+                        let mut stack = vec![(self.doc.root, start_x, start_y)];
+                        while let Some((node_id, parent_x, parent_y)) = stack.pop() {
                             if let Some(node) = self.doc.arena.get(node_id) {
                                 let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-                                let abs_x = rect.x as i32;
-                                let abs_y = rect.y as i32 - self.scroll_offset as i32;
+                                let abs_x = parent_x + rect.x as i32;
+                                let abs_y = parent_y + rect.y as i32;
                                 
                                 let has_border = node.style.border.is_some();
                                 let content_x = if has_border { abs_x + 1 } else { abs_x };
@@ -1044,7 +1048,7 @@ impl EventLoop {
                                 }
                                 
                                 for &child in &node.children {
-                                    stack.push(child);
+                                    stack.push((child, abs_x, abs_y));
                                 }
                             }
                         }

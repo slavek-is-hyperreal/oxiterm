@@ -265,6 +265,18 @@
         let currentCols = 0;
         let currentRows = 0;
 
+        const mediaCache = {};
+        let activeMedia = [];
+
+        function redrawActiveMedia() {
+            const ctx = canvas.getContext("2d");
+            for (const media of activeMedia) {
+                if (media.img.complete) {
+                    ctx.drawImage(media.img, media.col * charWidth, media.row * charHeight, media.width * charWidth, media.height * charHeight);
+                }
+            }
+        }
+
         async function start() {
             // 1. Initialize WASM module
             await init();
@@ -298,8 +310,6 @@
                 setTimeout(start, 3000);
             };
 
-            const mediaCache = {};
-
             socket.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
                     const bytes = new Uint8Array(event.data);
@@ -319,7 +329,9 @@
                             mediaCache[hash] = url;
                         }
                     } else if (bytes[0] === 0x21) {
-                        if (bytes.length >= 13) {
+                        if (bytes.length === 1) {
+                            activeMedia = [];
+                        } else if (bytes.length >= 13) {
                             const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
                             const col = bytes[5] | (bytes[6] << 8);
                             const row = bytes[7] | (bytes[8] << 8);
@@ -331,13 +343,15 @@
                                 const img = new Image();
                                 img.src = imageUrl;
                                 img.onload = () => {
-                                    const ctx = canvas.getContext("2d");
-                                    ctx.drawImage(img, col * charWidth, row * charHeight, width * charWidth, height * charHeight);
+                                    redrawActiveMedia();
                                 };
+                                activeMedia.push({ hash, col, row, width, height, img });
+                                redrawActiveMedia();
                             }
                         }
                     } else {
                         term.draw_commands(bytes);
+                        redrawActiveMedia();
                     }
                 }
             };
@@ -443,6 +457,7 @@
                 canvas.height = rows * charHeight;
 
                 term.clear(cols, rows);
+                redrawActiveMedia();
 
                 // Send resize message: [0x10, cols_low, cols_high, rows_low, rows_high]
                 const buf = new Uint8Array(5);
