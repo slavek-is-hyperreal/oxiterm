@@ -202,6 +202,9 @@ pub struct TerminalProfile {
     pub supports_sgr_mouse: bool,
     /// Detected color depth support.
     pub color_depth: ColorDepth,
+    /// True if the client is a web client using DOM media overlays.
+    #[serde(default)]
+    pub is_web: bool,
 }
 
 impl TerminalProfile {

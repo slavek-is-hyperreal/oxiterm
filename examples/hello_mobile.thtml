@@ -1,0 +1,66 @@
+<style>
+.card {
+    flex-direction: row;
+    align-items: center;
+    padding-left: 1;
+    border-style: rounded;
+}
+.card-counter  { border-color: #f59e0b; }
+.card-state    { border-color: #4ade80; }
+.card-style    { border-color: #c084fc; }
+.card-input    { border-color: #f472b6; }
+.card-nav      { border-color: #38bdf8; }
+.card-media    { border-color: #f87171; }
+.card-video    { border-color: #fb923c; }
+.card-showcase { border-color: #a3e635; }
+
+.muted { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">📱 OxiTerm Mobile Player 📱</text>
+    </box>
+
+    <!-- Center container -->
+    <box style="flex: 1; align-items: center; justify-content: center; padding-top: 1;">
+        
+        <!-- List container -->
+        <box style="width: 46; height: 24; flex-direction: column; justify-content: space-between;">
+            <box class="card card-counter" style="height: 2;" event-htmx="counter.thtml">
+                <text style="fg: #f59e0b; height: 1;">🔢 Counter (State &amp; inc/dec)</text>
+            </box>
+            <box class="card card-state" style="height: 2;" event-htmx="state_demo.thtml">
+                <text style="fg: #4ade80; height: 1;">🔄 States (All state types)</text>
+            </box>
+            <box class="card card-style" style="height: 2;" event-htmx="styles_demo.thtml">
+                <text style="fg: #c084fc; height: 1;">🎨 Styling (TCSS classes)</text>
+            </box>
+            <box class="card card-input" style="height: 2;" event-htmx="input_demo.thtml">
+                <text style="fg: #f472b6; height: 1;">⌨️ Input (bind-value fields)</text>
+            </box>
+            <box class="card card-nav" style="height: 2;" event-htmx="navigation_demo.thtml">
+                <text style="fg: #38bdf8; height: 1;">📑 Navigation (Tabs &amp; bind-show)</text>
+            </box>
+            <box class="card card-media" style="height: 2;" event-htmx="media_demo.thtml">
+                <text style="fg: #f87171; height: 1;">🖼️ Graphics (SVG/Lottie loop)</text>
+            </box>
+            <box class="card card-video" style="height: 2;" event-htmx="video_demo.thtml">
+                <text style="fg: #fb923c; height: 1;">🎬 Video (MP4 playback)</text>
+            </box>
+            <box class="card card-showcase" style="height: 2;" event-htmx="showcase.thtml">
+                <text style="fg: #a3e635; height: 1;">🧪 Showcase (Engine features)</text>
+            </box>
+        </box>
+        
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #1e293b; align-items: center; justify-content: center;">
+        <text class="muted">[Q] Exit   [Tab] Nav   [Enter] Select</text>
+    </box>
+
+</box>

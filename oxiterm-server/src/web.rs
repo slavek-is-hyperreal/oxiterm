@@ -20,8 +20,40 @@ pub mod web_impl {
 
     // Load assets at compile time.
     const HTML_ASSET: &[u8] = include_bytes!("../assets/index.html");
+    const HTML_MOBILE_ASSET: &[u8] = include_bytes!("../assets/index_mobile.html");
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
+
+    /// Checks if the request comes from a mobile User-Agent.
+    fn is_mobile_user_agent(request: &str) -> bool {
+        let req_lower = request.to_lowercase();
+        for line in req_lower.lines() {
+            if line.starts_with("user-agent:") {
+                return line.contains("mobi")
+                    || line.contains("iphone")
+                    || line.contains("ipad")
+                    || line.contains("android")
+                    || line.contains("windows phone");
+            }
+        }
+        false
+    }
+
+    /// Checks if a mobile suffix version of the target template exists on disk.
+    fn mobile_version_exists(source_path: &Option<std::path::PathBuf>) -> bool {
+        if let Some(ref path) = source_path {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    let mobile_name = format!("{}_mobile.{}", stem, ext);
+                    if let Some(parent) = path.parent() {
+                        let mobile_path = parent.join(mobile_name);
+                        return mobile_path.exists();
+                    }
+                }
+            }
+        }
+        false
+    }
 
     /// Simple hash path utility.
     pub fn hash_path(path: &str) -> u32 {
@@ -236,7 +268,35 @@ pub mod web_impl {
                 ..Default::default()
             };
             let ws_stream = accept_async_with_config(stream, Some(ws_config)).await?;
-            handle_websocket(ws_stream, registry, initial_doc, source_path).await?;
+            
+            let mut query_viewport = None;
+            if let Some(first_line) = header.lines().next() {
+                if first_line.contains("viewport=mobile") || first_line.contains("mobile=true") {
+                    query_viewport = Some(true);
+                } else if first_line.contains("viewport=desktop") || first_line.contains("mobile=false") {
+                    query_viewport = Some(false);
+                }
+            }
+
+            let mut cookie_viewport = None;
+            for line in header.lines() {
+                let line_lower = line.to_lowercase();
+                if line_lower.starts_with("cookie:") {
+                    if line_lower.contains("viewport=mobile") {
+                        cookie_viewport = Some(true);
+                    } else if line_lower.contains("viewport=desktop") {
+                        cookie_viewport = Some(false);
+                    }
+                }
+            }
+
+            let is_mobile = match (query_viewport, cookie_viewport) {
+                (Some(q), _) => q,
+                (None, Some(c)) => c,
+                (None, None) => is_mobile_user_agent(&header),
+            };
+
+            handle_websocket(ws_stream, registry, initial_doc, source_path, is_mobile).await?;
         } else {
             let mut stream = stream;
             let mut read_buf = vec![0u8; 8192];
@@ -254,50 +314,103 @@ pub mod web_impl {
                 }
             }
             let request = String::from_utf8_lossy(&read_buf[..read_bytes]);
-            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            let full_path = request.split_whitespace().nth(1).unwrap_or("/");
+            let path = full_path.split('?').next().unwrap_or("/");
 
-            let (status, mime, body) = match path {
-                "/" | "/index.html" => {
-                    ("200 OK", "text/html", HTML_ASSET)
-                }
+            let is_mobile_ua = is_mobile_user_agent(&request);
+            let has_mobile = mobile_version_exists(&source_path);
 
-                "/oxiterm_web.js" => {
-                    ("200 OK", "application/javascript", JS_ASSET)
+            let mut query_viewport = None;
+            if let Some(first_line) = request.lines().next() {
+                if first_line.contains("viewport=mobile") || first_line.contains("mobile=true") {
+                    query_viewport = Some(true);
+                } else if first_line.contains("viewport=desktop") || first_line.contains("mobile=false") {
+                    query_viewport = Some(false);
                 }
-                "/oxiterm_web_bg.wasm" => {
-                    ("200 OK", "application/wasm", WASM_ASSET)
-                }
-                _ => {
-                    ("404 NOT FOUND", "text/plain", b"Not Found" as &[u8])
-                }
-            };
+            }
 
-            let accepts_gzip = request.to_lowercase().contains("accept-encoding: gzip")
-                || request.to_lowercase().contains("accept-encoding: *")
-                || request.contains("Accept-Encoding: gzip");
-
-            let mut response_body = body.to_vec();
-            let mut content_encoding = "";
-            if accepts_gzip && status == "200 OK" {
-                use flate2::write::GzEncoder;
-                use flate2::Compression;
-                use std::io::Write;
-                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                if encoder.write_all(body).is_ok() {
-                    if let Ok(compressed) = encoder.finish() {
-                        response_body = compressed;
-                        content_encoding = "Content-Encoding: gzip\r\n";
+            let mut cookie_viewport = None;
+            for line in request.lines() {
+                let line_lower = line.to_lowercase();
+                if line_lower.starts_with("cookie:") {
+                    if line_lower.contains("viewport=mobile") {
+                        cookie_viewport = Some(true);
+                    } else if line_lower.contains("viewport=desktop") {
+                        cookie_viewport = Some(false);
                     }
                 }
             }
 
+            let target_is_mobile = has_mobile && match (query_viewport, cookie_viewport) {
+                (Some(q), _) => q,
+                (None, Some(c)) => c,
+                (None, None) => is_mobile_ua,
+            };
+
+            let (status, mime, body, redirect_to) = match path {
+                "/" | "/index.html" => {
+                    if target_is_mobile {
+                        ("302 Found", "text/html", &[] as &[u8], Some("/mobile"))
+                    } else {
+                        ("200 OK", "text/html", HTML_ASSET, None)
+                    }
+                }
+                "/mobile" => {
+                    if !target_is_mobile {
+                        ("302 Found", "text/html", &[] as &[u8], Some("/"))
+                    } else {
+                        ("200 OK", "text/html", HTML_MOBILE_ASSET, None)
+                    }
+                }
+                "/oxiterm_web.js" => {
+                    ("200 OK", "application/javascript", JS_ASSET, None)
+                }
+                "/oxiterm_web_bg.wasm" => {
+                    ("200 OK", "application/wasm", WASM_ASSET, None)
+                }
+                _ => {
+                    ("404 NOT FOUND", "text/plain", b"Not Found" as &[u8], None)
+                }
+            };
+
+            let mut response_body = body.to_vec();
+            let mut content_encoding = "";
+
+            let headers = if let Some(loc) = redirect_to {
+                response_body.clear();
+                format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    loc
+                )
+            } else {
+                let accepts_gzip = request.to_lowercase().contains("accept-encoding: gzip")
+                    || request.to_lowercase().contains("accept-encoding: *")
+                    || request.contains("Accept-Encoding: gzip");
+
+                if accepts_gzip && status == "200 OK" {
+                    use flate2::write::GzEncoder;
+                    use flate2::Compression;
+                    use std::io::Write;
+                    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                    if encoder.write_all(body).is_ok() {
+                        if let Ok(compressed) = encoder.finish() {
+                            response_body = compressed;
+                            content_encoding = "Content-Encoding: gzip\r\n";
+                        }
+                    }
+                }
+
+                format!(
+                    "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+                    status, mime, response_body.len(), content_encoding
+                )
+            };
+
             use tokio::io::AsyncWriteExt;
-            let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
-                status, mime, response_body.len(), content_encoding
-            );
-            stream.write_all(response.as_bytes()).await?;
-            stream.write_all(&response_body).await?;
+            stream.write_all(headers.as_bytes()).await?;
+            if !response_body.is_empty() {
+                stream.write_all(&response_body).await?;
+            }
             stream.flush().await?;
         }
         Ok(())
@@ -308,6 +421,7 @@ pub mod web_impl {
         registry: Arc<SessionRegistry>,
         initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         source_path: Option<std::path::PathBuf>,
+        is_mobile: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client_session = match registry.create_session() {
             Some(s) => s,
@@ -316,6 +430,8 @@ pub mod web_impl {
                 return Ok(());
             }
         };
+        client_session.is_mobile.store(is_mobile, std::sync::atomic::Ordering::SeqCst);
+        client_session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
 
         info!("Created Web/WS session {}", client_session.id);
         let (ws_write, mut ws_read) = ws_stream.split();
@@ -337,7 +453,24 @@ pub mod web_impl {
             client_session_clone.close();
         });
 
-        let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), source_path.clone()));
+        let mut resolved_source_path = source_path.clone();
+        if is_mobile {
+            if let Some(ref path) = source_path {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        let mobile_name = format!("{}_mobile.{}", stem, ext);
+                        if let Some(parent) = path.parent() {
+                            let mobile_path = parent.join(mobile_name);
+                            if mobile_path.exists() {
+                                resolved_source_path = Some(mobile_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), resolved_source_path.clone()));
         let event_bus = Arc::new(crate::events::EventBus::new());
         
         let mut dims = *client_session.dims.read();
@@ -372,7 +505,7 @@ pub mod web_impl {
             }
         }
 
-        let doc = if let Some(ref path) = source_path {
+        let doc = if let Some(ref path) = resolved_source_path {
             match crate::loader::load_thtml_file(path) {
                 Ok(loaded) => loaded,
                 Err(e) => {
@@ -392,7 +525,7 @@ pub mod web_impl {
 
         let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
         event_loop.frame_sink = frame_sink;
-        event_loop.source_path = source_path;
+        event_loop.source_path = resolved_source_path;
 
         std::thread::spawn(move || {
             event_loop.run();
@@ -631,6 +764,117 @@ pub mod web_impl {
             let msg1 = rx.try_recv().unwrap();
             assert_eq!(msg1[0], 0x21); 
             assert!(rx.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn test_playground_routes() {
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            
+            let temp_dir = std::env::temp_dir();
+            let source_path = temp_dir.join("test_page.thtml");
+            std::fs::write(&source_path, b"<screen></screen>").unwrap();
+            
+            let mobile_path = temp_dir.join("test_page_mobile.thtml");
+            std::fs::write(&mobile_path, b"<screen></screen>").unwrap();
+
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let local_addr = listener.local_addr().unwrap();
+            
+            let reg_clone = reg.clone();
+            let source_path_clone = source_path.clone();
+            tokio::spawn(async move {
+                loop {
+                    if let Ok((stream, _)) = listener.accept().await {
+                        let r = reg_clone.clone();
+                        let s = source_path_clone.clone();
+                        tokio::spawn(async move {
+                            let _ = handle_connection(stream, r, None, Some(s)).await;
+                        });
+                    }
+                }
+            });
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+
+            // Test 1: GET / with a mobile User-Agent -> Redirect to /mobile
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET / HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("302 Found"));
+                assert!(response.contains("Location: /mobile"));
+            }
+
+            // Test 2: GET / with non-mobile User-Agent -> 200 OK
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET / HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("200 OK"));
+                assert!(response.contains("text/html"));
+            }
+
+            // Test 3: GET /mobile with non-mobile User-Agent -> Redirect to /
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET /mobile HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("302 Found"));
+                assert!(response.contains("Location: /"));
+            }
+
+            // Test 4: GET /?viewport=mobile with desktop User-Agent -> Redirect to /mobile
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET /?viewport=mobile HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("302 Found"));
+                assert!(response.contains("Location: /mobile"));
+            }
+
+            // Test 5: GET / with desktop User-Agent and cookie viewport=mobile -> Redirect to /mobile
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET / HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: viewport=mobile\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("302 Found"));
+                assert!(response.contains("Location: /mobile"));
+            }
+
+            // Test 6: GET /mobile with desktop User-Agent and cookie viewport=mobile -> 200 OK
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET /mobile HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: viewport=mobile\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("200 OK"));
+                assert!(response.contains("text/html"));
+            }
+
+            // Test 7: GET /mobile?viewport=desktop with mobile User-Agent -> Redirect to /
+            {
+                let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+                let request = "GET /mobile?viewport=desktop HTTP/1.1\r\nUser-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)\r\nConnection: close\r\n\r\n";
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.contains("302 Found"));
+                assert!(response.contains("Location: /"));
+            }
+
+            let _ = std::fs::remove_file(source_path);
+            let _ = std::fs::remove_file(mobile_path);
         }
     }
 }

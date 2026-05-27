@@ -158,6 +158,10 @@ pub struct ClientSession {
     pub state: RwLock<crate::state::StateManager>,
     /// Active media placement layout tracking list.
     pub active_media: RwLock<Vec<MediaRenderInfo>>,
+    /// Indicates if the session is a mobile web session.
+    pub is_mobile: std::sync::atomic::AtomicBool,
+    /// Indicates if the session is a web (WebSocket) session with DOM media overlay.
+    pub is_web_client: std::sync::atomic::AtomicBool,
 }
 
 impl ClientSession {
@@ -292,6 +296,8 @@ impl SessionRegistry {
             last_activity: RwLock::new(std::time::Instant::now()),
             state: RwLock::new(crate::state::StateManager::new()),
             active_media: RwLock::new(Vec::new()),
+            is_mobile: std::sync::atomic::AtomicBool::new(false),
+            is_web_client: std::sync::atomic::AtomicBool::new(false),
         });
         self.sessions.write().insert(id, session.clone());
         Some(session)
@@ -481,6 +487,31 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
+    fn resolve_path(&self, filename: &str) -> std::path::PathBuf {
+        let base = self.source_path.as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        
+        let mut target_name = filename.to_string();
+        if !target_name.ends_with(".thtml") {
+            target_name.push_str(".thtml");
+        }
+
+        // If it is a mobile session, try to find a mobile variant.
+        if self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst) {
+            if !target_name.contains("_mobile.thtml") {
+                let stem = target_name.strip_suffix(".thtml").unwrap_or(&target_name);
+                let mobile_name = format!("{}_mobile.thtml", stem);
+                let mobile_path = base.join(&mobile_name);
+                if mobile_path.exists() {
+                    return mobile_path;
+                }
+            }
+        }
+
+        base.join(target_name)
+    }
+
     /// Creates a new `EventLoop` with clean session parameters.
     pub fn new(
         session: Arc<ClientSession>, 
@@ -815,14 +846,10 @@ impl EventLoop {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
                                                 info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
                                                 if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                    let mut filename = htmx_target.to_string();
-                                                    if !filename.ends_with(".thtml") {
-                                                        filename.push_str(".thtml");
-                                                    }
+                                                    let new_path = self.resolve_path(&htmx_target);
                                                     let base = self.source_path.as_ref()
                                                         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
                                                         .unwrap_or_else(|| std::path::PathBuf::from("."));
-                                                    let new_path = base.join(&filename);
                                                     let is_safe = (|| -> Option<bool> {
                                                         let canonical_base = base.canonicalize().ok()?;
                                                         let canonical_target = new_path.canonicalize().ok()?;
@@ -926,17 +953,11 @@ impl EventLoop {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
                                                 info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
                                                 if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
+                                                    let new_path = self.resolve_path(&htmx_target);
                                                     let base_dir = self.source_path.as_ref()
                                                         .and_then(|p| p.parent())
                                                         .map(|p| p.to_path_buf())
                                                         .unwrap_or_else(|| std::env::current_dir().unwrap());
-                                                    
-                                                    let mut filename = htmx_target.to_string();
-                                                    if !filename.ends_with(".thtml") {
-                                                        filename.push_str(".thtml");
-                                                    }
-                                                    
-                                                    let new_path = base_dir.join(filename);
                                                     
                                                     let is_safe = (|| -> Option<bool> {
                                                         let canonical_base = base_dir.canonicalize().ok()?;
@@ -1092,7 +1113,7 @@ impl EventLoop {
                                 }
                                 
                                 for &child in &node.children {
-                                    stack.push((child, abs_x, abs_y));
+                                    stack.push((child, parent_x, parent_y));
                                 }
                             }
                         }
@@ -1112,7 +1133,8 @@ impl EventLoop {
                         let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
                     }
 
-                    let profile = self.session.terminal_profile.read().clone();
+                    let mut profile = self.session.terminal_profile.read().clone();
+                    profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
                     self.buffer.back.clear();
                     Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, self.scroll_offset);
@@ -1261,6 +1283,9 @@ impl EventLoop {
     }
 
     fn has_active_animations(&self) -> bool {
+        if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
         if let Some(ref layout) = self.layout_engine.last_layout {
             for node_id in layout.nodes.keys() {
                 if let Some(node) = self.doc.get_node(*node_id) {

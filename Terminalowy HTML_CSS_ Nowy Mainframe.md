@@ -40,6 +40,14 @@ Aplikacja operuje na wewnętrznej siatce komórek reprezentującej ekran klienta
 
 Aby zachować przejrzystość kodu i zbliżyć doświadczenie programistyczne do nowoczesnego środowiska webowego, architektura zarzuca ręczne nasłuchiwanie na przerwania klawiatury na rzecz modelu asynchronicznych komunikatów, luźno inspirowanego architekturą HTMX.17 Gdy terminal użytkownika zarejestruje zdarzenie – na przykład kliknięcie myszą w przycisk oznaczony jako interaktywny – surowa sekwencja zdarzeń (np. ciąg \\033\[\<0;25;10M odpowiadający za pozycję kliknięcia) wędruje do serwera.19 Serwer przeprowadza operację testowania kolizji (Hit-Testing) w obrębie swojego zrenderowanego układu, identyfikuje element docelowy i uruchamia przypiętą do niego funkcję (callback). Funkcja ta modyfikuje parametry w drzewie THTML, wywołując cykl ponownego obliczenia stylów TCSS, generacji bufora i przesłania różnicy. Ponieważ wszystko dzieje się asynchronicznie po stronie serwera połączonego z bazą danych za pośrednictwem lokalnej infrastruktury o niskich opóźnieniach, zjawisko ładowania danych znika z punktu widzenia klienta.10 Jest to ostateczne zwieńczenie modelu "nowoczesnego mainframe'u".
 
+### **Wsparcie dla Urządzeń Mobilnych (Responsive Layouts)**
+
+Współczesne aplikacje terminalowe muszą być dostępne również na urządzeniach mobilnych za pośrednictwem przeglądarek internetowych. OxiTerm rozwiązuje to poprzez wbudowany mechanizm wykrywania urządzeń mobilnych oraz dynamicznej rozdzielczości szablonów:
+- **Detekcja User-Agent:** Serwer HTTP weryfikuje nagłówek `User-Agent` w poszukiwaniu urządzeń mobilnych i automatycznie przekierowuje sesje z `/` na dedykowaną podstronę `/mobile` (kod 302).
+- **Automatyczne dynamiczne dopasowanie szablonu:** Jeśli sesja zostanie zidentyfikowana jako mobilna (`is_mobile = true`), silnik serwera automatycznie poszukuje plików szablonów z przyrostkiem `_mobile.thtml`. W przypadku ich braku następuje płynny powrót (fallback) do standardowych wersji.
+- **Optymalizacja widoku:** Szablony z sufiksem `_mobile.thtml` są optymalizowane pod kątem węższych ekranów (rozdzielczość rzędu 48x30) oraz większych elementów klikalnych, co ułatwia obsługę dotykową na smartfonach.
+
+
 ## **Strategia i Harmonogram Implementacji**
 
 Proces tworzenia tak złożonego ekosystemu wymaga rygorystycznej inżynierii oprogramowania. Zastosowanie języka Rust wymusza dyscyplinę w zarządzaniu pamięcią i architekturą wielowątkową. Docelowym środowiskiem, w którym interfejs ma działać bez zauważalnych opóźnień ("SZYBKO"), są systemy z rodziny Linux Mint. Harmonogram projektu OxiTerm został podzielony na sześć intensywnych iteracji (sprintów), które sekwencyjnie budują kolejne abstrakcje, od warstwy transportowej po skomplikowane algorytmy różnicowe i optymalizacje sprzętowe.

@@ -79,3 +79,21 @@ OxiTerm's performance and stability in a network environment rely on several key
 When launching the server with the `--a11y` flag, the engine switches to the **LinearFrameSink** mode:
 * Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
 * OxiTerm can integrate with the DBus system bus on Linux systems to communicate directly with speech synthesizers and Braille displays.
+
+---
+
+## 7. Mobile Responsive Support
+
+OxiTerm includes a native mobile-responsive routing and template resolution system:
+* **Server-Side Device Detection & Overrides:** The HTTP server detects mobile devices by checking the `User-Agent` header (matching "Mobi", "Android", "iPhone"). In addition, explicit client-side overrides are supported:
+  - **Query Parameters:** URL parameters like `?viewport=mobile` or `?mobile=true` override standard User-Agent detection.
+  - **Cookies:** The server respects a `viewport` cookie (`viewport=mobile` or `viewport=desktop`) to maintain layout selections across page requests.
+* **Viewport-Aware Redirection:**
+  - Mobile-detected clients requesting `/` are automatically redirected (HTTP 302) to `/mobile`.
+  - Desktop-detected clients requesting `/mobile` are redirected back to `/`.
+* **Client-Side Responsive Handlers:**
+  - **Initial Viewport Verification:** Immediate Javascript execution in the `<head>` of both `index.html` and `index_mobile.html` detects physical screen widths. Under `800px`, the desktop version sets the `viewport=mobile` cookie and redirects to `/mobile`. At or above `800px`, the mobile version sets the `viewport=desktop` cookie and redirects to `/`.
+  - **Dynamic Window Resizing:** During desktop or mobile sessions, if a window resize crosses the `800px` boundary, the `resizeTerminal` handler updates the cookie and performs a `location.replace` to switch to the appropriate view.
+* **Dynamic Template Resolution:** The `ClientSession` tracks device type using an `AtomicBool` flag (`is_mobile`). During page transitions and asset loading, `EventLoop::resolve_path()` checks if a mobile-specific variant exists (e.g., suffixing `_mobile.thtml` to the filename). If present, the mobile variant is served; otherwise, the server gracefully falls back to the desktop version.
+* **Mobile-Optimized Templates:** Standard mobile templates target a viewport of ~48x30 characters, utilizing stacked layouts and enlarged navigation buttons for touch targets.
+

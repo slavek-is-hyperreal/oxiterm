@@ -24,6 +24,7 @@ ssh localhost -p 2222
 - **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and interactive Rive (.riv) widgets.
 - **Auto-Negotiated Rendering**: Dynamic detection of terminal capabilities (Kitty Graphics Protocol, Sixel, Unicode half-blocks) with automatic fallbacks.
 - **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside Rive canvas nodes.
+- **Mobile-Responsive Layouts**: Viewport-aware routing and server-side device detection with dynamic `_mobile.thtml` template resolution.
 - **Bounded Backpressure**: Secure `BoundedFrameChannel` architecture prevents memory exhaustion.
 - **PUA-B Unicode Stabilization**: Pixel-perfect layouts across different terminal emulators.
 - **Predictive Echo**: Zero-latency feedback for keyboard input.

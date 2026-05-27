@@ -1,0 +1,96 @@
+<style>
+.label-row {
+    flex-direction: row;
+    height: 1;
+}
+.label {
+    width: 20;
+    fg: #94a3b8;
+}
+.action-row {
+    flex-direction: row;
+    height: 3;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+.action {
+    border-style: single;
+    border-color: #334155;
+    padding-left: 1;
+    padding-right: 1;
+    height: 3;
+    margin-right: 1;
+}
+.muted { fg: #475569; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #4ade80; height: 1;">🔄 States Demo</text>
+        <text style="fg: #38bdf8; height: 1;" event-htmx="hello.thtml">← Back</text>
+    </box>
+
+    <!-- Main Scrollable/Vertical Content -->
+    <box style="flex-direction: column; padding: 1; flex: 1;">
+
+        <!-- Int -->
+        <box style="flex-direction: column; margin-bottom: 1;">
+            <box class="label-row">
+                <text class="label">Int (counter):</text>
+                <text style="fg: #38bdf8; height: 1;" bind-state="demo_int">0</text>
+            </box>
+            <box class="action-row">
+                <text class="action" style="fg: #4ade80;" event-htmx="inc:demo_int">[+1]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="dec:demo_int">[-1]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_int">[x]</text>
+            </box>
+        </box>
+
+        <!-- Bool -->
+        <box style="flex-direction: column; margin-bottom: 1;">
+            <box class="label-row">
+                <text class="label">Bool (toggle):</text>
+                <text style="fg: #fbbf24; height: 1;" bind-state="demo_bool">false</text>
+            </box>
+            <box class="action-row">
+                <text class="action" style="fg: #fbbf24;" event-htmx="toggle:demo_bool">[toggle]</text>
+            </box>
+        </box>
+
+        <!-- Str -->
+        <box style="flex-direction: column; margin-bottom: 1;">
+            <box class="label-row">
+                <text class="label">Str (set):</text>
+                <text style="fg: #c084fc; height: 1;" bind-state="demo_str">—</text>
+            </box>
+            <box class="action-row">
+                <text class="action" style="fg: #4ade80;" event-htmx="set:demo_str=active">[active]</text>
+                <text class="action" style="fg: #f87171;" event-htmx="set:demo_str=error">[error]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_str">[x]</text>
+            </box>
+        </box>
+
+        <!-- List -->
+        <box style="flex-direction: column; margin-bottom: 1;">
+            <box class="label-row">
+                <text class="label">List (append):</text>
+                <text style="fg: #34d399; height: 1;" bind-state="demo_list">[]</text>
+            </box>
+            <box class="action-row">
+                <text class="action" style="fg: #4ade80;" event-htmx="append:demo_list=elem">[+elem]</text>
+                <text class="action" style="fg: #94a3b8;" event-htmx="clear:demo_list">[x]</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Nav  [Enter] Select</text>
+    </box>
+
+</box>

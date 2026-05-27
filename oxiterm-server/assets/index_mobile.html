@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script>
-        if (window.innerWidth < 800) {
-            document.cookie = "viewport=mobile; path=/";
-            window.location.replace("/mobile" + window.location.search);
+        if (window.innerWidth >= 800) {
+            document.cookie = "viewport=desktop; path=/";
+            window.location.replace("/" + window.location.search);
         }
     </script>
-    <title>OxiTerm Web Console</title>
+    <title>OxiTerm Mobile Console</title>
     <!-- Modern Premium Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,52 +36,28 @@
         body {
             font-family: 'Inter', sans-serif;
             background: var(--bg-gradient);
-            min-height: 100vh;
+            height: 100vh;
+            height: 100dvh;
             display: flex;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: stretch;
             overflow: hidden;
             position: relative;
             color: #f1f5f9;
         }
 
-        /* Animated glowing background */
-        body::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--accent-glow);
-            pointer-events: none;
-            z-index: 0;
-            animation: pulse-glow 8s ease-in-out infinite alternate;
-        }
-
-        @keyframes pulse-glow {
-            0% { opacity: 0.6; transform: scale(1.0); }
-            100% { opacity: 1.0; transform: scale(1.1); }
-        }
-
         /* Glassmorphic main window container */
         .window {
             z-index: 10;
-            width: 90vw;
-            max-width: 1000px;
-            height: 80vh;
-            max-height: 700px;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
             background: var(--glass-bg);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
-            border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
-                        0 0 40px rgba(99, 102, 241, 0.1);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            transition: all 0.3s ease;
         }
 
         /* Premium Title Bar */
@@ -114,14 +90,14 @@
 
         /* Window Title */
         .title {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             letter-spacing: 0.5px;
             color: #94a3b8;
             font-family: 'JetBrains Mono', monospace;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         /* Status Indicator Component */
@@ -129,12 +105,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1px;
             background: rgba(15, 23, 42, 0.6);
-            padding: 4px 10px;
+            padding: 4px 8px;
             border-radius: 20px;
             border: 1px solid var(--glass-border);
         }
@@ -169,14 +145,13 @@
             flex: 1;
             position: relative;
             background: #0f172a;
-            padding: 8px;
+            padding: 0;
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        /* canvas-wrap keeps media-layer aligned with canvas */
         .canvas-wrap {
             position: relative;
             line-height: 0;
@@ -188,9 +163,10 @@
             image-rendering: pixelated;
             cursor: text;
             outline: none;
+            width: 100%;
+            height: 100%;
         }
 
-        /* Native image/animation overlay — no pixelation */
         #media-layer {
             position: absolute;
             top: 0;
@@ -199,13 +175,14 @@
             overflow: hidden;
         }
 
-        #media-layer > * {
+        #media-layer img {
             position: absolute;
-        }
-
-        #media-layer img, #media-layer video {
             object-fit: contain;
             image-rendering: auto;
+        }
+
+        #media-layer .lottie-slot {
+            position: absolute;
         }
 
         /* Full-screen Loading Overlay */
@@ -263,7 +240,7 @@
             </div>
             <div class="title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
-                OxiTerm Web Console
+                OxiTerm Mobile Web
             </div>
             <div class="status-badge">
                 <span class="status-dot" id="status-dot"></span>
@@ -302,9 +279,7 @@
         let currentCols = 0;
         let currentRows = 0;
 
-        // mediaCache[hash] = { url, type, json? }
         const mediaCache = {};
-        // activeMedia = [{ hash, col, row, width, height, element }]
         let activeMedia = [];
 
         function detectMediaType(bytes) {
@@ -313,7 +288,6 @@
             if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
             if (bytes[0] === 0x7B) return 'lottie';
             if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'video/mp4';
-            // SVG / XML
             const head = new TextDecoder().decode(bytes.slice(0, 64));
             if (head.trimStart().startsWith('<')) return 'image/svg+xml';
             return 'image/png';
@@ -376,7 +350,6 @@
             }
         }
 
-        // legacy no-op — canvas drawing replaced by DOM overlay
         function redrawActiveMedia() {}
 
         async function start() {
@@ -389,7 +362,7 @@
 
             // 3. Connect WebSocket
             const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws?viewport=desktop`;
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws?viewport=mobile`;
             
             socket = new WebSocket(wsUrl);
             socket.binaryType = "arraybuffer";
@@ -474,10 +447,6 @@
                         case "Enter":     codepoint = 13; break;
                         case "Escape":    codepoint = 27; break;
                         case "Delete":    codepoint = 127; break;
-                        // Arrows map to standard VT sequences but encoded as VT escape or customized?
-                        // Wait, since oxiterm-proto decodes normal byte sequences, we could send VT sequences
-                        // as a series of individual keypresses or customize!
-                        // Let's send normal ANSI escape keypresses:
                         case "ArrowUp":    e.preventDefault(); sendKeyPress(0xF700, false, false, false); return;
                         case "ArrowDown":  e.preventDefault(); sendKeyPress(0xF701, false, false, false); return;
                         case "ArrowRight": e.preventDefault(); sendKeyPress(0xF702, false, false, false); return;
@@ -546,16 +515,17 @@
         }
 
         function resizeTerminal(force = false) {
-            if (window.innerWidth < 800) {
-                document.cookie = "viewport=mobile; path=/";
-                window.location.replace("/mobile" + window.location.search);
+            if (window.innerWidth >= 800) {
+                document.cookie = "viewport=desktop; path=/";
+                window.location.replace("/" + window.location.search);
                 return;
             }
 
             if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-            const width = container.clientWidth - 16; // accounting for padding
-            const height = container.clientHeight - 16;
+            // In mobile view, no padding is applied to container
+            const width = container.clientWidth;
+            const height = container.clientHeight;
 
             const cols = Math.floor(width / charWidth);
             const rows = Math.floor(height / charHeight);
@@ -616,12 +586,6 @@
             if (alt) flags |= 4;
             buf[7] = flags;
             socket.send(buf);
-        }
-
-        function sendString(str) {
-            for (let i = 0; i < str.length; i++) {
-                sendKeyPress(str.charCodeAt(i), false, false, false);
-            }
         }
 
         start();

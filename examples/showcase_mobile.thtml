@@ -1,0 +1,87 @@
+<style>
+text { fg: #e2e8f0; }
+button { border-style: single; }
+
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    margin-bottom: 1;
+}
+.section-title { fg: #94a3b8; height: 1; margin-bottom: 1; }
+.mono          { fg: #a3e635; height: 1; }
+.muted         { fg: #475569; height: 1; }
+.ok            { fg: #4ade80; height: 1; }
+
+#unicode-panel { border-color: #c084fc; }
+#border-panel  { border-color: #38bdf8; }
+#state-panel   { border-color: #f59e0b; }
+#layout-panel  { border-color: #f87171; }
+</style>
+
+<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #38bdf8; height: 1;">🧪 Showcase</text>
+        <text class="muted" event-htmx="hello.thtml">← Back</text>
+    </box>
+
+    <!-- Main Content (Vertical Stack) -->
+    <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
+
+        <!-- Unicode & wide chars -->
+        <box id="unicode-panel" class="panel" style="width: 44; height: 5;">
+            <text class="section-title">Wide chars &amp; emoji</text>
+            <text class="mono">🚀 = 2 cols | 日本語 = 6 cols</text>
+        </box>
+
+        <!-- Borders -->
+        <box id="border-panel" class="panel" style="width: 44; height: 5;">
+            <text class="section-title">Border styles</text>
+            <box style="flex-direction: row; justify-content: space-between; height: 2;">
+                <box style="border-style: single; border-color: #38bdf8; padding-left: 1; padding-right: 1; height: 1;">
+                    <text style="fg: #38bdf8; height: 1;">sin</text>
+                </box>
+                <box style="border-style: double; border-color: #4ade80; padding-left: 1; padding-right: 1; height: 1;">
+                    <text style="fg: #4ade80; height: 1;">dbl</text>
+                </box>
+                <box style="border-style: rounded; border-color: #f59e0b; padding-left: 1; padding-right: 1; height: 1;">
+                    <text style="fg: #f59e0b; height: 1;">rnd</text>
+                </box>
+            </box>
+        </box>
+
+        <!-- State & bind-show -->
+        <box id="state-panel" class="panel" style="width: 44; height: 7;">
+            <text class="section-title">State &amp; bind-show</text>
+            <box style="flex-direction: row; align-items: center; margin-bottom: 1; height: 3;">
+                <text class="muted" style="width: 8;">cnt:</text>
+                <text style="fg: #fbbf24; height: 1; width: 4;" bind-state="sc">0</text>
+                <button style="border-color: #4ade80; padding-left: 1; padding-right: 1;
+                               height: 1; fg: #4ade80; margin-right: 1;" event-htmx="inc:sc">[+]</button>
+                <button style="border-color: #f87171; padding-left: 1; padding-right: 1;
+                               height: 1; fg: #f87171;" event-htmx="dec:sc">[-]</button>
+            </box>
+        </box>
+
+        <!-- Layout -->
+        <box id="layout-panel" class="panel" style="width: 44; height: 5;">
+            <text class="section-title">Flexbox alignment</text>
+            <box style="flex-direction: row; justify-content: space-between; height: 1;">
+                <text style="fg: #4ade80; height: 1;">[left]</text>
+                <text style="fg: #f59e0b; height: 1;">[center]</text>
+                <text style="fg: #f87171; height: 1;">[right]</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Nav  [Enter] Select</text>
+    </box>
+
+</box>

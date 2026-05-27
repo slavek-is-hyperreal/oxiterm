@@ -1,0 +1,88 @@
+<style>
+text { fg: #e2e8f0; }
+.muted   { fg: #475569; height: 1; }
+.prop    { fg: #c084fc; height: 1; }
+.val     { fg: #fbbf24; height: 1; }
+.section { fg: #94a3b8; height: 1; margin-bottom: 1; }
+.color-a { fg: #38bdf8; height: 1; }
+.color-b { fg: #4ade80; height: 1; }
+.color-c { fg: #fbbf24; height: 1; }
+.color-d { fg: #f87171; height: 1; }
+.row     { flex-direction: row; align-items: center; height: 1; margin-bottom: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #0f172a; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #1e293b;">
+        <text style="fg: #c084fc; font-weight: bold; height: 1;">🎨 TCSS Reference — OxiTerm</text>
+        <text style="fg: #475569; height: 1;" event-htmx="index.thtml">← Back to Landing</text>
+    </box>
+
+    <box style="flex: 1; flex-direction: row; padding: 1;">
+
+        <!-- Column 1: Layout -->
+        <box style="flex-direction: column; width: 24; margin-right: 2;">
+            <text class="section">Layout Properties:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
+                <box class="row"><text class="prop">width        </text><text class="muted">N cols</text></box>
+                <box class="row"><text class="prop">height       </text><text class="muted">N rows</text></box>
+                <box class="row"><text class="prop">flex-direction</text><text class="muted">row|column</text></box>
+                <box class="row"><text class="prop">flex         </text><text class="muted">grow ratio</text></box>
+                <box class="row"><text class="prop">align-items  </text><text class="muted">flex-start…</text></box>
+                <box class="row"><text class="prop">justify-content</text><text class="muted">flex-start…</text></box>
+                <box class="row"><text class="prop">padding      </text><text class="muted">N cells all</text></box>
+                <box class="row"><text class="prop">margin       </text><text class="muted">N cells all</text></box>
+            </box>
+        </box>
+
+        <!-- Column 2: Borders & Text -->
+        <box style="flex-direction: column; width: 24; margin-right: 2;">
+            <text class="section">Borders:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
+                <box class="row"><text class="prop">border-color  </text><text class="muted">color</text></box>
+                <box class="row"><text class="prop">border-style  </text><text class="muted">single</text></box>
+                <text style="fg: #475569; height: 1; padding-left: 1;">            double</text>
+                <text style="fg: #475569; height: 1; padding-left: 1;">            rounded</text>
+            </box>
+            <text class="section">Text:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
+                <box class="row"><text class="prop">font-weight  </text><text class="muted">bold</text></box>
+                <box class="row"><text class="prop">font-style   </text><text class="muted">italic</text></box>
+                <box class="row"><text class="prop">text-decoration</text><text class="muted">underline</text></box>
+            </box>
+        </box>
+
+        <!-- Column 3: Colors -->
+        <box style="flex-direction: column; flex: 1;">
+            <text class="section">Color Formats:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
+                <box class="row"><text class="color-a">#38bdf8       </text><text class="muted">HEX TrueColor</text></box>
+                <box class="row"><text class="color-b">226           </text><text class="muted">ANSI 256</text></box>
+                <box class="row"><text class="color-c">red / cyan    </text><text class="muted">Named color</text></box>
+                <box class="row"><text class="muted">reset / transparent</text></box>
+            </box>
+            <text class="section">Demo — border styles:</text>
+            <box style="flex-direction: row; height: 5;">
+                <box style="border-style: single;  border-color: #38bdf8; padding: 1; margin-right: 1; align-items: center;">
+                    <text class="color-a">single</text>
+                </box>
+                <box style="border-style: double;  border-color: #4ade80; padding: 1; margin-right: 1; align-items: center;">
+                    <text class="color-b">double</text>
+                </box>
+                <box style="border-style: rounded; border-color: #fbbf24; padding: 1; align-items: center;">
+                    <text class="color-c">rounded</text>
+                </box>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Navigate  [Enter] Select</text>
+    </box>
+
+</box>

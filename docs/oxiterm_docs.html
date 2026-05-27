@@ -113,6 +113,7 @@ svg text { font-family: var(--sans); }
   <button onclick="show('cli')">💻 oxiterm-cli</button>
   <button onclick="show('a11y')">♿ oxiterm-a11y</button>
   <button onclick="show('bugs')">🐛 Błędy</button>
+  <button onclick="show('mobile')">📱 Mobile</button>
   <button onclick="show('examples')">📄 THTML/TCSS</button>
 </nav>
 
@@ -1258,6 +1259,38 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 <div class="notice-green notice" style="margin-top:20px">
 <b>Podsumowanie:</b> Wszystkie zidentyfikowane błędy (14 z 14) zostały w pełni naprawione (FIXED). Architektura systemu została zoptymalizowana pod kątem wielowątkowości, poprawnego parsowania odpowiedzi terminala oraz optymalnego event loopa.
 </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ MOBILE ═══ -->
+<div id="mobile" class="section">
+<h1>Wsparcie dla Urządzeń Mobilnych</h1>
+<p>OxiTerm posiada wbudowany mechanizm automatycznego wykrywania urządzeń mobilnych oraz serwowania dedykowanych, zoptymalizowanych dotykowo szablonów o mniejszym obszarze roboczym.</p>
+
+<div class="card-grid">
+  <div class="card">
+    <h3>📱 Detekcja i Przekierowanie</h3>
+    <ul style="color:var(--text2);padding-left:18px;font-size:13px;line-height:2">
+      <li><b>Wykrywanie serwerowe:</b> Analiza nagłówka <code>User-Agent</code> pod kątem urządzeń mobilnych (Mobi, Android, iPhone).</li>
+      <li><b>Wymuszenie widoku (Overrides):</b> Wsparcie dla parametru w URL (np. <code>?viewport=mobile</code> lub <code>?viewport=desktop</code>) oraz ciasteczka <code>viewport</code>, co pozwala trwale przełączyć widok niezależnie od User-Agenta.</li>
+      <li><b>Automatyczne przekierowanie:</b> Sesje mobilne na <code>/</code> trafiają na <code>/mobile</code> (302), a desktopowe na <code>/mobile</code> wracają do <code>/</code>.</li>
+      <li><b>Dynamiczne dopasowanie (Resize):</b> Skrypty klienckie w <code>index.html</code> i <code>index_mobile.html</code> reagują na szerokość okna (granica 800px) i automatycznie aktualizują ciasteczko oraz przekierowują użytkownika na właściwy wariant przy zmianie rozmiaru ekranu.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>📄 Szablony Mobilne (_mobile.thtml)</h3>
+    <ul style="color:var(--text2);padding-left:18px;font-size:13px;line-height:2">
+      <li>Szablony mobilne posiadają przyrostek <code>_mobile.thtml</code> (np. <code>hello_mobile.thtml</code> zamiast <code>hello.thtml</code>).</li>
+      <li>Zalecana rozdzielczość: ok. 48 kolumn na 30 wierszy dla wygody na ekranach telefonów.</li>
+      <li>Fallback: Jeśli dla danego pliku nie istnieje wersja z przyrostkiem <code>_mobile.thtml</code>, serwer automatycznie serwuje wersję desktopową.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Jak to działa w sesji</h2>
+<div class="pipeline-step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Inicjalizacja statusu mobilnego</div><div class="step-desc">Sesja kliencka <code>ClientSession</code> przechowuje status <code>is_mobile</code> w postaci flagi <code>AtomicBool</code>.</div></div></div>
+<div class="pipeline-step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Dynamiczne tłumaczenie ścieżek</div><div class="step-desc">Przy ładowaniu nowej podstrony, metoda <code>EventLoop::resolve_path()</code> automatycznie szuka pliku z przyrostkiem <code>_mobile.thtml</code> na dysku.</div></div></div>
+<div class="pipeline-step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Podmiana bez przeładowania strony</div><div class="step-desc">Nawigacja event-htmx oraz zdarzenia klawiatury automatycznie korzystają ze zoptymalizowanych ścieżek bez konieczności modyfikacji odsyłaczy w kodzie THTML.</div></div></div>
+
 </div>
 
 <!-- ═══════════════════════════════════════════════ EXAMPLES ═══ -->

@@ -432,6 +432,10 @@ impl Renderer {
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
     ) {
+        if profile.is_web {
+            return;
+        }
+
         if let Some(ref src) = node.attrs.src {
             let resolved_path = if let Some(base) = base_dir {
                 base.join(src)
@@ -826,6 +830,10 @@ impl Renderer {
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
     ) {
+        if profile.is_web {
+            return;
+        }
+
         let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
             for dy in 0..height {
                 for dx in 0..width {

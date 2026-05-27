@@ -204,7 +204,24 @@ For more information, see [app-server-guide.md](app-server-guide.md).
 
 ---
 
-## 12. Environment Variables
+## 12. Mobile Support & Responsive Design
+
+OxiTerm features built-in support for responsive mobile interfaces. When a user connects via the web client, the system dynamically checks if they are on a mobile device (using server-side `User-Agent` headers).
+
+### Viewport and Cookie Overrides
+To support custom client sizing and persistent layout choices:
+* **Query Overrides:** Appending `?viewport=mobile` (or `?mobile=true`) or `?viewport=desktop` (or `?mobile=false`) overrides standard User-Agent detection.
+* **Cookies:** A `viewport=mobile` or `viewport=desktop` cookie will lock the resolution choice across navigation actions.
+* **Redirection & Resizing:** In standard browser pages, immediate script checks in the `<head>` redirect between `/` and `/mobile` if the physical window crosses the `800px` boundary (e.g. desktop to mobile resize or phone landscape rotation). The terminal resize observer also updates the cookie and swaps layouts dynamically on resize.
+
+To build a mobile-optimized view:
+1. **Naming Convention:** Create a duplicate of your THTML file and add the `_mobile.thtml` suffix. For example, if your desktop file is `dashboard.thtml`, name the mobile file `dashboard_mobile.thtml`.
+2. **Dynamic Fallback:** If a user accesses your app on a mobile device and `dashboard_mobile.thtml` exists, OxiTerm will automatically load it. If not, it will fallback to `dashboard.thtml`.
+3. **Optimized Dimensions:** While desktop layouts typically use `80x24` grid dimensions, mobile layouts are optimized for a `48x30` grid to fit neatly on phone screens and provide comfortable tap target sizes for buttons.
+
+---
+
+## 13. Environment Variables
 
 You can configure the server behavior using the following environment variables:
 
@@ -217,3 +234,4 @@ You can configure the server behavior using the following environment variables:
 | `OXITERM_WEB_PORT` | `8080` | HTTP/WebSocket server port for web browser access |
 | `OXITERM_APP_SERVER` | (none) | URL of the external application server for event-htmx actions |
 | `RUST_LOG` | `warn` | Server logging level (e.g. `debug`, `info`, `warn`, `error`) |
+

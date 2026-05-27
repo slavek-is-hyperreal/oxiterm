@@ -1,0 +1,315 @@
+<style>
+/* ================================================================
+   OxiTerm Landing Page — written in OxiTerm, served via OxiTerm
+   ================================================================ */
+
+/* Base typography */
+text { fg: #e2e8f0; }
+
+/* Tab bar */
+.tab {
+    border-style: single;
+    padding-left: 2;
+    padding-right: 2;
+    height: 3;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1;
+}
+.tab-on  { border-color: #38bdf8; fg: #38bdf8; bg: #0c1f2e; }
+.tab-off { border-color: #1e293b; fg: #475569; }
+
+/* Content panels */
+.panel {
+    border-style: rounded;
+    border-color: #1e293b;
+    padding: 1;
+    flex-direction: column;
+}
+
+/* Feature card */
+.feat-card {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    flex: 1;
+    margin-right: 1;
+}
+
+/* Code block look */
+.code-line { fg: #a3e635; height: 1; }
+.code-dim  { fg: #4b5563; height: 1; }
+.code-str  { fg: #fbbf24; height: 1; }
+.code-kw   { fg: #c084fc; height: 1; }
+.code-tag  { fg: #38bdf8; height: 1; }
+.code-attr { fg: #fb923c; height: 1; }
+
+/* Text utilities */
+.h1        { fg: #38bdf8; font-weight: bold; height: 1; }
+.h2        { fg: #94a3b8; height: 1; }
+.muted     { fg: #475569; height: 1; }
+.accent    { fg: #38bdf8; height: 1; }
+.green     { fg: #4ade80; height: 1; }
+.yellow    { fg: #fbbf24; height: 1; }
+.pink      { fg: #f472b6; height: 1; }
+.purple    { fg: #c084fc; height: 1; }
+.orange    { fg: #fb923c; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+
+    <!-- ═══ HEADER ═══ -->
+    <box style="height: 3; bg: #0f172a; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #1e293b;">
+        <box style="flex-direction: row; align-items: center;">
+            <text style="fg: #38bdf8; font-weight: bold; height: 1;">⬡ OxiTerm</text>
+            <text style="fg: #334155; height: 1;">  |  TUI as a Website</text>
+        </box>
+        <box style="flex-direction: row; align-items: center;">
+            <text class="muted">ssh demo.oxiterm.dev   </text>
+            <text style="fg: #4ade80; height: 1;">● live</text>
+        </box>
+    </box>
+
+    <!-- ═══ TAB BAR ═══ -->
+    <box style="flex-direction: row; padding-left: 2; padding-top: 1;
+                height: 4; align-items: center; bg: #080f1a;">
+
+        <!-- HOME tab -->
+        <box class="tab tab-on"  event-htmx="set:tab=false" bind-show="tab=false"><text style="height: 1;">🏠 Home</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=false" bind-show="tab=feat"><text style="height: 1;">🏠 Home</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=false" bind-show="tab=qs"><text style="height: 1;">🏠 Home</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=false" bind-show="tab=docs"><text style="height: 1;">🏠 Home</text></box>
+
+        <!-- FEATURES tab -->
+        <box class="tab tab-off" event-htmx="set:tab=feat" bind-show="tab=false"><text style="height: 1;">✦ Features</text></box>
+        <box class="tab tab-on"  event-htmx="set:tab=feat" bind-show="tab=feat"><text style="height: 1;">✦ Features</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=feat" bind-show="tab=qs"><text style="height: 1;">✦ Features</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=feat" bind-show="tab=docs"><text style="height: 1;">✦ Features</text></box>
+
+        <!-- QUICK START tab -->
+        <box class="tab tab-off" event-htmx="set:tab=qs" bind-show="tab=false"><text style="height: 1;">⚡ Quick Start</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=qs" bind-show="tab=feat"><text style="height: 1;">⚡ Quick Start</text></box>
+        <box class="tab tab-on"  event-htmx="set:tab=qs" bind-show="tab=qs"><text style="height: 1;">⚡ Quick Start</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=qs" bind-show="tab=docs"><text style="height: 1;">⚡ Quick Start</text></box>
+
+        <!-- DOCS tab -->
+        <box class="tab tab-off" event-htmx="set:tab=docs" bind-show="tab=false"><text style="height: 1;">📖 Docs</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=docs" bind-show="tab=feat"><text style="height: 1;">📖 Docs</text></box>
+        <box class="tab tab-off" event-htmx="set:tab=docs" bind-show="tab=qs"><text style="height: 1;">📖 Docs</text></box>
+        <box class="tab tab-on"  event-htmx="set:tab=docs" bind-show="tab=docs"><text style="height: 1;">📖 Docs</text></box>
+
+    </box>
+
+    <!-- ═══ CONTENT AREA ═══ -->
+    <box style="flex: 1; padding-left: 2; padding-right: 2; padding-bottom: 1;">
+
+        <!-- ─── TAB: HOME ─── -->
+        <box bind-show="tab=false" style="flex: 1; flex-direction: row;">
+
+            <!-- Left: Hero -->
+            <box style="flex-direction: column; flex: 1; justify-content: center; margin-right: 2;">
+                <text style="fg: #38bdf8; font-weight: bold; height: 1; margin-bottom: 1;">Build TUI apps like websites.</text>
+                <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Write THTML + TCSS. Serve over SSH.</text>
+                <text style="fg: #64748b; height: 1; margin-bottom: 1;">No client install needed.</text>
+                <text style="height: 1; margin-bottom: 1;"> </text>
+                <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
+                    <text style="fg: #4ade80; height: 1;">▶  </text>
+                    <text style="fg: #e2e8f0; font-weight: bold; height: 1;">ssh demo.oxiterm.dev</text>
+                </box>
+                <text style="height: 1; margin-bottom: 1;"> </text>
+                <box style="flex-direction: row;">
+                    <box style="border-style: rounded; border-color: #38bdf8; padding-left: 2; padding-right: 2;
+                                height: 3; align-items: center; margin-right: 1;"
+                         event-htmx="set:tab=qs">
+                        <text style="fg: #38bdf8; height: 1;">⚡ Get Started</text>
+                    </box>
+                    <box style="border-style: rounded; border-color: #334155; padding-left: 2; padding-right: 2;
+                                height: 3; align-items: center;"
+                         event-htmx="set:tab=feat">
+                        <text style="fg: #94a3b8; height: 1;">✦ Features</text>
+                    </box>
+                </box>
+            </box>
+
+            <!-- Right: mascot + animated badge -->
+            <box style="flex-direction: column; align-items: center; justify-content: center; width: 26;">
+                <img src="mascot.svg" alt="OxiTerm mascot" style="width: 22; height: 11;" />
+                <text style="fg: #334155; height: 1;">Built with ❤ in Rust</text>
+                <box style="flex-direction: row; margin-top: 1;">
+                    <text style="fg: #4ade80; height: 1;">v0.3.0  </text>
+                    <text style="fg: #334155; height: 1;">open source</text>
+                </box>
+            </box>
+
+        </box>
+
+        <!-- ─── TAB: FEATURES ─── -->
+        <box bind-show="tab=feat" style="flex: 1; flex-direction: column;">
+            <box style="flex-direction: row; flex: 1; margin-bottom: 1;">
+
+                <box class="feat-card" style="border-color: #38bdf8;">
+                    <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">🌐 HTML-like Syntax</text>
+                    <text class="muted">THTML + TCSS — familiar</text>
+                    <text class="muted">Flexbox layout engine</text>
+                    <text class="muted">CSS class cascade</text>
+                </box>
+
+                <box class="feat-card" style="border-color: #c084fc;">
+                    <text style="fg: #c084fc; height: 1; margin-bottom: 1;">⚡ Reactive State</text>
+                    <text class="muted">bind-state, bind-show</text>
+                    <text class="muted">HTMX-style actions</text>
+                    <text class="muted">Zero page reloads</text>
+                </box>
+
+                <box class="feat-card" style="border-color: #fbbf24; margin-right: 0;">
+                    <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">🖼 Vector Graphics</text>
+                    <text class="muted">SVG via resvg</text>
+                    <text class="muted">Lottie animations</text>
+                    <text class="muted">Rive interactive</text>
+                </box>
+
+            </box>
+            <box style="flex-direction: row; flex: 1;">
+
+                <box class="feat-card" style="border-color: #4ade80;">
+                    <text style="fg: #4ade80; height: 1; margin-bottom: 1;">🔁 Hot Reload</text>
+                    <text class="muted">Edit .thtml → instant</text>
+                    <text class="muted">State preserved</text>
+                    <text class="muted">All sessions live</text>
+                </box>
+
+                <box class="feat-card" style="border-color: #f472b6;">
+                    <text style="fg: #f472b6; height: 1; margin-bottom: 1;">📱 Mobile Support</text>
+                    <text class="muted">_mobile.thtml fallback</text>
+                    <text class="muted">Server UA detection</text>
+                    <text class="muted">48x30 optimized</text>
+                </box>
+
+                <box class="feat-card" style="border-color: #fb923c; margin-right: 0;">
+                    <text style="fg: #fb923c; height: 1; margin-bottom: 1;">🔒 SSH + WebSocket</text>
+                    <text class="muted">No client install</text>
+                    <text class="muted">Web via xterm.js</text>
+                    <text class="muted">Kitty · Sixel · UTF8</text>
+                </box>
+
+            </box>
+        </box>
+
+        <!-- ─── TAB: QUICK START ─── -->
+        <box bind-show="tab=qs" style="flex: 1; flex-direction: row;">
+
+            <!-- Step list -->
+            <box style="flex-direction: column; width: 36; margin-right: 2;">
+                <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">3 steps to your first TUI app:</text>
+
+                <box style="border-style: single; border-color: #1e293b; padding: 1;
+                            flex-direction: column; margin-bottom: 1;">
+                    <text style="fg: #fbbf24; height: 1;">① Install</text>
+                    <text class="code-line">cargo install oxiterm-cli</text>
+                </box>
+
+                <box style="border-style: single; border-color: #1e293b; padding: 1;
+                            flex-direction: column; margin-bottom: 1;">
+                    <text style="fg: #fbbf24; height: 1;">② Create hello.thtml</text>
+                    <text class="code-tag">&lt;box style="bg: #0f172a;"&gt;</text>
+                    <text class="code-tag">  &lt;text style="fg: #38bdf8;"&gt;</text>
+                    <text class="code-str">    Hello OxiTerm!</text>
+                    <text class="code-tag">  &lt;/text&gt;</text>
+                    <text class="code-tag">&lt;/box&gt;</text>
+                </box>
+
+                <box style="border-style: single; border-color: #1e293b; padding: 1;
+                            flex-direction: column;">
+                    <text style="fg: #fbbf24; height: 1;">③ Serve &amp; Connect</text>
+                    <text class="code-line">oxiterm serve hello.thtml</text>
+                    <text class="code-line">ssh localhost -p 2222</text>
+                </box>
+            </box>
+
+            <!-- Right: interactive counter demo -->
+            <box style="flex-direction: column; flex: 1; align-items: center; justify-content: center;">
+                <text style="fg: #64748b; height: 1; margin-bottom: 1;">↓ Live demo of reactive state</text>
+                <box style="border-style: rounded; border-color: #38bdf8; padding: 2;
+                            flex-direction: column; align-items: center;">
+                    <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Counter:</text>
+                    <text style="fg: #38bdf8; font-weight: bold; height: 1; margin-bottom: 1;" bind-state="n">0</text>
+                    <box style="flex-direction: row; margin-top: 1;">
+                        <box style="border-style: single; border-color: #f87171; padding-left: 2; padding-right: 2;
+                                    height: 3; align-items: center; margin-right: 1;" event-htmx="dec:n">
+                            <text style="fg: #f87171; height: 1;">[ − ]</text>
+                        </box>
+                        <box style="border-style: single; border-color: #4ade80; padding-left: 2; padding-right: 2;
+                                    height: 3; align-items: center;" event-htmx="inc:n">
+                            <text style="fg: #4ade80; height: 1;">[ + ]</text>
+                        </box>
+                    </box>
+                </box>
+                <text class="muted" style="margin-top: 1;">Try it! Tab → Enter or click.</text>
+            </box>
+
+        </box>
+
+        <!-- ─── TAB: DOCS ─── -->
+        <box bind-show="tab=docs" style="flex: 1; flex-direction: row;">
+
+            <!-- Left: doc links -->
+            <box style="flex-direction: column; width: 34; margin-right: 2;">
+                <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Documentation</text>
+
+                <box style="border-style: rounded; border-color: #1e293b; padding: 1;
+                            flex-direction: column; margin-bottom: 1;" event-htmx="thtml_ref.thtml">
+                    <text style="fg: #38bdf8; height: 1;">📄 THTML Reference</text>
+                    <text class="muted">All tags, attributes, actions</text>
+                </box>
+
+                <box style="border-style: rounded; border-color: #1e293b; padding: 1;
+                            flex-direction: column; margin-bottom: 1;" event-htmx="tcss_ref.thtml">
+                    <text style="fg: #c084fc; height: 1;">🎨 TCSS Reference</text>
+                    <text class="muted">Layout, colors, borders</text>
+                </box>
+
+                <box style="border-style: rounded; border-color: #1e293b; padding: 1;
+                            flex-direction: column; margin-bottom: 1;" event-htmx="arch.thtml">
+                    <text style="fg: #fbbf24; height: 1;">🏗 Architecture</text>
+                    <text class="muted">SSR pipeline, transport</text>
+                </box>
+
+                <box style="border-style: rounded; border-color: #1e293b; padding: 1;
+                            flex-direction: column;" event-htmx="appserver.thtml">
+                    <text style="fg: #4ade80; height: 1;">🔌 App Server Guide</text>
+                    <text class="muted">External backend events</text>
+                </box>
+            </box>
+
+            <!-- Right: architecture summary -->
+            <box style="flex-direction: column; flex: 1;">
+                <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">SSR Rendering Pipeline</text>
+                <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
+                    <text style="fg: #38bdf8; height: 1;">THTML File</text>
+                    <text style="fg: #334155; height: 1;">    ↓</text>
+                    <text style="fg: #c084fc; height: 1;">nom Parser → DOM Arena</text>
+                    <text style="fg: #334155; height: 1;">    ↓</text>
+                    <text style="fg: #fbbf24; height: 1;">TCSS Cascade</text>
+                    <text style="fg: #334155; height: 1;">    ↓</text>
+                    <text style="fg: #4ade80; height: 1;">Taffy Flexbox Layout</text>
+                    <text style="fg: #334155; height: 1;">    ↓</text>
+                    <text style="fg: #fb923c; height: 1;">CellBuffer → ANSI Diff</text>
+                    <text style="fg: #334155; height: 1;">    ↓</text>
+                    <text style="fg: #f472b6; height: 1;">SSH / WebSocket → Client</text>
+                </box>
+            </box>
+
+        </box>
+
+    </box>
+
+    <!-- ═══ FOOTER ═══ -->
+    <box style="height: 1; bg: #0f172a; align-items: center; justify-content: space-between;
+                padding-left: 2; padding-right: 2;">
+        <text class="muted">[Q] Exit  [Tab] Navigate  [Enter] Select</text>
+        <text class="muted">github.com/slavek-is-hyperreal/oxiterm</text>
+    </box>
+
+</box>
