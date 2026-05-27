@@ -299,7 +299,7 @@
                 canvas.focus();
                 
                 // Perform initial resize setup
-                resizeTerminal();
+                resizeTerminal(true);
             };
 
             socket.onclose = () => {
@@ -401,8 +401,9 @@
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
 
-                const col = Math.floor(clickX / charWidth);
-                const row = Math.floor(clickY / charHeight);
+                const col = Math.floor(clickX / charWidth) + 1;
+                const row = Math.floor(clickY / charHeight) + 1;
+                console.log("Mousedown: clientX=" + e.clientX + ", clientY=" + e.clientY + ", rect=" + JSON.stringify(rect) + ", col=" + col + ", row=" + row);
 
                 let button = 5; // None
                 if (e.button === 0) button = 0; // Left
@@ -421,8 +422,9 @@
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
 
-                const col = Math.floor(clickX / charWidth);
-                const row = Math.floor(clickY / charHeight);
+                const col = Math.floor(clickX / charWidth) + 1;
+                const row = Math.floor(clickY / charHeight) + 1;
+                console.log("Mouseup: clientX=" + e.clientX + ", clientY=" + e.clientY + ", rect=" + JSON.stringify(rect) + ", col=" + col + ", row=" + row);
 
                 let button = 5; // None
                 if (e.button === 0) button = 0; // Left
@@ -440,7 +442,7 @@
             resizeObserver.observe(container);
         }
 
-        function resizeTerminal() {
+        function resizeTerminal(force = false) {
             if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
             const width = container.clientWidth - 16; // accounting for padding
@@ -449,7 +451,7 @@
             const cols = Math.floor(width / charWidth);
             const rows = Math.floor(height / charHeight);
 
-            if (cols !== currentCols || rows !== currentRows) {
+            if (force || cols !== currentCols || rows !== currentRows) {
                 currentCols = cols;
                 currentRows = rows;
 

@@ -372,7 +372,19 @@ pub mod web_impl {
             }
         }
 
-        let doc = if let Some(ref initial) = initial_doc {
+        let doc = if let Some(ref path) = source_path {
+            match crate::loader::load_thtml_file(path) {
+                Ok(loaded) => loaded,
+                Err(e) => {
+                    warn!("Failed to load document from source path {:?}: {}, falling back to initial_doc", path, e);
+                    if let Some(ref initial) = initial_doc {
+                        initial.clone()
+                    } else {
+                        crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
+                    }
+                }
+            }
+        } else if let Some(ref initial) = initial_doc {
             initial.clone()
         } else {
             crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
