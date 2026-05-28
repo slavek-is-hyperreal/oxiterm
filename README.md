@@ -1,6 +1,6 @@
 # 🚀 OxiTerm — Build TUI like a Website
 
-OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH. No client installation required—just `ssh demo.oxiterm.dev`.
+OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH. No client installation required—just `ssh yourdomain.com`.
 
 ### 🌟 "TUI as a Website"
 Why build complex terminal apps with low-level libraries when you can use **THTML**?
