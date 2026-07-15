@@ -52,16 +52,15 @@ pub async fn run_server(
         match rate_limiter.check_and_record(peer_addr.ip()) {
             crate::ratelimit::RateResult::Allow => {
                 let russh_config_ref = ssh_config.clone();
-                let handler = OxiServer {
-                    config: config.clone(),
-                    registry: registry.clone(),
-                    auth_keys: auth_keys.clone(),
-                    rate_limiter: rate_limiter.clone(),
+                let handler = OxiServer::new(
+                    config.clone(),
+                    registry.clone(),
+                    auth_keys.clone(),
+                    rate_limiter.clone(),
                     peer_addr,
-                    channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
-                    initial_document: initial_document.clone(),
-                    source_path: source_path.clone(),
-                };
+                    initial_document.clone(),
+                    source_path.clone(),
+                );
                 let session_registry = registry.clone();
                 let session_channels = handler.channels.clone();
                 tokio::spawn(async move {
@@ -82,16 +81,15 @@ pub async fn run_server(
             crate::ratelimit::RateResult::Throttle(delay) => {
                 warn!("Throttling {peer_addr} for {delay:?}");
                 let russh_config_ref = ssh_config.clone();
-                let handler = OxiServer {
-                    config: config.clone(),
-                    registry: registry.clone(),
-                    auth_keys: auth_keys.clone(),
-                    rate_limiter: rate_limiter.clone(),
+                let handler = OxiServer::new(
+                    config.clone(),
+                    registry.clone(),
+                    auth_keys.clone(),
+                    rate_limiter.clone(),
                     peer_addr,
-                    channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
-                    initial_document: initial_document.clone(),
-                    source_path: source_path.clone(),
-                };
+                    initial_document.clone(),
+                    source_path.clone(),
+                );
                 let session_registry = registry.clone();
                 let session_channels = handler.channels.clone();
                 tokio::spawn(async move {

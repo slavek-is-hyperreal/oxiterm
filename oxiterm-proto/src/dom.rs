@@ -23,6 +23,8 @@ pub enum NodeTag {
     Img,
     /// A video element.
     Video,
+    /// A loop element.
+    For,
 }
 
 /// Attributes associated with a THTML node, mapping styling,
@@ -51,6 +53,10 @@ pub struct NodeAttributes {
     pub bind_show: Option<String>,
     /// The state key in StateManager where the current typed value of this input is stored.
     pub bind_value: Option<String>,
+    /// The key representing the list of items to iterate over in a For loop.
+    pub each: Option<String>,
+    /// The input type (e.g. "password", "text") for masking and input behavior.
+    pub input_type: Option<String>,
 }
 
 /// A unique identifier for a node inside the document's arena.

@@ -502,6 +502,9 @@
                         const url = new URL(window.location);
                         url.searchParams.set('session', token);
                         window.history.replaceState({}, '', url);
+                    } else if (bytes[0] === 0x33) {
+                        const url = new TextDecoder().decode(bytes.subarray(1));
+                        window.open(url, '_blank', 'noopener');
                     } else {
                         term.draw_commands(bytes);
                     }

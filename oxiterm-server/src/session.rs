@@ -172,9 +172,28 @@ pub struct ClientSession {
     pub active_connections: std::sync::atomic::AtomicUsize,
     /// Unique connection token for session reattachment.
     pub token: String,
+    /// Authenticated user identity for this session.
+    /// Set exactly once at session start by identity.rs; never overwritten on reattach.
+    pub identity: parking_lot::RwLock<Option<crate::identity::UserIdentity>>,
 }
 
 impl ClientSession {
+    /// Attempts to attach an identity to the session.
+    ///
+    /// Injects reserved state keys and sets the identity field if identity is None (C2/M2).
+    /// Returns true if the identity was successfully attached.
+    pub fn attach_identity(&self, id: crate::identity::UserIdentity) -> bool {
+        let mut stored = self.identity.write();
+        if stored.is_none() {
+            let mut state = self.state.write();
+            id.inject_reserved_keys(&mut *state);
+            *stored = Some(id);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Closes input receiver streams, initiating shutdown.
     pub fn close(&self) {
         self.event_rx.lock().close();
@@ -197,6 +216,11 @@ impl ClientSession {
             }
             let mut state = self.state.write();
             for (key, val) in obj {
+                // Reserved keys (prefixed `_`) are written only by identity.rs at session start.
+                if key.starts_with('_') {
+                    warn!("apply_state_patch: skipping reserved key '{}'", key);
+                    continue;
+                }
                 // Anchored by spec [SEC-11b]: limit 256 characters per key
                 if key.len() > 256 {
                     warn!("Skipping key in state patch: key length exceeds 256 characters");
@@ -347,6 +371,7 @@ impl SessionRegistry {
             app_base_dir: RwLock::new(None),
             active_connections: std::sync::atomic::AtomicUsize::new(0),
             token: token.clone(),
+            identity: parking_lot::RwLock::new(None),
         });
         self.sessions.write().insert(id, session.clone());
         self.tokens.write().insert(token, id);
@@ -537,6 +562,13 @@ pub struct EventLoop {
     pub total_height: u16,
     /// Optional dispatcher for external app server notifications.
     pub app_dispatcher: Option<crate::dispatcher::AppDispatcher>,
+    /// Template cache for For-node expansion. Maps For node id → original template child ids.
+    /// MUST be cleared in update_doc, resolve_and_load_page, and Reload handlers because
+    /// NodeIds are arena-local and become invalid after a document swap.
+    pub for_template_cache: HashMap<NodeId, Vec<NodeId>>,
+    /// Sender for 0x33 (open-URL) frames on WebSocket sessions.
+    /// None for SSH sessions. Wired from handle_websocket via frame_tx.clone().
+    pub open_url_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
 }
 
 impl EventLoop {
@@ -582,20 +614,29 @@ impl EventLoop {
         let non_mobile_target = self.resolve_non_mobile_path(target_filename);
         let is_mobile = self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst);
         let actual_path = crate::pathsafe::resolve_variant(&non_mobile_target, is_mobile);
-        
+
+        // Containment gate: reject path traversals and non-existent targets.
+        // Q2: single generic error message — do not distinguish traversal from missing file.
+        let app_base_dir = self.session.app_base_dir.read().clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        if !crate::pathsafe::is_within_base(&app_base_dir, &actual_path) {
+            warn!("resolve_and_load_page: blocked path traversal or missing file for {:?}", actual_path);
+            anyhow::bail!("blocked");
+        }
+
         let mut new_doc = crate::loader::load_thtml_file(&actual_path)?;
         let mut state = self.session.state.write();
         Self::setup_state_subscriptions(&new_doc, &mut *state);
         Self::inject_initial_state(&mut new_doc, &*state);
         drop(state);
-        
+
+        // update_doc clears for_template_cache (NodeIds are arena-local)
         self.update_doc(new_doc);
         self.reset_layout_and_scroll();
-        
+
         self.source_path = Some(actual_path);
         self.base_source_path = Some(non_mobile_target.clone());
-        
-        let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+
         let rel_path = if let Ok(rel) = non_mobile_target.strip_prefix(&app_base_dir) {
             rel.to_string_lossy().into_owned()
         } else {
@@ -648,6 +689,8 @@ impl EventLoop {
             scroll_offset: 0,
             total_height: 0,
             app_dispatcher: None,
+            for_template_cache: HashMap::new(),
+            open_url_tx: None,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
@@ -676,8 +719,12 @@ impl EventLoop {
     }
 
     /// Updates active document node tree and updates mappings.
+    ///
+    /// Clears `for_template_cache` because NodeIds are arena-local and become invalid
+    /// after a document swap.
     pub fn update_doc(&mut self, new_doc: THTMLDocument) {
         self.doc = new_doc;
+        self.for_template_cache.clear();
         self.rebuild_parent_map();
         self.rebuild_focusable_nodes();
     }
@@ -723,19 +770,32 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_state {
                 state.subscribe(key.clone(), id);
             }
+            if let Some(key) = &node.attrs.bind_value {
+                state.subscribe(key.clone(), id);
+            }
         }
     }
 
     fn sync_dirty_state(doc: &mut THTMLDocument, state: &mut crate::state::StateManager) {
         let dirty_nodes = state.get_dirty_nodes();
         for node_id in dirty_nodes {
+            let mut changed = false;
             if let Some(node) = doc.arena.get_mut(node_id) {
                 if let Some(key) = &node.attrs.bind_state {
                     if let Some(val) = state.get(key) {
                         node.text = Some(val.to_string());
-                        doc.mark_dirty(node_id);
+                        changed = true;
                     }
                 }
+                if let Some(key) = &node.attrs.bind_value {
+                    if let Some(val) = state.get(key) {
+                        node.text = Some(val.to_string());
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                doc.mark_dirty(node_id);
             }
         }
     }
@@ -744,6 +804,12 @@ impl EventLoop {
         let mut dirty = Vec::new();
         for (id, node) in doc.arena.iter_mut() {
             if let Some(key) = &node.attrs.bind_state {
+                if let Some(val) = state.get(key) {
+                    node.text = Some(val.to_string());
+                    dirty.push(id);
+                }
+            }
+            if let Some(key) = &node.attrs.bind_value {
                 if let Some(val) = state.get(key) {
                     node.text = Some(val.to_string());
                     dirty.push(id);
@@ -774,6 +840,104 @@ impl EventLoop {
         None
     }
 
+    /// Handles a target HTMX action.
+    ///
+    /// Web-only open: targets strip 'open:' and emit 0x33 frames.
+    /// Navigation targets (.thtml) resolve and load the page.
+    /// Action targets set state keys and dispatch notifications.
+    pub(crate) fn handle_htmx_target(&mut self, node_id: NodeId, target: &str) {
+        if let Some(url) = target.strip_prefix("open:") {
+            self.handle_open_url(url.to_string(), node_id);
+        } else if target.ends_with(".thtml") {
+            if let Err(e) = self.resolve_and_load_page(target) {
+                warn!("handle_htmx_target: failed to load page {}: {}", target, e);
+            }
+        } else {
+            self.session.state.write().apply_action(target);
+            self.try_dispatch(target);
+        }
+    }
+
+    /// Preprocesses a raw InputEvent before dispatch.
+    ///
+    /// - Remaps Page-Up / `b` → `ScrollUp` when input is not focused.
+    /// - Remaps Page-Down / Space → `ScrollDown` when input is not focused.
+    /// - Returns `None` to signal a quit request when `q`/`Q` is pressed outside an input.
+    /// - All other events pass through unchanged.
+    pub(crate) fn preprocess_key(
+        event: InputEvent,
+        is_input_focused: bool,
+    ) -> Option<InputEvent> {
+        match event {
+            InputEvent::KeyPress(ref key) if !is_input_focused
+                && (key.codepoint == '\u{F72E}' || key.codepoint == 'b') => {
+                Some(InputEvent::ScrollUp)
+            }
+            InputEvent::KeyPress(ref key) if !is_input_focused
+                && (key.codepoint == '\u{F72D}' || key.codepoint == ' ') => {
+                Some(InputEvent::ScrollDown)
+            }
+            InputEvent::KeyPress(ref key) if !is_input_focused
+                && (key.codepoint == 'q' || key.codepoint == 'Q') => {
+                None // quit signal
+            }
+            e => Some(e),
+        }
+    }
+
+    /// Handles an `open:` htmx target.
+    ///
+    /// Web sessions: emits a 0x33 frame containing the URL bytes via `open_url_tx`.
+    /// SSH sessions: logs a warning and does nothing (`open:` is web-only in plan 2).
+    ///
+    /// Only `http` and `https` schemes are permitted; others are rejected with a warning.
+    fn handle_open_url(&self, url: String, _source_node_id: NodeId) {
+        let scheme_end = url.find(':').unwrap_or(0);
+        let scheme = &url[..scheme_end];
+        if scheme != "http" && scheme != "https" {
+            warn!("open: rejected URL with disallowed scheme '{}': {}", scheme, url);
+            return;
+        }
+
+        if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Some(ref tx) = self.open_url_tx {
+                let mut frame = vec![0x33];
+                frame.extend_from_slice(url.as_bytes());
+                let _ = tx.try_send(frame);
+            }
+        } else {
+            // SSH sessions: open: is WEB-ONLY in plan 2.
+            // Plan 3 will add OSC 8 cell-level hyperlinks.
+            warn!("open: action '{}' on SSH session — not implemented (web-only in plan 2)", url);
+        }
+    }
+
+    /// Expands all For nodes in the current document against their List state values.
+    ///
+    /// Called at session start and after every state mutation that may affect a For node.
+    pub(crate) fn expand_all_for_nodes(&mut self) {
+        let for_ids: Vec<NodeId> = self.doc.arena.iter()
+            .filter(|(_, n)| n.tag == oxiterm_proto::dom::NodeTag::For)
+            .map(|(id, _)| id)
+            .collect();
+
+        for for_id in for_ids {
+            let each_key = self.doc.arena.get(for_id)
+                .and_then(|n| n.attrs.each.as_deref());
+            if let Some(key) = each_key {
+                let list = match self.session.state.read().get(&key) {
+                    Some(crate::state::StateValue::List(l)) => l.clone(),
+                    _ => Vec::new(),
+                };
+                if let Err(e) = crate::expand::expand_for_node(
+                    &mut self.doc, for_id, &list, &mut self.for_template_cache
+                ) {
+                    tracing::warn!("expand_all_for_nodes: expand_for_node failed for {:?}: {}", for_id, e);
+                }
+            }
+        }
+    }
+
     fn try_dispatch(&self, action: &str) {
         if let Some(ref dispatcher) = self.app_dispatcher {
             let state_guard = self.session.state.read();
@@ -797,10 +961,19 @@ impl EventLoop {
                 }
             }
             drop(state_guard);
+            let (username, auth_method) = {
+                let id = self.session.identity.read();
+                match id.as_ref() {
+                    Some(i) => (Some(i.username.clone()), Some(format!("{:?}", i.auth_method))),
+                    None => (None, None),
+                }
+            };
             let payload = crate::dispatcher::DispatchPayload {
                 action: action.to_string(),
                 state: state_snapshot,
                 session_id: self.session.id,
+                username,
+                auth_method,
             };
             dispatcher.dispatch(payload, self.session.clone());
         }
@@ -813,6 +986,8 @@ impl EventLoop {
             Self::setup_state_subscriptions(&self.doc, &mut *state);
             Self::inject_initial_state(&mut self.doc, &*state);
         }
+        // Expand For-template nodes after initial state injection.
+        self.expand_all_for_nodes();
 
         if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
             let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
@@ -891,13 +1066,18 @@ impl EventLoop {
                         .and_then(|id| self.doc.get_node(id))
                         .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
                         .unwrap_or(false);
-                    let event = match event {
-                        InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72E}' || key.codepoint == 'b') => InputEvent::ScrollUp,
-                        InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72D}' || key.codepoint == ' ') => InputEvent::ScrollDown,
-                        e => e,
+                    // Preprocess: remap scroll keys and detect quit. Returns None on quit.
+                    let event = match Self::preprocess_key(event, is_input_focused) {
+                        Some(e) => e,
+                        None => {
+                            info!("Quit requested via keyboard");
+                            disconnected = true;
+                            break;
+                        }
                     };
                     match event {
                                 InputEvent::StatePatched => {
+                                    self.expand_all_for_nodes();
                                     needs_render = true;
                                 }
                                 InputEvent::Resize { cols, rows } => {
@@ -915,16 +1095,11 @@ impl EventLoop {
                                     }
                                 }
                                 InputEvent::NavigateTo(rel_path) => {
-                                    let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-                                    let target_path = app_base_dir.join(&rel_path);
-                                    if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
-                                        if let Err(e) = self.resolve_and_load_page(&rel_path) {
-                                            warn!("NavigateTo: failed to load page: {}", e);
-                                        }
-                                        needs_render = true;
-                                    } else {
-                                        warn!("NavigateTo: blocked traversal path: {:?}", target_path);
+                                    // Containment check is inside resolve_and_load_page.
+                                    if let Err(e) = self.resolve_and_load_page(&rel_path) {
+                                        warn!("NavigateTo: failed to load page: {}", e);
                                     }
+                                    needs_render = true;
                                 }
                                 InputEvent::Reload => {
                                     if let Some(ref path) = self.source_path {
@@ -946,11 +1121,6 @@ impl EventLoop {
                                     }
                                 }
                                 InputEvent::KeyPress(key) => {
-                                    if !is_input_focused && (key.codepoint == 'q' || key.codepoint == 'Q') {
-                                        info!("Quit requested via keyboard: {}", key.codepoint);
-                                        disconnected = true;
-                                        break;
-                                    }
 
                                     let is_nav_forward = key.codepoint == '\u{F701}'
                                         || key.codepoint == '\u{F702}'
@@ -977,16 +1147,8 @@ impl EventLoop {
                                         if let Some(focused) = self.focused_node {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
                                                 info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
-                                                if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                    if let Err(e) = self.resolve_and_load_page(&htmx_target) {
-                                                        warn!("Enter: failed to load page: {}", e);
-                                                    }
-                                                    needs_render = true;
-                                                } else {
-                                                    self.session.state.write().apply_action(&htmx_target);
-                                                    self.try_dispatch(&htmx_target);
-                                                    needs_render = true;
-                                                }
+                                                self.handle_htmx_target(target_node_id, &htmx_target);
+                                                needs_render = true;
                                             }
                                         }
                                     } else {
@@ -1032,21 +1194,28 @@ impl EventLoop {
                                         } else { false };
 
                                         if !handled_by_input {
-                                            let mut echo = self.session.predictive_echo.write();
-                                            echo.buffer.push(key.codepoint);
+                                            // D7: suppress predictive echo for password inputs
+                                            let is_password_focused = self.focused_node
+                                                .and_then(|id| self.doc.get_node(id))
+                                                .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
+                                                .unwrap_or(false);
+                                            if !is_password_focused {
+                                                let mut echo = self.session.predictive_echo.write();
+                                                echo.buffer.push(key.codepoint);
+                                            }
                                             needs_render = true;
                                         }
                                     }
                                 }
                                 InputEvent::MouseEvent(mut mouse) => {
                                     let dims = *self.session.dims.read();
-                                    info!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
+                                    tracing::trace!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
                                     if let Some(layout) = &self.layout_engine.last_layout {
                                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-                                        info!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
+                                        tracing::trace!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
                                         mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
                                         mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1).saturating_add(self.scroll_offset);
-                                        info!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
+                                        tracing::trace!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
                                     } else {
                                         warn!("No last layout found!");
                                     }
@@ -1058,34 +1227,12 @@ impl EventLoop {
                                     // Anchored by spec [SC-05]. Handle interactive navigation or state updates based on htmx event targets.
                                     if mouse.action == oxiterm_proto::input::MouseAction::Press {
                                         if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
-                                            info!("Hit test found node: {:?}", node_id);
-                                            if let Some(node) = self.doc.get_node(node_id) {
-                                                info!("Node details: tag={:?}, attrs={:?}", node.tag, node.attrs);
-                                            }
+                                            tracing::trace!("Hit test found node: {:?}", node_id);
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
-                                                info!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
-                                                if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                    let new_path = self.resolve_path(&htmx_target);
-                                                    let base_dir = self.source_path.as_ref()
-                                                        .and_then(|p| p.parent())
-                                                        .map(|p| p.to_path_buf())
-                                                        .unwrap_or_else(|| std::env::current_dir().unwrap());
-                                                    
-                                                    let is_safe = crate::pathsafe::is_within_base(&base_dir, &new_path);
-
-                                                     if is_safe {
-                                                         if let Err(e) = self.resolve_and_load_page(&htmx_target) {
-                                                             warn!("Failed to load page: {}", e);
-                                                         }
-                                                     } else {
-                                                        warn!("Blocked Path Traversal attempt to: {:?}", new_path);
-                                                    }
-                                                } else {
-                                                    self.session.state.write().apply_action(&htmx_target);
-                                                    self.try_dispatch(&htmx_target);
-                                                }
+                                                tracing::trace!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
+                                                self.handle_htmx_target(target_node_id, &htmx_target);
                                             } else {
-                                                info!("No HTMX target found for node {:?}", node_id);
+                                                tracing::trace!("No HTMX target found for node {:?}", node_id);
                                             }
                                         } else {
                                             info!("Hit test returned None");
@@ -1272,8 +1419,13 @@ impl EventLoop {
                     }
 
                     // S5-21: PredictiveEcho overlay
+                    // D7: suppress overlay for focused password inputs
+                    let echo_suppressed = self.focused_node
+                        .and_then(|id| self.doc.get_node(id))
+                        .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
+                        .unwrap_or(false);
                     let echo = self.session.predictive_echo.read();
-                    if !echo.buffer.is_empty() {
+                    if !echo.buffer.is_empty() && !echo_suppressed {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
 
                         let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
@@ -1613,43 +1765,6 @@ mod tests {
         assert!(client_session.state.read().get("arr_key").is_none());
     }
 
-    #[test]
-    fn test_13_key_remap_protect() {
-        use oxiterm_proto::dom::{Node, NodeTag};
-        use oxiterm_proto::input::{KeyEvent, KeyModifiers, KeyKind};
-        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let client_session = reg.create_session().unwrap();
-        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
-        let event_bus = Arc::new(crate::events::EventBus::new());
-
-        let mut arena = oxiterm_renderer::arena::NodeArena::new();
-        let mut input_node = Node::new(NodeTag::Input);
-        input_node.attrs.bind_value = Some("my_val".to_string());
-        let input_id = arena.alloc(input_node);
-        let mut root = Node::new(NodeTag::Screen);
-        root.children = vec![input_id];
-        let root_id = arena.alloc(root);
-
-        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
-        event_loop.focused_node = Some(input_id);
-
-        let is_input_focused = event_loop.focused_node
-            .and_then(|id| event_loop.doc.get_node(id))
-            .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
-            .unwrap_or(false);
-        assert!(is_input_focused);
-
-        let key_b = InputEvent::KeyPress(KeyEvent { codepoint: 'b', modifiers: KeyModifiers::default(), kind: KeyKind::Press });
-        let event_mapped = match key_b {
-            InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72E}' || key.codepoint == 'b') => InputEvent::ScrollUp,
-            e => e,
-        };
-        match event_mapped {
-            InputEvent::KeyPress(k) => assert_eq!(k.codepoint, 'b'),
-            _ => panic!("Expected KeyPress"),
-        }
-    }
 
     #[test]
     fn test_14_switch_viewport_event_loop() {
@@ -1781,5 +1896,239 @@ mod tests {
             }
         }
         assert_eq!(to_remove, vec![session.id]);
+    }
+    // --- Plan 2 tests ---
+
+    #[test]
+    fn test_1_resolve_load_blocks_traversal() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        let temp_dir = std::env::temp_dir();
+        *client_session.app_base_dir.write() = Some(temp_dir.clone());
+
+        let doc_file = temp_dir.join("dummy_t1.thtml");
+        std::fs::write(&doc_file, b"<screen></screen>").unwrap();
+        let doc = crate::loader::load_thtml_file(&doc_file).unwrap();
+
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
+        event_loop.base_source_path = Some(doc_file.clone());
+
+        // Attempt path traversal: "../../etc/passwd" — must be blocked
+        let result = event_loop.resolve_and_load_page("../../etc/passwd");
+        assert!(result.is_err(), "Traversal to ../../etc/passwd must be blocked");
+
+        let _ = std::fs::remove_file(doc_file);
+    }
+
+    #[test]
+    fn test_2_resolve_load_valid_subdir() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        let temp_dir = std::env::temp_dir();
+        let sub_dir = temp_dir.join("t2sub");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        let page = sub_dir.join("page_t2.thtml");
+        std::fs::write(&page, b"<screen></screen>").unwrap();
+        *client_session.app_base_dir.write() = Some(temp_dir.clone());
+
+        let index = temp_dir.join("index_t2.thtml");
+        std::fs::write(&index, b"<screen></screen>").unwrap();
+        let doc = crate::loader::load_thtml_file(&index).unwrap();
+
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
+        event_loop.base_source_path = Some(index.clone());
+
+        // Valid path inside base: must succeed
+        let result = event_loop.resolve_and_load_page("t2sub/page_t2.thtml");
+        assert!(result.is_ok(), "Valid subdir path must succeed: {:?}", result);
+
+        let _ = std::fs::remove_file(page);
+        let _ = std::fs::remove_file(index);
+        let _ = std::fs::remove_dir(sub_dir);
+    }
+
+    #[test]
+    fn test_3_htmx_no_thtml_calls_apply_action() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut btn = Node::new(NodeTag::Button);
+        btn.attrs.event_htmx = Some("set:tab=home".to_string());
+        let btn_id = arena.alloc(btn);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![btn_id];
+        let root_id = arena.alloc(root);
+
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        event_loop.focused_node = Some(btn_id);
+
+        // Drive handle_htmx_target with action target
+        event_loop.handle_htmx_target(btn_id, "set:tab=home");
+        assert_eq!(client_session.state.read().get("tab"), Some(&crate::state::StateValue::Str("home".to_string())));
+        assert!(event_loop.source_path.is_none());
+
+        // Drive handle_htmx_target with navigation target -> attempts navigation
+        // Since nonexistent.thtml doesn't exist, it fails resolution and logs warn without panic.
+        event_loop.handle_htmx_target(btn_id, "nonexistent.thtml");
+        assert!(event_loop.source_path.is_none()); // failed, so remains None
+    }
+
+    #[test]
+    fn test_5_preprocess_space_with_input_focused() {
+        use oxiterm_proto::input::{KeyEvent, KeyModifiers, KeyKind};
+        let key = InputEvent::KeyPress(KeyEvent { codepoint: ' ', modifiers: KeyModifiers::default(), kind: KeyKind::Press });
+        let result = EventLoop::preprocess_key(key, true);
+        // input focused: Space is NOT remapped
+        match result {
+            Some(InputEvent::KeyPress(k)) => assert_eq!(k.codepoint, ' '),
+            _ => panic!("Expected KeyPress(' ')"),
+        }
+    }
+
+    #[test]
+    fn test_6_preprocess_q_with_input_focused() {
+        use oxiterm_proto::input::{KeyEvent, KeyModifiers, KeyKind};
+        let key = InputEvent::KeyPress(KeyEvent { codepoint: 'q', modifiers: KeyModifiers::default(), kind: KeyKind::Press });
+        let result = EventLoop::preprocess_key(key, true);
+        // input focused: 'q' is NOT a quit signal
+        assert!(result.is_some(), "q with focused input must pass through");
+    }
+
+    #[test]
+    fn test_7_preprocess_q_without_input_focused() {
+        use oxiterm_proto::input::{KeyEvent, KeyModifiers, KeyKind};
+        let key = InputEvent::KeyPress(KeyEvent { codepoint: 'q', modifiers: KeyModifiers::default(), kind: KeyKind::Press });
+        let result = EventLoop::preprocess_key(key, false);
+        // not focused: 'q' IS a quit signal (returns None)
+        assert!(result.is_none(), "q without focused input must return None");
+    }
+
+    #[test]
+    fn test_13_identity_injects_reserved_keys() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let id = crate::identity::UserIdentity::ssh_key("alice");
+        
+        let attached = session.attach_identity(id);
+        assert!(attached);
+
+        let state = session.state.read();
+        assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("alice".to_string())));
+        assert_eq!(state.get("_auth_method"), Some(&crate::state::StateValue::Str("SshKey".to_string())));
+    }
+
+    #[test]
+    fn test_15_patch_skips_reserved_applies_others() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        // Pre-set a reserved key via identity (bypasses _-prefix guard)
+        session.state.write().set("_username".to_string(), crate::state::StateValue::Str("real".to_string()));
+        // Patch: contains _username (reserved) and a normal key
+        let patch = serde_json::json!({"_username": "hacked", "tab": "home"});
+        session.apply_state_patch(patch);
+        let state = session.state.read();
+        assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("real".to_string())));
+        assert_eq!(state.get("tab"), Some(&crate::state::StateValue::Str("home".to_string())));
+    }
+
+    #[test]
+    fn test_17_reattach_preserves_identity() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let id = crate::identity::UserIdentity::ssh_key("bob");
+        let attached1 = session.attach_identity(id);
+        assert!(attached1);
+
+        // Reattach and attempt downgrade/overwrite with Guest identity (C2/M2)
+        let guest_id = crate::identity::UserIdentity::guest();
+        let attached2 = session.attach_identity(guest_id);
+        assert!(!attached2, "Reattach must not overwrite existing identity");
+
+        // Assert original identity is preserved
+        let ident = session.identity.read();
+        assert!(ident.is_some());
+        assert_eq!(ident.as_ref().unwrap().username, "bob");
+        
+        // Assert state keys are preserved (not overwritten by guest)
+        let state = session.state.read();
+        assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("bob".to_string())));
+    }
+
+    #[test]
+    fn test_32_open_https_emits_0x33() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+
+        let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
+        event_loop.open_url_tx = Some(open_tx);
+
+        use oxiterm_proto::dom::NodeId;
+        event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
+
+        let frame = open_rx.try_recv().expect("Should have received 0x33 frame");
+        assert_eq!(frame[0], 0x33);
+        assert_eq!(&frame[1..], b"https://example.com");
+    }
+
+    #[test]
+    fn test_33_open_javascript_rejected() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+
+        let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
+        event_loop.open_url_tx = Some(open_tx);
+
+        use oxiterm_proto::dom::NodeId;
+        event_loop.handle_open_url("javascript:alert(1)".to_string(), NodeId(0));
+
+        assert!(open_rx.try_recv().is_err(), "javascript: URL must not emit 0x33");
+    }
+
+    #[test]
+    fn test_34_open_ssh_session_no_output_warn_only() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        // SSH session: is_web_client = false (default)
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        // open_url_tx intentionally left as None (SSH path)
+
+        use oxiterm_proto::dom::NodeId;
+        // Must not panic, must not write to any channel
+        event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
+        // Test passes if handle_open_url returns without panic
     }
 }

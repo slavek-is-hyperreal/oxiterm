@@ -42,6 +42,18 @@ pub struct ComputedStyle {
     pub margin: Rect,
     /// Element border styling (if defined).
     pub border: Option<BorderStyle>,
+    /// Wrap mode for text content.
+    pub wrap: WrapMode,
+}
+
+/// Wrap mode for text rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum WrapMode {
+    /// Do not wrap text.
+    #[default]
+    None,
+    /// Wrap text at word boundaries.
+    Word,
 }
 
 /// The direction of the flex container's layout.

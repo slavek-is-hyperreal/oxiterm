@@ -14,7 +14,7 @@ use nom::{
     branch::alt,
     combinator::{map, opt, recognize},
     multi::many0,
-    error::{context, VerboseError},
+    error::{context, VerboseError, VerboseErrorKind},
 };
 use regex::Regex;
 use std::sync::OnceLock;
@@ -148,6 +148,12 @@ impl THTMLParser {
         let (input, _) = context("Opening bracket", nom_char('<'))(input)?;
         let (input, tag_name) = context("Tag name", parse_tag_name)(input)?;
         let (input, attrs) = context("Attributes", parse_attributes)(input)?;
+
+        if tag_name == NodeTag::For && attrs.each.is_none() {
+            return Err(nom::Err::Failure(VerboseError {
+                errors: vec![(input, VerboseErrorKind::Context("For node requires each attribute"))],
+            }));
+        }
         
         let (input, _) = multispace0(input)?;
         let (input, self_closing) = opt(nom_char('/'))(input)?;
@@ -227,6 +233,7 @@ fn tag_name_to_str(tag: NodeTag) -> &'static str {
         NodeTag::Button => "button",
         NodeTag::Img => "img",
         NodeTag::Video => "video",
+        NodeTag::For => "for",
     }
 }
 
@@ -239,6 +246,7 @@ fn parse_tag_name(input: &str) -> ParseResult<'_, NodeTag> {
         map(tag("button"), |_| NodeTag::Button),
         map(tag("img"), |_| NodeTag::Img),
         map(tag("video"), |_| NodeTag::Video),
+        map(tag("for"), |_| NodeTag::For),
     ))(input)
 }
 
@@ -258,6 +266,8 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "name" => attrs.name = Some(value),
             "bind-show" => attrs.bind_show = Some(value),
             "bind-value" => attrs.bind_value = Some(value),
+            "each" => attrs.each = Some(value),
+            "type" => attrs.input_type = Some(value),
             _ => {}
         }
         input = rem;
@@ -446,5 +456,16 @@ mod tests {
         let root = doc.get_root();
         let node = doc.get_node(root.children[0]).unwrap();
         assert_eq!(node.text.as_deref(), Some("Arc<Vec<u8>> & \"test\""));
+    }
+
+    #[test]
+    fn test_23_for_validation_requires_each() {
+        let valid_input = r#"<for each="items"><text>item</text></for>"#;
+        let doc = THTMLParser::parse(valid_input);
+        assert!(doc.is_ok());
+
+        let invalid_input = r#"<for><text>item</text></for>"#;
+        let doc = THTMLParser::parse(invalid_input);
+        assert!(doc.is_err());
     }
 }

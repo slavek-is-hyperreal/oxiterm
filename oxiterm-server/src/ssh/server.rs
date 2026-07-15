@@ -32,7 +32,40 @@ pub struct OxiServer {
     pub initial_document: Option<THTMLDocument>,
     /// Option source template file path to support hot reloads.
     pub source_path: Option<PathBuf>,
+    /// Username captured at successful authentication.
+    pub authenticated_user: Arc<parking_lot::Mutex<Option<String>>>,
+    /// True if the session was authenticated via password (not public key).
+    pub used_password: Arc<std::sync::atomic::AtomicBool>,
 }
+
+impl OxiServer {
+    /// Creates a new connection-specific OxiServer handler.
+    ///
+    /// Instantiates fresh, isolated Arcs for authentication tracking (C1).
+    pub fn new(
+        config: crate::config::OxiTermConfig,
+        registry: Arc<SessionRegistry>,
+        auth_keys: Arc<AuthorizedKeys>,
+        rate_limiter: Arc<crate::ratelimit::RateLimiter>,
+        peer_addr: std::net::SocketAddr,
+        initial_document: Option<THTMLDocument>,
+        source_path: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            config,
+            registry,
+            auth_keys,
+            rate_limiter,
+            peer_addr,
+            channels: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            initial_document,
+            source_path,
+            authenticated_user: Arc::new(parking_lot::Mutex::new(None)),
+            used_password: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+}
+
 
 #[async_trait]
 impl Handler for OxiServer {
@@ -41,6 +74,7 @@ impl Handler for OxiServer {
     async fn auth_publickey(&mut self, user: &str, public_key: &key::PublicKey) -> Result<server::Auth, Self::Error> {
         info!("Auth attempt for user: {user} with key: {public_key:?}");
         if self.auth_keys.verify(public_key) {
+            *self.authenticated_user.lock() = Some(user.to_string());
             Ok(server::Auth::Accept)
         } else {
             warn!("Rejected unauthorized key for user: {user}");
@@ -54,6 +88,7 @@ impl Handler for OxiServer {
             warn!("║  ⚠️  NO-AUTH MODE: accepting without credentials  ║");
             warn!("║  NEVER USE THIS IN PRODUCTION ENVIRONMENTS!      ║");
             warn!("╚══════════════════════════════════════════════════╝");
+            *self.authenticated_user.lock() = Some(_user.to_string());
             return Ok(russh::server::Auth::Accept);
         }
 
@@ -69,6 +104,8 @@ impl Handler for OxiServer {
             };
             let match_bytes = to_compare_a.ct_eq(to_compare_b).unwrap_u8() == 1;
             if !password.is_empty() && len_match && match_bytes {
+                *self.authenticated_user.lock() = Some(_user.to_string());
+                self.used_password.store(true, std::sync::atomic::Ordering::SeqCst);
                 return Ok(russh::server::Auth::Accept);
             }
         }
@@ -125,6 +162,20 @@ impl Handler for OxiServer {
         if let Some(sid) = sid {
             let client_session = self.registry.sessions.read().get(&sid).cloned();
             if let Some(client_session) = client_session {
+                // Determine identity
+                let identity = {
+                    let user_lock = self.authenticated_user.lock();
+                    let uname = user_lock.clone().unwrap_or_else(|| "unknown".to_string());
+                    if self.config.server.no_auth {
+                        crate::identity::UserIdentity::ssh_no_auth(&uname)
+                    } else if self.used_password.load(std::sync::atomic::Ordering::SeqCst) {
+                        crate::identity::UserIdentity::ssh_password(&uname)
+                    } else {
+                        crate::identity::UserIdentity::ssh_key(&uname)
+                    }
+                };
+                client_session.attach_identity(identity);
+
                 let handle = session.handle();
                 let (output_tx, mut output_rx) = crate::backpressure::BoundedFrameChannel::<Vec<u8>>::new(32);
                 

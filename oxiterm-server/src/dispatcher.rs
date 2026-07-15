@@ -16,6 +16,12 @@ pub struct DispatchPayload {
     pub state: HashMap<String, String>,
     /// Unique identifier of the connection session.
     pub session_id: usize,
+    /// Username of the authenticated user.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// Authentication method used.
+    #[serde(default)]
+    pub auth_method: Option<String>,
 }
 
 /// Dispatcher responsible for sending session state updates to the app server.
@@ -74,6 +80,8 @@ mod tests {
             action: action.to_string(),
             state,
             session_id,
+            username: None,
+            auth_method: None,
         }
     }
 

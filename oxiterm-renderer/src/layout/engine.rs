@@ -221,6 +221,43 @@ impl LayoutEngine {
     }
 
     fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
+        fn count_word_wrapped_lines(text: &str, max_w: u16) -> usize {
+            let mut total_lines = 0;
+            for line in text.lines() {
+                if line.is_empty() {
+                    total_lines += 1;
+                    continue;
+                }
+                let mut current_line_width = 0;
+                let mut line_has_words = false;
+                
+                let words = line.split_whitespace();
+                for word in words {
+                    let word_w = word.chars()
+                        .map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16)
+                        .sum::<u16>();
+                    
+                    if !line_has_words {
+                        current_line_width = word_w;
+                        line_has_words = true;
+                        total_lines += 1;
+                    } else {
+                        let space_w = 1;
+                        if current_line_width + space_w + word_w <= max_w {
+                            current_line_width += space_w + word_w;
+                        } else {
+                            current_line_width = word_w;
+                            total_lines += 1;
+                        }
+                    }
+                }
+                if !line_has_words {
+                    total_lines += 1;
+                }
+            }
+            total_lines
+        }
+
         let style = &node.style;
         let mut width = style.width;
         let mut height = style.height;
@@ -235,7 +272,19 @@ impl LayoutEngine {
                     width = Some(calculated_width);
                 }
                 if height.is_none() {
-                    let calculated_height = text.lines().count() as u16;
+                    let calculated_height = if style.wrap == oxiterm_proto::style::WrapMode::Word {
+                        if let Some(max_w) = width {
+                            if max_w > 0 {
+                                count_word_wrapped_lines(text, max_w) as u16
+                            } else {
+                                text.lines().count() as u16
+                            }
+                        } else {
+                            text.lines().count() as u16
+                        }
+                    } else {
+                        text.lines().count() as u16
+                    };
                     height = Some(calculated_height.max(1));
                 }
             }

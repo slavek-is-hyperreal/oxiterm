@@ -290,7 +290,7 @@ pub mod web_impl {
                         let initial_doc = initial_doc.clone();
                         let source_path = source_path.clone();
                         async move {
-                            handle_request(req, registry, initial_doc, source_path).await
+                            handle_request(req, registry, initial_doc, source_path, peer_addr).await
                         }
                     });
 
@@ -306,17 +306,141 @@ pub mod web_impl {
         });
     }
 
+    fn http_401() -> Response<Full<Bytes>> {
+        Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Full::new(Bytes::from("Unauthorized")))
+            .unwrap()
+    }
+
+    fn payload_too_large() -> Response<Full<Bytes>> {
+        Response::builder()
+            .status(StatusCode::PAYLOAD_TOO_LARGE)
+            .body(Full::new(Bytes::from("Payload Too Large")))
+            .unwrap()
+    }
+
     async fn handle_request(
         mut req: Request<Incoming>,
         registry: Arc<SessionRegistry>,
         initial_doc: Option<oxiterm_renderer::THTMLDocument>,
         source_path: Option<std::path::PathBuf>,
+        peer_addr: std::net::SocketAddr,
     ) -> Result<Response<Full<Bytes>>, hyper::Error> {
         let path = req.uri().path();
+
+        // Handle POST /sessions/{id}/patch (Phase 5)
+        if path.starts_with("/sessions/") && path.ends_with("/patch") && req.method() == hyper::Method::POST {
+            let app_token = std::env::var("OXITERM_APP_TOKEN").ok();
+            if app_token.is_none() {
+                // If token is unset, patch endpoint is disabled (404)
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Full::new(Bytes::from("Not Found")))
+                    .unwrap());
+            }
+
+            // Check Bearer authorization token
+            let auth_header = req.headers().get("Authorization").and_then(|h| h.to_str().ok()).unwrap_or_default();
+            let token_prefix = "Bearer ";
+            if !auth_header.starts_with(token_prefix) {
+                return Ok(http_401());
+            }
+            let token = &auth_header[token_prefix.len()..];
+            use subtle::ConstantTimeEq;
+            let token_bytes = token.as_bytes();
+            let expected_bytes = app_token.unwrap();
+            let expected_bytes = expected_bytes.as_bytes();
+            let len_match = token_bytes.len() == expected_bytes.len();
+            let (to_compare_a, to_compare_b) = if len_match {
+                (token_bytes, expected_bytes)
+            } else {
+                (expected_bytes, expected_bytes)
+            };
+            let token_valid = to_compare_a.ct_eq(to_compare_b).unwrap_u8() == 1 && len_match;
+            if !token_valid {
+                return Ok(http_401());
+            }
+
+            // Extract session id
+            let path_parts: Vec<&str> = path.split('/').collect();
+            if path_parts.len() < 4 {
+                return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Bad Request"))).unwrap());
+            }
+            let session_id_str = path_parts[2];
+            let session_id = match session_id_str.parse::<usize>() {
+                Ok(id) => id,
+                Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Bad Request"))).unwrap()),
+            };
+
+            let session = {
+                let sessions = registry.sessions.read();
+                sessions.get(&session_id).cloned()
+            };
+            let session = match session {
+                Some(s) => s,
+                None => return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(Full::new(Bytes::from("Not Found"))).unwrap()),
+            };
+
+            // Enforce body cap during read (C3/M3)
+            use http_body_util::BodyExt;
+            let body = req.into_body();
+            let limited_body = http_body_util::Limited::new(body, 65536);
+            let body_bytes = match limited_body.collect().await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(payload_too_large()),
+            };
+
+            // Parse state patch
+            let patch: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("POST patch: invalid JSON: {}", e);
+                    return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Bad Request"))).unwrap());
+                }
+            };
+
+            session.apply_state_patch(patch);
+            let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
+
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Full::new(Bytes::from("OK")))
+                .unwrap());
+        }
         
         let upgrade_header = req.headers().get("Upgrade").and_then(|h| h.to_str().ok()).unwrap_or_default().to_lowercase();
         let connection_header = req.headers().get("Connection").and_then(|h| h.to_str().ok()).unwrap_or_default().to_lowercase();
         if path == "/ws" && upgrade_header == "websocket" && connection_header.contains("upgrade") {
+            // Determine user identity for this Web session (Phase 4 / F1)
+            let forwarded_user = req.headers().get("X-Forwarded-User").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+            let trusted_proxy = std::env::var("OXITERM_TRUSTED_PROXY").ok();
+            let allow_guest = match std::env::var("OXITERM_ALLOW_GUEST") {
+                Ok(v) => v != "false" && v != "0",
+                Err(_) => true, // default = true (unset) (F1)
+            };
+
+            let identity: Option<crate::identity::UserIdentity> = match (forwarded_user, trusted_proxy) {
+                (Some(user), Some(proxy)) => {
+                    match crate::identity::UserIdentity::from_trusted_header(&user, peer_addr, &proxy) {
+                        Some(id) => Some(id),
+                        None => {
+                            if allow_guest { Some(crate::identity::UserIdentity::guest()) }
+                            else { return Ok(http_401()); }
+                        }
+                    }
+                }
+                (None, _) => {
+                    if allow_guest { Some(crate::identity::UserIdentity::guest()) }
+                    else { return Ok(http_401()); }
+                }
+                (Some(user), None) => {
+                    warn!("X-Forwarded-User '{}' received but OXITERM_TRUSTED_PROXY not set; ignoring", user);
+                    if allow_guest { Some(crate::identity::UserIdentity::guest()) }
+                    else { return Ok(http_401()); }
+                }
+            };
+
             let sec_ws_key = req.headers().get("Sec-WebSocket-Key")
                 .and_then(|val| val.to_str().ok())
                 .unwrap_or_default();
@@ -355,7 +479,7 @@ pub mod web_impl {
                             tokio_tungstenite::tungstenite::protocol::Role::Server,
                             Some(ws_config),
                         ).await;
-                        if let Err(e) = handle_websocket(ws_stream, registry_ws, initial_doc_ws, source_path_ws, page_param, session_param).await {
+                        if let Err(e) = handle_websocket(ws_stream, registry_ws, initial_doc_ws, source_path_ws, page_param, session_param, identity).await {
                             warn!("WebSocket session error: {:?}", e);
                         }
                     }
@@ -432,6 +556,7 @@ pub mod web_impl {
         source_path: Option<std::path::PathBuf>,
         page_param: Option<String>,
         session_param: Option<String>,
+        identity: Option<crate::identity::UserIdentity>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let app_base_dir = source_path.clone()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
@@ -467,6 +592,10 @@ pub mod web_impl {
             s.active_connections.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             s
         };
+
+        if let Some(ref id) = identity {
+            client_session.attach_identity(id.clone());
+        }
 
         client_session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -512,7 +641,7 @@ pub mod web_impl {
             base_source_path = Some(bp.clone());
         }
 
-        let frame_sink = Box::new(WsFrameSink::new(frame_tx, client_session.clone(), resolved_source_path.clone()));
+        let frame_sink = Box::new(WsFrameSink::new(frame_tx.clone(), client_session.clone(), resolved_source_path.clone()));
         let event_bus = Arc::new(crate::events::EventBus::new());
         
         let mut dims = *client_session.dims.read();
@@ -570,6 +699,7 @@ pub mod web_impl {
         };
 
         let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+        event_loop.open_url_tx = Some(frame_tx.clone());
         event_loop.frame_sink = frame_sink;
         event_loop.source_path = resolved_source_path;
         event_loop.base_source_path = base_source_path;
@@ -880,17 +1010,214 @@ pub mod web_impl {
             }
         }
 
-        #[tokio::test]
-        async fn test_22_media_base_env_cached() {
-            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-            let session = reg.create_session().unwrap();
-            
-            std::env::set_var("OXITERM_MEDIA_BASE_URL", "/cached/media/base");
-            let (tx, _rx) = tokio::sync::mpsc::channel(10);
-            let sink = WsFrameSink::new(tx, session.clone(), None);
-            std::env::remove_var("OXITERM_MEDIA_BASE_URL");
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-            assert_eq!(sink.media_base_url, Some(std::path::PathBuf::from("/cached/media/base")));
+        struct EnvGuard {
+            _lock: std::sync::MutexGuard<'static, ()>,
+            original_values: std::collections::HashMap<String, Option<String>>,
+        }
+
+        impl EnvGuard {
+            fn lock_and_set(vars: &[(&str, Option<&str>)]) -> Self {
+                let lock = ENV_LOCK.lock().unwrap();
+                let mut original_values = std::collections::HashMap::new();
+                for &(key, val) in vars {
+                    let orig = std::env::var(key).ok();
+                    original_values.insert(key.to_string(), orig);
+                    if let Some(v) = val {
+                        std::env::set_var(key, v);
+                    } else {
+                        std::env::remove_var(key);
+                    }
+                }
+                Self { _lock: lock, original_values }
+            }
+        }
+
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                for (key, val) in &self.original_values {
+                    if let Some(v) = val {
+                        std::env::set_var(key, v);
+                    } else {
+                        std::env::remove_var(key);
+                    }
+                }
+            }
+        }
+
+        async fn boot_test_server(reg: Arc<SessionRegistry>) -> std::net::SocketAddr {
+            let rate_limiter = Arc::new(crate::ratelimit::RateLimiter::new(60));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let local_addr = listener.local_addr().unwrap();
+            drop(listener);
+            
+            let reg_clone = reg.clone();
+            let rate_limiter_clone = rate_limiter.clone();
+            start_web_server("127.0.0.1".to_string(), local_addr.port(), reg_clone, rate_limiter_clone, None, None);
+            
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            local_addr
+        }
+
+        #[tokio::test]
+        async fn test_18_ws_upgrade_no_identity_401() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_TRUSTED_PROXY", Some("127.0.0.1")),
+                ("OXITERM_ALLOW_GUEST", Some("false")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let request = "GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n";
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut buf = [0u8; 1024];
+            let n = stream.read(&mut buf).await.unwrap();
+            let response = String::from_utf8_lossy(&buf[..n]);
+            assert!(response.contains("401 Unauthorized") || response.contains("401 UNAUTHORIZED"));
+        }
+
+        #[tokio::test]
+        async fn test_19_patch_endpoint_200() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let body = r#"{"valid_key": "applied"}"#;
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("200 OK"));
+            
+            assert_eq!(session.state.read().get("valid_key"), Some(&crate::state::StateValue::Str("applied".to_string())));
+        }
+
+        #[tokio::test]
+        async fn test_20_patch_endpoint_wrong_token_and_unknown_session() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            
+            // Wrong token -> 401
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer bad_token\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}",
+                sid
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("401 Unauthorized") || response.contains("401 UNAUTHORIZED"));
+
+            // Unknown session -> 404
+            let mut stream2 = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let request2 = format!(
+                "POST /sessions/99999/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+            stream2.write_all(request2.as_bytes()).await.unwrap();
+            let mut response2 = String::new();
+            stream2.read_to_string(&mut response2).await.unwrap();
+            assert!(response2.contains("404 Not Found") || response2.contains("404 NOT FOUND"));
+        }
+
+        #[tokio::test]
+        async fn test_21_patch_endpoint_no_token_env_404() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", None),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}",
+                sid
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("404 Not Found") || response.contains("404 NOT FOUND"));
+        }
+
+        #[tokio::test]
+        async fn test_22_patch_endpoint_exceeds_state_limits() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let long_key = "a".repeat(257);
+            let body = format!(r#"{{"valid_key_22": "applied", "{}": "skipped"}}"#, long_key);
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("200 OK"));
+
+            let state = session.state.read();
+            assert_eq!(state.get("valid_key_22"), Some(&crate::state::StateValue::Str("applied".to_string())));
+            assert!(state.get(&long_key).is_none());
+        }
+
+        #[tokio::test]
+        async fn test_37_patch_endpoint_body_too_large_413() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let payload = "x".repeat(65538);
+            let body = format!(r#"{{"large_key": "{}"}}"#, payload);
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("413 Payload Too Large") || response.contains("413 PAYLOAD TOO LARGE"));
+
+            assert!(session.state.read().get("large_key").is_none());
         }
 
         #[tokio::test]

@@ -247,13 +247,55 @@ impl Renderer {
             match &node.tag {
                 NodeTag::Text => {
                     if let Some(text) = &node.text {
-                        let mut cx = 0;
+                        let lines_to_draw: Vec<String> = if node.style.wrap == oxiterm_proto::style::WrapMode::Word && content_w > 0 {
+                            let mut result = Vec::new();
+                            for line in text.lines() {
+                                if line.is_empty() {
+                                    result.push(String::new());
+                                    continue;
+                                }
+                                let mut current_line = String::new();
+                                let mut current_line_width = 0;
+                                let mut line_has_words = false;
+                                
+                                let words = line.split_whitespace();
+                                for word in words {
+                                    let word_w = word.chars()
+                                        .map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16)
+                                        .sum::<u16>();
+                                    
+                                    if !line_has_words {
+                                        current_line = word.to_string();
+                                        current_line_width = word_w;
+                                        line_has_words = true;
+                                    } else {
+                                        let space_w = 1;
+                                        if current_line_width + space_w + word_w <= content_w {
+                                            current_line.push(' ');
+                                            current_line.push_str(word);
+                                            current_line_width += space_w + word_w;
+                                        } else {
+                                            result.push(current_line);
+                                            current_line = word.to_string();
+                                            current_line_width = word_w;
+                                        }
+                                    }
+                                }
+                                if line_has_words {
+                                    result.push(current_line);
+                                } else {
+                                    result.push(String::new());
+                                }
+                            }
+                            result
+                        } else {
+                            text.lines().map(|s| s.to_string()).collect()
+                        };
+
                         let mut cy = 0;
-                        for ch in text.chars() {
-                            if ch == '\n' {
-                                cx = 0;
-                                cy += 1;
-                            } else {
+                        for line in lines_to_draw {
+                            let mut cx = 0;
+                            for ch in line.chars() {
                                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
                                 if char_w > 0 {
                                     if char_w > 1 && cx + char_w > content_w && char_w <= content_w {
@@ -282,13 +324,23 @@ impl Renderer {
                                     cx += char_w;
                                 }
                             }
+                            cy += 1;
                         }
                     }
                 }
                 NodeTag::Input => {
+                    let text_str = node.text.as_deref().unwrap_or("");
+                    let is_password = node.attrs.input_type.as_deref().map(|t| t == "password").unwrap_or(false);
+                    let mut chars = text_str.chars();
                     for x in 0..content_w {
+                        let ch = match chars.next() {
+                            Some(c) => {
+                                if is_password { '*' } else { c }
+                            }
+                            None => '_',
+                        };
                         Self::safe_set(buffer, content_x + x as i32, content_y, Cell {
-                            ch: '_',
+                            ch,
                             fg: resolved_fg,
                             bg: resolved_bg,
                             ..Default::default()
@@ -1105,9 +1157,9 @@ pub fn unpremultiply_bgra_to_rgba(data: &[rlottie::Bgra], width: u32, height: u3
             rgba_data.push(0);
             rgba_data.push(0);
         } else {
-            let r = (pixel.r as u32 * 255 / a as u32) as u8;
-            let g = (pixel.g as u32 * 255 / a as u32) as u8;
-            let b = (pixel.b as u32 * 255 / a as u32) as u8;
+            let r = ((pixel.r as u32 * 255 / a as u32).min(255)) as u8;
+            let g = ((pixel.g as u32 * 255 / a as u32).min(255)) as u8;
+            let b = ((pixel.b as u32 * 255 / a as u32).min(255)) as u8;
             rgba_data.push(r);
             rgba_data.push(g);
             rgba_data.push(b);

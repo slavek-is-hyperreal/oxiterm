@@ -58,6 +58,7 @@ fn build_a11y_node(doc: &THTMLDocument, id: NodeId, node: &oxiterm_proto::dom::N
         NodeTag::Button => AtSpRole::Button,
         NodeTag::Img => AtSpRole::Image,
         NodeTag::Video => AtSpRole::Image,
+        NodeTag::For => AtSpRole::Container,
     };
 
     let mut label = String::new();
@@ -163,6 +164,7 @@ fn fallback_recursive(doc: &THTMLDocument, node_id: NodeId, out: &mut String) {
         match node.tag {
             NodeTag::Screen => {}
             NodeTag::Box => {}
+            NodeTag::For => {}
             NodeTag::Text => {
                 if let Some(ref text) = node.text {
                     if !text.trim().is_empty() {

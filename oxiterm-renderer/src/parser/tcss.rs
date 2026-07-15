@@ -69,6 +69,8 @@ pub enum Declaration {
     BorderStyle(String),
     /// Border foreground color.
     BorderColor(AnsiColor),
+    /// Text wrap mode (word wrapping).
+    Wrap(oxiterm_proto::style::WrapMode),
 }
 
 /// Strips block comments (`/* ... */`) from the TCSS input string.
@@ -127,6 +129,7 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
         Declaration::Bg(color) => style.bg = *color,
         Declaration::Width(w) => style.width = Some(*w),
         Declaration::Height(h) => style.height = Some(*h),
+        Declaration::Wrap(wrap_mode) => style.wrap = *wrap_mode,
         Declaration::FlexDirection(d) => style.flex_direction = *d,
         Declaration::AlignItems(a) => style.align_items = *a,
         Declaration::JustifyContent(j) => style.justify_content = *j,
@@ -229,6 +232,10 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
         "bg" | "background-color" => Some(Declaration::Bg(parse_color(value.trim()))),
         "width" => Some(Declaration::Width(value.trim().parse().unwrap_or(0))),
         "height" => Some(Declaration::Height(value.trim().parse().unwrap_or(0))),
+        "wrap" => match value.trim() {
+            "word" => Some(Declaration::Wrap(oxiterm_proto::style::WrapMode::Word)),
+            _ => Some(Declaration::Wrap(oxiterm_proto::style::WrapMode::None)),
+        },
         "flex-direction" => match value.trim() {
             "column" => Some(Declaration::FlexDirection(FlexDirection::Column)),
             _ => Some(Declaration::FlexDirection(FlexDirection::Row)),
@@ -314,6 +321,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
             oxiterm_proto::dom::NodeTag::Button => "button",
             oxiterm_proto::dom::NodeTag::Img => "img",
             oxiterm_proto::dom::NodeTag::Video => "video",
+            oxiterm_proto::dom::NodeTag::For => "for",
         };
 
         let mut new_style = oxiterm_proto::style::ComputedStyle::default();

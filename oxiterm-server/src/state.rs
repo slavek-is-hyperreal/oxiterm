@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use oxiterm_proto::dom::NodeId;
+use tracing::warn;
 
 /// State value representation supporting integer, string, boolean, and lists of strings.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,6 +110,11 @@ impl StateManager {
         } else {
             (rest, None)
         };
+
+        if key.starts_with('_') {
+            warn!("apply_action: rejected write to reserved key '{}'", key);
+            return;
+        }
 
         match cmd {
             "inc" => {
@@ -316,4 +322,13 @@ mod tests {
         sm.set("show_details".to_string(), StateValue::Bool(false));
         assert_eq!(sm.evaluate_bind_show("show_details=true"), false);
     }
+
+    #[test]
+    fn test_14_apply_action_rejects_reserved_key() {
+        let mut sm = StateManager::new();
+        sm.set("_username".to_string(), StateValue::Str("original".to_string()));
+        sm.apply_action("set:_username=hacker");
+        assert_eq!(sm.get("_username"), Some(&StateValue::Str("original".to_string())));
+    }
 }
+
