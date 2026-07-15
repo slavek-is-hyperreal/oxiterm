@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_ROOT="/my_data/oxiterm"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUTH_FILE="$PROJECT_ROOT/authorized_keys"
 
 echo "🔧 Konfigurowanie demo OxiTerm..."
