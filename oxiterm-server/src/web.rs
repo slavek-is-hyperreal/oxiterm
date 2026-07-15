@@ -1081,6 +1081,57 @@ pub mod web_impl {
         }
 
         #[tokio::test]
+        async fn test_4_ws_page_traversal_blocked() {
+            let _env = EnvGuard::lock_and_set(&[]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let rate_limiter = Arc::new(crate::ratelimit::RateLimiter::new(60));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let local_addr = listener.local_addr().unwrap();
+            drop(listener);
+
+            let reg_clone = reg.clone();
+            let rate_limiter_clone = rate_limiter.clone();
+            let temp = std::env::temp_dir();
+            let base_dir = temp.join("oxiterm_base_test_4");
+            let _ = std::fs::remove_dir_all(&base_dir);
+            std::fs::create_dir_all(&base_dir).unwrap();
+            let index_path = base_dir.join("index.thtml");
+            std::fs::write(&index_path, b"<screen><text>hello</text></screen>").unwrap();
+
+            let index_path_clone = index_path.clone();
+            tokio::spawn(async move {
+                start_web_server(
+                    "127.0.0.1".to_string(),
+                    local_addr.port(),
+                    reg_clone,
+                    rate_limiter_clone,
+                    None,
+                    Some(index_path_clone),
+                );
+            });
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let request = "GET /ws?page=../escape HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n";
+            stream.write_all(request.as_bytes()).await.unwrap();
+
+            let mut buf = [0u8; 1024];
+            let n = stream.read(&mut buf).await.unwrap();
+            let response = String::from_utf8_lossy(&buf[..n]);
+            assert!(response.contains("101 Switching Protocols"));
+
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            let sessions = reg.sessions.read();
+            assert!(!sessions.is_empty());
+
+            let _ = std::fs::remove_file(index_path);
+            let _ = std::fs::remove_dir_all(base_dir);
+        }
+
+        #[tokio::test]
         async fn test_19_patch_endpoint_200() {
             let _env = EnvGuard::lock_and_set(&[
                 ("OXITERM_APP_TOKEN", Some("valid_token_123")),

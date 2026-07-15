@@ -82,3 +82,96 @@ fn clone_node_replacing_item(
     doc.arena.get_mut(new_id).unwrap().children = new_children;
     Ok(new_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_24_expand_basic() {
+        let mut doc = THTMLDocument::new();
+        let mut for_node = Node::new(NodeTag::For);
+        for_node.attrs.each = Some("items".to_string());
+        
+        let mut tmpl_node = Node::new(NodeTag::Text);
+        tmpl_node.text = Some("Value: {item}".to_string());
+        
+        let tmpl_id = doc.arena.alloc(tmpl_node);
+        for_node.children.push(tmpl_id);
+        
+        let for_id = doc.arena.alloc(for_node);
+        doc.root = for_id;
+        
+        let mut cache = HashMap::new();
+        let list = vec!["A".to_string(), "B".to_string()];
+        
+        expand_for_node(&mut doc, for_id, &list, &mut cache).unwrap();
+        
+        let node = doc.arena.get(for_id).unwrap();
+        assert_eq!(node.children.len(), 3); 
+        assert_eq!(node.children[0], tmpl_id);
+        
+        let val_a = doc.arena.get(node.children[1]).unwrap();
+        assert_eq!(val_a.text.as_deref(), Some("Value: A"));
+        
+        let val_b = doc.arena.get(node.children[2]).unwrap();
+        assert_eq!(val_b.text.as_deref(), Some("Value: B"));
+    }
+
+    #[test]
+    fn test_25_expand_twice_shrinks() {
+        let mut doc = THTMLDocument::new();
+        let mut for_node = Node::new(NodeTag::For);
+        for_node.attrs.each = Some("items".to_string());
+        
+        let mut tmpl_node = Node::new(NodeTag::Text);
+        tmpl_node.text = Some("Value: {item}".to_string());
+        
+        let tmpl_id = doc.arena.alloc(tmpl_node);
+        for_node.children.push(tmpl_id);
+        
+        let for_id = doc.arena.alloc(for_node);
+        doc.root = for_id;
+        
+        let mut cache = HashMap::new();
+        
+        let list1 = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        expand_for_node(&mut doc, for_id, &list1, &mut cache).unwrap();
+        {
+            let node = doc.arena.get(for_id).unwrap();
+            assert_eq!(node.children.len(), 4);
+        }
+        
+        let list2 = vec!["D".to_string()];
+        expand_for_node(&mut doc, for_id, &list2, &mut cache).unwrap();
+        {
+            let node = doc.arena.get(for_id).unwrap();
+            assert_eq!(node.children.len(), 2);
+            assert_eq!(node.children[0], tmpl_id);
+            let val_d = doc.arena.get(node.children[1]).unwrap();
+            assert_eq!(val_d.text.as_deref(), Some("Value: D"));
+        }
+    }
+
+    #[test]
+    fn test_36_restricted_template_returns_err() {
+        let mut doc = THTMLDocument::new();
+        let mut for_node = Node::new(NodeTag::For);
+        for_node.attrs.each = Some("items".to_string());
+        
+        let mut tmpl_node = Node::new(NodeTag::Input);
+        tmpl_node.attrs.bind_value = Some("some_key".to_string());
+        
+        let tmpl_id = doc.arena.alloc(tmpl_node);
+        for_node.children.push(tmpl_id);
+        
+        let for_id = doc.arena.alloc(for_node);
+        doc.root = for_id;
+        
+        let mut cache = HashMap::new();
+        let list = vec!["A".to_string()];
+        
+        let res = expand_for_node(&mut doc, for_id, &list, &mut cache);
+        assert!(res.is_err());
+    }
+}

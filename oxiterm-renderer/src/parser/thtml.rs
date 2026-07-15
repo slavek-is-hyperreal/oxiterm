@@ -468,4 +468,13 @@ mod tests {
         let doc = THTMLParser::parse(invalid_input);
         assert!(doc.is_err());
     }
+
+    #[test]
+    fn test_30_parse_password_input() {
+        let input = r#"<input type="password" />"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(node.attrs.input_type.as_deref(), Some("password"));
+    }
 }

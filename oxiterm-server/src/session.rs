@@ -572,30 +572,6 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-    fn resolve_path(&self, filename: &str) -> std::path::PathBuf {
-        let base = self.source_path.as_ref()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-        
-        let mut target_name = filename.to_string();
-        if !target_name.ends_with(".thtml") {
-            target_name.push_str(".thtml");
-        }
-
-        // If it is a mobile session, try to find a mobile variant.
-        if self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst) {
-            if !target_name.contains("_mobile.thtml") {
-                let stem = target_name.strip_suffix(".thtml").unwrap_or(&target_name);
-                let mobile_name = format!("{}_mobile.thtml", stem);
-                let mobile_path = base.join(&mobile_name);
-                if mobile_path.exists() {
-                    return mobile_path;
-                }
-            }
-        }
-        base.join(target_name)
-    }
-
     fn resolve_non_mobile_path(&self, filename: &str) -> std::path::PathBuf {
         let base = self.base_source_path.as_ref().or(self.source_path.as_ref()).and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .or_else(|| self.session.app_base_dir.read().clone())
@@ -2123,12 +2099,89 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
         // open_url_tx intentionally left as None (SSH path)
 
         use oxiterm_proto::dom::NodeId;
         // Must not panic, must not write to any channel
         event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
         // Test passes if handle_open_url returns without panic
+    }
+
+    #[test]
+    fn test_26_for_expansion_on_append_action() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.state.write().set("items".to_string(), crate::state::StateValue::List(vec!["A".to_string()]));
+
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut for_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::For);
+        for_node.attrs.each = Some("items".to_string());
+        
+        let mut tmpl_node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Text);
+        tmpl_node.text = Some("{item}".to_string());
+        let tmpl_id = arena.alloc(tmpl_node);
+        for_node.children.push(tmpl_id);
+
+        let for_id = arena.alloc(for_node);
+        let doc = THTMLDocument { arena, root: for_id, dirty_nodes: Vec::new() };
+
+        let mut event_loop = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        
+        event_loop.expand_all_for_nodes();
+        {
+            let node = event_loop.doc.arena.get(for_id).unwrap();
+            assert_eq!(node.children.len(), 2);
+            assert_eq!(event_loop.doc.arena.get(node.children[1]).unwrap().text.as_deref(), Some("A"));
+        }
+
+        event_loop.handle_htmx_target(for_id, "append:items=B");
+        event_loop.expand_all_for_nodes();
+
+        {
+            let node = event_loop.doc.arena.get(for_id).unwrap();
+            assert_eq!(node.children.len(), 3);
+            assert_eq!(event_loop.doc.arena.get(node.children[1]).unwrap().text.as_deref(), Some("A"));
+            assert_eq!(event_loop.doc.arena.get(node.children[2]).unwrap().text.as_deref(), Some("B"));
+        }
+    }
+
+    #[test]
+    fn test_35_stale_cache_cleared_on_page_change() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        
+        use oxiterm_proto::dom::NodeId;
+        event_loop.for_template_cache.insert(NodeId(42), vec![NodeId(43)]);
+        assert!(!event_loop.for_template_cache.is_empty());
+
+        let temp = std::env::temp_dir();
+        let base_dir = temp.join("test_35_dir");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let page_path = base_dir.join("next.thtml");
+        std::fs::write(&page_path, b"<screen><text>page content</text></screen>").unwrap();
+
+        *event_loop.session.app_base_dir.write() = Some(base_dir.clone());
+        event_loop.base_source_path = Some(page_path.clone());
+        event_loop.source_path = Some(page_path.clone());
+
+        event_loop.resolve_and_load_page("next.thtml").unwrap();
+
+        assert!(event_loop.for_template_cache.is_empty());
+
+        let _ = std::fs::remove_file(page_path);
+        let _ = std::fs::remove_dir(base_dir);
     }
 }

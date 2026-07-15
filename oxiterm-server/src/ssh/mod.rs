@@ -16,7 +16,6 @@ use crate::config::OxiTermConfig;
 use crate::session::{SessionRegistry, THTMLDocument};
 use crate::ratelimit::RateLimiter;
 use tracing::{info, warn};
-use std::collections::HashMap;
 
 /// Runs the main TCP listener loop for incoming SSH connection streams.
 ///

@@ -1144,6 +1144,72 @@ mod tests {
         assert_eq!(buffer.cells[0].ch, '*');
         assert_eq!(buffer.cells[14].ch, '*');
     }
+
+    #[test]
+    fn test_29_wrap_word_renders_rows() {
+        let mut doc = THTMLDocument::new();
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("aa bb cc".to_string());
+        text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
+        text_node.style.width = Some(5);
+        
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 5, 2, None).unwrap();
+
+        let mut buffer = CellBuffer::new(5, 2);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+
+        assert_eq!(buffer.cells[0].ch, 'a');
+        assert_eq!(buffer.cells[1].ch, 'a');
+        assert_eq!(buffer.cells[2].ch, ' ');
+        assert_eq!(buffer.cells[3].ch, 'b');
+        assert_eq!(buffer.cells[4].ch, 'b');
+
+        assert_eq!(buffer.cells[5].ch, 'c');
+        assert_eq!(buffer.cells[6].ch, 'c');
+    }
+
+    #[test]
+    fn test_31_password_input_masks() {
+        let mut doc = THTMLDocument::new();
+        let mut input_node = Node::new(NodeTag::Input);
+        input_node.attrs.input_type = Some("password".to_string());
+        input_node.text = Some("secret".to_string());
+        input_node.style.width = Some(10);
+        input_node.style.height = Some(1);
+        
+        let node_id = doc.arena.alloc(input_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 10, 1, None).unwrap();
+
+        let mut buffer = CellBuffer::new(10, 1);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+
+        for i in 0..6 {
+            assert_eq!(buffer.cells[i].ch, '*');
+        }
+        for i in 6..10 {
+            assert_eq!(buffer.cells[i].ch, '_');
+        }
+    }
+
+    #[test]
+    fn test_9_unpremultiply_clamp() {
+        let bgra_pixels = vec![
+            rlottie::Bgra { r: 200, g: 150, b: 100, a: 50 },
+        ];
+        let img = super::unpremultiply_bgra_to_rgba(&bgra_pixels, 1, 1);
+        let pixel = img.get_pixel(0, 0);
+        assert_eq!(pixel.0[0], 255);
+        assert_eq!(pixel.0[1], 255);
+        assert_eq!(pixel.0[2], 255);
+        assert_eq!(pixel.0[3], 50);
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

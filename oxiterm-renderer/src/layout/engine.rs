@@ -466,4 +466,41 @@ mod tests {
         let result_visible = engine.compute(&mut doc, 80, 0, Some(&eval_true)).unwrap();
         assert!(result_visible.nodes.get(&child_id).is_some());
     }
+
+    #[test]
+    fn test_27_wrap_word_height() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("aa bb cc".to_string());
+        text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
+        text_node.style.width = Some(5);
+        
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+        
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let rect = result.nodes.get(&node_id).unwrap();
+        assert_eq!(rect.height, 2);
+    }
+
+    #[test]
+    fn test_28_wrap_word_single_long_word() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("abcdefg".to_string());
+        text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
+        text_node.style.width = Some(5);
+        
+        let node_id = doc.arena.alloc(text_node);
+        doc.append_child(doc.root, node_id).unwrap();
+        
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let rect = result.nodes.get(&node_id).unwrap();
+        assert_eq!(rect.height, 1);
+    }
 }
+

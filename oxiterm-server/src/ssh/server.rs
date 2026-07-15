@@ -283,3 +283,47 @@ impl Handler for OxiServer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::OxiTermConfig;
+    use crate::ssh::keys::AuthorizedKeys;
+    use crate::ratelimit::RateLimiter;
+    use std::net::SocketAddr;
+
+    #[test]
+    fn test_38_ssh_identity_arcs_isolated() {
+        let config = OxiTermConfig::default();
+        let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+        let auth_keys = Arc::new(AuthorizedKeys { keys: Vec::new() });
+        let rate_limiter = Arc::new(RateLimiter::new(60));
+        let addr: SocketAddr = "127.0.0.1:2222".parse().unwrap();
+
+        let s1 = OxiServer::new(
+            config.clone(),
+            reg.clone(),
+            auth_keys.clone(),
+            rate_limiter.clone(),
+            addr,
+            None,
+            None,
+        );
+
+        let s2 = OxiServer::new(
+            config.clone(),
+            reg.clone(),
+            auth_keys.clone(),
+            rate_limiter.clone(),
+            addr,
+            None,
+            None,
+        );
+
+        *s1.authenticated_user.lock() = Some("user1".to_string());
+        s1.used_password.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        assert_eq!(*s2.authenticated_user.lock(), None);
+        assert_eq!(s2.used_password.load(std::sync::atomic::Ordering::SeqCst), false);
+    }
+}

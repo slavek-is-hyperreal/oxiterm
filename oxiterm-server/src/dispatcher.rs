@@ -110,6 +110,24 @@ mod tests {
     }
 
     #[test]
+    fn test_16_dispatch_payload_has_identity() {
+        let payload = DispatchPayload {
+            action: "click".to_string(),
+            state: HashMap::new(),
+            session_id: 123,
+            username: Some("test_user".to_string()),
+            auth_method: Some("TrustedHeader".to_string()),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"username\":\"test_user\""));
+        assert!(json.contains("\"auth_method\":\"TrustedHeader\""));
+
+        let deserialized: DispatchPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.username, Some("test_user".to_string()));
+        assert_eq!(deserialized.auth_method, Some("TrustedHeader".to_string()));
+    }
+
+    #[test]
     fn test_dispatch_unreachable_does_not_panic() {
         let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
         let payload = make_payload("toggle:flag", 0);
