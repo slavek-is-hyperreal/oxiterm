@@ -5,4 +5,7 @@ Cargo.lock
 host_key
 authorized_keys
 /scratch
+*.log
+project_bundle.txt
+
 

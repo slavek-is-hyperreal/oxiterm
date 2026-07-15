@@ -40,6 +40,10 @@ pub enum InputEvent {
     TextInput(String),
     /// Signal indicating that the application state has been successfully patched.
     StatePatched,
+    /// Request to switch viewport (mobile / desktop).
+    SwitchViewport(bool),
+    /// Request to navigate to a relative path.
+    NavigateTo(String),
     /// An unparsed or unrecognized escape sequence.
     Unknown(Vec<u8>),
 }

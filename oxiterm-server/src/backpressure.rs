@@ -161,6 +161,14 @@ impl<T> Receiver<T> {
         self.notify.notify_waiters();
         cvar.notify_all();
     }
+
+    /// Reopens the channel and clears any buffered messages.
+    pub fn reopen(&mut self) {
+        let (lock, _) = &*self.inner;
+        let mut inner = lock.lock();
+        inner.closed = false;
+        inner.queue.clear();
+    }
 }
 
 impl<T> Drop for BoundedFrameChannel<T> {

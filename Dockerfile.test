@@ -1,0 +1,9 @@
+FROM rust:1-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends cmake clang libclang-dev curl && rm -rf /var/lib/apt/lists/*
+RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+WORKDIR /app
+COPY . .
+RUN rustup target add wasm32-unknown-unknown
+RUN wasm-pack build --target web --out-dir ../oxiterm-server/assets/pkg oxiterm-web
+RUN cargo fetch
+CMD ["cargo", "test", "-p", "oxiterm-proto", "-p", "oxiterm-server", "-p", "oxiterm-renderer"]

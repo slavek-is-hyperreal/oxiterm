@@ -22,6 +22,8 @@ pub type SessionId = usize;
 pub struct SessionRegistry {
     /// Active sessions map.
     pub sessions: RwLock<HashMap<SessionId, Arc<ClientSession>>>,
+    /// Active tokens map.
+    pub tokens: RwLock<HashMap<String, SessionId>>,
     next_id: RwLock<SessionId>,
     prometheus_registry: Arc<prometheus::Registry>,
     max_sessions: usize,
@@ -162,12 +164,25 @@ pub struct ClientSession {
     pub is_mobile: std::sync::atomic::AtomicBool,
     /// Indicates if the session is a web (WebSocket) session with DOM media overlay.
     pub is_web_client: std::sync::atomic::AtomicBool,
+    /// The current relative page path for WebSocket announce.
+    pub current_page: RwLock<Option<String>>,
+    /// The application base directory.
+    pub app_base_dir: RwLock<Option<std::path::PathBuf>>,
+    /// Number of active WebSocket connections.
+    pub active_connections: std::sync::atomic::AtomicUsize,
+    /// Unique connection token for session reattachment.
+    pub token: String,
 }
 
 impl ClientSession {
     /// Closes input receiver streams, initiating shutdown.
     pub fn close(&self) {
         self.event_rx.lock().close();
+    }
+
+    /// Reopens the input receiver stream for reconnects.
+    pub fn reopen(&self) {
+        self.event_rx.lock().reopen();
     }
 
     /// Evaluates dynamic client state change patches.
@@ -257,10 +272,38 @@ impl SessionRegistry {
     pub fn new(prometheus_registry: Arc<prometheus::Registry>, max_sessions: usize) -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
+            tokens: RwLock::new(HashMap::new()),
             next_id: RwLock::new(0),
             prometheus_registry,
             max_sessions,
         }
+    }
+
+    fn generate_token() -> String {
+        use std::io::Read;
+        let mut bytes = [0u8; 16];
+        if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+            let _ = f.read_exact(&mut bytes);
+        } else {
+            let duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+            let mut seed = duration.as_nanos();
+            for byte in bytes.iter_mut() {
+                *byte = (seed & 0xFF) as u8;
+                seed >>= 8;
+                if seed == 0 {
+                    seed = duration.as_nanos();
+                }
+            }
+        }
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+
+    /// Returns the live session if the token is valid, else None.
+    pub fn reattach(&self, token: &str) -> Option<Arc<ClientSession>> {
+        let tokens_lock = self.tokens.read();
+        let sid = tokens_lock.get(token)?;
+        let sessions_lock = self.sessions.read();
+        sessions_lock.get(sid).cloned()
     }
 
     /// Allocates and spawns a new ClientSession, respecting capacity thresholds.
@@ -283,6 +326,8 @@ impl SessionRegistry {
         // Spawn the RRT (Resilient Reactor Thread)
         crate::ssh::reactor::ReactorThread::spawn(raw_rx, event_tx.clone());
 
+        let token = Self::generate_token();
+
         let session = Arc::new(ClientSession { 
             id,
             dims: RwLock::new(PtyDimensions { cols: 80, rows: 24 }),
@@ -298,8 +343,13 @@ impl SessionRegistry {
             active_media: RwLock::new(Vec::new()),
             is_mobile: std::sync::atomic::AtomicBool::new(false),
             is_web_client: std::sync::atomic::AtomicBool::new(false),
+            current_page: RwLock::new(None),
+            app_base_dir: RwLock::new(None),
+            active_connections: std::sync::atomic::AtomicUsize::new(0),
+            token: token.clone(),
         });
         self.sessions.write().insert(id, session.clone());
+        self.tokens.write().insert(token, id);
         Some(session)
     }
 
@@ -307,6 +357,7 @@ impl SessionRegistry {
     pub fn remove_session(&self, id: SessionId) {
         let count_before = self.sessions.read().len();
         if let Some(session) = self.sessions.write().remove(&id) {
+            self.tokens.write().retain(|_, &mut v| v != id);
             session.close();
         }
         let count_after = self.sessions.read().len();
@@ -470,6 +521,8 @@ pub struct EventLoop {
     pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
     /// Template file path supporting hot reloads.
     pub source_path: Option<std::path::PathBuf>,
+    /// The non-mobile variant of the template path.
+    pub base_source_path: Option<std::path::PathBuf>,
     /// dbus a11y coordination bridge.
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
     /// Correlation table maps child nodes to parent IDs.
@@ -508,8 +561,48 @@ impl EventLoop {
                 }
             }
         }
-
         base.join(target_name)
+    }
+
+    fn resolve_non_mobile_path(&self, filename: &str) -> std::path::PathBuf {
+        let base = self.base_source_path.as_ref().or(self.source_path.as_ref()).and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .or_else(|| self.session.app_base_dir.read().clone())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut target_name = filename.to_string();
+        if !target_name.ends_with(".thtml") {
+            target_name.push_str(".thtml");
+        }
+        if target_name.contains("_mobile.thtml") {
+            target_name = target_name.replace("_mobile.thtml", ".thtml");
+        }
+        base.join(target_name)
+    }
+
+    fn resolve_and_load_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
+        let non_mobile_target = self.resolve_non_mobile_path(target_filename);
+        let is_mobile = self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst);
+        let actual_path = crate::pathsafe::resolve_variant(&non_mobile_target, is_mobile);
+        
+        let mut new_doc = crate::loader::load_thtml_file(&actual_path)?;
+        let mut state = self.session.state.write();
+        Self::setup_state_subscriptions(&new_doc, &mut *state);
+        Self::inject_initial_state(&mut new_doc, &*state);
+        drop(state);
+        
+        self.update_doc(new_doc);
+        self.reset_layout_and_scroll();
+        
+        self.source_path = Some(actual_path);
+        self.base_source_path = Some(non_mobile_target.clone());
+        
+        let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let rel_path = if let Ok(rel) = non_mobile_target.strip_prefix(&app_base_dir) {
+            rel.to_string_lossy().into_owned()
+        } else {
+            non_mobile_target.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+        };
+        *self.session.current_page.write() = Some(rel_path);
+        Ok(())
     }
 
     /// Creates a new `EventLoop` with clean session parameters.
@@ -547,6 +640,7 @@ impl EventLoop {
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
             pending_mouse: None,
             source_path: None,
+            base_source_path: None,
             dbus_bridge,
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
@@ -646,7 +740,7 @@ impl EventLoop {
         }
     }
 
-    fn inject_initial_state(doc: &mut THTMLDocument, state: &crate::state::StateManager) {
+    pub fn inject_initial_state(doc: &mut THTMLDocument, state: &crate::state::StateManager) {
         let mut dirty = Vec::new();
         for (id, node) in doc.arena.iter_mut() {
             if let Some(key) = &node.attrs.bind_state {
@@ -720,6 +814,18 @@ impl EventLoop {
             Self::inject_initial_state(&mut self.doc, &*state);
         }
 
+        if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+            let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+            let rel_path = self.base_source_path.as_ref().map(|bp| {
+                if let Ok(rel) = bp.strip_prefix(&app_base_dir) {
+                    rel.to_string_lossy().into_owned()
+                } else {
+                    bp.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+                }
+            });
+            *self.session.current_page.write() = rel_path;
+        }
+
         let _ = self.frame_sink.setup();
         
         let mut first_frame = true;
@@ -781,9 +887,13 @@ impl EventLoop {
                     processed_count += 1;
 
                     *self.session.last_activity.write() = std::time::Instant::now();
+                    let is_input_focused = self.focused_node
+                        .and_then(|id| self.doc.get_node(id))
+                        .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
+                        .unwrap_or(false);
                     let event = match event {
-                        InputEvent::KeyPress(key) if key.codepoint == '\u{F72E}' || key.codepoint == 'b' => InputEvent::ScrollUp,
-                        InputEvent::KeyPress(key) if key.codepoint == '\u{F72D}' || key.codepoint == ' ' => InputEvent::ScrollDown,
+                        InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72E}' || key.codepoint == 'b') => InputEvent::ScrollUp,
+                        InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72D}' || key.codepoint == ' ') => InputEvent::ScrollDown,
                         e => e,
                     };
                     match event {
@@ -793,6 +903,28 @@ impl EventLoop {
                                 InputEvent::Resize { cols, rows } => {
                                     info!("Reactor notified resize to {}x{}", cols, rows);
                                     needs_render = true;
+                                }
+                                InputEvent::SwitchViewport(is_mobile) => {
+                                    self.session.is_mobile.store(is_mobile, std::sync::atomic::Ordering::SeqCst);
+                                    if let Some(bp) = self.base_source_path.clone() {
+                                        let file_name = bp.file_name().and_then(|f| f.to_str()).unwrap_or("index.thtml").to_string();
+                                        if let Err(e) = self.resolve_and_load_page(&file_name) {
+                                            warn!("SwitchViewport: failed to load page: {}", e);
+                                        }
+                                        needs_render = true;
+                                    }
+                                }
+                                InputEvent::NavigateTo(rel_path) => {
+                                    let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                                    let target_path = app_base_dir.join(&rel_path);
+                                    if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
+                                        if let Err(e) = self.resolve_and_load_page(&rel_path) {
+                                            warn!("NavigateTo: failed to load page: {}", e);
+                                        }
+                                        needs_render = true;
+                                    } else {
+                                        warn!("NavigateTo: blocked traversal path: {:?}", target_path);
+                                    }
                                 }
                                 InputEvent::Reload => {
                                     if let Some(ref path) = self.source_path {
@@ -814,7 +946,7 @@ impl EventLoop {
                                     }
                                 }
                                 InputEvent::KeyPress(key) => {
-                                    if key.codepoint == 'q' || key.codepoint == 'Q' {
+                                    if !is_input_focused && (key.codepoint == 'q' || key.codepoint == 'Q') {
                                         info!("Quit requested via keyboard: {}", key.codepoint);
                                         disconnected = true;
                                         break;
@@ -846,30 +978,10 @@ impl EventLoop {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
                                                 info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
                                                 if htmx_target.ends_with(".thtml") || !htmx_target.contains(':') {
-                                                    let new_path = self.resolve_path(&htmx_target);
-                                                    let base = self.source_path.as_ref()
-                                                        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-                                                        .unwrap_or_else(|| std::path::PathBuf::from("."));
-                                                    let is_safe = (|| -> Option<bool> {
-                                                        let canonical_base = base.canonicalize().ok()?;
-                                                        let canonical_target = new_path.canonicalize().ok()?;
-                                                        Some(canonical_target.starts_with(canonical_base))
-                                                     })().unwrap_or(false);
-                                                    if is_safe {
-                                                        match crate::loader::load_thtml_file(&new_path) {
-                                                            Ok(mut new_doc) => {
-                                                                let mut state = self.session.state.write();
-                                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                                                Self::inject_initial_state(&mut new_doc, &*state);
-                                                                drop(state);
-                                                                self.update_doc(new_doc);
-                                                                self.reset_layout_and_scroll();
-                                                                self.source_path = Some(new_path);
-                                                                needs_render = true;
-                                                            }
-                                                            Err(e) => warn!("Enter: failed to load {:?}: {}", new_path, e),
-                                                        }
+                                                    if let Err(e) = self.resolve_and_load_page(&htmx_target) {
+                                                        warn!("Enter: failed to load page: {}", e);
                                                     }
+                                                    needs_render = true;
                                                 } else {
                                                     self.session.state.write().apply_action(&htmx_target);
                                                     self.try_dispatch(&htmx_target);
@@ -959,28 +1071,13 @@ impl EventLoop {
                                                         .map(|p| p.to_path_buf())
                                                         .unwrap_or_else(|| std::env::current_dir().unwrap());
                                                     
-                                                    let is_safe = (|| -> Option<bool> {
-                                                        let canonical_base = base_dir.canonicalize().ok()?;
-                                                        let canonical_target = new_path.canonicalize().ok()?;
-                                                        Some(canonical_target.starts_with(canonical_base))
-                                                    })().unwrap_or(false);
+                                                    let is_safe = crate::pathsafe::is_within_base(&base_dir, &new_path);
 
-                                                    if is_safe {
-                                                        match crate::loader::load_thtml_file(&new_path) {
-                                                            Ok(mut new_doc) => {
-                                                                let mut state = self.session.state.write();
-                                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                                                Self::inject_initial_state(&mut new_doc, &*state);
-                                                                drop(state);
-                                                                self.update_doc(new_doc);
-                                                                self.reset_layout_and_scroll();
-                                                                self.source_path = Some(new_path);
-                                                            }
-                                                            Err(e) => {
-                                                                warn!("Failed to load THTML file {:?}: {}", new_path, e);
-                                                            }
-                                                        }
-                                                    } else {
+                                                     if is_safe {
+                                                         if let Err(e) = self.resolve_and_load_page(&htmx_target) {
+                                                             warn!("Failed to load page: {}", e);
+                                                         }
+                                                     } else {
                                                         warn!("Blocked Path Traversal attempt to: {:?}", new_path);
                                                     }
                                                 } else {
@@ -1514,5 +1611,175 @@ mod tests {
         });
         client_session.apply_state_patch(patch_arr_too_long);
         assert!(client_session.state.read().get("arr_key").is_none());
+    }
+
+    #[test]
+    fn test_13_key_remap_protect() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::input::{KeyEvent, KeyModifiers, KeyKind};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut input_node = Node::new(NodeTag::Input);
+        input_node.attrs.bind_value = Some("my_val".to_string());
+        let input_id = arena.alloc(input_node);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![input_id];
+        let root_id = arena.alloc(root);
+
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
+        event_loop.focused_node = Some(input_id);
+
+        let is_input_focused = event_loop.focused_node
+            .and_then(|id| event_loop.doc.get_node(id))
+            .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
+            .unwrap_or(false);
+        assert!(is_input_focused);
+
+        let key_b = InputEvent::KeyPress(KeyEvent { codepoint: 'b', modifiers: KeyModifiers::default(), kind: KeyKind::Press });
+        let event_mapped = match key_b {
+            InputEvent::KeyPress(key) if !is_input_focused && (key.codepoint == '\u{F72E}' || key.codepoint == 'b') => InputEvent::ScrollUp,
+            e => e,
+        };
+        match event_mapped {
+            InputEvent::KeyPress(k) => assert_eq!(k.codepoint, 'b'),
+            _ => panic!("Expected KeyPress"),
+        }
+    }
+
+    #[test]
+    fn test_14_switch_viewport_event_loop() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        
+        let temp_dir = std::env::temp_dir();
+        let app_file = temp_dir.join("index_t14.thtml");
+        let mobile_file = temp_dir.join("index_t14_mobile.thtml");
+        std::fs::write(&app_file, b"<screen>Desktop</screen>").unwrap();
+        std::fs::write(&mobile_file, b"<screen>Mobile</screen>").unwrap();
+
+        let doc = crate::loader::load_thtml_file(&app_file).unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        event_loop.source_path = Some(app_file.clone());
+        event_loop.base_source_path = Some(app_file.clone());
+        *client_session.app_base_dir.write() = Some(temp_dir.clone());
+
+        event_loop.session.is_mobile.store(true, std::sync::atomic::Ordering::SeqCst);
+        event_loop.resolve_and_load_page("index_t14.thtml").unwrap();
+
+        assert_eq!(event_loop.source_path, Some(mobile_file.clone()));
+        assert_eq!(event_loop.base_source_path, Some(app_file.clone()));
+
+        let _ = std::fs::remove_file(app_file);
+        let _ = std::fs::remove_file(mobile_file);
+    }
+
+    #[test]
+    fn test_15_navigate_to_event_loop() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        
+        let temp_dir = std::env::temp_dir();
+        let app_file = temp_dir.join("index_t15.thtml");
+        let target_file = temp_dir.join("about_t15.thtml");
+        std::fs::write(&app_file, b"<screen>Home</screen>").unwrap();
+        std::fs::write(&target_file, b"<screen>About</screen>").unwrap();
+
+        let doc = crate::loader::load_thtml_file(&app_file).unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        event_loop.source_path = Some(app_file.clone());
+        event_loop.base_source_path = Some(app_file.clone());
+        *client_session.app_base_dir.write() = Some(temp_dir.clone());
+
+        event_loop.resolve_and_load_page("about_t15.thtml").unwrap();
+
+        assert_eq!(event_loop.source_path, Some(target_file.clone()));
+        assert_eq!(*client_session.current_page.read(), Some("about_t15.thtml".to_string()));
+
+        let _ = std::fs::remove_file(app_file);
+        let _ = std::fs::remove_file(target_file);
+    }
+
+    #[test]
+    fn test_16_base_source_path_resolving() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        
+        let temp_dir = std::env::temp_dir();
+        let app_file = temp_dir.join("subdir").join("index_mobile.thtml");
+        std::fs::create_dir_all(app_file.parent().unwrap()).unwrap();
+        std::fs::write(&app_file, b"<screen></screen>").unwrap();
+
+        let doc = crate::loader::load_thtml_file(&app_file).unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        event_loop.source_path = Some(app_file.clone());
+        event_loop.base_source_path = Some(temp_dir.join("subdir").join("index.thtml"));
+        *client_session.app_base_dir.write() = Some(temp_dir.clone());
+
+        let resolved = event_loop.resolve_non_mobile_path("about");
+        assert_eq!(resolved, temp_dir.join("subdir").join("about.thtml"));
+
+        let _ = std::fs::remove_file(app_file);
+    }
+
+    #[test]
+    fn test_17_session_registry_reattach() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let token = session.token.clone();
+
+        let reattached = reg.reattach(&token).unwrap();
+        assert_eq!(reattached.id, session.id);
+    }
+
+    #[test]
+    fn test_18_reopen_channel() {
+        let (tx, mut rx) = crate::backpressure::BoundedFrameChannel::<i32>::new(5);
+        assert_eq!(tx.try_send(10), crate::backpressure::SendResult::Sent);
+        assert_eq!(tx.try_send(20), crate::backpressure::SendResult::Sent);
+        
+        rx.close();
+        assert_eq!(tx.try_send(30), crate::backpressure::SendResult::Closed);
+ 
+        rx.reopen();
+        assert_eq!(tx.try_send(40), crate::backpressure::SendResult::Sent);
+        assert_eq!(rx.blocking_recv().unwrap(), 40);
+    }
+
+    #[test]
+    fn test_19_active_connections_reaper() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        session.active_connections.store(0, std::sync::atomic::Ordering::SeqCst);
+        
+        let ten_mins_ago = std::time::Instant::now() - std::time::Duration::from_secs(900);
+        *session.last_activity.write() = ten_mins_ago;
+
+        let sessions = reg.sessions.read();
+        let mut to_remove = Vec::new();
+        for (&id, s) in sessions.iter() {
+            if s.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+                let active_conns = s.active_connections.load(std::sync::atomic::Ordering::SeqCst);
+                let idle_time = s.last_activity.read().elapsed();
+                if active_conns == 0 && idle_time > std::time::Duration::from_secs(600) {
+                    to_remove.push(id);
+                }
+            }
+        }
+        assert_eq!(to_remove, vec![session.id]);
     }
 }

@@ -15,7 +15,7 @@
 - **Caching Layer**: Implemented thread-safe `SvgCache` and resolution-indexed `AssetCache`.
 
 ### 🚀 Examples & Integration
-- **Vector Demo Showcase**: Added `vector_demo.thtml`, `mascot.svg`, `loader.json`, and `toggle.riv` to `examples/`.
+- **Vector Demo Showcase**: Added `mascot.svg`, `loader.json`, and `toggle.riv` to `examples/`.
 - **Linked Dashboard**: Updated default `hello.thtml` page to link to the new Vector & Animation Demo page.
 
 ## [0.2.0] — 2026-05-09

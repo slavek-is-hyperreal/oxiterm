@@ -597,16 +597,7 @@ impl Renderer {
                             
                             lock.anim.render(frame_to_render, &mut surface);
                             
-                            let mut rgba_data = Vec::with_capacity(surface.data().len() * 4);
-                            for pixel in surface.data() {
-                                rgba_data.push(pixel.r);
-                                rgba_data.push(pixel.g);
-                                rgba_data.push(pixel.b);
-                                rgba_data.push(pixel.a);
-                            }
-                            
-                            image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixel_w, pixel_h, rgba_data)
-                                .ok_or_else(|| anyhow::anyhow!("Failed to construct RgbaImage from lottie surface"))
+                            Ok(unpremultiply_bgra_to_rgba(surface.data(), pixel_w, pixel_h))
                         } else {
                             Err(anyhow::anyhow!("Lottie animation not loaded"))
                         }
@@ -1101,5 +1092,28 @@ mod tests {
         assert_eq!(buffer.cells[0].ch, '*');
         assert_eq!(buffer.cells[14].ch, '*');
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn unpremultiply_bgra_to_rgba(data: &[rlottie::Bgra], width: u32, height: u32) -> image::RgbaImage {
+    let mut rgba_data = Vec::with_capacity(data.len() * 4);
+    for pixel in data {
+        let a = pixel.a;
+        if a == 0 {
+            rgba_data.push(0);
+            rgba_data.push(0);
+            rgba_data.push(0);
+            rgba_data.push(0);
+        } else {
+            let r = (pixel.r as u32 * 255 / a as u32) as u8;
+            let g = (pixel.g as u32 * 255 / a as u32) as u8;
+            let b = (pixel.b as u32 * 255 / a as u32) as u8;
+            rgba_data.push(r);
+            rgba_data.push(g);
+            rgba_data.push(b);
+            rgba_data.push(a);
+        }
+    }
+    image::ImageBuffer::from_raw(width, height, rgba_data).unwrap()
 }
 

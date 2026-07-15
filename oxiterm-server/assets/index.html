@@ -2,14 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script>
-        if (window.innerWidth < 800) {
-            document.cookie = "viewport=mobile; path=/";
-            window.location.replace("/mobile" + window.location.search);
-        }
-    </script>
-    <title>OxiTerm Web Console</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OxiTerm Console</title>
     <!-- Modern Premium Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -251,6 +245,30 @@
             color: #94a3b8;
             letter-spacing: 0.5px;
         }
+
+        /* Responsive Layout Class overrides (Mobile Viewport) */
+        @media (max-width: 799px) {
+            body {
+                align-items: stretch;
+                justify-content: stretch;
+            }
+            .window {
+                width: 100vw !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+                max-width: none !important;
+                max-height: none !important;
+                border: none !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+            }
+            .terminal-container {
+                padding: 0 !important;
+            }
+            .title {
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -263,7 +281,7 @@
             </div>
             <div class="title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
-                OxiTerm Web Console
+                OxiTerm Console
             </div>
             <div class="status-badge">
                 <span class="status-dot" id="status-dot"></span>
@@ -301,10 +319,9 @@
         let charHeight = 0;
         let currentCols = 0;
         let currentRows = 0;
+        let isMobile = window.innerWidth < 800;
 
-        // mediaCache[hash] = { url, type, json? }
         const mediaCache = {};
-        // activeMedia = [{ hash, col, row, width, height, element }]
         let activeMedia = [];
 
         function detectMediaType(bytes) {
@@ -313,7 +330,6 @@
             if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
             if (bytes[0] === 0x7B) return 'lottie';
             if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'video/mp4';
-            // SVG / XML
             const head = new TextDecoder().decode(bytes.slice(0, 64));
             if (head.trimStart().startsWith('<')) return 'image/svg+xml';
             return 'image/png';
@@ -376,20 +392,26 @@
             }
         }
 
-        // legacy no-op — canvas drawing replaced by DOM overlay
-        function redrawActiveMedia() {}
-
         async function start() {
-            // 1. Initialize WASM module
             await init();
 
-            // 2. Measure dimensions using a temporary terminal
             term = new WebTerminal(canvas, "16px monospace", 20.0);
             [charWidth, charHeight] = term.get_char_dimensions();
 
-            // 3. Connect WebSocket
             const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws?viewport=desktop`;
+            const urlParams = new URLSearchParams(window.location.search);
+            const pageParam = urlParams.get('page');
+            const sessionToken = sessionStorage.getItem('oxiterm_session_token');
+
+            let queryParts = [];
+            if (pageParam) {
+                queryParts.push(`page=${encodeURIComponent(pageParam)}`);
+            }
+            if (sessionToken) {
+                queryParts.push(`session=${encodeURIComponent(sessionToken)}`);
+            }
+            const queryStr = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws${queryStr}`;
             
             socket = new WebSocket(wsUrl);
             socket.binaryType = "arraybuffer";
@@ -400,7 +422,21 @@
                 overlay.classList.add("hidden");
                 canvas.focus();
                 
-                // Perform initial resize setup
+                // Send initial viewport configuration (0x11)
+                const vbuf = new Uint8Array(2);
+                vbuf[0] = 0x11;
+                vbuf[1] = isMobile ? 1 : 0;
+                socket.send(vbuf);
+
+                // If page URL param is present, request navigation
+                if (pageParam) {
+                    const pageBytes = new TextEncoder().encode(pageParam);
+                    const buf = new Uint8Array(1 + pageBytes.length);
+                    buf[0] = 0x31;
+                    buf.set(pageBytes, 1);
+                    socket.send(buf);
+                }
+
                 resizeTerminal(true);
             };
 
@@ -449,13 +485,29 @@
                             const height = bytes[11] | (bytes[12] << 8);
                             addMediaToLayer(hash, col, row, width, height);
                         }
+                    } else if (bytes[0] === 0x30) {
+                        const pagePath = new TextDecoder().decode(bytes.subarray(1));
+                        const url = new URL(window.location);
+                        if (url.searchParams.get('page') !== pagePath) {
+                            url.searchParams.set('page', pagePath);
+                            const token = sessionStorage.getItem('oxiterm_session_token');
+                            if (token) {
+                                url.searchParams.set('session', token);
+                            }
+                            window.history.pushState({ page: pagePath }, '', url);
+                        }
+                    } else if (bytes[0] === 0x32) {
+                        const token = new TextDecoder().decode(bytes.subarray(1));
+                        sessionStorage.setItem('oxiterm_session_token', token);
+                        const url = new URL(window.location);
+                        url.searchParams.set('session', token);
+                        window.history.replaceState({}, '', url);
                     } else {
                         term.draw_commands(bytes);
                     }
                 }
             };
 
-            // 4. Input Capture: Keydown
             canvas.addEventListener("keydown", (e) => {
                 if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
@@ -467,17 +519,12 @@
                 if (e.key.length === 1) {
                     codepoint = e.key.charCodeAt(0);
                 } else {
-                    // Translate special keys
                     switch (e.key) {
                         case "Backspace": codepoint = 8; break;
                         case "Tab":       codepoint = 9; break;
                         case "Enter":     codepoint = 13; break;
                         case "Escape":    codepoint = 27; break;
                         case "Delete":    codepoint = 127; break;
-                        // Arrows map to standard VT sequences but encoded as VT escape or customized?
-                        // Wait, since oxiterm-proto decodes normal byte sequences, we could send VT sequences
-                        // as a series of individual keypresses or customize!
-                        // Let's send normal ANSI escape keypresses:
                         case "ArrowUp":    e.preventDefault(); sendKeyPress(0xF700, false, false, false); return;
                         case "ArrowDown":  e.preventDefault(); sendKeyPress(0xF701, false, false, false); return;
                         case "ArrowRight": e.preventDefault(); sendKeyPress(0xF702, false, false, false); return;
@@ -486,7 +533,7 @@
                         case "PageDown":   e.preventDefault(); sendKeyPress(0xF72D, false, false, false); return;
                         case "Home":       e.preventDefault(); sendKeyPress(0xF729, false, false, false); return;
                         case "End":        e.preventDefault(); sendKeyPress(0xF72B, false, false, false); return;
-                        default: return; // Ignore other specials
+                        default: return;
                     }
                 }
 
@@ -496,7 +543,6 @@
                 }
             });
 
-            // 5. Input Capture: Mouse
             canvas.addEventListener("mousedown", (e) => {
                 if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
@@ -506,16 +552,15 @@
 
                 const col = Math.floor(clickX / charWidth) + 1;
                 const row = Math.floor(clickY / charHeight) + 1;
-                console.log("Mousedown: clientX=" + e.clientX + ", clientY=" + e.clientY + ", rect=" + JSON.stringify(rect) + ", col=" + col + ", row=" + row);
 
-                let button = 5; // None
-                if (e.button === 0) button = 0; // Left
-                if (e.button === 1) button = 1; // Middle
-                if (e.button === 2) button = 2; // Right
+                let button = 5;
+                if (e.button === 0) button = 0;
+                if (e.button === 1) button = 1;
+                if (e.button === 2) button = 2;
 
                 e.preventDefault();
                 canvas.focus();
-                sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey); // Press
+                sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey);
             });
 
             canvas.addEventListener("mouseup", (e) => {
@@ -527,38 +572,53 @@
 
                 const col = Math.floor(clickX / charWidth) + 1;
                 const row = Math.floor(clickY / charHeight) + 1;
-                console.log("Mouseup: clientX=" + e.clientX + ", clientY=" + e.clientY + ", rect=" + JSON.stringify(rect) + ", col=" + col + ", row=" + row);
 
-                let button = 5; // None
-                if (e.button === 0) button = 0; // Left
-                if (e.button === 1) button = 1; // Middle
-                if (e.button === 2) button = 2; // Right
+                let button = 5;
+                if (e.button === 0) button = 0;
+                if (e.button === 1) button = 1;
+                if (e.button === 2) button = 2;
 
                 e.preventDefault();
-                sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey); // Release
+                sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey);
             });
 
-            // 6. Resize Observer
             const resizeObserver = new ResizeObserver(() => {
                 resizeTerminal();
             });
             resizeObserver.observe(container);
+
+            window.addEventListener('popstate', () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const pageParam = urlParams.get('page');
+                if (pageParam) {
+                    const pageBytes = new TextEncoder().encode(pageParam);
+                    const buf = new Uint8Array(1 + pageBytes.length);
+                    buf[0] = 0x31;
+                    buf.set(pageBytes, 1);
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(buf);
+                    }
+                }
+            });
         }
 
         function resizeTerminal(force = false) {
-            if (window.innerWidth < 800) {
-                document.cookie = "viewport=mobile; path=/";
-                window.location.replace("/mobile" + window.location.search);
-                return;
-            }
-
-            if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-            const width = container.clientWidth - 16; // accounting for padding
-            const height = container.clientHeight - 16;
+            const width = isMobile ? container.clientWidth : (container.clientWidth - 16);
+            const height = isMobile ? container.clientHeight : (container.clientHeight - 16);
 
             const cols = Math.floor(width / charWidth);
             const rows = Math.floor(height / charHeight);
+
+            const newIsMobile = window.innerWidth < 800;
+            if (newIsMobile !== isMobile) {
+                isMobile = newIsMobile;
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    const vbuf = new Uint8Array(2);
+                    vbuf[0] = 0x11;
+                    vbuf[1] = isMobile ? 1 : 0;
+                    socket.send(vbuf);
+                }
+            }
 
             if (force || cols !== currentCols || rows !== currentRows) {
                 currentCols = cols;
@@ -575,14 +635,15 @@
                 term.clear(cols, rows);
                 repositionMedia();
 
-                // Send resize message: [0x10, cols_low, cols_high, rows_low, rows_high]
-                const buf = new Uint8Array(5);
-                buf[0] = 0x10;
-                buf[1] = cols & 0xff;
-                buf[2] = (cols >> 8) & 0xff;
-                buf[3] = rows & 0xff;
-                buf[4] = (rows >> 8) & 0xff;
-                socket.send(buf);
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    const buf = new Uint8Array(5);
+                    buf[0] = 0x10;
+                    buf[1] = cols & 0xff;
+                    buf[2] = (cols >> 8) & 0xff;
+                    buf[3] = rows & 0xff;
+                    buf[4] = (rows >> 8) & 0xff;
+                    socket.send(buf);
+                }
             }
         }
 
@@ -616,12 +677,6 @@
             if (alt) flags |= 4;
             buf[7] = flags;
             socket.send(buf);
-        }
-
-        function sendString(str) {
-            for (let i = 0; i < str.length; i++) {
-                sendKeyPress(str.charCodeAt(i), false, false, false);
-            }
         }
 
         start();

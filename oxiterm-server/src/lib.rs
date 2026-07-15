@@ -18,6 +18,7 @@ pub mod placeholder;
 pub mod url_validator;
 pub mod state;
 pub mod web;
+pub mod pathsafe;
 
 pub use config::OxiTermConfig;
 pub use metrics::SessionMetrics;

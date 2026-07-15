@@ -21,7 +21,7 @@ ssh localhost -p 2222
 ```
 
 ### 💎 Key Features
-- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and interactive Rive (.riv) widgets.
+- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and a built-in procedural toggle widget for .riv sources (no Rive runtime involved).
 - **Auto-Negotiated Rendering**: Dynamic detection of terminal capabilities (Kitty Graphics Protocol, Sixel, Unicode half-blocks) with automatic fallbacks.
 - **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside Rive canvas nodes.
 - **Mobile-Responsive Layouts**: Viewport-aware routing and server-side device detection with dynamic `_mobile.thtml` template resolution.
