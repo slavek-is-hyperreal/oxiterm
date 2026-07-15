@@ -83,6 +83,20 @@ impl CellBuffer {
         self.cells.fill(Cell::default());
         self.graphics.clear();
     }
+
+    /// Sets all cells in the buffer to a distinct, unmatching state to force a full redraw.
+    pub fn force_dirty(&mut self) {
+        for cell in &mut self.cells {
+            cell.ch = '\0';
+            cell.fg = AnsiColor::Reset;
+            cell.bg = AnsiColor::Reset;
+            cell.bold = false;
+            cell.underline = false;
+            cell.italic = false;
+            cell.skip = false;
+        }
+        self.graphics.clear();
+    }
 }
 
 /// A double-buffering controller managing swap frames to minimize terminal redrawing flickers.
@@ -105,6 +119,11 @@ impl DoubleBuffer {
     /// Swaps the front and back buffers.
     pub fn swap(&mut self) {
         std::mem::swap(&mut self.front, &mut self.back);
+    }
+
+    /// Forces a full repaint by dirtying the front buffer.
+    pub fn force_dirty(&mut self) {
+        self.front.force_dirty();
     }
 }
 

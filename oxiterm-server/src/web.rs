@@ -40,33 +40,62 @@ pub mod web_impl {
 
     /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
-        frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
         session: Arc<ClientSession>,
         sent_assets: std::collections::HashSet<String>,
         sent_coordinates: std::collections::HashMap<u32, crate::session::MediaRenderInfo>,
         source_path: Option<std::path::PathBuf>,
         media_base_url: Option<std::path::PathBuf>,
         sent_page: Option<String>,
+        last_seen_epoch: usize,
+        last_warned_epoch: usize,
     }
 
     impl WsFrameSink {
         /// Creates a new `WsFrameSink`.
-        pub fn new(frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>, session: Arc<ClientSession>, source_path: Option<std::path::PathBuf>) -> Self {
+        pub fn new(session: Arc<ClientSession>, source_path: Option<std::path::PathBuf>) -> Self {
             let media_base_url = crate::config::OxiTermConfig::from_env().ok().and_then(|c| c.media_base_url).map(std::path::PathBuf::from);
             Self {
-                frame_tx,
                 session,
                 sent_assets: std::collections::HashSet::new(),
                 sent_coordinates: std::collections::HashMap::new(),
                 source_path,
                 media_base_url,
                 sent_page: None,
+                last_seen_epoch: 0,
+                last_warned_epoch: 0,
+            }
+        }
+
+        fn send_bytes(&mut self, bytes: Vec<u8>) -> Result<(), ()> {
+            if let Some((_, ref tx)) = *self.session.web_frame_tx.read() {
+                match tx.try_send(bytes) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Err(()),
+                }
+            } else {
+                Err(())
             }
         }
     }
 
     impl FrameSink for WsFrameSink {
+        fn update_document(&mut self, _doc: &oxiterm_renderer::document::THTMLDocument) -> anyhow::Result<()> {
+            // R3: doc swap -> next frame is full, 0x21 emitted
+            let _ = self.send_bytes(vec![0x21]);
+            self.sent_coordinates.clear();
+            Ok(())
+        }
+
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            let current_epoch = self.session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst);
+            let epoch_changed = current_epoch != self.last_seen_epoch;
+            if epoch_changed {
+                self.sent_assets.clear();
+                self.sent_coordinates.clear();
+                self.sent_page = None;
+                self.last_seen_epoch = current_epoch;
+            }
+
             let media_base_url = self.media_base_url.clone();
             let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
 
@@ -75,7 +104,7 @@ pub mod web_impl {
                 if let Some(ref page) = current_page {
                     let mut msg = vec![0x30];
                     msg.extend_from_slice(page.as_bytes());
-                    if self.frame_tx.try_send(msg).is_ok() {
+                    if self.send_bytes(msg).is_ok() {
                         self.sent_page = current_page;
                     }
                 } else {
@@ -107,7 +136,7 @@ pub mod web_impl {
             }
 
             if coords_changed {
-                let _ = self.frame_tx.try_send(vec![0x21]);
+                let _ = self.send_bytes(vec![0x21]);
             }
 
             for media in &active_media {
@@ -130,7 +159,7 @@ pub mod web_impl {
                             let mut msg = vec![0x20];
                             msg.extend_from_slice(&hash_path(&media.path).to_le_bytes());
                             msg.extend_from_slice(&file_bytes);
-                            if self.frame_tx.try_send(msg).is_ok() {
+                            if self.send_bytes(msg).is_ok() {
                                 self.sent_assets.insert(media.path.clone());
                             }
                         }
@@ -160,14 +189,23 @@ pub mod web_impl {
                     msg.extend_from_slice(&media.y.to_le_bytes());
                     msg.extend_from_slice(&media.width.to_le_bytes());
                     msg.extend_from_slice(&media.height.to_le_bytes());
-                    let _ = self.frame_tx.try_send(msg);
+                    let _ = self.send_bytes(msg);
                     
                     self.sent_coordinates.insert(h, media.clone());
                 }
             }
 
             tracing::trace!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
-            let commands = DiffEngine::diff(front, back);
+            
+            // K4: full frame covers cols×rows cells
+            let commands = if epoch_changed {
+                let mut dummy_prev = CellBuffer::new(back.width, back.height);
+                dummy_prev.force_dirty();
+                DiffEngine::diff(&dummy_prev, back)
+            } else {
+                DiffEngine::diff(front, back)
+            };
+            
             tracing::trace!("WsFrameSink::send_frame: diff generated {} commands", commands.len());
             
             if commands.is_empty() && !coords_changed {
@@ -180,18 +218,13 @@ pub mod web_impl {
             if !commands.is_empty() {
                 let bytes = DiffEngine::encode_binary(&commands);
                 tracing::trace!("WsFrameSink::send_frame: sending {} bytes on WebSocket", bytes.len());
-                match self.frame_tx.try_send(bytes) {
-                    Ok(_) => {
-                        tracing::trace!("WsFrameSink::send_frame: send successful");
+                if let Err(_) = self.send_bytes(bytes) {
+                    let current_epoch = self.session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                    if self.last_warned_epoch < current_epoch {
+                        warn!("WsFrameSink::send_frame: send failed/no channel for epoch {}", current_epoch);
+                        self.last_warned_epoch = current_epoch;
                     }
-                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                        warn!("WsFrameSink::send_frame: channel full (backpressure)");
-                        return Ok(false);
-                    }
-                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                        warn!("WsFrameSink::send_frame: channel closed");
-                        anyhow::bail!("WebSocket send channel closed")
-                    }
+                    return Ok(false);
                 }
             }
             Ok(true)
@@ -200,7 +233,7 @@ pub mod web_impl {
 
     impl Drop for WsFrameSink {
         fn drop(&mut self) {
-            let _ = self.frame_tx.try_send(vec![0xFF]);
+            let _ = self.send_bytes(vec![0xFF]);
         }
     }
 
@@ -599,8 +632,20 @@ pub mod web_impl {
 
         client_session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
 
+        let new_epoch = client_session.connection_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
         let (ws_write, mut ws_read) = ws_stream.split();
         let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+
+        // Install sender and handle takeover
+        {
+            let mut w = client_session.web_frame_tx.write();
+            if let Some((_, old_tx)) = w.take() {
+                info!("WS takeover for session {}: closing old connection with 0xFF", client_session.id);
+                let _ = old_tx.try_send(vec![0xFF]);
+            }
+            *w = Some((new_epoch, frame_tx.clone()));
+        }
 
         let mut token_frame = vec![0x32];
         token_frame.extend_from_slice(client_session.token.as_bytes());
@@ -608,44 +653,33 @@ pub mod web_impl {
 
         let session_id = client_session.id;
         let client_session_clone = client_session.clone();
+        let my_epoch = new_epoch;
         tokio::spawn(async move {
             let mut ws_write = ws_write;
             while let Some(bytes) = frame_rx.recv().await {
                 if let Err(e) = ws_write.send(Message::Binary(bytes)).await {
-                    warn!("WS send error for session {}: {:?}", session_id, e);
+                    // R5 close code/reason logging
+                    warn!("WS send error for session {} (epoch {}): {:?}", session_id, my_epoch, e);
                     break;
                 }
             }
-            info!("WS writer task terminated for session {}", session_id);
+            info!("WS writer task terminated for session {} (epoch {})", session_id, my_epoch);
+            {
+                let mut w = client_session_clone.web_frame_tx.write();
+                if let Some((epoch, _)) = *w {
+                    if epoch == my_epoch {
+                        *w = None;
+                    }
+                }
+            }
             let active = client_session_clone.active_connections.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             if active <= 1 {
                 client_session_clone.close();
             }
         });
 
-        let mut resolved_source_path = source_path.clone();
-        let mut base_source_path = source_path.clone();
-
-        if let Some(ref page) = page_param {
-            let target_path = app_base_dir.join(page);
-            if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
-                let actual = crate::pathsafe::resolve_variant(&target_path, client_session.is_mobile.load(std::sync::atomic::Ordering::SeqCst));
-                resolved_source_path = Some(actual);
-                base_source_path = Some(target_path);
-            } else {
-                warn!("Upgrade page parameter blocked (path traversal): {:?}", target_path);
-            }
-        } else if let Some(ref bp) = source_path {
-            let actual = crate::pathsafe::resolve_variant(bp, client_session.is_mobile.load(std::sync::atomic::Ordering::SeqCst));
-            resolved_source_path = Some(actual);
-            base_source_path = Some(bp.clone());
-        }
-
-        let frame_sink = Box::new(WsFrameSink::new(frame_tx.clone(), client_session.clone(), resolved_source_path.clone()));
-        let event_bus = Arc::new(crate::events::EventBus::new());
-        
+        // Initial handshake loop to retrieve the first resize frame
         let mut dims = *client_session.dims.read();
-
         while let Some(msg_res) = ws_read.next().await {
             let msg = match msg_res {
                 Ok(m) => m,
@@ -655,6 +689,11 @@ pub mod web_impl {
                 }
             };
             if msg.is_close() {
+                if let Message::Close(Some(cf)) = msg {
+                    info!("WS read close during init for session {}: code={}, reason={}", client_session.id, cf.code, cf.reason);
+                } else {
+                    info!("WS read close during init for session {} (no close frame)", client_session.id);
+                }
                 break;
             }
             if let Message::Binary(bytes) = msg {
@@ -670,44 +709,86 @@ pub mod web_impl {
             }
         }
 
-        let doc = if let Some(ref path) = resolved_source_path {
-            match crate::loader::load_thtml_file(path) {
-                Ok(mut loaded) => {
-                    let state = client_session.state.read();
-                    EventLoop::inject_initial_state(&mut loaded, &*state);
-                    loaded
+        // K1: trigger render on attach
+        let _ = client_session.event_tx.try_send(InputEvent::Refresh);
+
+        // K3: reattach honors page param
+        if let Some(ref page) = page_param {
+            let target_path = app_base_dir.join(page);
+            if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
+                let current_p = client_session.current_page.read().clone();
+                if Some(page.clone()) != current_p {
+                    info!("Honoring new page param on attach: {} (current: {:?})", page, current_p);
+                    let _ = client_session.event_tx.try_send(InputEvent::NavigateTo(page.clone()));
                 }
-                Err(e) => {
-                    warn!("Failed to load document from source path {:?}: {}, falling back to initial_doc", path, e);
-                    if let Some(ref initial) = initial_doc {
-                        let mut loaded = initial.clone();
+            } else {
+                warn!("Attach page parameter blocked (path traversal): {:?}", target_path);
+            }
+        }
+
+        // Spawn EventLoop if it's not already running
+        let is_running = client_session.event_loop_running.swap(true, std::sync::atomic::Ordering::SeqCst);
+        if !is_running {
+            let mut resolved_source_path = source_path.clone();
+            let mut base_source_path = source_path.clone();
+
+            if let Some(ref page) = page_param {
+                let target_path = app_base_dir.join(page);
+                if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
+                    let actual = crate::pathsafe::resolve_variant(&target_path, client_session.is_mobile.load(std::sync::atomic::Ordering::SeqCst));
+                    resolved_source_path = Some(actual);
+                    base_source_path = Some(target_path);
+                } else {
+                    warn!("Upgrade page parameter blocked (path traversal): {:?}", target_path);
+                }
+            } else if let Some(ref bp) = source_path {
+                let actual = crate::pathsafe::resolve_variant(bp, client_session.is_mobile.load(std::sync::atomic::Ordering::SeqCst));
+                resolved_source_path = Some(actual);
+                base_source_path = Some(bp.clone());
+            }
+
+            let frame_sink = Box::new(WsFrameSink::new(client_session.clone(), resolved_source_path.clone()));
+            let event_bus = Arc::new(crate::events::EventBus::new());
+
+            let doc = if let Some(ref path) = resolved_source_path {
+                match crate::loader::load_thtml_file(path) {
+                    Ok(mut loaded) => {
                         let state = client_session.state.read();
                         EventLoop::inject_initial_state(&mut loaded, &*state);
                         loaded
-                    } else {
-                        crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
+                    }
+                    Err(e) => {
+                        warn!("Failed to load document from source path {:?}: {}, falling back to initial_doc", path, e);
+                        if let Some(ref initial) = initial_doc {
+                            let mut loaded = initial.clone();
+                            let state = client_session.state.read();
+                            EventLoop::inject_initial_state(&mut loaded, &*state);
+                            loaded
+                        } else {
+                            crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
+                        }
                     }
                 }
-            }
-        } else if let Some(ref initial) = initial_doc {
-            let mut loaded = initial.clone();
-            let state = client_session.state.read();
-            EventLoop::inject_initial_state(&mut loaded, &*state);
-            loaded
-        } else {
-            crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
-        };
+            } else if let Some(ref initial) = initial_doc {
+                let mut loaded = initial.clone();
+                let state = client_session.state.read();
+                EventLoop::inject_initial_state(&mut loaded, &*state);
+                loaded
+            } else {
+                crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
+            };
 
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
-        event_loop.open_url_tx = Some(frame_tx.clone());
-        event_loop.frame_sink = frame_sink;
-        event_loop.source_path = resolved_source_path;
-        event_loop.base_source_path = base_source_path;
+            let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+            event_loop.frame_sink = frame_sink;
+            event_loop.source_path = resolved_source_path;
+            event_loop.base_source_path = base_source_path;
 
-        std::thread::spawn(move || {
-            event_loop.run();
-        });
+            std::thread::spawn(move || {
+                event_loop.run();
+            });
+        }
 
+        // Reader loop
         while let Some(msg_res) = ws_read.next().await {
             let msg = match msg_res {
                 Ok(m) => m,
@@ -718,6 +799,11 @@ pub mod web_impl {
             };
 
             if msg.is_close() {
+                if let Message::Close(Some(cf)) = msg {
+                    info!("WS read close frame for session {}: code={}, reason={}", client_session.id, cf.code, cf.reason);
+                } else {
+                    info!("WS read close for session {} (no close frame)", client_session.id);
+                }
                 break;
             }
 
@@ -852,7 +938,9 @@ pub mod web_impl {
             let session_path = temp_dir.join("session.thtml");
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-            let mut sink = WsFrameSink::new(tx, session, Some(session_path));
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(session_path));
 
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
@@ -867,6 +955,9 @@ pub mod web_impl {
             assert_eq!(msg1[0], 0x20);
             let msg2 = rx.try_recv().unwrap();
             assert_eq!(msg2[0], 0x21);
+
+            // Drain the full repaint rendering commands frame
+            let _ = rx.try_recv().unwrap();
 
             let res = sink.send_frame(&front, &back).unwrap();
             assert!(!res);
@@ -894,7 +985,9 @@ pub mod web_impl {
             let session_path = temp_dir.join("session.thtml");
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-            let mut sink = WsFrameSink::new(tx, session.clone(), Some(session_path));
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(session_path));
 
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
@@ -908,6 +1001,9 @@ pub mod web_impl {
             assert_eq!(msg1[0], 0x20); // payload
             let msg2 = rx.try_recv().unwrap();
             assert_eq!(msg2[0], 0x21); // coordinates
+
+            // Drain the full repaint rendering commands frame
+            let _ = rx.try_recv().unwrap();
 
             let res = sink.send_frame(&front, &back).unwrap();
             assert!(!res);
@@ -933,7 +1029,9 @@ pub mod web_impl {
             std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-            let mut sink = WsFrameSink::new(tx, session.clone(), Some(session_path));
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(session_path));
 
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
@@ -943,6 +1041,9 @@ pub mod web_impl {
             let msg0 = rx.try_recv().unwrap();
             assert_eq!(msg0[0], 0x21); // clear
             
+            // Drain the full repaint rendering commands frame
+            let _ = rx.try_recv().unwrap();
+
             assert!(rx.try_recv().is_err());
         }
 
@@ -965,7 +1066,9 @@ pub mod web_impl {
             std::fs::write(&test_file, b"MEDIA_20_BYTES").unwrap();
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-            let mut sink = WsFrameSink::new(tx, session.clone(), Some(temp_dir.join("session.thtml")));
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(temp_dir.join("session.thtml")));
 
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
@@ -988,7 +1091,9 @@ pub mod web_impl {
             *session.current_page.write() = Some("page1.thtml".to_string());
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-            let mut sink = WsFrameSink::new(tx, session.clone(), None);
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), None);
 
             let front = CellBuffer::new(80, 24);
             let back = CellBuffer::new(80, 24);
@@ -1354,6 +1459,351 @@ pub mod web_impl {
                 stream.read_to_string(&mut response).await.unwrap();
                 assert!(response.contains("404 Not Found") || response.contains("404 NOT FOUND"));
             }
+        }
+
+        #[tokio::test]
+        async fn test_t1_reattach_installs_new_sender() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            let (tx1, mut rx1) = tokio::sync::mpsc::channel(10);
+            let (tx2, mut rx2) = tokio::sync::mpsc::channel(10);
+
+            // Set up initial sender
+            *session.web_frame_tx.write() = Some((1, tx1));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+
+            let mut sink = WsFrameSink::new(session.clone(), None);
+            
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+
+            // Render 1: goes to tx1/rx1
+            let res = sink.send_frame(&front, &back).unwrap();
+            assert!(res);
+            assert!(rx1.try_recv().is_ok());
+            assert!(rx2.try_recv().is_err());
+
+            // Reattach: update web_frame_tx and connection_epoch
+            *session.web_frame_tx.write() = Some((2, tx2));
+            session.connection_epoch.store(2, std::sync::atomic::Ordering::SeqCst);
+
+            // Render 2: goes to tx2/rx2, nothing to rx1
+            let res2 = sink.send_frame(&front, &back).unwrap();
+            assert!(res2);
+            
+            // rx2 receives the frame
+            assert!(rx2.try_recv().is_ok());
+            // rx1 does NOT receive the frame
+            assert!(rx1.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn test_t2_reattach_forces_full_frame() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            let (tx1, mut rx1) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((1, tx1));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+
+            let mut sink = WsFrameSink::new(session.clone(), None);
+            
+            let front = CellBuffer::new(80, 24);
+            let mut back = CellBuffer::new(80, 24);
+            for cell in &mut back.cells {
+                cell.ch = 'A';
+            }
+
+            // Render 1: first render of epoch 1 is full frame
+            let _ = sink.send_frame(&front, &back).unwrap();
+            let msg1 = rx1.try_recv().unwrap();
+            
+            // Decode and count WriteChar commands (K4: covers cols * rows cells)
+            use oxiterm_renderer::render::diff::AnsiCommand;
+            let commands1 = DiffEngine::decode_binary(&msg1).unwrap();
+            let count1 = commands1.iter().filter(|c| matches!(c, AnsiCommand::WriteChar(_))).count();
+            assert_eq!(count1, 80 * 24);
+
+            // Reattach to same session, increment connection_epoch
+            let (tx2, mut rx2) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((2, tx2));
+            session.connection_epoch.store(2, std::sync::atomic::Ordering::SeqCst);
+
+            // Render 2: should be full frame on the new connection even though front & back are unchanged!
+            let _ = sink.send_frame(&front, &back).unwrap();
+            let msg2 = rx2.try_recv().unwrap();
+            let commands2 = DiffEngine::decode_binary(&msg2).unwrap();
+            
+            let count2 = commands2.iter().filter(|c| matches!(c, AnsiCommand::WriteChar(_))).count();
+            assert_eq!(count2, 80 * 24);
+        }
+
+        #[tokio::test]
+        async fn test_t3_exactly_one_event_loop_spawned() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            
+            // Connect 1: starts session and spawns EventLoop
+            let (ws_stream1, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write1, mut ws_read1) = ws_stream1.split();
+            
+            // Send initial resize frame for Connect 1
+            ws_write1.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // Read 0x32 (token) to get the token
+            let msg = ws_read1.next().await.unwrap().unwrap();
+            let bytes = msg.into_data();
+            assert_eq!(bytes[0], 0x32);
+            let token = String::from_utf8(bytes[1..].to_vec()).unwrap();
+
+            // Check session exists and event_loop_running is true (sleep to ensure spawned)
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let session = reg.reattach(&token).unwrap();
+            assert!(session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst));
+
+            // Connect 2 (reattach): should not spawn another event loop
+            let url2 = format!("ws://{}/ws?session={}", local_addr, token);
+            let (ws_stream2, _) = tokio_tungstenite::connect_async(&url2).await.unwrap();
+            let (mut ws_write2, _) = ws_stream2.split();
+            
+            // Send initial resize frame for Connect 2
+            ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // Wait a bit
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            
+            // Verify event_loop_running is still true
+            assert!(session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst));
+        }
+
+        #[tokio::test]
+        async fn test_t4_document_swap_clears_cache_and_sends_0x21() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+
+            let mut sink = WsFrameSink::new(session.clone(), None);
+
+            // Add dummy media rendering info
+            use crate::session::MediaRenderInfo;
+            sink.sent_coordinates.insert(123, MediaRenderInfo {
+                path: "test.png".to_string(),
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            });
+
+            let doc = oxiterm_renderer::document::THTMLDocument {
+                arena: oxiterm_renderer::arena::NodeArena::new(),
+                root: oxiterm_proto::dom::NodeId(0),
+                dirty_nodes: Vec::new(),
+            };
+
+            sink.update_document(&doc).unwrap();
+
+            // Assert coordinates cleared
+            assert!(sink.sent_coordinates.is_empty());
+            
+            // Assert 0x21 sent
+            let msg = rx.try_recv().unwrap();
+            assert_eq!(msg, vec![0x21]);
+        }
+
+        #[tokio::test]
+        async fn test_t5_handle_open_url_routes_to_new_sender() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            let (tx1, mut rx1) = tokio::sync::mpsc::channel(10);
+            let (tx2, mut rx2) = tokio::sync::mpsc::channel(10);
+
+            // Initial connection
+            *session.web_frame_tx.write() = Some((1, tx1));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+
+            let doc = oxiterm_renderer::document::THTMLDocument {
+                arena: oxiterm_renderer::arena::NodeArena::new(),
+                root: oxiterm_proto::dom::NodeId(0),
+                dirty_nodes: Vec::new(),
+            };
+            let event_loop = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+
+            event_loop.handle_open_url("https://example.com".to_string(), oxiterm_proto::dom::NodeId(0));
+            let msg1 = rx1.try_recv().unwrap();
+            assert_eq!(msg1[0], 0x33);
+
+            // Reattach
+            *session.web_frame_tx.write() = Some((2, tx2));
+            session.connection_epoch.store(2, std::sync::atomic::Ordering::SeqCst);
+
+            event_loop.handle_open_url("https://example2.com".to_string(), oxiterm_proto::dom::NodeId(0));
+            assert!(rx1.try_recv().is_err());
+            let msg2 = rx2.try_recv().unwrap();
+            assert_eq!(msg2[0], 0x33);
+            assert_eq!(&msg2[1..], b"https://example2.com");
+        }
+
+        #[tokio::test]
+        async fn test_t6_writer_exit_clears_web_frame_tx_if_epoch_matches() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            
+            let (tx, _rx) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((5, tx));
+
+            // Simulated exit of writer for epoch 4 (different)
+            {
+                let mut w = session.web_frame_tx.write();
+                if let Some((epoch, _)) = *w {
+                    if epoch == 4 {
+                        *w = None;
+                    }
+                }
+            }
+            assert!(session.web_frame_tx.read().is_some(), "Should NOT clear if epoch differs");
+
+            // Simulated exit of writer for epoch 5 (matching)
+            {
+                let mut w = session.web_frame_tx.write();
+                if let Some((epoch, _)) = *w {
+                    if epoch == 5 {
+                        *w = None;
+                    }
+                }
+            }
+            assert!(session.web_frame_tx.read().is_none(), "Should clear if epoch matches");
+
+            // Subsequent send degrades to no-op
+            let mut sink = WsFrameSink::new(session.clone(), None);
+            let front = CellBuffer::new(80, 24);
+            let back = CellBuffer::new(80, 24);
+            let res = sink.send_frame(&front, &back).unwrap();
+            assert!(!res); // Should return false (no-op)
+        }
+
+        #[tokio::test]
+        async fn test_t7_connect_without_token_creates_new_session() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write, mut ws_read) = ws_stream.split();
+
+            // Send initial resize frame
+            ws_write.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // Check we received 0x32 with token
+            let msg = ws_read.next().await.unwrap().unwrap();
+            let bytes = msg.into_data();
+            assert_eq!(bytes[0], 0x32);
+            assert!(bytes.len() > 1);
+        }
+
+        #[tokio::test]
+        async fn test_t8_takeover_sends_0xff_and_closes_old() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            
+            // Connect 1
+            let (ws_stream1, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write1, mut ws_read1) = ws_stream1.split();
+            
+            // Send resize frame for Connect 1
+            ws_write1.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // Get token
+            let msg = ws_read1.next().await.unwrap().unwrap();
+            let bytes = msg.into_data();
+            assert_eq!(bytes[0], 0x32);
+            let token = String::from_utf8(bytes[1..].to_vec()).unwrap();
+
+            // Connect 2 with token (takeover)
+            let url2 = format!("ws://{}/ws?session={}", local_addr, token);
+            let (ws_stream2, _) = tokio_tungstenite::connect_async(&url2).await.unwrap();
+            let (mut ws_write2, mut ws_read2) = ws_stream2.split();
+
+            // Send resize frame for Connect 2
+            ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // The first connection should receive 0xFF
+            let mut found_ff = false;
+            while let Some(msg) = ws_read1.next().await {
+                match msg {
+                    Ok(m) => {
+                        let data = m.into_data();
+                        if data == vec![0xFF] {
+                            found_ff = true;
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            assert!(found_ff, "First connection must receive 0xFF");
+        }
+
+        #[tokio::test]
+        async fn test_t11_reattach_honors_different_page() {
+            let _env = EnvGuard::lock_and_set(&[]);
+
+            // Create temporary files to satisfy canonicalization and page loading
+            std::fs::write("hello.thtml", b"<screen>Hello</screen>").unwrap();
+            std::fs::write("other.thtml", b"<screen>Other</screen>").unwrap();
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            
+            // Connect 1
+            let (ws_stream1, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write1, mut ws_read1) = ws_stream1.split();
+            
+            // Send initial resize frame for Connect 1
+            ws_write1.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            // Get token
+            let msg = ws_read1.next().await.unwrap().unwrap();
+            let bytes = msg.into_data();
+            assert_eq!(bytes[0], 0x32);
+            let token = String::from_utf8(bytes[1..].to_vec()).unwrap();
+
+            let session = reg.reattach(&token).unwrap();
+            *session.current_page.write() = Some("hello.thtml".to_string());
+
+            // Connect 2 with token and a different page param
+            let url2 = format!("ws://{}/ws?session={}&page=other.thtml", local_addr, token);
+            let (ws_stream2, _) = tokio_tungstenite::connect_async(&url2).await.unwrap();
+            let (mut ws_write2, _) = ws_stream2.split();
+            
+            // Send initial resize frame [0x10, cols_low, cols_high, rows_low, rows_high]
+            ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            
+            // Sleep to let events process
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+            let current = session.current_page.read().clone();
+
+            // Clean up temporary files before potential assertion panic to avoid poisoning
+            let _ = std::fs::remove_file("hello.thtml");
+            let _ = std::fs::remove_file("other.thtml");
+
+            // Wait, current_page should be Some("other.thtml")
+            assert_eq!(current, Some("other.thtml".to_string()));
         }
     }
 }

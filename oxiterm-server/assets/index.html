@@ -324,6 +324,10 @@
         const mediaCache = {};
         let activeMedia = [];
 
+        let reconnectDelay = 500;
+        let stopReconnect = false;
+        let needsClear = false;
+
         function detectMediaType(bytes) {
             if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
             if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
@@ -393,6 +397,17 @@
         }
 
         async function start() {
+            stopReconnect = false;
+
+            // R6a: Token never in address bar. On load, if session param is present, read and remove it.
+            const urlOnLoad = new URL(window.location);
+            if (urlOnLoad.searchParams.has('session')) {
+                const token = urlOnLoad.searchParams.get('session');
+                sessionStorage.setItem('oxiterm_session_token', token);
+                urlOnLoad.searchParams.delete('session');
+                window.history.replaceState({}, '', urlOnLoad);
+            }
+
             await init();
 
             term = new WebTerminal(canvas, "16px monospace", 20.0);
@@ -417,6 +432,8 @@
             socket.binaryType = "arraybuffer";
 
             socket.onopen = () => {
+                reconnectDelay = 500;
+                needsClear = true; // Clear canvas upon receiving first frame
                 statusDot.className = "status-dot connected";
                 statusText.innerText = "Connected";
                 overlay.classList.add("hidden");
@@ -442,20 +459,31 @@
 
             socket.onclose = () => {
                 statusDot.className = "status-dot disconnected";
-                statusText.innerText = "Disconnected";
+                if (stopReconnect) {
+                    statusText.innerText = "Disconnected";
+                    return;
+                }
+                statusText.innerText = "Reconnecting";
                 overlay.classList.remove("hidden");
                 document.querySelector(".overlay-text").innerText = "Connection lost. Reconnecting...";
-                setTimeout(start, 3000);
+                
+                setTimeout(() => {
+                    if (stopReconnect) return;
+                    reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+                    start();
+                }, reconnectDelay);
             };
 
             socket.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
                     const bytes = new Uint8Array(event.data);
                     if (bytes.length === 1 && bytes[0] === 0xFF) {
+                        stopReconnect = true;
                         statusDot.className = "status-dot disconnected";
                         statusText.innerText = "Disconnected";
                         overlay.classList.remove("hidden");
-                        document.querySelector(".overlay-text").innerText = "Session terminated.";
+                        document.querySelector(".overlay-text").innerText = "Session taken over. Reload to start new.";
+                        socket.close();
                         return;
                     }
                     if (bytes[0] === 0x20) {
@@ -489,23 +517,26 @@
                         const pagePath = new TextDecoder().decode(bytes.subarray(1));
                         const url = new URL(window.location);
                         if (url.searchParams.get('page') !== pagePath) {
-                            url.searchParams.set('page', pagePath);
-                            const token = sessionStorage.getItem('oxiterm_session_token');
-                            if (token) {
-                                url.searchParams.set('session', token);
-                            }
-                            window.history.pushState({ page: pagePath }, '', url);
+                            // R6a/K5: history.pushState/replaceState for 0x30 writes ?page= ONLY
+                            const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}`;
+                            window.history.pushState({ page: pagePath }, '', newUrl);
                         }
                     } else if (bytes[0] === 0x32) {
                         const token = new TextDecoder().decode(bytes.subarray(1));
                         sessionStorage.setItem('oxiterm_session_token', token);
+                        // R6a/K5: remove session parameter from address bar
                         const url = new URL(window.location);
-                        url.searchParams.set('session', token);
+                        url.searchParams.delete('session');
                         window.history.replaceState({}, '', url);
                     } else if (bytes[0] === 0x33) {
                         const url = new TextDecoder().decode(bytes.subarray(1));
                         window.open(url, '_blank', 'noopener');
                     } else {
+                        if (needsClear) {
+                            term.clear(term.cols, term.rows);
+                            clearMediaLayer();
+                            needsClear = false;
+                        }
                         term.draw_commands(bytes);
                     }
                 }

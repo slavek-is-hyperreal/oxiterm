@@ -175,6 +175,9 @@ pub struct ClientSession {
     /// Authenticated user identity for this session.
     /// Set exactly once at session start by identity.rs; never overwritten on reattach.
     pub identity: parking_lot::RwLock<Option<crate::identity::UserIdentity>>,
+    pub web_frame_tx: parking_lot::RwLock<Option<(usize, tokio::sync::mpsc::Sender<Vec<u8>>)>>,
+    pub connection_epoch: std::sync::atomic::AtomicUsize,
+    pub event_loop_running: std::sync::atomic::AtomicBool,
 }
 
 impl ClientSession {
@@ -372,6 +375,9 @@ impl SessionRegistry {
             active_connections: std::sync::atomic::AtomicUsize::new(0),
             token: token.clone(),
             identity: parking_lot::RwLock::new(None),
+            web_frame_tx: parking_lot::RwLock::new(None),
+            connection_epoch: std::sync::atomic::AtomicUsize::new(0),
+            event_loop_running: std::sync::atomic::AtomicBool::new(false),
         });
         self.sessions.write().insert(id, session.clone());
         self.tokens.write().insert(token, id);
@@ -566,9 +572,16 @@ pub struct EventLoop {
     /// MUST be cleared in update_doc, resolve_and_load_page, and Reload handlers because
     /// NodeIds are arena-local and become invalid after a document swap.
     pub for_template_cache: HashMap<NodeId, Vec<NodeId>>,
-    /// Sender for 0x33 (open-URL) frames on WebSocket sessions.
-    /// None for SSH sessions. Wired from handle_websocket via frame_tx.clone().
-    pub open_url_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+}
+
+struct EventLoopGuard {
+    session: Arc<ClientSession>,
+}
+
+impl Drop for EventLoopGuard {
+    fn drop(&mut self) {
+        self.session.event_loop_running.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl EventLoop {
@@ -666,7 +679,6 @@ impl EventLoop {
             total_height: 0,
             app_dispatcher: None,
             for_template_cache: HashMap::new(),
-            open_url_tx: None,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
@@ -703,6 +715,7 @@ impl EventLoop {
         self.for_template_cache.clear();
         self.rebuild_parent_map();
         self.rebuild_focusable_nodes();
+        self.buffer.force_dirty();
     }
 
     /// Resolves interactive elements respecting bind conditional rules.
@@ -867,7 +880,7 @@ impl EventLoop {
     /// SSH sessions: logs a warning and does nothing (`open:` is web-only in plan 2).
     ///
     /// Only `http` and `https` schemes are permitted; others are rejected with a warning.
-    fn handle_open_url(&self, url: String, _source_node_id: NodeId) {
+    pub(crate) fn handle_open_url(&self, url: String, _source_node_id: NodeId) {
         let scheme_end = url.find(':').unwrap_or(0);
         let scheme = &url[..scheme_end];
         if scheme != "http" && scheme != "https" {
@@ -876,7 +889,7 @@ impl EventLoop {
         }
 
         if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Some(ref tx) = self.open_url_tx {
+            if let Some((_, ref tx)) = *self.session.web_frame_tx.read() {
                 let mut frame = vec![0x33];
                 frame.extend_from_slice(url.as_bytes());
                 let _ = tx.try_send(frame);
@@ -957,6 +970,7 @@ impl EventLoop {
 
     /// Starts the main event loop thread driving keyboard and mouse coordinate reactions.
     pub fn run(&mut self) {
+        let _guard = EventLoopGuard { session: self.session.clone() };
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -2054,7 +2068,7 @@ mod tests {
         let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
 
         let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
-        event_loop.open_url_tx = Some(open_tx);
+        *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
 
         use oxiterm_proto::dom::NodeId;
         event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
@@ -2079,7 +2093,7 @@ mod tests {
         let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
 
         let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
-        event_loop.open_url_tx = Some(open_tx);
+        *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
 
         use oxiterm_proto::dom::NodeId;
         event_loop.handle_open_url("javascript:alert(1)".to_string(), NodeId(0));
@@ -2183,5 +2197,30 @@ mod tests {
 
         let _ = std::fs::remove_file(page_path);
         let _ = std::fs::remove_dir(base_dir);
+    }
+
+    #[test]
+    fn test_t10_run_exit_allows_fresh_event_loop() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        
+        // Initially false
+        assert!(!session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Simulate run start
+        let is_running1 = session.event_loop_running.swap(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!is_running1);
+
+        // Simulate run exit via Drop guard
+        {
+            let _guard = EventLoopGuard { session: session.clone() };
+        }
+
+        // Should be false again
+        assert!(!session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Simulate second start
+        let is_running2 = session.event_loop_running.swap(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!is_running2);
     }
 }
