@@ -439,6 +439,9 @@
                 overlay.classList.add("hidden");
                 canvas.focus();
                 
+                // Send initial resize frame (0x10) first to satisfy handshake loop
+                resizeTerminal(true);
+
                 // Send initial viewport configuration (0x11)
                 const vbuf = new Uint8Array(2);
                 vbuf[0] = 0x11;
@@ -453,8 +456,6 @@
                     buf.set(pageBytes, 1);
                     socket.send(buf);
                 }
-
-                resizeTerminal(true);
             };
 
             socket.onclose = () => {
@@ -477,6 +478,7 @@
             socket.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
                     const bytes = new Uint8Array(event.data);
+
                     if (bytes.length === 1 && bytes[0] === 0xFF) {
                         stopReconnect = true;
                         statusDot.className = "status-dot disconnected";
@@ -533,7 +535,7 @@
                         window.open(url, '_blank', 'noopener');
                     } else {
                         if (needsClear) {
-                            term.clear(term.cols, term.rows);
+                            term.clear(currentCols, currentRows);
                             clearMediaLayer();
                             needsClear = false;
                         }
