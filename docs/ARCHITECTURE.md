@@ -84,16 +84,24 @@ When launching the server with the `--a11y` flag, the engine switches to the **L
 
 ## 7. Mobile Responsive Support
 
-OxiTerm includes a native mobile-responsive routing and template resolution system:
-* **Server-Side Device Detection & Overrides:** The HTTP server detects mobile devices by checking the `User-Agent` header (matching "Mobi", "Android", "iPhone"). In addition, explicit client-side overrides are supported:
-  - **Query Parameters:** URL parameters like `?viewport=mobile` or `?mobile=true` override standard User-Agent detection.
-  - **Cookies:** The server respects a `viewport` cookie (`viewport=mobile` or `viewport=desktop`) to maintain layout selections across page requests.
-* **Viewport-Aware Redirection:**
-  - Mobile-detected clients requesting `/` are automatically redirected (HTTP 302) to `/mobile`.
-  - Desktop-detected clients requesting `/mobile` are redirected back to `/`.
-* **Client-Side Responsive Handlers:**
-  - **Initial Viewport Verification:** Immediate Javascript execution in the `<head>` of both `index.html` and `index_mobile.html` detects physical screen widths. Under `800px`, the desktop version sets the `viewport=mobile` cookie and redirects to `/mobile`. At or above `800px`, the mobile version sets the `viewport=desktop` cookie and redirects to `/`.
-  - **Dynamic Window Resizing:** During desktop or mobile sessions, if a window resize crosses the `800px` boundary, the `resizeTerminal` handler updates the cookie and performs a `location.replace` to switch to the appropriate view.
-* **Dynamic Template Resolution:** The `ClientSession` tracks device type using an `AtomicBool` flag (`is_mobile`). During page transitions and asset loading, `EventLoop::resolve_path()` checks if a mobile-specific variant exists (e.g., suffixing `_mobile.thtml` to the filename). If present, the mobile variant is served; otherwise, the server gracefully falls back to the desktop version.
-* **Mobile-Optimized Templates:** Standard mobile templates target a viewport of ~48x30 characters, utilizing stacked layouts and enlarged navigation buttons for touch targets.
+OxiTerm features a unified, client-driven responsive design system:
+* **Single Client Interface:** The web server serves a unified responsive `index.html` at `/` for all devices. Path-based redirections, multiple HTML documents (`index_mobile.html`), and cookies have been fully removed.
+* **Client-Side Classification:** The browser client determines its device classification based on viewport size. Screen widths under `800px` are classified as mobile.
+* **Viewport Sync Protocol:** 
+  - **Initial Sync:** On WebSocket connection, the client sends a `0x11` binary viewport configuration message containing the initial mobile status flag (`1` for mobile, `0` for desktop).
+  - **Dynamic Resize:** If the physical window is resized across the `800px` threshold, the client sends an updated `0x11` message.
+* **Server-Side Hot Swap:** When the server receives a `0x11` message, it stores the mobile status in `ClientSession::is_mobile` and issues a `SwitchViewport(is_mobile)` event to the event loop. The event loop reloads the current page layout in real time.
+* **Dynamic Template Resolution:** During page loading, the resolver checks if a mobile variant (suffixed with `_mobile.thtml`) exists on disk. If found and `is_mobile` is true, the mobile variant is served; otherwise, it gracefully falls back to the default desktop layout.
+* **Mobile-Optimized Layouts:** Mobile templates target a standard PTY grid of `48x30` cells, featuring stacked visual hierarchies and larger interaction tap targets.
+
+---
+
+## 8. Session Lifecycle & Reconnection
+
+OxiTerm manages connections separately from persistent interactive sessions:
+* **Session Reattachment:** Browser clients can reattach to existing server-side sessions by presenting a unique session token via the WebSocket connection query string.
+* **Connection Takeover:** If a user opens the session in a new tab or window, the server registers the new connection and issues a `0xFF` control byte to the old connection. The old connection immediately terminates its socket and stops auto-reconnection attempts, avoiding contention between the two clients.
+* **Session Token Hygiene:** When a session is established or reattached, the client extracts the `session` token from the URL, writes it to `sessionStorage`, and strips it from the address bar history. The visible URL displays only the page query parameter (`?page=`).
+* **Auto-Reconnection:** On accidental disconnection, the client enters an auto-reconnection loop with exponential backoff capped at 8 seconds.
+* **Reattach Navigation:** If the reattachment URL specifies a different page (e.g., `?page=other.thtml`), the server validates the path and triggers a navigation event (`NavigateTo`) to synchronize the session state to the new page.
 

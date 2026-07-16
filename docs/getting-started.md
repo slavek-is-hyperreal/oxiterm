@@ -180,7 +180,19 @@ You can switch entire screens by pointing to a `.thtml` file in the `event-htmx`
 
 ---
 
-## 11. Integration with an External Application Server (App Server)
+## 11. Web Session Management & Reconnection
+
+When running OxiTerm applications over WebSockets (via browser clients), the platform provides robust connection and session persistence features:
+
+* **Session Reattachment:** OxiTerm sessions persist on the server even if the network connection drops. Reconnecting to a session is done automatically by presenting the session token in the connection URL (`?session=<token>`).
+* **Clean URLs:** Upon connection, OxiTerm extracts the `session` token, saves it to the browser's `sessionStorage`, and removes it from the address bar. The visible URL will only contain page parameters (e.g. `?page=settings.thtml`), preventing session tokens from being accidentally shared or leaked when copying URLs.
+* **Auto-Reconnection:** If the WebSocket connection is temporarily lost, the client attempts to reconnect using an exponential backoff algorithm capped at 8 seconds.
+* **Connection Takeover:** If a session token is loaded in a new tab or browser window, the new connection takes over the session. The old connection is notified via a `0xFF` byte and closed automatically, immediately disabling its reconnection loop to prevent loop-fighting over the socket channel.
+* **Reattach Page Sync:** Reattaching to a session with a different `page` parameter (e.g., opening a shared link like `?page=other.thtml`) will navigate the session to that new page.
+
+---
+
+## 12. Integration with an External Application Server (App Server)
 
 If your application requires complex business logic, database access, or external APIs, you can connect an external application server.
 
@@ -204,15 +216,16 @@ For more information, see [app-server-guide.md](app-server-guide.md).
 
 ---
 
-## 12. Mobile Support & Responsive Design
+## 13. Mobile Support & Responsive Design
 
-OxiTerm features built-in support for responsive mobile interfaces. When a user connects via the web client, the system dynamically checks if they are on a mobile device (using server-side `User-Agent` headers).
+OxiTerm features built-in support for responsive mobile interfaces using a unified web client page at `/`.
 
-### Viewport and Cookie Overrides
-To support custom client sizing and persistent layout choices:
-* **Query Overrides:** Appending `?viewport=mobile` (or `?mobile=true`) or `?viewport=desktop` (or `?mobile=false`) overrides standard User-Agent detection.
-* **Cookies:** A `viewport=mobile` or `viewport=desktop` cookie will lock the resolution choice across navigation actions.
-* **Redirection & Resizing:** In standard browser pages, immediate script checks in the `<head>` redirect between `/` and `/mobile` if the physical window crosses the `800px` boundary (e.g. desktop to mobile resize or phone landscape rotation). The terminal resize observer also updates the cookie and swaps layouts dynamically on resize.
+### Responsive Viewport Detection
+Rather than using server-side redirects or cookies, the mobile layout selection operates dynamically:
+* **Viewport Check:** On load, the web client detects the screen width. If the width is under `800px`, the client classifies the session as mobile.
+* **Viewport Synchronization:** The client sends a `0x11` viewport configuration message to the server immediately after connecting, indicating the mobile status (`1` for mobile, `0` for desktop).
+* **Dynamic Resizing:** If the client window size is resized across the `800px` threshold, the client sends another `0x11` message to notify the server of the viewport change.
+* **Server-Side Hot-Reload:** Upon receiving the `0x11` message, the server triggers a `SwitchViewport` event, updates the session's mobile status flag (`is_mobile`), and reloads the current page.
 
 To build a mobile-optimized view:
 1. **Naming Convention:** Create a duplicate of your THTML file and add the `_mobile.thtml` suffix. For example, if your desktop file is `dashboard.thtml`, name the mobile file `dashboard_mobile.thtml`.
@@ -221,7 +234,7 @@ To build a mobile-optimized view:
 
 ---
 
-## 13. Environment Variables
+## 14. Environment Variables
 
 You can configure the server behavior using the following environment variables:
 
