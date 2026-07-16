@@ -1734,7 +1734,7 @@ pub mod web_impl {
             // Connect 2 with token (takeover)
             let url2 = format!("ws://{}/ws?session={}", local_addr, token);
             let (ws_stream2, _) = tokio_tungstenite::connect_async(&url2).await.unwrap();
-            let (mut ws_write2, mut ws_read2) = ws_stream2.split();
+            let (mut ws_write2, _ws_read2) = ws_stream2.split();
 
             // Send resize frame for Connect 2
             ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();

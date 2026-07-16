@@ -2065,7 +2065,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
 
         let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
         *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
@@ -2090,7 +2090,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
 
         let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
         *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
