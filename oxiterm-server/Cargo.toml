@@ -34,3 +34,6 @@ url = { workspace = true }
 [features]
 default = ["web"]
 web = ["dep:tokio-tungstenite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

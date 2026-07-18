@@ -140,6 +140,31 @@ impl WebTerminal {
     pub fn get_char_dimensions(&self) -> Vec<f64> {
         vec![self.char_width, self.char_height]
     }
+
+    /// Updates the CSS-pixel cell dimensions used for coordinate mapping.
+    ///
+    /// Called after a backing-resize to inform WASM of the new cell size
+    /// (which may differ from the initial measurement when DPR changes).
+    #[wasm_bindgen]
+    pub fn set_char_dimensions(&mut self, w: f64, h: f64) {
+        self.char_width = w;
+        self.char_height = h;
+    }
+
+    /// Re-applies the device-pixel-ratio scale transform and font after a
+    /// canvas backing resize.
+    ///
+    /// `canvas.width` assignment resets ALL canvas 2D context state (transform
+    /// AND font). This must be called immediately after every backing resize so
+    /// that WASM coordinate math (which uses CSS-pixel units) maps correctly to
+    /// the device-pixel backing.
+    #[wasm_bindgen]
+    pub fn apply_dpr_scale(&mut self, dpr: f64) {
+        // Re-apply scale transform: CSS-pixel coordinates * dpr = device pixels.
+        let _ = self.ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+        // Re-set font (reset by canvas.width assignment).
+        self.ctx.set_font(&self.base_font);
+    }
 }
 
 impl WebTerminal {

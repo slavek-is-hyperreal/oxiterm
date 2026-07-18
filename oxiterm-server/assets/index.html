@@ -18,6 +18,8 @@
             --status-connected: #10b981;
             --status-connecting: #f59e0b;
             --status-disconnected: #ef4444;
+            --status-error: #f59e0b;
+            --term-bg: #0f172a;
         }
 
         * {
@@ -43,10 +45,7 @@
         body::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: var(--accent-glow);
             pointer-events: none;
             z-index: 0;
@@ -78,7 +77,7 @@
             transition: all 0.3s ease;
         }
 
-        /* Premium Title Bar */
+        /* Premium Title Bar — left: icon+title  right: chip+controls */
         .title-bar {
             height: 48px;
             padding: 0 16px;
@@ -89,22 +88,17 @@
             justify-content: space-between;
         }
 
-        /* OSX-style Mock Control Buttons */
-        .window-controls {
+        .title-bar-left {
             display: flex;
+            align-items: center;
             gap: 8px;
         }
 
-        .ctrl-btn {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
+        .title-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-
-        .ctrl-close { background: #ef4444; }
-        .ctrl-min { background: #f59e0b; }
-        .ctrl-max { background: #10b981; }
 
         /* Window Title */
         .title {
@@ -116,6 +110,35 @@
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+
+        /* Redmond-style visual-only controls (right side, no JS) */
+        .win-controls {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .win-ctrl {
+            width: 28px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: #64748b;
+            border-radius: 4px;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .win-ctrl:hover {
+            background: rgba(255,255,255,0.08);
+            color: #cbd5e1;
+        }
+
+        .win-ctrl-close:hover {
+            background: rgba(239, 68, 68, 0.7);
+            color: #fff;
         }
 
         /* Status Indicator Component */
@@ -152,9 +175,14 @@
             box-shadow: 0 0 8px var(--status-disconnected);
         }
 
+        .status-dot.error {
+            background-color: var(--status-error);
+            box-shadow: 0 0 8px var(--status-error);
+        }
+
         @keyframes pulse-emerald {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70%  { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
@@ -162,7 +190,7 @@
         .terminal-container {
             flex: 1;
             position: relative;
-            background: #0f172a;
+            background: var(--term-bg);
             padding: 8px;
             overflow: hidden;
             display: flex;
@@ -177,6 +205,7 @@
             flex-shrink: 0;
         }
 
+        /* tabindex="0" is attested in HTML — keydown listeners on canvas require it */
         canvas {
             display: block;
             image-rendering: pixelated;
@@ -187,15 +216,12 @@
         /* Native image/animation overlay — no pixelation */
         #media-layer {
             position: absolute;
-            top: 0;
-            left: 0;
+            top: 0; left: 0;
             pointer-events: none;
             overflow: hidden;
         }
 
-        #media-layer > * {
-            position: absolute;
-        }
+        #media-layer > * { position: absolute; }
 
         #media-layer img, #media-layer video {
             object-fit: contain;
@@ -205,10 +231,7 @@
         /* Full-screen Loading Overlay */
         .overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: #090d16;
             display: flex;
             flex-direction: column;
@@ -235,7 +258,7 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
+            0%   { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
 
@@ -246,12 +269,9 @@
             letter-spacing: 0.5px;
         }
 
-        /* Responsive Layout Class overrides (Mobile Viewport) */
+        /* Responsive Layout (Mobile Viewport) */
         @media (max-width: 799px) {
-            body {
-                align-items: stretch;
-                justify-content: stretch;
-            }
+            body { align-items: stretch; justify-content: stretch; }
             .window {
                 width: 100vw !important;
                 height: 100vh !important;
@@ -262,37 +282,38 @@
                 border-radius: 0 !important;
                 box-shadow: none !important;
             }
-            .terminal-container {
-                padding: 0 !important;
-            }
-            .title {
-                font-size: 12px;
-            }
+            .terminal-container { padding: 0 !important; }
+            .title { font-size: 12px; }
         }
     </style>
 </head>
 <body>
     <div class="window">
         <div class="title-bar">
-            <div class="window-controls">
-                <span class="ctrl-btn ctrl-close"></span>
-                <span class="ctrl-btn ctrl-min"></span>
-                <span class="ctrl-btn ctrl-max"></span>
+            <div class="title-bar-left">
+                <div class="title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
+                    OxiTerm Console
+                </div>
             </div>
-            <div class="title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
-                OxiTerm Console
-            </div>
-            <div class="status-badge">
-                <span class="status-dot" id="status-dot"></span>
-                <span id="status-text">Connecting</span>
+            <div class="title-bar-right">
+                <div class="status-badge">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="status-text">Connecting</span>
+                </div>
+                <!-- Redmond-style visual-only window controls (no JS handlers) -->
+                <div class="win-controls">
+                    <span class="win-ctrl win-ctrl-min" title="Minimize">&#x2212;</span>
+                    <span class="win-ctrl win-ctrl-max" title="Maximize">&#x25A1;</span>
+                    <span class="win-ctrl win-ctrl-close" title="Close">&#x2715;</span>
+                </div>
             </div>
         </div>
-        
+
         <div class="terminal-container" id="terminal-container">
             <div class="overlay" id="loading-overlay">
-                <div class="spinner"></div>
-                <div class="overlay-text">Establishing connection...</div>
+                <div class="spinner" id="overlay-spinner"></div>
+                <div class="overlay-text" id="overlay-text">Establishing connection...</div>
             </div>
             <div class="canvas-wrap" id="canvas-wrap">
                 <canvas id="terminal-canvas" tabindex="0"></canvas>
@@ -305,29 +326,103 @@
     <script type="module">
         import init, { WebTerminal } from "./oxiterm_web.js";
 
-        const canvas = document.getElementById("terminal-canvas");
-        const canvasWrap = document.getElementById("canvas-wrap");
-        const mediaLayer = document.getElementById("media-layer");
-        const container = document.getElementById("terminal-container");
-        const overlay = document.getElementById("loading-overlay");
-        const statusDot = document.getElementById("status-dot");
-        const statusText = document.getElementById("status-text");
+        // ── DOM refs ───────────────────────────────────────────────────────────
+        const canvas       = document.getElementById("terminal-canvas");
+        const canvasWrap   = document.getElementById("canvas-wrap");
+        const mediaLayer   = document.getElementById("media-layer");
+        const container    = document.getElementById("terminal-container");
+        const overlay      = document.getElementById("loading-overlay");
+        const overlayText  = document.getElementById("overlay-text");
+        const spinner      = document.getElementById("overlay-spinner");
+        const statusDot    = document.getElementById("status-dot");
+        const statusText   = document.getElementById("status-text");
 
-        let socket = null;
+        // ── Module state ───────────────────────────────────────────────────────
+        let currentSocket = null;   // 2.5/R2: mutable ref; set by connect()
         let term = null;
-        let charWidth = 0;
-        let charHeight = 0;
-        let currentCols = 0;
-        let currentRows = 0;
+        let charWidth = 0, charHeight = 0;
+        let currentCols = 0, currentRows = 0;
         let isMobile = window.innerWidth < 800;
+        let dpr = window.devicePixelRatio || 1;
 
         const mediaCache = {};
         let activeMedia = [];
 
         let reconnectDelay = 500;
-        let stopReconnect = false;
+        let reconnectPending = false; // 2.5/R3: single-scheduler guard
         let needsClear = false;
 
+        // ── UI state machine ───────────────────────────────────────────────────
+        // States: CONNECTING | CONNECTED | RECONNECTING | ERROR | IDLE | TAKEN_OVER
+        let uiState = 'CONNECTING';
+        let prevUiState = 'CONNECTING';
+        let prevLabel = 'Connecting';
+        let errorTimer = null;
+        let idleListenerArmed = false; // 2.3/R2: guard against duplicate idle listeners
+
+        function uiLabel(state) {
+            switch (state) {
+                case 'CONNECTING':   return 'Connecting';
+                case 'CONNECTED':    return 'Connected';
+                case 'RECONNECTING': return 'Reconnecting';
+                case 'IDLE':         return 'Idle';
+                case 'TAKEN_OVER':   return 'Taken over';
+                default:             return state;
+            }
+        }
+
+        function setUiState(next, label) {
+            if (uiState === 'TAKEN_OVER') return;               // terminal state
+            if (next === 'ERROR' && uiState === 'RECONNECTING') return; // priority
+            if (next === 'ERROR' && uiState === 'TAKEN_OVER')   return;
+            prevUiState = uiState;
+            prevLabel   = statusText.textContent;
+            uiState = next;
+            statusText.textContent = label;                     // textContent only, never innerHTML
+            updateChipVisuals();
+        }
+
+        function updateChipVisuals() {
+            switch (uiState) {
+                case 'CONNECTED':
+                    statusDot.className = 'status-dot connected';
+                    overlay.classList.add('hidden');
+                    spinner.style.display = '';
+                    overlayText.style.cursor = '';
+                    overlayText.onclick = null;
+                    break;
+                case 'CONNECTING':
+                    statusDot.className = 'status-dot';
+                    overlay.classList.remove('hidden');
+                    overlayText.textContent = 'Establishing connection...';
+                    spinner.style.display = '';
+                    break;
+                case 'RECONNECTING':
+                    statusDot.className = 'status-dot disconnected';
+                    overlay.classList.remove('hidden');
+                    overlayText.textContent = 'Connection lost. Reconnecting...';
+                    spinner.style.display = '';
+                    break;
+                case 'ERROR':
+                    statusDot.className = 'status-dot error';
+                    // No overlay for transient error — chip only
+                    break;
+                case 'IDLE':
+                    statusDot.className = 'status-dot disconnected';
+                    // No overlay — silent resurrection on next interaction
+                    break;
+                case 'TAKEN_OVER':
+                    statusDot.className = 'status-dot disconnected';
+                    overlay.classList.remove('hidden');
+                    overlayText.textContent = 'Session taken over. Click to start new.';
+                    spinner.style.display = 'none';
+                    overlayText.style.cursor = 'pointer';
+                    overlayText.onclick = () => location.reload();
+                    break;
+            }
+        }
+
+        // ── Media helpers ──────────────────────────────────────────────────────
         function detectMediaType(bytes) {
             if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
             if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
@@ -354,21 +449,14 @@
                 div.className = 'lottie-slot';
                 div.style.cssText = css;
                 if (window.lottie && cached.json) {
-                    lottie.loadAnimation({
-                        container: div, renderer: 'svg',
-                        loop: true, autoplay: true,
-                        animationData: cached.json
-                    });
+                    lottie.loadAnimation({ container: div, renderer: 'svg', loop: true, autoplay: true, animationData: cached.json });
                 }
                 return div;
             } else if (cached.type && cached.type.startsWith('video/')) {
                 const video = document.createElement('video');
                 video.src = cached.url;
                 video.style.cssText = css;
-                video.autoplay = true;
-                video.loop = true;
-                video.muted = true;
-                video.playsInline = true;
+                video.autoplay = true; video.loop = true; video.muted = true; video.playsInline = true;
                 return video;
             } else {
                 const img = document.createElement('img');
@@ -396,22 +484,23 @@
             }
         }
 
-        async function start() {
-            stopReconnect = false;
+        // ── connect() — sets up socket only; listeners are registered once in boot() ──
+        async function connect() {
+            // Init WASM exactly once
+            if (!term) {
+                await init();
+                term = new WebTerminal(canvas, "16px monospace", 20.0);
+                [charWidth, charHeight] = term.get_char_dimensions();
+            }
 
-            // R6a: Token never in address bar. On load, if session param is present, read and remove it.
+            // R6a: consume session token from URL, store in sessionStorage, scrub URL
             const urlOnLoad = new URL(window.location);
             if (urlOnLoad.searchParams.has('session')) {
-                const token = urlOnLoad.searchParams.get('session');
-                sessionStorage.setItem('oxiterm_session_token', token);
+                const tok = urlOnLoad.searchParams.get('session');
+                sessionStorage.setItem('oxiterm_session_token', tok);
                 urlOnLoad.searchParams.delete('session');
                 window.history.replaceState({}, '', urlOnLoad);
             }
-
-            await init();
-
-            term = new WebTerminal(canvas, "16px monospace", 20.0);
-            [charWidth, charHeight] = term.get_char_dimensions();
 
             const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
             const urlParams = new URLSearchParams(window.location.search);
@@ -419,240 +508,229 @@
             const sessionToken = sessionStorage.getItem('oxiterm_session_token');
 
             let queryParts = [];
-            if (pageParam) {
-                queryParts.push(`page=${encodeURIComponent(pageParam)}`);
-            }
-            if (sessionToken) {
-                queryParts.push(`session=${encodeURIComponent(sessionToken)}`);
-            }
-            const queryStr = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws${queryStr}`;
-            
-            socket = new WebSocket(wsUrl);
-            socket.binaryType = "arraybuffer";
+            if (pageParam)     queryParts.push(`page=${encodeURIComponent(pageParam)}`);
+            if (sessionToken)  queryParts.push(`session=${encodeURIComponent(sessionToken)}`);
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws${queryParts.length ? '?' + queryParts.join('&') : ''}`;
 
-            socket.onopen = () => {
+            const ws = new WebSocket(wsUrl);
+            ws.binaryType = "arraybuffer";
+
+            // 2.5/R2: socket-level handlers reference ws by closure.
+            // onclose guard (F1): a socket that never became current, while no current
+            // socket exists (currentSocket===null), is a failed connect attempt and MUST
+            // drive onClose(). Stale sockets (currentSocket is a different live socket)
+            // are ignored.
+            ws.onopen = () => {
+                currentSocket = ws;
                 reconnectDelay = 500;
-                needsClear = true; // Clear canvas upon receiving first frame
-                statusDot.className = "status-dot connected";
-                statusText.innerText = "Connected";
-                overlay.classList.add("hidden");
+                needsClear = true;
+                setUiState('CONNECTED', 'Connected');
                 canvas.focus();
-                
-                // Send initial resize frame (0x10) first to satisfy handshake loop
+
+                // Send initial resize (0x10) to satisfy handshake loop
                 resizeTerminal(true);
 
-                // Send initial viewport configuration (0x11)
+                // Send viewport flag (0x11)
                 const vbuf = new Uint8Array(2);
                 vbuf[0] = 0x11;
                 vbuf[1] = isMobile ? 1 : 0;
-                socket.send(vbuf);
+                ws.send(vbuf);
 
-                // If page URL param is present, request navigation
+                // Request navigation if page param present
                 if (pageParam) {
                     const pageBytes = new TextEncoder().encode(pageParam);
                     const buf = new Uint8Array(1 + pageBytes.length);
                     buf[0] = 0x31;
                     buf.set(pageBytes, 1);
-                    socket.send(buf);
+                    ws.send(buf);
                 }
             };
 
-            socket.onclose = () => {
-                statusDot.className = "status-dot disconnected";
-                if (stopReconnect) {
-                    statusText.innerText = "Disconnected";
-                    return;
+            ws.onclose = () => {
+                // F1 redesign: drive onClose if this was the current socket (normal path)
+                // OR if no current socket exists (failed connect attempt while reconnecting).
+                if (ws === currentSocket) {
+                    currentSocket = null;
+                    onClose();
+                } else if (currentSocket === null) {
+                    // Failed attempt during reconnect backoff — no current socket exists.
+                    onClose();
                 }
-                statusText.innerText = "Reconnecting";
-                overlay.classList.remove("hidden");
-                document.querySelector(".overlay-text").innerText = "Connection lost. Reconnecting...";
-                
-                setTimeout(() => {
-                    if (stopReconnect) return;
-                    reconnectDelay = Math.min(reconnectDelay * 2, 8000);
-                    start();
-                }, reconnectDelay);
+                // Otherwise: stale socket closing after a takeover → ignore.
             };
 
-            socket.onmessage = (event) => {
-                if (event.data instanceof ArrayBuffer) {
-                    const bytes = new Uint8Array(event.data);
-
-                    if (bytes.length === 1 && bytes[0] === 0xFF) {
-                        stopReconnect = true;
-                        statusDot.className = "status-dot disconnected";
-                        statusText.innerText = "Disconnected";
-                        overlay.classList.remove("hidden");
-                        document.querySelector(".overlay-text").innerText = "Session taken over. Reload to start new.";
-                        socket.close();
-                        return;
-                    }
-                    if (bytes[0] === 0x20) {
-                        if (bytes.length >= 5) {
-                            const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
-                            const mediaBytes = bytes.subarray(5);
-                            const type = detectMediaType(mediaBytes);
-                            if (type === 'lottie') {
-                                try {
-                                    const json = JSON.parse(new TextDecoder().decode(mediaBytes));
-                                    mediaCache[hash] = { url: null, type, json };
-                                } catch(e) { console.warn('Lottie parse error', e); }
-                            } else {
-                                const blob = new Blob([mediaBytes], { type });
-                                const url = URL.createObjectURL(blob);
-                                mediaCache[hash] = { url, type, json: null };
-                            }
-                        }
-                    } else if (bytes[0] === 0x21) {
-                        if (bytes.length === 1) {
-                            clearMediaLayer();
-                        } else if (bytes.length >= 13) {
-                            const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
-                            const col    = bytes[5]  | (bytes[6]  << 8);
-                            const row    = bytes[7]  | (bytes[8]  << 8);
-                            const width  = bytes[9]  | (bytes[10] << 8);
-                            const height = bytes[11] | (bytes[12] << 8);
-                            addMediaToLayer(hash, col, row, width, height);
-                        }
-                    } else if (bytes[0] === 0x30) {
-                        const pagePath = new TextDecoder().decode(bytes.subarray(1));
-                        const url = new URL(window.location);
-                        if (url.searchParams.get('page') !== pagePath) {
-                            // R6a/K5: history.pushState/replaceState for 0x30 writes ?page= ONLY
-                            const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}`;
-                            window.history.pushState({ page: pagePath }, '', newUrl);
-                        }
-                    } else if (bytes[0] === 0x32) {
-                        const token = new TextDecoder().decode(bytes.subarray(1));
-                        sessionStorage.setItem('oxiterm_session_token', token);
-                        // R6a/K5: remove session parameter from address bar
-                        const url = new URL(window.location);
-                        url.searchParams.delete('session');
-                        window.history.replaceState({}, '', url);
-                    } else if (bytes[0] === 0x33) {
-                        const url = new TextDecoder().decode(bytes.subarray(1));
-                        window.open(url, '_blank', 'noopener');
-                    } else {
-                        if (needsClear) {
-                            term.clear(currentCols, currentRows);
-                            clearMediaLayer();
-                            needsClear = false;
-                        }
-                        term.draw_commands(bytes);
-                    }
-                }
+            ws.onmessage = (event) => {
+                // Ignore messages from stale sockets
+                if (ws !== currentSocket) return;
+                onMessage(event);
             };
-
-            canvas.addEventListener("keydown", (e) => {
-                if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-                let codepoint = 0;
-                let shift = e.shiftKey;
-                let ctrl = e.ctrlKey;
-                let alt = e.altKey;
-
-                if (e.key.length === 1) {
-                    codepoint = e.key.charCodeAt(0);
-                } else {
-                    switch (e.key) {
-                        case "Backspace": codepoint = 8; break;
-                        case "Tab":       codepoint = 9; break;
-                        case "Enter":     codepoint = 13; break;
-                        case "Escape":    codepoint = 27; break;
-                        case "Delete":    codepoint = 127; break;
-                        case "ArrowUp":    e.preventDefault(); sendKeyPress(0xF700, false, false, false); return;
-                        case "ArrowDown":  e.preventDefault(); sendKeyPress(0xF701, false, false, false); return;
-                        case "ArrowRight": e.preventDefault(); sendKeyPress(0xF702, false, false, false); return;
-                        case "ArrowLeft":  e.preventDefault(); sendKeyPress(0xF703, false, false, false); return;
-                        case "PageUp":     e.preventDefault(); sendKeyPress(0xF72E, false, false, false); return;
-                        case "PageDown":   e.preventDefault(); sendKeyPress(0xF72D, false, false, false); return;
-                        case "Home":       e.preventDefault(); sendKeyPress(0xF729, false, false, false); return;
-                        case "End":        e.preventDefault(); sendKeyPress(0xF72B, false, false, false); return;
-                        default: return;
-                    }
-                }
-
-                if (codepoint > 0) {
-                    e.preventDefault();
-                    sendKeyPress(codepoint, shift, ctrl, alt);
-                }
-            });
-
-            canvas.addEventListener("mousedown", (e) => {
-                if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-                const rect = canvas.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const clickY = e.clientY - rect.top;
-
-                const col = Math.floor(clickX / charWidth) + 1;
-                const row = Math.floor(clickY / charHeight) + 1;
-
-                let button = 5;
-                if (e.button === 0) button = 0;
-                if (e.button === 1) button = 1;
-                if (e.button === 2) button = 2;
-
-                e.preventDefault();
-                canvas.focus();
-                sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey);
-            });
-
-            canvas.addEventListener("mouseup", (e) => {
-                if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-                const rect = canvas.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const clickY = e.clientY - rect.top;
-
-                const col = Math.floor(clickX / charWidth) + 1;
-                const row = Math.floor(clickY / charHeight) + 1;
-
-                let button = 5;
-                if (e.button === 0) button = 0;
-                if (e.button === 1) button = 1;
-                if (e.button === 2) button = 2;
-
-                e.preventDefault();
-                sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey);
-            });
-
-            const resizeObserver = new ResizeObserver(() => {
-                resizeTerminal();
-            });
-            resizeObserver.observe(container);
-
-            window.addEventListener('popstate', () => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const pageParam = urlParams.get('page');
-                if (pageParam) {
-                    const pageBytes = new TextEncoder().encode(pageParam);
-                    const buf = new Uint8Array(1 + pageBytes.length);
-                    buf[0] = 0x31;
-                    buf.set(pageBytes, 1);
-                    if (socket && socket.readyState === WebSocket.OPEN) {
-                        socket.send(buf);
-                    }
-                }
-            });
         }
 
+        // ── onClose — reconnect scheduler (2.5/R3 single-scheduler) ──
+        function onClose() {
+            if (uiState === 'TAKEN_OVER' || uiState === 'IDLE') return;
+            if (reconnectPending) return;   // 2.5/R3: single scheduler guard
+            reconnectPending = true;
+            setUiState('RECONNECTING', 'Reconnecting');
+            setTimeout(() => {
+                reconnectPending = false;
+                if (uiState === 'TAKEN_OVER' || uiState === 'IDLE') return;
+                reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+                connect();
+            }, reconnectDelay);
+        }
+
+        // ── onMessage — frame dispatcher ──
+        function onMessage(event) {
+            if (!(event.data instanceof ArrayBuffer)) return;
+            const bytes = new Uint8Array(event.data);
+            if (bytes.length === 0) return;
+
+            // ── 0xFF termination (reason byte) ────────────────────────────────
+            if (bytes[0] === 0xFF) {
+                const reason = bytes.length >= 2 ? bytes[1] : 0; // missing byte → 0 (backward compat)
+                if (reason === 0) {
+                    // Takeover: terminal state
+                    setUiState('TAKEN_OVER', 'Taken over');
+                    if (currentSocket) { currentSocket = null; }
+                    currentSocket = null;
+                    // onclose will fire but currentSocket is null and uiState is TAKEN_OVER → ignored
+                } else if (reason === 1) {
+                    // Idle: silent resurrection
+                    sessionStorage.removeItem('oxiterm_session_token');
+                    setUiState('IDLE', 'Idle');
+                    if (currentSocket) currentSocket.close();
+                    currentSocket = null;
+                    // Arm interaction listener ONCE (idleListenerArmed prevents duplicates
+                    // across multiple idle cycles).
+                    if (!idleListenerArmed) {
+                        idleListenerArmed = true;
+                        const onInteraction = () => {
+                            idleListenerArmed = false;
+                            document.removeEventListener('keydown',    onInteraction, true);
+                            document.removeEventListener('click',      onInteraction, true);
+                            document.removeEventListener('touchstart', onInteraction, true);
+                            // One attempt. If it fails, ws.onclose → onClose → RECONNECTING.
+                            connect();
+                        };
+                        document.addEventListener('keydown',    onInteraction, true);
+                        document.addEventListener('click',      onInteraction, true);
+                        document.addEventListener('touchstart', onInteraction, true);
+                    }
+                } else {
+                    // reason 2 / unknown: server restart → RECONNECTING backoff
+                    if (currentSocket) currentSocket.close();
+                    currentSocket = null;
+                    // ws.onclose → currentSocket===null → onClose() → RECONNECTING
+                }
+                return;
+            }
+
+            // ── 0x34 transient error chip ──────────────────────────────────────
+            if (bytes[0] === 0x34) {
+                const msg = new TextDecoder().decode(bytes.subarray(1));
+                if (errorTimer) clearTimeout(errorTimer);
+                setUiState('ERROR', msg);
+                errorTimer = setTimeout(() => {
+                    errorTimer = null;
+                    if (uiState === 'ERROR') setUiState(prevUiState, prevLabel);
+                }, 2500);
+                return;
+            }
+
+            // ── 0x20 media blob ────────────────────────────────────────────────
+            if (bytes[0] === 0x20) {
+                if (bytes.length >= 5) {
+                    const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
+                    const mediaBytes = bytes.subarray(5);
+                    const type = detectMediaType(mediaBytes);
+                    if (type === 'lottie') {
+                        try {
+                            const json = JSON.parse(new TextDecoder().decode(mediaBytes));
+                            mediaCache[hash] = { url: null, type, json };
+                        } catch(e) { console.warn('Lottie parse error', e); }
+                    } else {
+                        const blob = new Blob([mediaBytes], { type });
+                        const url = URL.createObjectURL(blob);
+                        mediaCache[hash] = { url, type, json: null };
+                    }
+                }
+                return;
+            }
+
+            // ── 0x21 media coordinate / clear ─────────────────────────────────
+            if (bytes[0] === 0x21) {
+                if (bytes.length === 1) {
+                    clearMediaLayer();
+                } else if (bytes.length >= 13) {
+                    const hash   = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
+                    const col    = bytes[5]  | (bytes[6]  << 8);
+                    const row    = bytes[7]  | (bytes[8]  << 8);
+                    const width  = bytes[9]  | (bytes[10] << 8);
+                    const height = bytes[11] | (bytes[12] << 8);
+                    addMediaToLayer(hash, col, row, width, height);
+                }
+                return;
+            }
+
+            // ── 0x30 page announce ─────────────────────────────────────────────
+            if (bytes[0] === 0x30) {
+                const pagePath = new TextDecoder().decode(bytes.subarray(1));
+                const url = new URL(window.location);
+                if (url.searchParams.get('page') !== pagePath) {
+                    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}`;
+                    window.history.pushState({ page: pagePath }, '', newUrl);
+                }
+                return;
+            }
+
+            // ── 0x32 token ────────────────────────────────────────────────────
+            if (bytes[0] === 0x32) {
+                const token = new TextDecoder().decode(bytes.subarray(1));
+                sessionStorage.setItem('oxiterm_session_token', token);
+                const url = new URL(window.location);
+                url.searchParams.delete('session');
+                window.history.replaceState({}, '', url);
+                return;
+            }
+
+            // ── 0x33 open URL ─────────────────────────────────────────────────
+            if (bytes[0] === 0x33) {
+                const url = new TextDecoder().decode(bytes.subarray(1));
+                window.open(url, '_blank', 'noopener');
+                return;
+            }
+
+            // ── render commands ───────────────────────────────────────────────
+            if (needsClear) {
+                term.clear(currentCols, currentRows);
+                clearMediaLayer();
+                needsClear = false;
+            }
+            term.draw_commands(bytes);
+        }
+
+        // ── resizeTerminal — DPR-aware pixel-perfect canvas (2.2/R4) ──────────
         function resizeTerminal(force = false) {
-            const width = isMobile ? container.clientWidth : (container.clientWidth - 16);
+            dpr = window.devicePixelRatio || 1;
+            const width  = isMobile ? container.clientWidth  : (container.clientWidth  - 16);
             const height = isMobile ? container.clientHeight : (container.clientHeight - 16);
 
-            const cols = Math.floor(width / charWidth);
-            const rows = Math.floor(height / charHeight);
+            // Integer device-pixel cell size
+            const cellWDevice = Math.max(1, Math.round(charWidth  * dpr));
+            const cellHDevice = Math.max(1, Math.round(charHeight * dpr));
+
+            const cols = Math.max(1, Math.floor((width  * dpr) / cellWDevice));
+            const rows = Math.max(1, Math.floor((height * dpr) / cellHDevice));
 
             const newIsMobile = window.innerWidth < 800;
             if (newIsMobile !== isMobile) {
                 isMobile = newIsMobile;
-                if (socket && socket.readyState === WebSocket.OPEN) {
+                if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
                     const vbuf = new Uint8Array(2);
                     vbuf[0] = 0x11;
                     vbuf[1] = isMobile ? 1 : 0;
-                    socket.send(vbuf);
+                    currentSocket.send(vbuf);
                 }
             }
 
@@ -660,62 +738,161 @@
                 currentCols = cols;
                 currentRows = rows;
 
-                canvas.width = cols * charWidth;
-                canvas.height = rows * charHeight;
+                // ① Set backing in exact device pixels (resets ALL canvas context state)
+                canvas.width  = cols * cellWDevice;
+                canvas.height = rows * cellHDevice;
 
-                canvasWrap.style.width  = canvas.width  + 'px';
-                canvasWrap.style.height = canvas.height + 'px';
-                mediaLayer.style.width  = canvas.width  + 'px';
-                mediaLayer.style.height = canvas.height + 'px';
+                // ② Re-apply DPR scale transform + font (context was just reset by ①)
+                if (term) term.apply_dpr_scale(dpr);
 
-                term.clear(cols, rows);
+                // ③ CSS size: backing/dpr → exact 1:1 device mapping, no interpolation
+                const cssW = canvas.width  / dpr;
+                const cssH = canvas.height / dpr;
+                canvas.style.width  = cssW + 'px';
+                canvas.style.height = cssH + 'px';
+
+                // ④ Update WASM CSS-pixel cell dims
+                if (term) term.set_char_dimensions(cellWDevice / dpr, cellHDevice / dpr);
+
+                canvasWrap.style.width  = cssW + 'px';
+                canvasWrap.style.height = cssH + 'px';
+                mediaLayer.style.width  = cssW + 'px';
+                mediaLayer.style.height = cssH + 'px';
+
+                if (term) term.clear(cols, rows);
                 repositionMedia();
 
-                if (socket && socket.readyState === WebSocket.OPEN) {
+                if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
                     const buf = new Uint8Array(5);
                     buf[0] = 0x10;
-                    buf[1] = cols & 0xff;
-                    buf[2] = (cols >> 8) & 0xff;
-                    buf[3] = rows & 0xff;
-                    buf[4] = (rows >> 8) & 0xff;
-                    socket.send(buf);
+                    buf[1] = cols & 0xff; buf[2] = (cols >> 8) & 0xff;
+                    buf[3] = rows & 0xff; buf[4] = (rows >> 8) & 0xff;
+                    currentSocket.send(buf);
                 }
             }
         }
 
+        // ── DPR change watcher (zoom changes DPR without a resize event) ──────
+        function watchDpr() {
+            const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            mq.addEventListener('change', () => {
+                resizeTerminal(true);
+                watchDpr(); // re-register for next dpr change
+            }, { once: true });
+        }
+
+        // ── Input senders ──────────────────────────────────────────────────────
         function sendKeyPress(codepoint, shift, ctrl, alt) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const buf = new Uint8Array(6);
             buf[0] = 0x01;
-            buf[1] = codepoint & 0xff;
-            buf[2] = (codepoint >> 8) & 0xff;
-            buf[3] = (codepoint >> 16) & 0xff;
-            buf[4] = (codepoint >> 24) & 0xff;
+            buf[1] = codepoint & 0xff; buf[2] = (codepoint >> 8) & 0xff;
+            buf[3] = (codepoint >> 16) & 0xff; buf[4] = (codepoint >> 24) & 0xff;
             let flags = 0;
-            if (shift) flags |= 1;
-            if (ctrl) flags |= 2;
-            if (alt) flags |= 4;
+            if (shift) flags |= 1; if (ctrl) flags |= 2; if (alt) flags |= 4;
             buf[5] = flags;
-            socket.send(buf);
+            currentSocket.send(buf);
         }
 
         function sendMouseEvent(col, row, button, action, shift, ctrl, alt) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const buf = new Uint8Array(8);
             buf[0] = 0x02;
-            buf[1] = col & 0xff;
-            buf[2] = (col >> 8) & 0xff;
-            buf[3] = row & 0xff;
-            buf[4] = (row >> 8) & 0xff;
-            buf[5] = button;
-            buf[6] = action;
+            buf[1] = col & 0xff; buf[2] = (col >> 8) & 0xff;
+            buf[3] = row & 0xff; buf[4] = (row >> 8) & 0xff;
+            buf[5] = button; buf[6] = action;
             let flags = 0;
-            if (shift) flags |= 1;
-            if (ctrl) flags |= 2;
-            if (alt) flags |= 4;
+            if (shift) flags |= 1; if (ctrl) flags |= 2; if (alt) flags |= 4;
             buf[7] = flags;
-            socket.send(buf);
+            currentSocket.send(buf);
         }
 
-        start();
+        // ── Event handlers — registered ONCE in boot() ────────────────────────
+        function onKeyDown(e) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+            let codepoint = 0;
+            const shift = e.shiftKey, ctrl = e.ctrlKey, alt = e.altKey;
+            if (e.key.length === 1) {
+                codepoint = e.key.charCodeAt(0);
+            } else {
+                switch (e.key) {
+                    case "Backspace": codepoint = 8; break;
+                    case "Tab":       codepoint = 9; break;
+                    case "Enter":     codepoint = 13; break;
+                    case "Escape":    codepoint = 27; break;
+                    case "Delete":    codepoint = 127; break;
+                    case "ArrowUp":    e.preventDefault(); sendKeyPress(0xF700, false, false, false); return;
+                    case "ArrowDown":  e.preventDefault(); sendKeyPress(0xF701, false, false, false); return;
+                    case "ArrowRight": e.preventDefault(); sendKeyPress(0xF702, false, false, false); return;
+                    case "ArrowLeft":  e.preventDefault(); sendKeyPress(0xF703, false, false, false); return;
+                    case "PageUp":     e.preventDefault(); sendKeyPress(0xF72E, false, false, false); return;
+                    case "PageDown":   e.preventDefault(); sendKeyPress(0xF72D, false, false, false); return;
+                    case "Home":       e.preventDefault(); sendKeyPress(0xF729, false, false, false); return;
+                    case "End":        e.preventDefault(); sendKeyPress(0xF72B, false, false, false); return;
+                    default: return;
+                }
+            }
+            if (codepoint > 0) { e.preventDefault(); sendKeyPress(codepoint, shift, ctrl, alt); }
+        }
+
+        function onMouseDown(e) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+            const rect = canvas.getBoundingClientRect();
+            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
+            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            let button = 5;
+            if (e.button === 0) button = 0;
+            if (e.button === 1) button = 1;
+            if (e.button === 2) button = 2;
+            e.preventDefault();
+            canvas.focus();
+            sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey);
+        }
+
+        function onMouseUp(e) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+            const rect = canvas.getBoundingClientRect();
+            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
+            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            let button = 5;
+            if (e.button === 0) button = 0;
+            if (e.button === 1) button = 1;
+            if (e.button === 2) button = 2;
+            e.preventDefault();
+            sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey);
+        }
+
+        function onPopState() {
+            const pageParam = new URLSearchParams(window.location.search).get('page');
+            if (pageParam && currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+                const pageBytes = new TextEncoder().encode(pageParam);
+                const buf = new Uint8Array(1 + pageBytes.length);
+                buf[0] = 0x31;
+                buf.set(pageBytes, 1);
+                currentSocket.send(buf);
+            }
+        }
+
+        // ── boot() — called exactly once at page load ─────────────────────────
+        async function boot() {
+            // 2.5/R2: Register ALL event listeners here, exactly once.
+            // canvas has tabindex="0" (attested in HTML) — required for keydown.
+            canvas.addEventListener('keydown',   onKeyDown);
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mouseup',   onMouseUp);
+
+            const resizeObserver = new ResizeObserver(() => resizeTerminal());
+            resizeObserver.observe(container);
+
+            window.addEventListener('popstate', onPopState);
+
+            // 2.2/R4: DPR change listener (zoom changes DPR without resize event)
+            watchDpr();
+
+            await connect();
+        }
+
+        boot();
     </script>
 </body>
 </html>

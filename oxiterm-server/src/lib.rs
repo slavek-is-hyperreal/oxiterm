@@ -9,6 +9,7 @@ pub mod config;
 pub mod dispatcher;
 pub mod metrics;
 pub mod ratelimit;
+pub mod throttle;
 pub mod session;
 pub mod events;
 pub mod ssh;

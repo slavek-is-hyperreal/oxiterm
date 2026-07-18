@@ -38,6 +38,44 @@ pub mod web_impl {
         hash
     }
 
+    /// Core writer loop: forwards binary frames from `frame_rx` to `sink`, sending
+    /// a WebSocket Ping every `ping_interval` when no frames are queued.
+    ///
+    /// Generic over any `S: Sink<Message, Error=E> + Unpin` so that tests can
+    /// substitute a channel-backed sink without a real WebSocket connection.
+    /// The production task passes the real `ws_write` half.
+    ///
+    /// Returns when the channel closes or a send error occurs.
+    pub(crate) async fn ws_writer_loop<S, E>(
+        mut sink: S,
+        mut frame_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+        ping_interval: std::time::Duration,
+        label: &str,
+    ) where
+        S: futures::Sink<Message, Error = E> + Unpin,
+        E: std::fmt::Debug,
+    {
+        loop {
+            match tokio::time::timeout(ping_interval, frame_rx.recv()).await {
+                Ok(Some(bytes)) => {
+                    if let Err(e) = sink.send(Message::Binary(bytes)).await {
+                        warn!("WS send error {}: {:?}", label, e);
+                        break;
+                    }
+                }
+                Ok(None) => break, // channel closed
+                Err(_elapsed) => {
+                    // No frame in ping_interval: send Ping to keep the connection alive
+                    // through Cloudflare and other proxies that kill idle WS at ~100 s.
+                    if let Err(e) = sink.send(Message::Ping(vec![])).await {
+                        warn!("WS ping error {}: {:?}", label, e);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
         session: Arc<ClientSession>,
@@ -97,7 +135,16 @@ pub mod web_impl {
             }
 
             let media_base_url = self.media_base_url.clone();
-            let base_dir = self.source_path.clone().and_then(|p| p.parent().map(|parent| parent.to_path_buf())).or(media_base_url);
+            // R5: resolve base_dir from the current navigated page's directory, not the
+            // initial source_path, so media assets in page subdirs are reachable.
+            let base_dir = {
+                let cp = self.session.current_page.read().clone();
+                let app_base = self.session.app_base_dir.read().clone();
+                cp.and_then(|p| app_base.map(|base| base.join(&p)))
+                    .and_then(|pp| pp.parent().map(|d| d.to_path_buf()))
+                    .or_else(|| self.source_path.clone().and_then(|p| p.parent().map(|d| d.to_path_buf())))
+                    .or(media_base_url)
+            };
 
             let current_page = self.session.current_page.read().clone();
             if current_page != self.sent_page {
@@ -148,7 +195,17 @@ pub mod web_impl {
                 };
 
                 if !is_safe {
-                    warn!("Blocked media Path Traversal attempt: {:?}", media.path);
+                    // Distinguish traversal attempt from a simply missing asset.
+                    if let Some(ref base) = base_dir {
+                        let full_path = base.join(&media.path);
+                        if full_path.exists() {
+                            warn!("media outside base (path traversal attempt): {:?}", full_path);
+                        } else {
+                            tracing::debug!("media not found (missing asset): {:?}", full_path);
+                        }
+                    } else {
+                        tracing::debug!("media not found (no base dir): {:?}", media.path);
+                    }
                     continue;
                 }
 
@@ -233,7 +290,8 @@ pub mod web_impl {
 
     impl Drop for WsFrameSink {
         fn drop(&mut self) {
-            let _ = self.send_bytes(vec![0xFF]);
+            let reason = self.session.death_reason.load(std::sync::atomic::Ordering::SeqCst);
+            let _ = self.send_bytes(vec![0xFF, reason]);
         }
     }
 
@@ -259,6 +317,11 @@ pub mod web_impl {
                             let idle_time = session.last_activity.read().elapsed();
                             if active_conns == 0 && idle_time > std::time::Duration::from_secs(600) {
                                 info!("Reaping disconnected web session {} (idle for {}s)", id, idle_time.as_secs());
+                                // Belt-and-suspenders: send idle-death frame if any live sender is present.
+                                // In the common case (conn==0) web_frame_tx is None; this is a no-op.
+                                if let Some((_, ref tx)) = *session.web_frame_tx.read() {
+                                    let _ = tx.try_send(vec![0xFF, 1u8]);
+                                }
                                 to_remove.push(id);
                             }
                         }
@@ -635,14 +698,20 @@ pub mod web_impl {
         let new_epoch = client_session.connection_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
         let (ws_write, mut ws_read) = ws_stream.split();
-        let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+        let (frame_tx, frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
 
         // Install sender and handle takeover
         {
             let mut w = client_session.web_frame_tx.write();
             if let Some((_, old_tx)) = w.take() {
                 info!("WS takeover for session {}: closing old connection with 0xFF", client_session.id);
-                let _ = old_tx.try_send(vec![0xFF]);
+                // Takeover reason is hardcoded 0 — does not use death_reason.
+                match old_tx.try_send(vec![0xFF, 0u8]) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        tracing::trace!("WS takeover: old sender closed/full (expected on dead connections)");
+                    }
+                }
             }
             *w = Some((new_epoch, frame_tx.clone()));
         }
@@ -655,14 +724,10 @@ pub mod web_impl {
         let client_session_clone = client_session.clone();
         let my_epoch = new_epoch;
         tokio::spawn(async move {
-            let mut ws_write = ws_write;
-            while let Some(bytes) = frame_rx.recv().await {
-                if let Err(e) = ws_write.send(Message::Binary(bytes)).await {
-                    // R5 close code/reason logging
-                    warn!("WS send error for session {} (epoch {}): {:?}", session_id, my_epoch, e);
-                    break;
-                }
-            }
+            let ws_write = ws_write;
+            let label = format!("session {} epoch {}", session_id, my_epoch);
+            // F3: production calls the same ws_writer_loop as the unit test.
+            ws_writer_loop(ws_write, frame_rx, std::time::Duration::from_secs(30), &label).await;
             info!("WS writer task terminated for session {} (epoch {})", session_id, my_epoch);
             {
                 let mut w = client_session_clone.web_frame_tx.write();
@@ -710,6 +775,10 @@ pub mod web_impl {
         }
 
         // K1: trigger render on attach
+        // Reset last_activity (F2: also reset death_reason so a reattached session
+        // does not inherit a stale reason from a prior idle cycle).
+        *client_session.last_activity.write() = std::time::Instant::now();
+        client_session.death_reason.store(2, std::sync::atomic::Ordering::SeqCst);
         let _ = client_session.event_tx.try_send(InputEvent::Refresh);
 
         // K3: reattach honors page param
@@ -738,6 +807,10 @@ pub mod web_impl {
                     let actual = crate::pathsafe::resolve_variant(&target_path, client_session.is_mobile.load(std::sync::atomic::Ordering::SeqCst));
                     resolved_source_path = Some(actual);
                     base_source_path = Some(target_path);
+                    // 2.5/R4: Set current_page before spawning so the K3 guard in the
+                    // already-running path does not send a redundant NavigateTo for the
+                    // same page, preventing a double load_thtml_file call on first attach.
+                    *client_session.current_page.write() = Some(page.clone());
                 } else {
                     warn!("Upgrade page parameter blocked (path traversal): {:?}", target_path);
                 }
@@ -915,6 +988,66 @@ pub mod web_impl {
         fn test_hash_path() {
             assert_ne!(hash_path("a.png"), hash_path("b.png"));
             assert_eq!(hash_path("logo.svg"), hash_path("logo.svg"));
+        }
+
+        /// F3 / 2.5/t1 — ws_writer_loop: ≥1 Ping within 35 s idle AND binary frames pass through.
+        ///
+        /// Uses tokio::time::pause() so the test runs instantly without real wall-clock delay.
+        /// The production task calls this same function (no separate inline loop).
+        #[tokio::test]
+        async fn test_t_writer_loop_ping_and_binary() {
+            tokio::time::pause();
+
+            // Channel-backed sink: accumulates outgoing Message values.
+            let (sink_tx, mut sink_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+            // Wrap in a futures::Sink adapter
+            struct ChanSink(tokio::sync::mpsc::UnboundedSender<Message>);
+            impl futures::Sink<Message> for ChanSink {
+                type Error = tokio::sync::mpsc::error::SendError<Message>;
+                fn poll_ready(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>)
+                    -> std::task::Poll<Result<(), Self::Error>> { std::task::Poll::Ready(Ok(())) }
+                fn start_send(self: std::pin::Pin<&mut Self>, item: Message)
+                    -> Result<(), Self::Error> { self.0.send(item) }
+                fn poll_flush(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>)
+                    -> std::task::Poll<Result<(), Self::Error>> { std::task::Poll::Ready(Ok(())) }
+                fn poll_close(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>)
+                    -> std::task::Poll<Result<(), Self::Error>> { std::task::Poll::Ready(Ok(())) }
+            }
+
+            let (frame_tx, frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(8);
+
+            // Send a binary frame before the ping window
+            frame_tx.send(b"hello".to_vec()).await.unwrap();
+
+            let handle = tokio::spawn(ws_writer_loop(
+                ChanSink(sink_tx),
+                frame_rx,
+                std::time::Duration::from_secs(30),
+                "test",
+            ));
+
+            // Let the binary frame flush
+            tokio::task::yield_now().await;
+
+            // Advance time past the ping interval (35 s > 30 s threshold)
+            tokio::time::advance(std::time::Duration::from_secs(35)).await;
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+
+            // Drop the sender to terminate the loop
+            drop(frame_tx);
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(1), handle).await;
+
+            // Collect all messages
+            let mut msgs = Vec::new();
+            while let Ok(m) = sink_rx.try_recv() { msgs.push(m); }
+
+            let binary_count = msgs.iter().filter(|m| matches!(m, Message::Binary(_))).count();
+            let ping_count   = msgs.iter().filter(|m| matches!(m, Message::Ping(_))).count();
+
+            assert!(binary_count >= 1, "binary frame must pass through; got msgs: {:?}", msgs);
+            assert!(ping_count   >= 1, "≥1 Ping must be sent within 35 s idle; got msgs: {:?}", msgs);
         }
 
         #[tokio::test]
@@ -1739,13 +1872,16 @@ pub mod web_impl {
             // Send resize frame for Connect 2
             ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
 
-            // The first connection should receive 0xFF
+            // The first connection should receive 0xFF takeover frame [0xFF, 0]
             let mut found_ff = false;
             while let Some(msg) = ws_read1.next().await {
                 match msg {
                     Ok(m) => {
                         let data = m.into_data();
-                        if data == vec![0xFF] {
+                        // Takeover sends [0xFF, 0] — reason byte 0 is hardcoded for takeover.
+                        if data.len() >= 1 && data[0] == 0xFF {
+                            assert_eq!(data.get(1).copied(), Some(0u8),
+                                "takeover must send reason byte 0, got: {:?}", data);
                             found_ff = true;
                             break;
                         }
@@ -1753,7 +1889,7 @@ pub mod web_impl {
                     Err(_) => break,
                 }
             }
-            assert!(found_ff, "First connection must receive 0xFF");
+            assert!(found_ff, "First connection must receive [0xFF, 0]");
         }
 
         #[tokio::test]
