@@ -10,10 +10,109 @@ use oxiterm_proto::dom::NodeId as OxiNodeId;
 use std::collections::HashMap;
 use anyhow::anyhow;
 
+/// Per-node context handed to Taffy's measure closure for content whose height
+/// depends on the final laid-out width — i.e. `wrap:word` text. Only such leaves
+/// carry a context; every other node is sized purely from its style.
+#[derive(Clone, Debug)]
+pub struct MeasureContext {
+    /// Raw text of the node, wrapped at measure time against the available width.
+    text: String,
+}
+
+/// Total display columns of the widest hard line (before any word wrapping).
+fn text_intrinsic_width(text: &str) -> u16 {
+    text.lines()
+        .map(|line| line.chars().map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16).sum())
+        .max()
+        .unwrap_or(0)
+}
+
+/// Columns of the widest single word — the narrowest a word-wrapped block can get,
+/// since words are never broken mid-word. Acts as the min-content width.
+fn longest_word_width(text: &str) -> u16 {
+    text.split_whitespace()
+        .map(|w| w.chars().map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16).sum())
+        .max()
+        .unwrap_or(0)
+}
+
+/// Number of visual lines produced by word-wrapping `text` to `max_w` columns.
+/// Mirrors the draw-time wrapping in `render::renderer` so layout height and the
+/// rendered line count always agree.
+fn word_wrapped_line_count(text: &str, max_w: u16) -> usize {
+    let mut total_lines = 0;
+    for line in text.lines() {
+        if line.is_empty() {
+            total_lines += 1;
+            continue;
+        }
+        let mut current_line_width = 0;
+        let mut line_has_words = false;
+
+        for word in line.split_whitespace() {
+            let word_w = word.chars()
+                .map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16)
+                .sum::<u16>();
+
+            if !line_has_words {
+                current_line_width = word_w;
+                line_has_words = true;
+                total_lines += 1;
+            } else {
+                let space_w = 1;
+                if current_line_width + space_w + word_w <= max_w {
+                    current_line_width += space_w + word_w;
+                } else {
+                    current_line_width = word_w;
+                    total_lines += 1;
+                }
+            }
+        }
+        if !line_has_words {
+            total_lines += 1;
+        }
+    }
+    total_lines
+}
+
+/// Taffy measure closure body for a `wrap:word` text leaf: resolves the node's
+/// width against the available space (clamped between the longest word and the
+/// full intrinsic width) and derives its height from that final width.
+fn measure_wrap_text(known: Size<Option<f32>>, available: Size<AvailableSpace>, text: &str) -> Size<f32> {
+    let intrinsic = text_intrinsic_width(text) as f32;
+    let min_content = longest_word_width(text) as f32;
+
+    let width = match known.width {
+        Some(w) => w,
+        None => match available.width {
+            AvailableSpace::MinContent => min_content,
+            AvailableSpace::MaxContent => intrinsic,
+            // Shrink toward the available width, but never below the longest word
+            // (which cannot be broken) nor above the full intrinsic width.
+            AvailableSpace::Definite(aw) => intrinsic.min(aw.max(min_content)),
+        },
+    };
+
+    let height = match known.height {
+        Some(h) => h,
+        None => {
+            let w_u = width.round().max(0.0) as u16;
+            let lines = if w_u >= 1 {
+                word_wrapped_line_count(text, w_u)
+            } else {
+                text.lines().count()
+            };
+            lines.max(1) as f32
+        }
+    };
+
+    Size { width, height }
+}
+
 /// Engine managing layout calculations and synchronization with the Taffy trees.
 pub struct LayoutEngine {
     /// Internal Taffy tree used for layout calculations.
-    pub taffy: TaffyTree<()>,
+    pub taffy: TaffyTree<MeasureContext>,
     /// Mapping of active DOM node IDs to their corresponding Taffy tree node IDs.
     node_map: HashMap<OxiNodeId, taffy::NodeId>,
     /// The cached result of the last layout calculation run.
@@ -109,8 +208,18 @@ impl LayoutEngine {
             height: AvailableSpace::Definite(root_h as f32),
         };
 
-        self.taffy.compute_layout(root_taffy_id, available_space)?;
-        
+        // Measure closure resolves height-from-width for `wrap:word` text leaves
+        // (the only nodes given a MeasureContext); all other nodes fall back to Zero
+        // and are sized purely from their style.
+        self.taffy.compute_layout_with_measure(
+            root_taffy_id,
+            available_space,
+            |known, avail, _node_id, ctx, _style| match ctx {
+                Some(ctx) => measure_wrap_text(known, avail, &ctx.text),
+                None => Size::ZERO,
+            },
+        )?;
+
         let mut nodes = HashMap::new();
         self.flatten_layout_recursive(doc, doc.root, 0, 0, &mut nodes)?;
 
@@ -215,84 +324,55 @@ impl LayoutEngine {
 
         let style = self.map_style(node, state_evaluator);
         let taffy_id = self.taffy.new_with_children(style, &children)?;
-        
+
+        // Only `wrap:word` text leaves need width-dependent height resolution, so only
+        // they receive a measure context; everything else is sized from its style alone.
+        if node.tag == oxiterm_proto::dom::NodeTag::Text
+            && node.style.wrap == oxiterm_proto::style::WrapMode::Word
+        {
+            if let Some(text) = &node.text {
+                self.taffy.set_node_context(taffy_id, Some(MeasureContext { text: text.clone() }))?;
+            }
+        }
+
         self.node_map.insert(oxi_id, taffy_id);
         Ok(taffy_id)
     }
 
     fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
-        fn count_word_wrapped_lines(text: &str, max_w: u16) -> usize {
-            let mut total_lines = 0;
-            for line in text.lines() {
-                if line.is_empty() {
-                    total_lines += 1;
-                    continue;
-                }
-                let mut current_line_width = 0;
-                let mut line_has_words = false;
-                
-                let words = line.split_whitespace();
-                for word in words {
-                    let word_w = word.chars()
-                        .map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16)
-                        .sum::<u16>();
-                    
-                    if !line_has_words {
-                        current_line_width = word_w;
-                        line_has_words = true;
-                        total_lines += 1;
-                    } else {
-                        let space_w = 1;
-                        if current_line_width + space_w + word_w <= max_w {
-                            current_line_width += space_w + word_w;
-                        } else {
-                            current_line_width = word_w;
-                            total_lines += 1;
-                        }
-                    }
-                }
-                if !line_has_words {
-                    total_lines += 1;
-                }
-            }
-            total_lines
-        }
-
         let style = &node.style;
         let mut width = style.width;
         let mut height = style.height;
-        // Intrinsic glyph width to use as a shrink floor, set ONLY when the width was
-        // auto-derived from the node's text (not when the author gave an explicit width).
+        // Intrinsic glyph width used as a shrink floor for non-wrapping text, set ONLY
+        // when the width was auto-derived from text (not when the author gave a width).
         let mut min_width: Option<u16> = None;
+        // Whether this node's size is resolved by the Taffy measure closure (wrap:word
+        // text). Such nodes keep only their explicit style dimensions here; the closure
+        // fills in the rest and must not be overridden by cross-axis stretch.
+        let mut measured_text = false;
 
         if node.tag == oxiterm_proto::dom::NodeTag::Text {
-            if let Some(text) = &node.text {
-                if width.is_none() {
-                    let calculated_width = text.lines()
-                        .map(|line| line.chars().map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16).sum())
-                        .max()
-                        .unwrap_or(0);
-                    width = Some(calculated_width);
-                    // Pin the intrinsic width so a narrow flex row (default flex_shrink=1)
-                    // cannot compress the node below its glyph span, which would make only
-                    // the first column hit-testable/clickable.
-                    min_width = Some(calculated_width);
-                }
-                if height.is_none() {
-                    let calculated_height = if style.wrap == oxiterm_proto::style::WrapMode::Word {
-                        if let Some(max_w) = width {
-                            if max_w > 0 {
-                                count_word_wrapped_lines(text, max_w) as u16
-                            } else {
-                                text.lines().count() as u16
-                            }
-                        } else {
-                            text.lines().count() as u16
-                        }
-                    } else {
-                        text.lines().count() as u16
-                    };
-                    height = Some(calculated_height.max(1));
+            if node.text.is_some() {
+                if style.wrap == oxiterm_proto::style::WrapMode::Word {
+                    // Height depends on the FINAL wrapped width, which is only known
+                    // after flex resolution — so defer both dimensions to the measure
+                    // closure (see `measure_wrap_text`). Explicit author width/height,
+                    // if any, still flow through `size` below as known constraints.
+                    measured_text = true;
+                } else {
+                    // wrap:none — content-sized. Derive the intrinsic width and pin it as
+                    // a min-width floor so a narrow flex row (default flex_shrink=1) cannot
+                    // compress the node below its glyph span, which would leave only the
+                    // first column hit-testable/clickable (e.g. the "← Back" link).
+                    let text = node.text.as_deref().unwrap_or("");
+                    if width.is_none() {
+                        let calculated_width = text_intrinsic_width(text);
+                        width = Some(calculated_width);
+                        min_width = Some(calculated_width);
+                    }
+                    if height.is_none() {
+                        height = Some((text.lines().count() as u16).max(1));
+                    }
                 }
             }
         }
@@ -326,6 +406,11 @@ impl LayoutEngine {
                 oxiterm_proto::style::JustifyContent::SpaceBetween => JustifyContent::SpaceBetween,
                 oxiterm_proto::style::JustifyContent::SpaceAround => JustifyContent::SpaceAround,
             }),
+            // Measured text must keep its measured cross size: without this, a parent's
+            // default `align-items: stretch` would blow an auto-height paragraph up to the
+            // container's cross size (e.g. a Row of height MAX). Non-measured nodes inherit
+            // the parent's alignment (so centered single-line labels stay centered).
+            align_self: if measured_text { Some(AlignItems::Start) } else { None },
             size: Size {
                 width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
                 height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
@@ -566,6 +651,51 @@ mod tests {
             Some(text_id),
             "last column of the link must resolve to the interactive node"
         );
+    }
+
+    // Places an auto-width (no explicit width) wrap:word paragraph inside a Box of the
+    // given inner width and returns the paragraph's computed rect. The container is a
+    // Row (default) with a definite height, so it also exercises that align-items:stretch
+    // does NOT blow the measured height up to the container height.
+    fn wrapped_paragraph_rect(container_width: u16, container_height: u16, text: &str) -> OxiRect {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        let mut container = Node::new(NodeTag::Box);
+        container.style.width = Some(container_width);
+        container.style.height = Some(container_height);
+        let container_id = doc.arena.alloc(container);
+        doc.append_child(doc.root, container_id).unwrap();
+
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some(text.to_string());
+        text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
+        let text_id = doc.arena.alloc(text_node);
+        doc.append_child(container_id, text_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        *result.nodes.get(&text_id).unwrap()
+    }
+
+    #[test]
+    fn test_wrap_word_auto_width_wraps_to_container_and_grows_tall() {
+        // THE bug: an auto-width wrap:word paragraph used to derive height from its full
+        // unwrapped width and freeze at height=1, never wrapping. It must now narrow to
+        // the container and grow to the wrapped line count.
+        // "alpha beta gamma delta" at width 10 wraps to: "alpha beta" / "gamma" / "delta".
+        let rect = wrapped_paragraph_rect(10, 4, "alpha beta gamma delta");
+        assert_eq!(rect.width, 10, "must narrow to the container width, not stay at 22");
+        assert_eq!(rect.height, 3, "height must follow the wrapped line count, not be 1");
+    }
+
+    #[test]
+    fn test_wrap_word_height_follows_final_width() {
+        // Narrower available width => more wrapped lines. Same text, width 6:
+        // "alpha" / "beta" / "gamma" / "delta" => 4 lines (no two 5/4-wide words fit in 6
+        // together since 5+1+4=10 > 6).
+        let rect = wrapped_paragraph_rect(6, 6, "alpha beta gamma delta");
+        assert_eq!(rect.width, 6);
+        assert_eq!(rect.height, 4, "height must recompute from the narrower final width");
     }
 
     #[test]
