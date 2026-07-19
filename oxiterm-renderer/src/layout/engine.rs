@@ -261,6 +261,9 @@ impl LayoutEngine {
         let style = &node.style;
         let mut width = style.width;
         let mut height = style.height;
+        // Intrinsic glyph width to use as a shrink floor, set ONLY when the width was
+        // auto-derived from the node's text (not when the author gave an explicit width).
+        let mut min_width: Option<u16> = None;
 
         if node.tag == oxiterm_proto::dom::NodeTag::Text {
             if let Some(text) = &node.text {
@@ -270,6 +273,10 @@ impl LayoutEngine {
                         .max()
                         .unwrap_or(0);
                     width = Some(calculated_width);
+                    // Pin the intrinsic width so a narrow flex row (default flex_shrink=1)
+                    // cannot compress the node below its glyph span, which would make only
+                    // the first column hit-testable/clickable.
+                    min_width = Some(calculated_width);
                 }
                 if height.is_none() {
                     let calculated_height = if style.wrap == oxiterm_proto::style::WrapMode::Word {
@@ -322,6 +329,10 @@ impl LayoutEngine {
             size: Size {
                 width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
                 height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
+            },
+            min_size: Size {
+                width: min_width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
+                height: Dimension::Auto,
             },
             padding: Rect {
                 left: LengthPercentage::Length(style.padding.left as f32),
@@ -483,6 +494,78 @@ mod tests {
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
         assert_eq!(rect.height, 2);
+    }
+
+    // Builds a flex Row (width 8) holding a shrinkable spacer Box followed by the
+    // "← Back" label. The combined ideal width (6 + 6) exceeds the row, so Taffy must
+    // shrink something; the label must stay at its 6-wide glyph span while the spacer
+    // absorbs the deficit. Returns (engine, text_id) with layout already computed.
+    fn narrow_row_with_back_label(interactive: bool) -> (LayoutEngine, oxiterm_proto::dom::NodeId) {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        let mut row = Node::new(NodeTag::Box);
+        row.style.flex_direction = oxiterm_proto::style::FlexDirection::Row;
+        row.style.width = Some(8); // narrower than spacer(6) + label(6), forces shrink
+        row.style.height = Some(1);
+        let row_id = doc.arena.alloc(row);
+        doc.append_child(doc.root, row_id).unwrap();
+
+        let mut spacer = Node::new(NodeTag::Box);
+        spacer.style.width = Some(6);
+        spacer.style.height = Some(1);
+        let spacer_id = doc.arena.alloc(spacer);
+        doc.append_child(row_id, spacer_id).unwrap();
+
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("← Back".to_string());
+        text_node.style.height = Some(1);
+        if interactive {
+            text_node.attrs.event_htmx = Some("/back".to_string());
+        }
+        let text_id = doc.arena.alloc(text_node);
+        doc.append_child(row_id, text_id).unwrap();
+
+        engine.compute(&mut doc, 80, 0, None).unwrap();
+        (engine, text_id)
+    }
+
+    #[test]
+    fn test_text_intrinsic_width_survives_narrow_flex_row() {
+        // t1: "← Back" (auto width) inside a Row narrower than its ideal content must
+        // keep its 6-wide glyph span, not be shrunk by Taffy's default flex_shrink=1.
+        let (engine, text_id) = narrow_row_with_back_label(false);
+        let rect = engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
+        assert_eq!(rect.width, 6, "text node must not shrink below its glyph span");
+    }
+
+    #[test]
+    fn test_every_column_of_clickable_text_is_hit_testable() {
+        // t2: every column across the glyph span resolves to the text node.
+        let (engine, text_id) = narrow_row_with_back_label(false);
+        let rect = *engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
+        assert_eq!(rect.width, 6);
+        for x in rect.x..rect.x + rect.width {
+            assert_eq!(
+                engine.hit_test(x, rect.y),
+                Some(text_id),
+                "column {x} should hit the text node"
+            );
+        }
+    }
+
+    #[test]
+    fn test_last_column_of_event_text_activates_node() {
+        // t3: the last glyph column of an interactive (event-htmx) text node resolves
+        // to that node, so a click on the last letter reaches the activation wiring.
+        let (engine, text_id) = narrow_row_with_back_label(true);
+        let rect = *engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
+        assert_eq!(rect.width, 6);
+        assert_eq!(
+            engine.hit_test(rect.x + rect.width - 1, rect.y),
+            Some(text_id),
+            "last column of the link must resolve to the interactive node"
+        );
     }
 
     #[test]
