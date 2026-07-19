@@ -1068,9 +1068,44 @@ impl EventLoop {
     /// → handle_htmx_target correctly, without bypassing any of that glue. Re-adding an
     /// `if self.throttle.check_input()` guard to the caller arm in `run()` would cause t2
     /// to fail when the INPUT bucket is empty, because the Press would never reach this method.
+    /// Number of document rows a single mouse-wheel notch scrolls. Distinct from
+    /// PageUp/PageDown (which move a whole viewport) so reading long content is smooth.
+    const WHEEL_LINE_STEP: u16 = 3;
+
+    /// Scrolls the viewport by [`Self::WHEEL_LINE_STEP`] rows, clamped to the scrollable
+    /// range. `up == true` scrolls toward the top. Shared by web wheel events and native
+    /// SSH SGR wheel reports (both arrive as `MouseButton::WheelUp/WheelDown`).
+    fn scroll_wheel_lines(&mut self, up: bool) {
+        let dims = *self.session.dims.read();
+        if self.total_height <= dims.rows {
+            return; // content fits; nothing to scroll
+        }
+        let viewport_h = dims.rows.saturating_sub(1);
+        let max_scroll = self.total_height.saturating_sub(viewport_h);
+        self.scroll_offset = if up {
+            self.scroll_offset.saturating_sub(Self::WHEEL_LINE_STEP)
+        } else {
+            (self.scroll_offset + Self::WHEEL_LINE_STEP).min(max_scroll)
+        };
+    }
+
     pub(crate) fn handle_mouse_event(&mut self, mut mouse: oxiterm_proto::input::MouseInput) -> bool {
         let dims = *self.session.dims.read();
         tracing::trace!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
+
+        // Wheel notches are line-step scrolls, not clicks: intercept before any
+        // coordinate remap or hit-test/activation so a scroll never activates a link.
+        match mouse.button {
+            oxiterm_proto::input::MouseButton::WheelUp => {
+                self.scroll_wheel_lines(true);
+                return true;
+            }
+            oxiterm_proto::input::MouseButton::WheelDown => {
+                self.scroll_wheel_lines(false);
+                return true;
+            }
+            _ => {}
+        }
         if let Some(layout) = &self.layout_engine.last_layout {
             let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
             tracing::trace!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
@@ -2813,6 +2848,59 @@ mod tests {
             nodes,
             total_height,
         });
+    }
+
+    #[test]
+    fn test_wheel_scrolls_by_line_step_and_clamps() {
+        // Mouse wheel = line-step scroll (3 rows/notch), clamped to the scroll range,
+        // and it must NOT run hit-test/activation (a scroll is not a click).
+        let (mut el, btn_id) = make_el_with_htmx_button("inc:clicks");
+        el.rebuild_parent_map();
+        *el.session.dims.write() = PtyDimensions { cols: 20, rows: 5 };
+        el.total_height = 20; // viewport_h = 4 → max_scroll = 16
+
+        // Place the button under the wheel coordinate; if the wheel wrongly activated,
+        // "clicks" state would change.
+        inject_layout(
+            &mut el,
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0, y: 0, width: 20, height: 20 })],
+            20,
+        );
+
+        let wheel = |btn| oxiterm_proto::input::MouseInput {
+            col: 1, row: 1, button: btn,
+            action: oxiterm_proto::input::MouseAction::Press,
+            modifiers: Default::default(),
+        };
+        use oxiterm_proto::input::MouseButton::{WheelDown, WheelUp};
+
+        assert!(el.handle_mouse_event(wheel(WheelDown)), "wheel requests a render");
+        assert_eq!(el.scroll_offset, 3, "one notch down = WHEEL_LINE_STEP rows");
+        el.handle_mouse_event(wheel(WheelDown));
+        assert_eq!(el.scroll_offset, 6);
+        el.handle_mouse_event(wheel(WheelUp));
+        assert_eq!(el.scroll_offset, 3, "one notch up = WHEEL_LINE_STEP rows back");
+
+        for _ in 0..20 { el.handle_mouse_event(wheel(WheelDown)); }
+        assert_eq!(el.scroll_offset, 16, "clamped at max_scroll, never past the bottom");
+        for _ in 0..20 { el.handle_mouse_event(wheel(WheelUp)); }
+        assert_eq!(el.scroll_offset, 0, "clamped at the top");
+
+        assert!(el.session.state.read().get("clicks").is_none(),
+            "wheel scrolling must never activate an htmx target");
+    }
+
+    #[test]
+    fn test_wheel_ignored_when_content_fits() {
+        // No scrollbar (content fits the viewport) → wheel is a no-op.
+        let (mut el, _btn) = make_el_with_htmx_button("noop:x");
+        *el.session.dims.write() = PtyDimensions { cols: 20, rows: 30 };
+        el.total_height = 10; // <= rows → no scroll
+        el.handle_mouse_event(oxiterm_proto::input::MouseInput {
+            col: 1, row: 1, button: oxiterm_proto::input::MouseButton::WheelDown,
+            action: oxiterm_proto::input::MouseAction::Press, modifiers: Default::default(),
+        });
+        assert_eq!(el.scroll_offset, 0);
     }
 
     #[test]

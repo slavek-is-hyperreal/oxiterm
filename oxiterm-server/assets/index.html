@@ -862,12 +862,13 @@
             sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey);
         }
 
-        // R2: mouse wheel → scroll. Reuses the PageUp/PageDown key path (which the
-        // server maps to ScrollUp/ScrollDown), so SSH is unaffected. Throttled so a
-        // fast wheel / trackpad flick (which fires many per-pixel events) coalesces
-        // into at most one scroll per window instead of flooding the socket.
+        // R2: mouse wheel → line-step scroll. Sends a wheel mouse event (buttons 3/4 =
+        // WheelUp/WheelDown); the server scrolls a few lines per notch (not a whole page,
+        // which is what the PageUp/PageDown keys do). Throttled so a fast wheel / trackpad
+        // flick (which fires many per-pixel events) coalesces into at most one notch per
+        // window instead of flooding the socket. SSH is unaffected (native SGR wheel).
         let lastWheelAt = 0;
-        const WHEEL_THROTTLE_MS = 80;
+        const WHEEL_THROTTLE_MS = 50;
         function onWheel(e) {
             // Always swallow the event so the browser page itself never scrolls.
             e.preventDefault();
@@ -876,8 +877,11 @@
             const now = performance.now();
             if (now - lastWheelAt < WHEEL_THROTTLE_MS) return;
             lastWheelAt = now;
-            // deltaY > 0 = wheel down = scroll down (PageDown/0xF72D); up = 0xF72E.
-            sendKeyPress(e.deltaY > 0 ? 0xF72D : 0xF72E, false, false, false);
+            const rect = canvas.getBoundingClientRect();
+            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
+            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            // button 3 = WheelUp, 4 = WheelDown (see web.rs decode); action 0 = Press.
+            sendMouseEvent(col, row, e.deltaY > 0 ? 4 : 3, 0, e.shiftKey, e.ctrlKey, e.altKey);
         }
 
         function onPopState() {
