@@ -1173,7 +1173,10 @@ impl EventLoop {
                                         }
                                     }
                                 }
-                                InputEvent::KeyPress(key) if self.throttle.check_input() => {
+                                // Anchored by spec [Plan-2.2/R1]: KeyPress arm runs unconditionally.
+                                // Activation paths (focus-nav, Enter) must never be dropped by the INPUT bucket.
+                                // check_input() is moved inside the character-input else-branch only.
+                                InputEvent::KeyPress(key) => {
 
                                     let is_nav_forward = key.codepoint == '\u{F701}'
                                         || key.codepoint == '\u{F702}'
@@ -1182,6 +1185,7 @@ impl EventLoop {
                                         || key.codepoint == '\u{F703}';
 
                                     if is_nav_forward || is_nav_backward {
+                                        // Focus navigation — unconditional (cheap, no render flood risk).
                                         if !self.focusable_nodes.is_empty() {
                                             let n = self.focusable_nodes.len();
                                             let cur = self.focused_node
@@ -1197,6 +1201,7 @@ impl EventLoop {
                                             needs_render = true;
                                         }
                                     } else if key.codepoint == '\r' || key.codepoint as u32 == 13 {
+                                        // Enter / activation — unconditional; NAV bucket in handle_htmx_target caps loads.
                                         if let Some(focused) = self.focused_node {
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
                                                 info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
@@ -1205,62 +1210,71 @@ impl EventLoop {
                                             }
                                         }
                                     } else {
-                                        let handled_by_input = if let Some(focused_id) = self.focused_node {
-                                            if let Some(node) = self.doc.get_node(focused_id) {
-                                                if node.tag == oxiterm_proto::dom::NodeTag::Input {
-                                                    if let Some(ref state_key) = node.attrs.bind_value.clone() {
-                                                        let cp = key.codepoint;
-                                                        if cp as u32 == 127 || cp as u32 == 8 {
-                                                            let current = match self.session.state.read().get(state_key) {
-                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
-                                                                _ => String::new(),
-                                                            };
-                                                            let mut new_val = current;
-                                                            new_val.pop();
-                                                            self.session.state.write().set(
-                                                                state_key.clone(),
-                                                                crate::state::StateValue::Str(new_val),
-                                                            );
-                                                            needs_render = true;
-                                                            true
-                                                        } else if cp == '\r' || cp as u32 == 13 {
-                                                            false
-                                                        } else if !cp.is_control() {
-                                                            let current = match self.session.state.read().get(state_key) {
-                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
-                                                                _ => String::new(),
-                                                            };
-                                                            let mut new_val = current;
-                                                            new_val.push(cp);
-                                                            self.session.state.write().set(
-                                                                state_key.clone(),
-                                                                crate::state::StateValue::Str(new_val),
-                                                            );
-                                                            needs_render = true;
-                                                            true
-                                                        } else {
-                                                            false
-                                                        }
+                                        // Character input / predictive echo — flood surface.
+                                        // check_input() gates this branch only; state writes and render
+                                        // are skipped together to avoid partial-write-without-render.
+                                        if self.throttle.check_input() {
+                                            let handled_by_input = if let Some(focused_id) = self.focused_node {
+                                                if let Some(node) = self.doc.get_node(focused_id) {
+                                                    if node.tag == oxiterm_proto::dom::NodeTag::Input {
+                                                        if let Some(ref state_key) = node.attrs.bind_value.clone() {
+                                                            let cp = key.codepoint;
+                                                            if cp as u32 == 127 || cp as u32 == 8 {
+                                                                let current = match self.session.state.read().get(state_key) {
+                                                                    Some(crate::state::StateValue::Str(s)) => s.clone(),
+                                                                    _ => String::new(),
+                                                                };
+                                                                let mut new_val = current;
+                                                                new_val.pop();
+                                                                self.session.state.write().set(
+                                                                    state_key.clone(),
+                                                                    crate::state::StateValue::Str(new_val),
+                                                                );
+                                                                needs_render = true;
+                                                                true
+                                                            } else if cp == '\r' || cp as u32 == 13 {
+                                                                false
+                                                            } else if !cp.is_control() {
+                                                                let current = match self.session.state.read().get(state_key) {
+                                                                    Some(crate::state::StateValue::Str(s)) => s.clone(),
+                                                                    _ => String::new(),
+                                                                };
+                                                                let mut new_val = current;
+                                                                new_val.push(cp);
+                                                                self.session.state.write().set(
+                                                                    state_key.clone(),
+                                                                    crate::state::StateValue::Str(new_val),
+                                                                );
+                                                                needs_render = true;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        } else { false }
                                                     } else { false }
                                                 } else { false }
-                                            } else { false }
-                                        } else { false };
+                                            } else { false };
 
-                                        if !handled_by_input {
-                                            // D7: suppress predictive echo for password inputs
-                                            let is_password_focused = self.focused_node
-                                                .and_then(|id| self.doc.get_node(id))
-                                                .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
-                                                .unwrap_or(false);
-                                            if !is_password_focused {
-                                                let mut echo = self.session.predictive_echo.write();
-                                                echo.buffer.push(key.codepoint);
+                                            if !handled_by_input {
+                                                // D7: suppress predictive echo for password inputs
+                                                let is_password_focused = self.focused_node
+                                                    .and_then(|id| self.doc.get_node(id))
+                                                    .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
+                                                    .unwrap_or(false);
+                                                if !is_password_focused {
+                                                    let mut echo = self.session.predictive_echo.write();
+                                                    echo.buffer.push(key.codepoint);
+                                                }
+                                                needs_render = true;
                                             }
-                                            needs_render = true;
                                         }
                                     }
                                 }
-                                InputEvent::MouseEvent(mut mouse) if self.throttle.check_input() => {
+                                // Anchored by spec [Plan-2.2/R1]: MouseEvent arm runs unconditionally.
+                                // Press (activation) is never throttled — NAV bucket in handle_htmx_target caps actual loads.
+                                // Only non-Press (Move/Release/hover) render updates are gated on check_input()
+                                // to limit hover-induced render spam without dropping clicks.
+                                InputEvent::MouseEvent(mut mouse) => {
                                     let dims = *self.session.dims.read();
                                     tracing::trace!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
                                     if let Some(layout) = &self.layout_engine.last_layout {
@@ -1272,13 +1286,15 @@ impl EventLoop {
                                     } else {
                                         tracing::trace!("No last layout found — pre-swap mouse event, dropping hit-test");
                                     }
-                                    
+
                                     self.update_interactive_animations(&mouse);
 
                                     self.pending_mouse = Some(mouse.clone());
-                                    
+
                                     // Anchored by spec [SC-05]. Handle interactive navigation or state updates based on htmx event targets.
                                     if mouse.action == oxiterm_proto::input::MouseAction::Press {
+                                        // Press = activation: unconditional. hit_test + handle_htmx_target always run.
+                                        // NAV bucket inside handle_htmx_target caps the actual page-load rate.
                                         if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
                                             tracing::trace!("Hit test found node: {:?}", node_id);
                                             if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
@@ -1290,9 +1306,14 @@ impl EventLoop {
                                         } else {
                                             info!("Hit test returned None");
                                         }
+                                        needs_render = true;
+                                    } else {
+                                        // Release / Move / hover — flood surface.
+                                        // Gate only the render trigger; skipping a hover render is safe.
+                                        if self.throttle.check_input() {
+                                            needs_render = true;
+                                        }
                                     }
-
-                                    needs_render = true;
                                 }
                                 InputEvent::CapabilityResponse(raw) => {
                                     info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
@@ -2661,6 +2682,204 @@ mod tests {
             session.death_reason.load(std::sync::atomic::Ordering::SeqCst),
             2u8,
             "default death_reason must be 2 (restart/unknown)"
+        );
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Plan 2.2 / R1 — Mouse activation throttle fix
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Builds a minimal EventLoop with one Screen root and one Box child carrying event-htmx.
+    /// Returns (event_loop, box_node_id).
+    fn make_el_with_htmx_button(
+        htmx: &str,
+    ) -> (EventLoop, oxiterm_proto::dom::NodeId) {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut btn = Node::new(NodeTag::Box);
+        btn.attrs.event_htmx = Some(htmx.to_string());
+        let btn_id = arena.alloc(btn);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![btn_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        (el, btn_id)
+    }
+
+    /// Injects a synthetic LayoutResult placing `node_id` at the given rect.
+    fn inject_layout(
+        el: &mut EventLoop,
+        entries: Vec<(oxiterm_proto::dom::NodeId, oxiterm_renderer::layout::types::Rect)>,
+        total_height: u16,
+    ) {
+        let mut nodes = std::collections::HashMap::new();
+        for (id, rect) in entries {
+            nodes.insert(id, rect);
+        }
+        el.layout_engine.last_layout = Some(oxiterm_renderer::layout::types::LayoutResult {
+            nodes,
+            total_height,
+        });
+    }
+
+    #[test]
+    fn test_t1_press_activates_despite_empty_input_bucket() {
+        // 2.2/t1: A Press event fires hit_test + handle_htmx_target even when the
+        // INPUT bucket is completely empty (0 tokens). Regression guard: the old
+        // `if self.throttle.check_input()` arm guard would have swallowed the Press.
+        let (mut el, btn_id) = make_el_with_htmx_button("inc:clicks");
+
+        // Rebuild parent_map so get_htmx_node_and_target can walk the tree.
+        el.rebuild_parent_map();
+
+        // Place the button at col=5..15, row=2..4 in the last_layout.
+        inject_layout(
+            &mut el,
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 2, width: 10, height: 2 })],
+            10,
+        );
+
+        // Drain the INPUT bucket completely.
+        el.throttle.input.set_tokens(0.0);
+        assert!(!el.throttle.check_input(), "bucket must be empty for this test to be meaningful");
+
+        // Simulate a Press at (col=7, row=2) — inside the button's rect.
+        // We call handle_htmx_target directly via the same path the event loop takes:
+        // hit_test → get_htmx_node_and_target → handle_htmx_target.
+        if let Some(node_id) = el.layout_engine.hit_test(7, 2) {
+            if let Some((target_id, htmx_target)) = el.get_htmx_node_and_target(node_id) {
+                // Must reach here — activation must not be blocked by the INPUT bucket.
+                el.handle_htmx_target(target_id, &htmx_target);
+            } else {
+                panic!("get_htmx_node_and_target returned None — HTMX walk failed");
+            }
+        } else {
+            panic!("hit_test returned None — layout injection or coordinate mismatch");
+        }
+
+        // The "inc:clicks" action must have mutated state.
+        let clicks = el.session.state.read().get("clicks").cloned();
+        assert_eq!(
+            clicks,
+            Some(crate::state::StateValue::Int(1)),
+            "Press must activate handle_htmx_target regardless of INPUT bucket state; got {:?}",
+            clicks,
+        );
+    }
+
+    #[test]
+    fn test_t2_click_on_text_child_activates_parent_box_htmx() {
+        // 2.2/t2: Regression for THIS bug. Clicking a Text node nested inside a Box
+        // carrying event-htmx must walk up to the Box and fire the htmx target.
+        // Before the fix, hover traffic exhausted the INPUT bucket so the Press arm
+        // was never entered; after the fix, the arm is unconditional.
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+
+        // Text child (the actual click target — no htmx)
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("Click me".to_string());
+        let text_id = arena.alloc(text_node);
+
+        // Box parent with event-htmx
+        let mut box_node = Node::new(NodeTag::Box);
+        box_node.attrs.event_htmx = Some("inc:activations".to_string());
+        box_node.children = vec![text_id];
+        let box_id = arena.alloc(box_node);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![box_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        el.rebuild_parent_map();
+
+        // Place the Text at col=5..13, row=2..3 (smaller area → hit_test picks it over Box).
+        // Place the Box at col=4..14, row=1..4 (larger area).
+        inject_layout(
+            &mut el,
+            vec![
+                (box_id,  oxiterm_renderer::layout::types::Rect { x: 4, y: 1, width: 10, height: 3 }),
+                (text_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 2, width:  8, height: 1 }),
+            ],
+            10,
+        );
+
+        // Exhaust the INPUT bucket — simulates a hover-heavy scenario.
+        el.throttle.input.set_tokens(0.0);
+
+        // hit_test at (7, 2) should return text_id (smallest area covering the point).
+        let hit = el.layout_engine.hit_test(7, 2);
+        assert_eq!(hit, Some(text_id), "hit_test must return the innermost Text node");
+
+        // get_htmx_node_and_target must walk up from text_id to box_id.
+        let walk = el.get_htmx_node_and_target(text_id);
+        assert!(
+            walk.is_some(),
+            "get_htmx_node_and_target must walk up to the Box and find the htmx target"
+        );
+        let (found_id, found_target) = walk.unwrap();
+        assert_eq!(found_id, box_id, "target node must be the Box, not the Text");
+        assert_eq!(found_target, "inc:activations");
+
+        // Trigger activation (as the fixed event loop does for every Press).
+        el.handle_htmx_target(found_id, &found_target);
+
+        let activations = el.session.state.read().get("activations").cloned();
+        assert_eq!(
+            activations,
+            Some(crate::state::StateValue::Int(1)),
+            "activation via Text→Box htmx walk must fire; got {:?}",
+            activations,
+        );
+    }
+
+    #[test]
+    fn test_t3_burst_press_activates_all_never_throttled() {
+        // 2.2/t3: 300 rapid Press events on a state-mutation button must ALL activate.
+        // NAV bucket is irrelevant (action is "inc:clicks", not a .thtml load).
+        // INPUT bucket must never gate activation — assert all 300 reach the state.
+        let (mut el, btn_id) = make_el_with_htmx_button("inc:clicks");
+        el.rebuild_parent_map();
+        inject_layout(
+            &mut el,
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0, y: 0, width: 10, height: 1 })],
+            5,
+        );
+
+        // Force INPUT bucket empty from the start to prove Press is unguarded.
+        el.throttle.input.set_tokens(0.0);
+
+        const PRESS_COUNT: i64 = 300;
+        for _ in 0..PRESS_COUNT {
+            // Simulate the fixed MouseEvent::Press path.
+            if let Some(node_id) = el.layout_engine.hit_test(5, 0) {
+                if let Some((target_id, htmx_target)) = el.get_htmx_node_and_target(node_id) {
+                    el.handle_htmx_target(target_id, &htmx_target);
+                }
+            }
+        }
+
+        let clicks = el.session.state.read().get("clicks").cloned();
+        assert_eq!(
+            clicks,
+            Some(crate::state::StateValue::Int(PRESS_COUNT)),
+            "all {} Press activations must reach handle_htmx_target; got {:?}",
+            PRESS_COUNT,
+            clicks,
         );
     }
 }

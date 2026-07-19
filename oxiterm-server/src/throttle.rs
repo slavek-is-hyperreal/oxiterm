@@ -106,8 +106,12 @@ impl EventThrottle {
         }
     }
 
-    /// Checks the INPUT budget. Returns true if allowed.
-    /// Throttled INPUT events are silently dropped (no 0x34).
+    /// Checks the INPUT budget for render-side effects. Returns true if allowed.
+    ///
+    /// Covers: hover/Move/Release render trigger, character-input state write + echo.
+    /// Never gates `Press` activation or navigation keypresses — those paths are unconditional
+    /// (see [Plan-2.2/R1]). Expensive work (nav, render) is capped by the NAV bucket and
+    /// frame coalescing respectively.
     pub fn check_input(&mut self) -> bool {
         self.input.try_consume()
     }
