@@ -38,7 +38,13 @@ pub struct LayoutResult {
 }
 
 impl LayoutResult {
-    /// Computes offset values needed to center the first child of the root node on the screen.
+    /// Computes offset values needed to center the content of the root node on the screen.
+    ///
+    /// Horizontal centering tracks the first child's width. Vertical centering tracks the
+    /// *total content extent* ([`Self::total_height`]) — NOT the first child's height — so
+    /// that overflowing content (taller than the viewport) gets `oy = 0`. Centering on the
+    /// first child's height would shift a tall document downward and steal exactly that many
+    /// rows from the scroll range, hiding the bottom of the document from the scroll clamp.
     pub fn get_centering_offset(&self, doc: &crate::document::THTMLDocument, view_w: u16, view_h: u16) -> (u16, u16) {
         let target_node_id = if let Some(root_node) = doc.get_node(doc.root) {
             root_node.children.first().copied().unwrap_or(doc.root)
@@ -46,13 +52,13 @@ impl LayoutResult {
             doc.root
         };
 
-        if let Some(rect) = self.nodes.get(&target_node_id) {
-            let ox = if view_w > rect.width { (view_w - rect.width) / 2 } else { 0 };
-            let oy = if view_h > rect.height { (view_h - rect.height) / 2 } else { 0 };
-            (ox, oy)
+        let ox = if let Some(rect) = self.nodes.get(&target_node_id) {
+            if view_w > rect.width { (view_w - rect.width) / 2 } else { 0 }
         } else {
-            (0, 0)
-        }
+            0
+        };
+        let oy = if view_h > self.total_height { (view_h - self.total_height) / 2 } else { 0 };
+        (ox, oy)
     }
 }
 

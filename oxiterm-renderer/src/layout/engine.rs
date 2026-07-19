@@ -543,6 +543,79 @@ mod tests {
     }
 
     #[test]
+    fn test_total_height_includes_border_below_last_text_line() {
+        // t1: a bordered box whose bottom border sits a row BELOW its last text line.
+        // total_height (the scroll extent) must include that border row, not stop at the
+        // text. Box = top border (1) + text line (1) + bottom border (1) = 3 rows.
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        // Fixed-height parent (like a real page's top box) that the bordered box overflows,
+        // so the box's bottom border — not the parent — is the document's lowest row.
+        let mut parent = Node::new(NodeTag::Box);
+        parent.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
+        parent.style.width = Some(40);
+        parent.style.height = Some(2);
+        let parent_id = doc.arena.alloc(parent);
+        doc.append_child(doc.root, parent_id).unwrap();
+
+        let mut boxed = Node::new(NodeTag::Box);
+        boxed.style.border = Some(oxiterm_proto::style::BorderStyle {
+            fg: oxiterm_proto::style::AnsiColor::Reset,
+            chars: oxiterm_proto::style::BorderChars::single(),
+        });
+        let box_id = doc.arena.alloc(boxed);
+        doc.append_child(parent_id, box_id).unwrap();
+
+        let mut text_node = Node::new(NodeTag::Text);
+        text_node.text = Some("hi".to_string());
+        let text_id = doc.arena.alloc(text_node);
+        doc.append_child(box_id, text_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let text_rect = result.nodes.get(&text_id).unwrap();
+        // Box = top border (1) + text (1) + bottom border (1) = 3 rows, overflowing the
+        // height-2 parent. The bottom border row sits strictly below the last text line.
+        assert!(text_rect.y + text_rect.height <= result.total_height - 1,
+            "bottom border row must sit below the last text line");
+        assert_eq!(result.total_height, 3, "scroll extent must include the bottom border row");
+    }
+
+    #[test]
+    fn test_centering_offset_tracks_total_extent_not_first_child() {
+        // Regression for the "borders cut off" scroll bug: a first child that is SHORTER
+        // than the overflowing content must not seed a vertical centering offset, which
+        // would shift the document down and steal that many rows from the scroll range.
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        // First child is only 5 tall, but holds a 20-tall child that overflows it.
+        let mut outer = Node::new(NodeTag::Box);
+        outer.style.width = Some(40);
+        outer.style.height = Some(5);
+        let outer_id = doc.arena.alloc(outer);
+        doc.append_child(doc.root, outer_id).unwrap();
+
+        let mut inner = Node::new(NodeTag::Box);
+        inner.style.width = Some(40);
+        inner.style.height = Some(20);
+        let inner_id = doc.arena.alloc(inner);
+        doc.append_child(outer_id, inner_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(result.total_height, 20, "extent is the overflowing child, not the 5-tall first child");
+
+        // Viewport shorter than the content: NO vertical offset (was (10-5)/2 = 2 before).
+        let (ox, oy) = result.get_centering_offset(&doc, 80, 10);
+        assert_eq!(oy, 0, "overflowing content must not be pushed down");
+        assert_eq!(ox, 20, "horizontal centering still tracks the first child width");
+
+        // Viewport taller than the content: center on the TOTAL extent (20), not the child.
+        let (_, oy_fits) = result.get_centering_offset(&doc, 80, 30);
+        assert_eq!(oy_fits, (30 - 20) / 2);
+    }
+
+    #[test]
     fn test_bind_show_layout() {
         let mut engine = LayoutEngine::new();
         let mut doc = THTMLDocument::new();

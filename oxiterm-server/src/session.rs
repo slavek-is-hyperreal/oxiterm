@@ -581,6 +581,38 @@ pub struct EventLoop {
     pub throttle: crate::throttle::EventThrottle,
 }
 
+/// Scroll status indicator under the "position" model: the line fraction, the bar
+/// fill, and the percentage are all derived from a single `scroll_offset / max_scroll`
+/// ratio, so they are mutually consistent by construction (0% / first position at the
+/// top, 100% / last position at the bottom). `max_scroll` is derived from the layout
+/// extent (`total_height`), the same height that drives vertical centering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScrollIndicator {
+    /// 1-indexed current scroll position (`1..=steps`).
+    position: u16,
+    /// Total number of distinct scroll positions (`max_scroll + 1`).
+    steps: u16,
+    /// Progress percentage, `0..=100`.
+    percent: u8,
+    /// Number of filled cells in a `bar_width`-wide progress bar.
+    filled: usize,
+}
+
+impl ScrollIndicator {
+    fn new(scroll_offset: u16, total_height: u16, viewport_h: u16, bar_width: usize) -> Self {
+        let max_scroll = total_height.saturating_sub(viewport_h);
+        let offset = scroll_offset.min(max_scroll);
+        let (percent, filled) = if max_scroll > 0 {
+            let pct = (offset as f32 / max_scroll as f32 * 100.0).round() as u8;
+            let filled = ((offset as usize * bar_width) / max_scroll as usize).min(bar_width);
+            (pct, filled)
+        } else {
+            (0, 0)
+        };
+        Self { position: offset + 1, steps: max_scroll + 1, percent, filled }
+    }
+}
+
 struct EventLoopGuard {
     session: Arc<ClientSession>,
 }
@@ -1554,30 +1586,23 @@ impl EventLoop {
                         let last_row = dims.rows.saturating_sub(1);
                         let mut status_parts = Vec::new();
                         
+                        let max_scroll = self.total_height.saturating_sub(viewport_h);
                         if self.scroll_offset > 0 {
                             status_parts.push("▲ PgUp".to_string());
                         }
-                        if self.scroll_offset < self.total_height.saturating_sub(viewport_h) {
+                        if self.scroll_offset < max_scroll {
                             status_parts.push("▼ PgDn".to_string());
                         }
-                        
-                        let current_row = self.scroll_offset + 1;
-                        status_parts.push(format!("line {}/{}", current_row, self.total_height));
-                        
-                        let max_scroll = self.total_height.saturating_sub(viewport_h);
-                        let pct = if max_scroll > 0 {
-                            (self.scroll_offset as f32 / max_scroll as f32 * 100.0).round() as u8
-                        } else {
-                            0
-                        };
-                        
+
+                        // Position model: line fraction, bar fill, and percentage all
+                        // derive from the SAME scroll_offset/max_scroll, so they can never
+                        // disagree. max_scroll comes from the layout extent (total_height),
+                        // matching the vertical centering in `get_centering_offset`.
                         let bar_width = 8;
-                        let filled_width = if max_scroll > 0 {
-                            (self.scroll_offset as usize * bar_width) / max_scroll as usize
-                        } else {
-                            0
-                        };
-                        let filled_width = filled_width.min(bar_width);
+                        let ind = ScrollIndicator::new(self.scroll_offset, self.total_height, viewport_h, bar_width);
+                        status_parts.push(format!("line {}/{}", ind.position, ind.steps));
+                        let pct = ind.percent;
+                        let filled_width = ind.filled;
                         let bar: String = std::iter::repeat('█').take(filled_width)
                             .chain(std::iter::repeat('░').take(bar_width - filled_width))
                             .collect();
@@ -1694,6 +1719,41 @@ mod tests {
     use super::*;
     use oxiterm_renderer::render::buffer::CellBuffer;
     use oxiterm_renderer::FrameSink;
+
+    #[test]
+    fn test_scroll_indicator_is_mutually_consistent() {
+        // t2: line X/Y, bar fill, and percentage all come from one total_height, so the
+        // fraction and the percentage agree at top / middle / bottom.
+        let total_height = 33u16;
+        let viewport_h = 30u16; // max_scroll = 3 → 4 positions
+        let bar_width = 8usize;
+
+        let max_scroll = total_height - viewport_h;
+        assert_eq!(max_scroll, 3);
+
+        let check = |offset: u16, exp_pos: u16, exp_pct: u8| {
+            let ind = ScrollIndicator::new(offset, total_height, viewport_h, bar_width);
+            assert_eq!(ind.steps, max_scroll + 1, "denominator is the position count");
+            assert_eq!(ind.position, exp_pos);
+            assert_eq!(ind.percent, exp_pct);
+            // Percentage and the line fraction tell the same story: both are the same
+            // 0-indexed progress out of `max_scroll`.
+            let progress = ((ind.position - 1) as f32 / (ind.steps - 1) as f32 * 100.0).round() as u8;
+            assert_eq!(ind.percent, progress, "percent must equal the line-fraction progress");
+            // Bar fill agrees with the percentage.
+            let expected_filled = (ind.percent as usize * bar_width) / 100;
+            assert!((ind.filled as i32 - expected_filled as i32).abs() <= 1,
+                "bar fill must track the percentage");
+        };
+
+        check(0, 1, 0);   // top: line 1/4, 0%
+        check(1, 2, 33);  // middle: line 2/4, 33%
+        check(3, 4, 100); // bottom: line 4/4, 100%
+
+        // Over-scroll is clamped to the bottom position, never past 100%.
+        let clamped = ScrollIndicator::new(99, total_height, viewport_h, bar_width);
+        assert_eq!((clamped.position, clamped.percent), (4, 100));
+    }
 
     #[test]
     fn test_predictive_echo() {
