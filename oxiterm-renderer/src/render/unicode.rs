@@ -39,6 +39,22 @@ impl UnicodeWidthCache {
     }
 }
 
+/// Returns `true` for East-Asian *Ambiguous*-width characters — glyphs that render
+/// as 1 cell on most terminals but 2 cells on CJK/ambiguous-wide terminals (e.g. the
+/// arrows `←`/`→`, many symbols). Detected by `unicode-width` disagreeing with itself
+/// between its default and CJK width tables.
+///
+/// These are unsafe inside a clickable label: the visible text drifts out from under
+/// its hit box on terminals that render them wide. Unconditionally wide glyphs (like
+/// emoji) are NOT ambiguous — both tables agree — so they are safe.
+pub fn is_ambiguous_width(ch: char) -> bool {
+    use unicode_width::UnicodeWidthChar;
+    match (ch.width(), ch.width_cjk()) {
+        (Some(a), Some(b)) => a != b,
+        _ => false,
+    }
+}
+
 /// Appends a Virtual Terminal Modifier (VTM) character sequence to the buffer.
 ///
 /// Modifiers utilize the Supplementary Private Use Area-B range (U+D0000 - U+D08F6)
@@ -58,6 +74,19 @@ mod tests {
         assert_eq!(cache.width('A'), 1);
         assert_eq!(cache.width('🚀'), 2);
         assert_eq!(cache.width('\n'), 0);
+    }
+
+    #[test]
+    fn test_is_ambiguous_width() {
+        // Ambiguous: narrow by default, wide in CJK context.
+        assert!(is_ambiguous_width('←')); // U+2190
+        assert!(is_ambiguous_width('→')); // U+2192
+        assert!(is_ambiguous_width('×')); // U+00D7
+        // Unambiguous: plain ASCII and unconditionally-wide emoji.
+        assert!(!is_ambiguous_width('<'));
+        assert!(!is_ambiguous_width('x'));
+        assert!(!is_ambiguous_width('B'));
+        assert!(!is_ambiguous_width('🚀')); // always width 2
     }
 
     #[test]

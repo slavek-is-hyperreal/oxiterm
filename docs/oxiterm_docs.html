@@ -138,7 +138,7 @@ svg text { font-family: var(--sans); }
 
 <rect x="10" y="120" width="130" height="44" rx="8" fill="#0c1e2e" stroke="#0ea5e9" stroke-width="0.8"/>
 <text x="75" y="142" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="500">Web Browser</text>
-<text x="75" y="156" text-anchor="middle" font-size="10" fill="#64748b">xterm.js + WASM</text>
+<text x="75" y="156" text-anchor="middle" font-size="10" fill="#64748b">WebTerminal (WASM Canvas)</text>
 
 <rect x="10" y="180" width="130" height="44" rx="8" fill="#120e1e" stroke="#7c3aed" stroke-width="0.8"/>
 <text x="75" y="202" text-anchor="middle" font-size="12" fill="#a78bfa" font-weight="500">Screen Reader</text>
@@ -523,7 +523,7 @@ svg text { font-family: var(--sans); }
   <button class="term-tab active" onclick="showTerm('kitty')">🐱 Kitty Protocol</button>
   <button class="term-tab" onclick="showTerm('sixel')">📊 Sixel (iTerm2/mlterm)</button>
   <button class="term-tab" onclick="showTerm('unicode')">🔷 Unicode half-blocks</button>
-  <button class="term-tab" onclick="showTerm('web')">🌐 Web (xterm.js + WASM)</button>
+  <button class="term-tab" onclick="showTerm('web')">🌐 Web (WASM Canvas)</button>
   <button class="term-tab" onclick="showTerm('a11y')">♿ A11y (Screen Reader)</button>
 </div>
 
@@ -681,8 +681,8 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 
 <!-- WEB -->
 <div id="term-web" class="term-panel">
-<h2>Web — xterm.js + WASM Canvas</h2>
-<div class="notice-green notice">✓ Działa w każdej przeglądarce bez instalacji. Frontend: xterm.js. Renderer: <code>oxiterm-web</code> WASM.</div>
+<h2>Web — WebTerminal WASM Canvas</h2>
+<div class="notice-green notice">✓ Działa w każdej przeglądarce bez instalacji. Frontend: własny klient <code>oxiterm-web</code> (klasa <code>WebTerminal</code>) rysujący siatkę komórek na HTML <code>&lt;canvas&gt;</code> — <strong>nie</strong> używa xterm.js.</div>
 <div class="diagram-wrap">
 <svg width="100%" viewBox="0 0 860 360" role="img">
 <title>Web rendering pipeline</title>
@@ -741,7 +741,7 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 
 <rect x="445" y="242" width="390" height="60" rx="7" fill="#0a1e12" stroke="#16a34a" stroke-width="0.8"/>
 <text x="640" y="262" text-anchor="middle" font-size="11" fill="#4ade80" font-weight="500">Input path (klient → serwer)</text>
-<text x="640" y="278" text-anchor="middle" font-size="10" fill="#64748b">xterm.js onKey → WS binary → serwer → ReactorThread</text>
+<text x="640" y="278" text-anchor="middle" font-size="10" fill="#64748b">canvas onKeyDown → WS binary → serwer → ReactorThread</text>
 <text x="640" y="292" text-anchor="middle" font-size="10" fill="#64748b">resize Observer → WS resize msg → InputEvent::Resize</text>
 </svg>
 </div>
@@ -1309,6 +1309,7 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 <tr><td>&lt;button&gt;</td><td>Przycisk z akcją HTMX. Enter lub klik wykonuje event-htmx.</td><td>event-htmx="inc:count"</td></tr>
 <tr><td>&lt;img&gt;</td><td>SVG/Lottie/Rive/PNG. Rasteryzacja w locie. Width/height w char cells.</td><td>src="file.svg", style="width:20;height:10"</td></tr>
 <tr><td>&lt;video&gt;</td><td>MP4/inne przez ffmpeg pipe. Frame-rate = animation tick (15fps).</td><td>src="clip.mp4", style="width:40;height:20"</td></tr>
+<tr><td>&lt;for&gt;</td><td>Pętla-szablon. Klonuje swoje dziecko raz na element listy (stan typu List); <code>{item}</code> w tekście podmieniane na wartość.</td><td>each="listKey"</td></tr>
 <tr><td>&lt;style&gt;</td><td>Blok TCSS. Wyciągany przed parserem, aplikowany jako kaskada.</td><td>—</td></tr>
 </table>
 </div>
@@ -1322,11 +1323,10 @@ Pełne bloki: ▀ ▄ █ ░ ▒ ▓ + box-drawing chars: ─ │ ┌ ┐ └ �
 <tr><td>flex-direction</td><td>row (domyślnie) | column</td></tr>
 <tr><td>align-items</td><td>flex-start | flex-end | center | stretch</td></tr>
 <tr><td>justify-content</td><td>flex-start | flex-end | center | space-between | space-around</td></tr>
-<tr><td>border</td><td>single | rounded | double + kolor</td></tr>
-<tr><td>font-weight</td><td>bold (mapuje na ANSI SGR 1)</td></tr>
-<tr><td>text-decoration</td><td>underline (SGR 4)</td></tr>
-<tr><td>font-style</td><td>italic (SGR 3)</td></tr>
+<tr><td>border / border-style / border-color</td><td>single | rounded | double + kolor</td></tr>
+<tr><td>wrap</td><td>word — zawijanie tekstu &lt;text&gt; do szerokości elementu (na granicach słów)</td></tr>
 </table>
+<p style="font-size:11px;color:#64748b;margin-top:6px;">Uwaga: <code>font-weight</code>, <code>font-style</code> i <code>text-decoration</code> nie są obecnie obsługiwane przez TCSS (parser ich nie rozpoznaje).</p>
 </div>
 </div>
 

@@ -92,9 +92,18 @@ impl DiffEngine {
                     }
 
                     commands.push(AnsiCommand::WriteChar(next_cell.ch));
-                    
+
                     cur_x = Some(x + char_w);
-                    if cur_x.unwrap() >= next.width {
+                    // East-Asian *Ambiguous*-width glyphs (e.g. — ← → ×) advance 1 column
+                    // in our model but may render 2 on the client terminal. Force the next
+                    // cell to emit an absolute cursor move so that desync cannot accumulate
+                    // and shift the rest of the row — which would push a right-aligned
+                    // clickable label (e.g. "< Back") off its hit box. The next cell then
+                    // overwrites any overflow from the wide glyph, keeping the grid aligned.
+                    if crate::render::unicode::is_ambiguous_width(next_cell.ch) {
+                        cur_x = None;
+                        cur_y = None;
+                    } else if cur_x.unwrap() >= next.width {
                         cur_x = None;
                         cur_y = None;
                     }
@@ -368,6 +377,25 @@ mod tests {
         assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
         assert!(matches!(cmds[1], AnsiCommand::WriteChar('🚀')));
         assert!(matches!(cmds[2], AnsiCommand::WriteChar('A')));
+    }
+
+    #[test]
+    fn test_diff_reanchors_after_ambiguous_width() {
+        // An ambiguous-width glyph (— may render 1 or 2 cells) must force an absolute
+        // cursor move before the next cell, so terminal-side desync can't shift the row.
+        let prev = CellBuffer::new(10, 1);
+        let mut next = CellBuffer::new(10, 1);
+        next.cells[0].ch = '—'; // U+2014, East-Asian Ambiguous
+        next.cells[1].ch = 'B';
+        let cmds = DiffEngine::diff(&prev, &next);
+        assert!(matches!(cmds[0], AnsiCommand::MoveCursor(0, 0)));
+        assert!(matches!(cmds[1], AnsiCommand::WriteChar('—')));
+        assert!(
+            matches!(cmds[2], AnsiCommand::MoveCursor(1, 0)),
+            "must re-anchor after ambiguous glyph, got {:?}",
+            cmds[2]
+        );
+        assert!(matches!(cmds[3], AnsiCommand::WriteChar('B')));
     }
 
     #[test]

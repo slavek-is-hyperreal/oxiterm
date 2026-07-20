@@ -71,4 +71,4 @@ OxiTerm also launches a Web/WebSocket server alongside SSH. Open your browser an
 ```
 http://localhost:8080/
 ```
-The browser view embeds `xterm.js` to render the canvas-based visual interface.
+The browser view uses OxiTerm's own Rust→WASM `WebTerminal` client to paint the cell grid onto an HTML `<canvas>` (no xterm.js involved).

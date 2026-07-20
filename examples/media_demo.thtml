@@ -15,7 +15,7 @@
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
         <text style="fg: #f87171; height: 1;">🖼️ Graphics and Animations — SVG · Lottie · PNG</text>
-        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">← Back</text>
+        <text style="fg: #475569; height: 1;" event-htmx="hello.thtml">&lt; Back</text>
     </box>
 
     <box style="flex-direction: row; padding: 1; flex: 1;">

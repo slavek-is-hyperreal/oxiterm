@@ -26,7 +26,7 @@ button { border-style: single; }
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #334155;">
         <text style="fg: #38bdf8; height: 1;">🧪 Showcase</text>
-        <text class="muted" event-htmx="hello.thtml">← Back</text>
+        <text class="muted" event-htmx="hello.thtml">&lt; Back</text>
     </box>
 
     <!-- Main Content (Vertical Stack) -->

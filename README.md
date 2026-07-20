@@ -32,9 +32,12 @@ ssh localhost -p 2222
 
 ### 🚀 Quick Start (THTML Example)
 ```html
-<box style="background-color: #1e293b; padding: 2;">
-  <text style="color: #38bdf8; font-weight: bold;">Counter: <text bind-state="count">0</text></text>
-  <button event-htmx="inc:count">[ + ] Increment</button>
+<box style="bg: #1e293b; padding: 2; flex-direction: column;">
+  <box style="flex-direction: row;">
+    <text style="fg: #38bdf8; height: 1;">Counter: </text>
+    <text bind-state="count" style="fg: #38bdf8; height: 1;">0</text>
+  </box>
+  <button event-htmx="inc:count" style="fg: #4ade80; height: 1;">[ + ] Increment</button>
   <img src="mascot.svg" style="width: 20; height: 10;" />
 </box>
 ```

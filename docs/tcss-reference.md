@@ -40,9 +40,7 @@ Subsequent rules with the same priority overwrite previous ones (determined by t
 | `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
 | `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
 | `border-color` | Color | Specifies or overrides the border color. |
-| `font-weight` | `bold` | Triggers bold text formatting (ANSI SGR 1). |
-| `font-style` | `italic` | Triggers italic text formatting (ANSI SGR 3). |
-| `text-decoration` | `underline` | Triggers underlined text formatting (ANSI SGR 4). |
+| `wrap` | `word` | Enables word-wrapping of `<text>` content to the element's width. With `wrap: word` (and a constrained width) the text flows onto multiple rows at word boundaries; without it text stays on a single row. |
 
 ---
 
@@ -102,5 +100,6 @@ To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
 
 * **No Units:** Dimensions, margins, and paddings are specified as pure integers (representing terminal character cells). Units such as `px`, `em`, `rem`, `%` are not supported.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
-* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported in TCSS because the terminal enforces a fixed-width monospace font. However, basic formatting options such as `font-weight: bold;`, `font-style: italic;`, and `text-decoration: underline;` are fully supported.
+* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported in TCSS because the terminal enforces a fixed-width monospace font.
+* **No Text Styling Properties (yet):** `font-weight`, `font-style`, and `text-decoration` are **not** currently exposed by TCSS — the parser does not recognise them and they have no effect. (The renderer's cell format can carry bold/italic/underline, but no TCSS property maps to it today.)
 * **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.

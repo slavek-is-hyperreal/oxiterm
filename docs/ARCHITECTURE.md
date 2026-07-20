@@ -9,11 +9,12 @@ This document details the architecture of the OxiTerm system — a TUI (Terminal
 The THTML markup language is used to declaratively describe the structure of the terminal interface.
 * **`<screen>`**: The implicit top-level container (root) of the document, representing the entire terminal workspace.
 * **`<box>`**: A universal layout container (equivalent to `<div>`). Supports full Flexbox positioning.
-* **`<text>`**: Represents text content. Supports automatic line wrapping (future/work-in-progress), Unicode characters, double-width characters (e.g. CJK), and emojis.
+* **`<text>`**: Represents text content. Supports word-wrapping (`wrap: word`, resolved via Taffy measure functions so height follows the wrapped width), Unicode characters, double-width characters (e.g. CJK), and emojis.
 * **`<input>`**: An interactive text field for keyboard character input.
 * **`<button>`**: A focusable button that triggers action events.
 * **`<img>`**: Embeds SVG vector graphics (`.svg`), Lottie animations (`.json`), and interactive Rive controls (`.riv`). Vector graphics are rasterized in real-time to pixels using `resvg` and `tiny-skia` libraries, and then transmitted using the terminal's graphics protocol.
 * **`<video>`**: Enables smooth video playback (`.mp4` and others). Video frames are decoded and rasterized in the background using the `ffmpeg` tool.
+* **`<for>`**: A loop template. Its single child is cloned once per element of a `List` state value named by the `each` attribute; `{item}` in the template's text is substituted per iteration, and the block re-expands reactively on state change.
 
 ---
 
@@ -55,7 +56,7 @@ graph TD
 
 OxiTerm supports two independent TUI image distribution channels:
 * **SSH Server (russh):** An asynchronous SSH daemon. It negotiates PTY parameters (window dimensions, Kitty Graphics, SGR mouse) and captures input byte streams from the client, returning compressed ANSI diffs.
-* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers using the xterm.js terminal on the frontend.
+* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers. The frontend is a custom Rust→WASM client (`oxiterm-web`, class `WebTerminal`) that decodes the server's binary cell-diff stream and paints it onto an HTML `<canvas>` — it does **not** use xterm.js. Media (SVG/Lottie/Rive/video) is overlaid as positioned DOM elements above the canvas.
 
 ---
 

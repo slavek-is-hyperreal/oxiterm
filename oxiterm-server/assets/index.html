@@ -341,6 +341,17 @@
         let currentSocket = null;   // 2.5/R2: mutable ref; set by connect()
         let term = null;
         let charWidth = 0, charHeight = 0;
+        // Actual on-screen cell size (CSS px) after device-pixel rounding — this is the
+        // grid the canvas truly renders on. charWidth/charHeight are the raw font metrics
+        // and can differ by the rounding; using them for hit-mapping causes a per-column
+        // error that accumulates toward the right edge (clicks on right-aligned labels miss).
+        let cellW = 0, cellH = 0;
+        // Pure pixel→cell mapping (1-based, matching the server's grid). MUST be the exact
+        // inverse of how content is positioned on the canvas (grid cell `c` is drawn at
+        // pixel `origin + c*cell`), and MUST use the true rendered cell size `cellW`/`cellH`
+        // — not the raw font metric — or clicks drift off their targets toward the edges.
+        function clientXToCol(clientX, rectLeft, cw) { return Math.floor((clientX - rectLeft) / cw) + 1; }
+        function clientYToRow(clientY, rectTop,  ch) { return Math.floor((clientY - rectTop)  / ch) + 1; }
         let currentCols = 0, currentRows = 0;
         let isMobile = window.innerWidth < 800;
         let dpr = window.devicePixelRatio || 1;
@@ -441,8 +452,8 @@
         }
 
         function spawnMediaElement(cached, col, row, w, h) {
-            const l = col * charWidth, t = row * charHeight;
-            const pw = w * charWidth, ph = h * charHeight;
+            const l = col * cellW, t = row * cellH;
+            const pw = w * cellW, ph = h * cellH;
             const css = `left:${l}px;top:${t}px;width:${pw}px;height:${ph}px;`;
             if (cached.type === 'lottie') {
                 const div = document.createElement('div');
@@ -477,10 +488,10 @@
         function repositionMedia() {
             for (const m of activeMedia) {
                 if (!m.element) continue;
-                m.element.style.left   = m.col   * charWidth  + 'px';
-                m.element.style.top    = m.row   * charHeight + 'px';
-                m.element.style.width  = m.width * charWidth  + 'px';
-                m.element.style.height = m.height * charHeight + 'px';
+                m.element.style.left   = m.col   * cellW + 'px';
+                m.element.style.top    = m.row   * cellH + 'px';
+                m.element.style.width  = m.width * cellW + 'px';
+                m.element.style.height = m.height * cellH + 'px';
             }
         }
 
@@ -719,6 +730,10 @@
             // Integer device-pixel cell size
             const cellWDevice = Math.max(1, Math.round(charWidth  * dpr));
             const cellHDevice = Math.max(1, Math.round(charHeight * dpr));
+            // The true rendered cell size in CSS px — use this (not charWidth/charHeight)
+            // for anything that maps pixels ↔ grid cells (clicks, wheel, media overlays).
+            cellW = cellWDevice / dpr;
+            cellH = cellHDevice / dpr;
 
             const cols = Math.max(1, Math.floor((width  * dpr) / cellWDevice));
             const rows = Math.max(1, Math.floor((height * dpr) / cellHDevice));
@@ -838,8 +853,8 @@
         function onMouseDown(e) {
             if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const rect = canvas.getBoundingClientRect();
-            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
-            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            const col = clientXToCol(e.clientX, rect.left, cellW);
+            const row = clientYToRow(e.clientY, rect.top, cellH);
             let button = 5;
             if (e.button === 0) button = 0;
             if (e.button === 1) button = 1;
@@ -852,8 +867,8 @@
         function onMouseUp(e) {
             if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const rect = canvas.getBoundingClientRect();
-            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
-            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            const col = clientXToCol(e.clientX, rect.left, cellW);
+            const row = clientYToRow(e.clientY, rect.top, cellH);
             let button = 5;
             if (e.button === 0) button = 0;
             if (e.button === 1) button = 1;
@@ -878,8 +893,8 @@
             if (now - lastWheelAt < WHEEL_THROTTLE_MS) return;
             lastWheelAt = now;
             const rect = canvas.getBoundingClientRect();
-            const col = Math.floor((e.clientX - rect.left) / charWidth) + 1;
-            const row = Math.floor((e.clientY - rect.top)  / charHeight) + 1;
+            const col = clientXToCol(e.clientX, rect.left, cellW);
+            const row = clientYToRow(e.clientY, rect.top, cellH);
             // button 3 = WheelUp, 4 = WheelDown (see web.rs decode); action 0 = Press.
             sendMouseEvent(col, row, e.deltaY > 0 ? 4 : 3, 0, e.shiftKey, e.ctrlKey, e.altKey);
         }
@@ -905,6 +920,12 @@
             // passive:false so preventDefault() can stop the page from scrolling.
             canvas.addEventListener('wheel',     onWheel, { passive: false });
 
+            // NOTE: resize is intentionally NOT debounced. The canvas grid must stay in
+            // lock-step with the size the server renders for — debouncing lets server frames
+            // land on a stale/unresized canvas (overlapping/garbled output, and mobile↔desktop
+            // layouts stacked on each other). The per-tick rebuild flickers but is correct.
+            // Eliminating the flicker needs coordinated resize (client acks new size before
+            // accepting frames) — a bigger change, not a client-only debounce.
             const resizeObserver = new ResizeObserver(() => resizeTerminal());
             resizeObserver.observe(container);
 
@@ -917,6 +938,11 @@
         }
 
         boot();
+
+        // The server replaces this marker with the coordinate round-trip tests ONLY when
+        // started in web-test mode (OXITERM_WEB_TEST); in normal serving it stays an inert
+        // comment, so no test code is shipped to real users.
+        /*__OXITERM_WEB_TEST_HOOK__*/
     </script>
 </body>
 </html>

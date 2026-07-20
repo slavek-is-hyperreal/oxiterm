@@ -26,6 +26,29 @@ pub mod web_impl {
     const HTML_ASSET: &[u8] = include_bytes!("../assets/index.html");
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
+    /// Client-side coordinate round-trip tests. Compiled into the binary but injected into
+    /// the served page ONLY in web-test mode (`OXITERM_WEB_TEST`), so real users never load it.
+    const WEB_TEST_JS: &str = include_str!("../assets/web_coord_tests.js");
+    /// Marker inside `index.html` replaced with [`WEB_TEST_JS`] in web-test mode.
+    const WEB_TEST_MARKER: &str = "/*__OXITERM_WEB_TEST_HOOK__*/";
+
+    /// Whether the web client should ship its in-browser test suite (dev/CI only).
+    fn web_test_enabled() -> bool {
+        std::env::var("OXITERM_WEB_TEST")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
+    /// Returns the HTML to serve at `/`, injecting the coordinate test suite at the marker
+    /// when in web-test mode; otherwise the marker stays an inert comment.
+    fn index_html() -> std::borrow::Cow<'static, [u8]> {
+        if web_test_enabled() {
+            let injected = String::from_utf8_lossy(HTML_ASSET).replace(WEB_TEST_MARKER, WEB_TEST_JS);
+            std::borrow::Cow::Owned(injected.into_bytes())
+        } else {
+            std::borrow::Cow::Borrowed(HTML_ASSET)
+        }
+    }
 
 
 
@@ -595,18 +618,18 @@ pub mod web_impl {
             return Ok(res);
         }
 
-        let (status, mime, body) = match path {
+        let (status, mime, body): (StatusCode, &str, std::borrow::Cow<'static, [u8]>) = match path {
             "/" | "/index.html" => {
-                (StatusCode::OK, "text/html", HTML_ASSET)
+                (StatusCode::OK, "text/html", index_html())
             }
             "/oxiterm_web.js" => {
-                (StatusCode::OK, "application/javascript", JS_ASSET)
+                (StatusCode::OK, "application/javascript", std::borrow::Cow::Borrowed(JS_ASSET))
             }
             "/oxiterm_web_bg.wasm" => {
-                (StatusCode::OK, "application/wasm", WASM_ASSET)
+                (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(WASM_ASSET))
             }
             _ => {
-                (StatusCode::NOT_FOUND, "text/plain", b"Not Found" as &[u8])
+                (StatusCode::NOT_FOUND, "text/plain", std::borrow::Cow::Borrowed(b"Not Found" as &[u8]))
             }
         };
 
@@ -623,7 +646,7 @@ pub mod web_impl {
             use flate2::Compression;
             use std::io::Write;
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            if encoder.write_all(body).is_ok() {
+            if encoder.write_all(&body).is_ok() {
                 if let Ok(compressed) = encoder.finish() {
                     response_body = compressed;
                     content_encoding = true;
@@ -988,6 +1011,21 @@ pub mod web_impl {
         fn test_hash_path() {
             assert_ne!(hash_path("a.png"), hash_path("b.png"));
             assert_eq!(hash_path("logo.svg"), hash_path("logo.svg"));
+        }
+
+        #[test]
+        fn test_web_test_suite_is_injected_only_at_the_marker() {
+            let html = String::from_utf8_lossy(HTML_ASSET);
+            // The shipped page carries the injection marker but NOT the test suite itself.
+            assert!(html.contains(WEB_TEST_MARKER), "index.html is missing the test-injection marker");
+            assert!(!html.contains("__OXITERM_WEB_TEST_RESULT__"),
+                "the web test suite must not be present in the normally-served page");
+            // In web-test mode the marker is replaced by the full suite.
+            let injected = html.replace(WEB_TEST_MARKER, WEB_TEST_JS);
+            assert!(injected.contains("__OXITERM_WEB_TEST_RESULT__"),
+                "injected HTML must contain the coordinate test suite");
+            assert!(injected.contains("clientXToCol"), "test suite must exercise the real mapping helper");
+            assert!(!injected.contains(WEB_TEST_MARKER), "marker must be consumed by injection");
         }
 
         /// F3 / 2.5/t1 — ws_writer_loop: ≥1 Ping within 35 s idle AND binary frames pass through.

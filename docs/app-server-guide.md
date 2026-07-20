@@ -28,6 +28,8 @@ Communication between OxiTerm and the external server takes place using HTTP POS
 | `action` | string | The raw value of the `event-htmx` attribute (e.g. `"login"`, `"save_record"`) that triggered the event. |
 | `state` | object | A key-value dictionary representing the current session state. All state values are sent as strings. |
 | `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
+| `username` | string \| null | Optional. The authenticated user's name, when the session was authenticated (SSH key / proxy-forwarded identity); `null` for anonymous/guest sessions. |
+| `auth_method` | string \| null | Optional. How the session authenticated (e.g. the SSH/identity method), when known. |
 
 ### Dynamic State Patching (App Server → OxiTerm)
 

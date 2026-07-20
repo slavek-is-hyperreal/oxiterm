@@ -25,7 +25,7 @@ text { fg: #e2e8f0; }
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #1e293b;">
         <text style="fg: #38bdf8; font-weight: bold; height: 1;">📄 THTML Reference — OxiTerm</text>
-        <text style="fg: #475569; height: 1;" event-htmx="index.thtml">← Back to Landing</text>
+        <text style="fg: #475569; height: 1;" event-htmx="index.thtml">&lt; Back to Landing</text>
     </box>
 
     <box style="flex: 1; flex-direction: row; padding: 1;">

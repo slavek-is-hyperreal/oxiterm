@@ -39,6 +39,47 @@ impl Default for THTMLDocument {
 }
 
 impl THTMLDocument {
+    /// Finds clickable text that contains East-Asian *Ambiguous*-width characters.
+    ///
+    /// A text node counts as clickable when it, or any ancestor, carries an
+    /// `event-htmx` handler — i.e. clicking the glyphs triggers the handler. Ambiguous
+    /// glyphs (e.g. `←`, `→`, `×`; see [`crate::render::unicode::is_ambiguous_width`])
+    /// render 1 cell on some terminals and 2 on others, so the visible label drifts out
+    /// from under its hit box and clicks miss. Such glyphs are safe in non-clickable text.
+    ///
+    /// Returns `(node, text, offending_chars)` for each violating clickable text node.
+    pub fn clickable_ambiguous_width(&self) -> Vec<(NodeId, String, Vec<char>)> {
+        let mut out = Vec::new();
+        self.collect_clickable_ambiguous(self.root, false, &mut out);
+        out
+    }
+
+    fn collect_clickable_ambiguous(
+        &self,
+        id: NodeId,
+        clickable: bool,
+        out: &mut Vec<(NodeId, String, Vec<char>)>,
+    ) {
+        let Some(node) = self.arena.get(id) else { return };
+        let clickable = clickable || node.attrs.event_htmx.is_some();
+        if clickable {
+            if let Some(text) = &node.text {
+                let bad: Vec<char> = text
+                    .chars()
+                    .filter(|&c| crate::render::unicode::is_ambiguous_width(c))
+                    .collect();
+                if !bad.is_empty() {
+                    out.push((id, text.clone(), bad));
+                }
+            }
+        }
+        for &child in &node.children {
+            self.collect_clickable_ambiguous(child, clickable, out);
+        }
+    }
+}
+
+impl THTMLDocument {
     /// Appends a child node to a parent node.
     ///
     /// Marks the parent node as dirty.

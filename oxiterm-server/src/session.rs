@@ -567,6 +567,10 @@ pub struct EventLoop {
     pub focusable_nodes: Vec<NodeId>,
     /// Focused input node identifier.
     pub focused_node: Option<NodeId>,
+    /// The focused node the viewport was last auto-scrolled to. Auto-scroll-to-focused
+    /// fires only when `focused_node` differs from this, so it reveals a newly focused
+    /// (e.g. Tab-selected) node exactly once without fighting subsequent manual scrolling.
+    pub autoscroll_anchor: Option<NodeId>,
     /// Vertical scrolling offset.
     pub scroll_offset: u16,
     /// Computed document height.
@@ -580,6 +584,12 @@ pub struct EventLoop {
     /// Per-session DoR (denial-of-render) event throttle.
     pub throttle: crate::throttle::EventThrottle,
 }
+
+/// Focus-ring markers drawn immediately left/right of the focused node. They MUST be
+/// unambiguous width-1 glyphs — a wide glyph in the cell before a label drifts the
+/// visible text off its hit box on ambiguous-wide terminals (see the focus-ring draw).
+const FOCUS_RING_LEFT: char = '>';
+const FOCUS_RING_RIGHT: char = '<';
 
 /// Scroll status indicator under the "position" model: the line fraction, the bar
 /// fill, and the percentage are all derived from a single `scroll_offset / max_scroll`
@@ -714,6 +724,7 @@ impl EventLoop {
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
             focused_node: None,
+            autoscroll_anchor: None,
             scroll_offset: 0,
             total_height: 0,
             app_dispatcher: None,
@@ -1089,6 +1100,75 @@ impl EventLoop {
         };
     }
 
+    /// Reveals the focused node in the viewport, but ONLY when focus just changed since
+    /// the last call (tracked via `anchor`). Running it unconditionally every frame fights
+    /// manual scrolling — PgDn/wheel past a top-anchored focused node gets yanked straight
+    /// back, capping the scroll (the "stuck at 50%" bug). Firing only on focus change still
+    /// reveals a Tab/arrow-selected node exactly once.
+    ///
+    /// Takes individual fields (not `&mut self`) so the caller can invoke it while holding
+    /// a read lock on another `self` field via disjoint borrows.
+    pub(crate) fn autoscroll_to_focused(
+        focused_node: Option<NodeId>,
+        anchor: &mut Option<NodeId>,
+        scroll_offset: &mut u16,
+        layout: &oxiterm_renderer::layout::types::LayoutResult,
+        viewport_h: u16,
+    ) {
+        if focused_node == *anchor {
+            return;
+        }
+        if let Some(focused_id) = focused_node {
+            if let Some(rect) = layout.nodes.get(&focused_id) {
+                if rect.y < *scroll_offset {
+                    *scroll_offset = rect.y;
+                } else if rect.y + rect.height > *scroll_offset + viewport_h {
+                    *scroll_offset = (rect.y + rect.height).saturating_sub(viewport_h);
+                }
+            }
+        }
+        *anchor = focused_node;
+    }
+
+    /// Applies a keystroke to the focused text input's bound state: printable characters
+    /// append, Backspace/Delete (8/127) delete the last char, Enter is a no-op here (it is
+    /// handled as activation upstream). Returns `true` when the key was consumed as text
+    /// input (so predictive echo is suppressed). Returns `false` when there is no focused
+    /// bound `Input`, or for Enter/other control keys.
+    ///
+    /// Must run for ALL non-navigation keys — regressing this to only run on a specific
+    /// key (e.g. Enter) silently breaks typing into every input field.
+    pub(crate) fn apply_key_to_focused_input(&mut self, cp: char) -> bool {
+        let Some(focused_id) = self.focused_node else { return false };
+        let state_key = match self.doc.get_node(focused_id) {
+            Some(node) if node.tag == oxiterm_proto::dom::NodeTag::Input => {
+                match node.attrs.bind_value.clone() {
+                    Some(k) => k,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        };
+
+        let is_backspace = cp as u32 == 127 || cp as u32 == 8;
+        let is_enter = cp == '\r' || cp as u32 == 13;
+        if !is_backspace && (is_enter || cp.is_control()) {
+            return false;
+        }
+
+        let mut value = match self.session.state.read().get(&state_key) {
+            Some(crate::state::StateValue::Str(s)) => s.clone(),
+            _ => String::new(),
+        };
+        if is_backspace {
+            value.pop();
+        } else {
+            value.push(cp);
+        }
+        self.session.state.write().set(state_key, crate::state::StateValue::Str(value));
+        true
+    }
+
     pub(crate) fn handle_mouse_event(&mut self, mut mouse: oxiterm_proto::input::MouseInput) -> bool {
         let dims = *self.session.dims.read();
         tracing::trace!("Received MouseEvent: col={}, row={}, action={:?}", mouse.col, mouse.row, mouse.action);
@@ -1328,58 +1408,24 @@ impl EventLoop {
                                             info!("Focus moved to node {:?}", self.focused_node);
                                             needs_render = true;
                                         }
-                                    } else if key.codepoint == '\r' || key.codepoint as u32 == 13 {
-                                        // Enter / activation — unconditional; NAV bucket in handle_htmx_target caps loads.
-                                        if let Some(focused) = self.focused_node {
-                                            if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
-                                                info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
-                                                self.handle_htmx_target(target_node_id, &htmx_target);
-                                                needs_render = true;
+                                    } else {
+                                        // Enter → HTMX activation (Enter only). NAV bucket in handle_htmx_target caps loads.
+                                        if key.codepoint == '\r' || key.codepoint as u32 == 13 {
+                                            if let Some(focused) = self.focused_node {
+                                                if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
+                                                    info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
+                                                    self.handle_htmx_target(target_node_id, &htmx_target);
+                                                    needs_render = true;
+                                                }
                                             }
                                         }
-                                        // Character input / predictive echo.
+                                        // Character input / predictive echo — runs for ALL non-navigation keys
+                                        // (printable chars append, Backspace deletes; Enter is a no-op here).
                                         // D2: state write (append char / backspace) is UNCONDITIONAL —
                                         // a dropped frame is invisible; a dropped keystroke corrupts
                                         // a comment or password field.
                                         // check_input() gates only needs_render (render-flood surface).
-                                        let handled_by_input = if let Some(focused_id) = self.focused_node {
-                                            if let Some(node) = self.doc.get_node(focused_id) {
-                                                if node.tag == oxiterm_proto::dom::NodeTag::Input {
-                                                    if let Some(ref state_key) = node.attrs.bind_value.clone() {
-                                                        let cp = key.codepoint;
-                                                        if cp as u32 == 127 || cp as u32 == 8 {
-                                                            let current = match self.session.state.read().get(state_key) {
-                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
-                                                                _ => String::new(),
-                                                            };
-                                                            let mut new_val = current;
-                                                            new_val.pop();
-                                                            self.session.state.write().set(
-                                                                state_key.clone(),
-                                                                crate::state::StateValue::Str(new_val),
-                                                            );
-                                                            true
-                                                        } else if cp == '\r' || cp as u32 == 13 {
-                                                            false
-                                                        } else if !cp.is_control() {
-                                                            let current = match self.session.state.read().get(state_key) {
-                                                                Some(crate::state::StateValue::Str(s)) => s.clone(),
-                                                                _ => String::new(),
-                                                            };
-                                                            let mut new_val = current;
-                                                            new_val.push(cp);
-                                                            self.session.state.write().set(
-                                                                state_key.clone(),
-                                                                crate::state::StateValue::Str(new_val),
-                                                            );
-                                                            true
-                                                        } else {
-                                                            false
-                                                        }
-                                                    } else { false }
-                                                } else { false }
-                                            } else { false }
-                                        } else { false };
+                                        let handled_by_input = self.apply_key_to_focused_input(key.codepoint);
 
                                         if !handled_by_input {
                                             // D7: suppress predictive echo for password inputs
@@ -1477,16 +1523,13 @@ impl EventLoop {
                         dims.rows
                     };
 
-                    // Auto-scroll the viewport to keep the focused element fully visible inside layout boundaries.
-                    if let Some(focused_id) = self.focused_node {
-                        if let Some(rect) = layout.nodes.get(&focused_id) {
-                            if rect.y < self.scroll_offset {
-                                self.scroll_offset = rect.y;
-                            } else if rect.y + rect.height > self.scroll_offset + viewport_h {
-                                self.scroll_offset = (rect.y + rect.height).saturating_sub(viewport_h);
-                            }
-                        }
-                    }
+                    Self::autoscroll_to_focused(
+                        self.focused_node,
+                        &mut self.autoscroll_anchor,
+                        &mut self.scroll_offset,
+                        &layout,
+                        viewport_h,
+                    );
 
                     let max_scroll = self.total_height.saturating_sub(viewport_h);
                     self.scroll_offset = self.scroll_offset.min(max_scroll);
@@ -1558,11 +1601,16 @@ impl EventLoop {
                                 let mid_row = mid_row_offset as u16;
                                 let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
                                 let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                                // Markers MUST be unambiguous width-1 glyphs: a wide glyph
+                                // (e.g. ▶/◀, which are East-Asian Ambiguous) drawn in the
+                                // cell before the label pushes the visible text right off
+                                // its hit box on terminals that render them 2-wide, so
+                                // clicks on a focused label miss. ASCII '>'/'<' are safe.
                                 if rect.x > 0 {
                                     let lx = rect.x.saturating_sub(1) + offset_x;
                                     if lx < self.buffer.back.width {
                                         self.buffer.back.set(lx, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                            ch: '▶',
+                                            ch: FOCUS_RING_LEFT,
                                             fg: focus_fg,
                                             bg: focus_bg,
                                             bold: true,
@@ -1573,7 +1621,7 @@ impl EventLoop {
                                 let right = rect.x + rect.width + offset_x;
                                 if right < self.buffer.back.width {
                                     self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                        ch: '◀',
+                                        ch: FOCUS_RING_RIGHT,
                                         fg: focus_fg,
                                         bg: focus_bg,
                                         bold: true,
@@ -1754,6 +1802,89 @@ mod tests {
     use super::*;
     use oxiterm_renderer::render::buffer::CellBuffer;
     use oxiterm_renderer::FrameSink;
+
+    #[test]
+    fn test_autoscroll_does_not_fight_manual_scroll() {
+        // Focused node anchored at the top (y=1). After it's revealed once, a manual
+        // scroll (offset advanced) must NOT be reverted on subsequent frames while focus
+        // is unchanged — otherwise you can't scroll past a top-anchored focused link.
+        let (mut el, btn) = make_el_with_htmx_button("noop:x");
+        *el.session.dims.write() = PtyDimensions { cols: 20, rows: 6 };
+        el.total_height = 20;
+        el.focused_node = Some(btn);
+        inject_layout(
+            &mut el,
+            vec![(btn, oxiterm_renderer::layout::types::Rect { x: 0, y: 1, width: 6, height: 1 })],
+            20,
+        );
+        let layout = el.layout_engine.last_layout.clone().unwrap();
+        let viewport_h = 5;
+
+        // Frame 1: focus just became `btn` — reveal it (already visible at y=1, offset stays 0).
+        EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout, viewport_h);
+        assert_eq!(el.scroll_offset, 0);
+
+        // User scrolls down manually.
+        el.scroll_offset = 4;
+        // Frame 2+: focus unchanged — offset must be left alone.
+        EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout, viewport_h);
+        EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout, viewport_h);
+        assert_eq!(el.scroll_offset, 4, "manual scroll must survive while focus is unchanged");
+
+        // When focus actually changes to an off-screen node, it is revealed once.
+        let other = el.doc.arena.alloc(oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box));
+        let mut nodes = layout.nodes.clone();
+        nodes.insert(other, oxiterm_renderer::layout::types::Rect { x: 0, y: 18, width: 4, height: 1 });
+        let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20 };
+        el.focused_node = Some(other);
+        EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout2, viewport_h);
+        assert_eq!(el.scroll_offset, 19 - viewport_h, "focus change reveals the newly focused node");
+    }
+
+    #[test]
+    fn test_typing_updates_focused_input_state() {
+        // Regression: printable keys must append to the focused input's bound state,
+        // Backspace deletes, Enter is a no-op, and no focused input = not consumed.
+        // (Previously all char input was wrongly gated behind the Enter branch, so typing
+        // into any field did nothing.)
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let (mut el, _btn) = make_el_with_htmx_button("noop:x");
+        let mut input = Node::new(NodeTag::Input);
+        input.attrs.bind_value = Some("name".to_string());
+        let input_id = el.doc.arena.alloc(input);
+        el.focused_node = Some(input_id);
+
+        assert!(el.apply_key_to_focused_input('h'));
+        assert!(el.apply_key_to_focused_input('i'));
+        assert_eq!(
+            el.session.state.read().get("name").cloned(),
+            Some(crate::state::StateValue::Str("hi".to_string()))
+        );
+
+        assert!(el.apply_key_to_focused_input('\u{8}'), "backspace consumed");
+        assert_eq!(
+            el.session.state.read().get("name").cloned(),
+            Some(crate::state::StateValue::Str("h".to_string()))
+        );
+
+        assert!(!el.apply_key_to_focused_input('\r'), "Enter is not text input");
+        assert_eq!(
+            el.session.state.read().get("name").cloned(),
+            Some(crate::state::StateValue::Str("h".to_string()))
+        );
+
+        el.focused_node = None;
+        assert!(!el.apply_key_to_focused_input('x'), "no focused input → not consumed");
+    }
+
+    #[test]
+    fn test_focus_ring_glyphs_are_unambiguous_width() {
+        // A wide/ambiguous focus-ring marker drawn before a focused label pushes the
+        // visible text off its hit box, so clicks on the focused label miss.
+        use oxiterm_renderer::render::unicode::is_ambiguous_width;
+        assert!(!is_ambiguous_width(FOCUS_RING_LEFT), "left focus marker must be width-1");
+        assert!(!is_ambiguous_width(FOCUS_RING_RIGHT), "right focus marker must be width-1");
+    }
 
     #[test]
     fn test_scroll_indicator_is_mutually_consistent() {
@@ -2901,6 +3032,66 @@ mod tests {
             action: oxiterm_proto::input::MouseAction::Press, modifiers: Default::default(),
         });
         assert_eq!(el.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_render_click_roundtrip_activates_every_rendered_cell() {
+        // Full render↔click round-trip: a click on the terminal cell where a node is
+        // *rendered* (centering offset + rect + the terminal's 1-based origin) must, after
+        // handle_mouse_event's inverse adjustment, hit-test back to that node and activate
+        // it — and a click one column outside the span must NOT. This locks the coordinate
+        // contract shared by rendering (`get_centering_offset` + rect.x) and hit-testing
+        // (`raw - offset - 1`); any offset or off-by-one regression fails here.
+        let (mut el, btn) = make_el_with_htmx_button("inc:hits");
+        el.rebuild_parent_map();
+        {
+            let n = el.doc.arena.get_mut(btn).unwrap();
+            n.style.width = Some(10);
+            n.style.height = Some(2);
+            n.style.margin.left = 4;
+            n.style.margin.top = 3;
+        }
+        let dims = PtyDimensions { cols: 80, rows: 24 };
+        *el.session.dims.write() = dims;
+
+        // Real layout — the same offsets rendering would use.
+        el.layout_engine.compute(&mut el.doc, dims.cols, 0, None).unwrap();
+        let layout = el.layout_engine.last_layout.clone().unwrap();
+        let rect = *layout.nodes.get(&btn).unwrap();
+        let (ox, oy) = layout.get_centering_offset(&el.doc, dims.cols, dims.rows);
+        assert!(rect.width > 0 && rect.height > 0);
+
+        let click = |el: &mut EventLoop, term_col: u16, term_row: u16| {
+            el.session.state.write().set("hits".to_string(), crate::state::StateValue::Int(0));
+            el.handle_mouse_event(oxiterm_proto::input::MouseInput {
+                col: term_col,
+                row: term_row,
+                button: oxiterm_proto::input::MouseButton::Left,
+                action: oxiterm_proto::input::MouseAction::Press,
+                modifiers: Default::default(),
+            });
+            el.session.state.read().get("hits").cloned()
+        };
+
+        // Every rendered cell activates the button.
+        for ry in rect.y..rect.y + rect.height {
+            for rx in rect.x..rect.x + rect.width {
+                // Terminal (1-based) coordinate that renders layout cell (rx, ry), no scroll.
+                let got = click(&mut el, ox + rx + 1, oy + ry + 1);
+                assert_eq!(
+                    got,
+                    Some(crate::state::StateValue::Int(1)),
+                    "click on rendered cell for layout ({rx},{ry}) must activate the button"
+                );
+            }
+        }
+
+        // One column left of, and one past, the span must not activate it.
+        let row = oy + rect.y + 1;
+        assert_eq!(click(&mut el, ox + rect.x, row), Some(crate::state::StateValue::Int(0)),
+            "column just left of the span must not activate");
+        assert_eq!(click(&mut el, ox + rect.x + rect.width + 1, row), Some(crate::state::StateValue::Int(0)),
+            "column just past the span must not activate");
     }
 
     #[test]

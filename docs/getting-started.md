@@ -13,7 +13,7 @@ Then clone the repository and build the project:
 git clone https://github.com/slavek-is-hyperreal/oxiterm && cd oxiterm
 cargo build --release
 ```
-You can find the compiled executable in: `target/release/oxiterm`
+You can find the compiled executable in: `target/release/oxiterm-cli` (the examples below use `oxiterm` as shorthand — alias it, or call `target/release/oxiterm-cli` / `cargo run --bin oxiterm-cli --` directly).
 
 ---
 
@@ -132,9 +132,9 @@ The `<input>` tag allows you to collect data typed by the user:
 ```
 
 * Use the `Tab` key to focus on the `<input>` element.
-* Start typing — the Predictive Echo input buffer will immediately update the view (locally).
-* The `Backspace` key deletes the last character.
-* The `Enter` key commits the typed text and saves it in the state under the key defined in `bind-value` (e.g. `"query"`), and also triggers the `event-htmx` action if defined.
+* Start typing — each character is saved to the state under the key defined in `bind-value` (e.g. `"query"`) **immediately, on every keystroke**, so any `bind-state` bound to the same key updates in real time. Predictive Echo also updates the view locally to hide network latency.
+* The `Backspace` key deletes the last character (and updates the state).
+* The `Enter` key does not "commit" the text (it is already saved live) — it triggers the `event-htmx` action on the field, if one is defined.
 
 ---
 
@@ -163,7 +163,8 @@ OxiTerm enables directly embedding vector graphics, animations, and video files:
 | `Enter` | Activate the focused element |
 | `PgUp` / `b` | Scroll view one page up |
 | `PgDn` / `Space` | Scroll view one page down |
-| `Q` / `q` | Close session and disconnect |
+| Mouse wheel | Scroll the view by a few lines per notch (web + native SSH terminals) |
+| `Q` / `q` | Close session and disconnect (SSH only; web clients ignore this) |
 
 ---
 
@@ -246,5 +247,11 @@ You can configure the server behavior using the following environment variables:
 | `OXITERM_NO_AUTH` | `false` | Disables SSH authentication (required in dev mode when authorized_keys are missing) |
 | `OXITERM_WEB_PORT` | `8080` | HTTP/WebSocket server port for web browser access |
 | `OXITERM_APP_SERVER` | (none) | URL of the external application server for event-htmx actions |
+| `OXITERM_APP_TOKEN` | (none) | Shared secret sent with / required by App Server requests |
+| `OXITERM_MAX_SESSIONS` | (config default) | Maximum number of concurrent sessions the server will hold |
+| `OXITERM_MEDIA_BASE_URL` | (none) | Base path/URL used to resolve media (`src`) resources |
+| `OXITERM_METRICS_HOST` | (config default) | Bind host for the Prometheus metrics endpoint |
+| `OXITERM_TRUSTED_PROXY` | (none) | IP of a trusted reverse proxy allowed to forward the authenticated user identity |
+| `OXITERM_ALLOW_GUEST` | `false` | Allow unauthenticated ("guest") web access |
 | `RUST_LOG` | `warn` | Server logging level (e.g. `debug`, `info`, `warn`, `error`) |
 

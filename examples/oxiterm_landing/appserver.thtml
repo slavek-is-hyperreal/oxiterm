@@ -17,7 +17,7 @@ text { fg: #e2e8f0; }
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #1e293b;">
         <text style="fg: #4ade80; font-weight: bold; height: 1;">🔌 App Server Guide — OxiTerm</text>
-        <text class="muted" event-htmx="index.thtml">← Back to Landing</text>
+        <text class="muted" event-htmx="index.thtml">&lt; Back to Landing</text>
     </box>
 
     <box style="flex: 1; flex-direction: row; padding: 1;">

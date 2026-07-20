@@ -27,17 +27,18 @@ Files must not contain elements specific to browser HTML, such as `<!DOCTYPE>`, 
 
 ## 2. Supported Tags
 
-OxiTerm supports exactly seven tags. Using an unknown tag will cause a document parsing error.
+OxiTerm supports exactly eight tags. Using an unknown tag will cause a document parsing error.
 
 | Tag | Role | Children | Notes |
 |---|---|---|---|
 | `<screen>` | Implicit root | Any | Created automatically by the parser, never written directly. |
 | `<box>` | Layout container | Any | Equivalent to HTML `<div>`. Operates as a Flexbox container by default. |
-| `<text>` | Inline text | None (text only) | Displays text content. Supports Unicode, double-width characters (CJK), and emojis. |
+| `<text>` | Inline text | None (text only) | Displays text content. Supports Unicode, double-width characters (CJK), and emojis. Wraps onto multiple rows with `wrap: word` (see TCSS reference). |
 | `<input>` | Text field | None | Used to collect user input. Requires the `bind-value` attribute. |
 | `<button>` | Interactive button | None (text only) | Focusable keyboard node; triggers the action defined in `event-htmx`. |
 | `<img>` | Image or animation | None | Displays SVG, PNG, JPG files and Lottie animations (`.json`). |
 | `<video>` | Video player | None | Play video files smoothly in the background. Requires `ffmpeg` in the system. |
+| `<for>` | Loop template | One template child | Repeats its child once per element of a `List` state value named by the `each` attribute (see §4). |
 
 > [!WARNING]
 > The `<img>` and `<input>` tags can be self-closing (`<img />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
@@ -68,6 +69,7 @@ The following attributes can be applied to any node type:
 | `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
 | `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |
 | `<input>` | `bind-value` | State key in `StateManager` where the typed text is saved **in real-time** (on every keystroke). |
+| `<for>` | `each` | Name of a `List` state key. The `<for>` node's single template child is cloned once per list item; the literal `{item}` inside the template's text is replaced with that item's value. The list re-expands reactively when the state changes. |
 
 ---
 

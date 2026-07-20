@@ -493,6 +493,54 @@ mod tests {
     }
 
     #[test]
+    fn test_hit_test_roundtrip_every_cell_maps_back() {
+        // Round-trip invariant: every cell a node occupies in the computed layout must
+        // hit-test back to that node (the deepest one covering the cell). This locks the
+        // layout↔hit-test geometry so a coordinate/offset regression can't slip through.
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        let mut parent = Node::new(NodeTag::Box);
+        parent.style.width = Some(30);
+        parent.style.height = Some(10);
+        parent.style.margin.left = 5;
+        parent.style.margin.top = 2;
+        let parent_id = doc.arena.alloc(parent);
+        doc.append_child(doc.root, parent_id).unwrap();
+
+        let mut child = Node::new(NodeTag::Box);
+        child.style.width = Some(8);
+        child.style.height = Some(3);
+        child.style.margin.left = 4;
+        child.style.margin.top = 2;
+        let child_id = doc.arena.alloc(child);
+        doc.append_child(parent_id, child_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let pr = *result.nodes.get(&parent_id).unwrap();
+        let cr = *result.nodes.get(&child_id).unwrap();
+        assert!(cr.width > 0 && cr.height > 0 && pr.width > 0);
+
+        // Every cell of the (deepest) child maps back to the child.
+        for y in cr.y..cr.y + cr.height {
+            for x in cr.x..cr.x + cr.width {
+                assert_eq!(engine.hit_test(x, y), Some(child_id),
+                    "cell ({x},{y}) inside the child must hit-test back to it");
+            }
+        }
+        // Every cell of the parent maps to the child where they overlap, else the parent.
+        for y in pr.y..pr.y + pr.height {
+            for x in pr.x..pr.x + pr.width {
+                let expected = if cr.contains(x, y) { child_id } else { parent_id };
+                assert_eq!(engine.hit_test(x, y), Some(expected),
+                    "cell ({x},{y}) must hit-test to the deepest covering node");
+            }
+        }
+        // A cell outside the parent falls through to the root, never the child.
+        assert_ne!(engine.hit_test(0, 0), Some(child_id));
+    }
+
+    #[test]
     fn test_hit_test_nested() {
         let mut engine = LayoutEngine::new();
         let mut doc = THTMLDocument::new();
