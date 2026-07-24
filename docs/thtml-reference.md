@@ -185,6 +185,14 @@ Recommended pattern: **Persistent sections** (header, footer) receive rigid `hei
 
 > [!WARNING]
 > State keys whose names begin with `_` are **reserved for internal use**. Any attempt by an App Server to write to a reserved key via a state patch is silently rejected with a warning in the server log. Do not use `_`-prefixed keys in THTML bindings or App Server patches.
+>
+> **Engine-injected reserved keys:**
+>
+> | Key | Value | Description |
+> |---|---|---|
+> | `_username` | `String` | Username of the authenticated user (SSH key/password/header). |
+> | `_auth_method` | `String` | Authentication method used (`SshKey`, `SshPassword`, `TrustedHeader`, `Guest`). |
+> | `_is_web` | `"true"` / `"false"` | Injected at session start. `"true"` for WebSocket (browser) sessions, `"false"` for SSH terminal sessions. Use with `bind-show` to deliver different UI to web vs. SSH clients: `bind-show="_is_web=true"`. |
 
 ---
 
