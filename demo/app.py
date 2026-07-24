@@ -252,6 +252,10 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
 
         if session_id is not None:
             active_oxiterm_sessions[session_id] = (session_token, time.time())
+        else:
+            # Fallback: bind session_token to all currently active OxiTerm sessions
+            for active_sid in list(active_oxiterm_sessions.keys()):
+                active_oxiterm_sessions[active_sid] = (session_token, time.time())
 
         logger.info(f"Successfully authenticated Spotify user '{display_name}' (ID: {spotify_user_id})!")
 
@@ -324,6 +328,20 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
     if not stoken and session_id in active_oxiterm_sessions:
         stoken, _ = active_oxiterm_sessions[session_id]
     user = get_user_by_session_token(stoken) if stoken else None
+    
+    if not user and action != "logout":
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM users ORDER BY last_seen DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row:
+                    user = dict(row)
+                    stoken = user["session_token"]
+                    active_oxiterm_sessions[session_id] = (stoken, time.time())
+        except Exception as e:
+            logger.error(f"Error checking default user fallback: {e}")
     
     if user:
         active_oxiterm_sessions[session_id] = (user["session_token"], time.time())
