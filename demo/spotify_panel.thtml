@@ -17,7 +17,10 @@
             <text class="txt-green" style="margin-right: 1;">🎵 Spotify SSH Control</text>
             <text class="txt-muted" bind-state="device_name">Szukam urządzenia...</text>
         </box>
-        <box style="flex-direction: row;">
+        <box style="flex-direction: row; align-items: center;">
+            <box class="btn" style="height: 1; margin-right: 1;" event-htmx="tab:player">
+                <text class="txt-green">🔄 Odśwież</text>
+            </box>
             <text class="txt-muted" event-htmx="hello.thtml" style="margin-right: 2;">&lt; Menu</text>
             <text class="txt-green" bind-state="auth_status">Sprawdzanie auth...</text>
         </box>
@@ -71,7 +74,7 @@
 
             <box style="border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
                 <text class="txt-muted">Direct OAuth Link (skopiuj dla SSH / przeglądarki):</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
+                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&amp;response_type=code&amp;redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&amp;scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
             </box>
         </box>
 
