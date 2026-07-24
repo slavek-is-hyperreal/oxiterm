@@ -13,5 +13,15 @@ demo/venv/
 .cache-spotify
 demo/.env
 
+# Python cache & test artifacts
+demo/.cache/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+**/.pytest_cache/
+
+
 
 
