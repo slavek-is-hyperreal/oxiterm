@@ -377,6 +377,17 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
         patch["auth_msg"] = "Link autoryzacji wygenerowany!"
         patch["auth_url"] = auth_url
 
+    # 1b. Action: trigger_open (web sessions — opens browser via open_url → 0x33 frame)
+    elif action == "trigger_open":
+        oauth_state = secrets.token_hex(16)
+        pending_oauth_states[oauth_state] = (session_id, time.time())
+        auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={oauth_state}&show_dialog=true"
+        logger.info(f"Generated Spotify OAuth URL (web open) for session {session_id}")
+        patch["auth_url"] = auth_url
+        # open_url is intercepted by dispatcher.rs before apply_state_patch;
+        # it triggers handle_open_url → opcode 0x33 → browser opens the URL.
+        patch["open_url"] = auth_url
+
     # 2. Action: logout
     elif action == "logout":
         if stoken:
