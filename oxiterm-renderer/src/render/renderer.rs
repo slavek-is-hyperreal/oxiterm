@@ -89,6 +89,7 @@ impl Renderer {
         buffer: &mut CellBuffer,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
         scroll_offset: u16,
     ) {
         // 1. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous frames)
@@ -119,6 +120,7 @@ impl Renderer {
             oxiterm_proto::style::AnsiColor::Color256(0),
             profile,
             base_dir,
+            app_base_dir,
         );
     }
 
@@ -133,6 +135,7 @@ impl Renderer {
         inherited_bg: oxiterm_proto::style::AnsiColor,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
     ) {
         if let Some(node) = doc.arena.get(node_id) {
             let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
@@ -357,6 +360,7 @@ impl Renderer {
                         buffer,
                         profile,
                         base_dir,
+                        app_base_dir,
                     );
                 }
                 NodeTag::Video => {
@@ -369,6 +373,7 @@ impl Renderer {
                         buffer,
                         profile,
                         base_dir,
+                        app_base_dir,
                     );
                 }
                 _ => {}
@@ -386,6 +391,7 @@ impl Renderer {
                     resolved_bg,
                     profile,
                     base_dir,
+                    app_base_dir,
                 );
             }
         }
@@ -483,6 +489,7 @@ impl Renderer {
         buffer: &mut CellBuffer,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
     ) {
         if profile.is_web {
             return;
@@ -494,6 +501,17 @@ impl Renderer {
             } else {
                 std::path::PathBuf::from(src)
             };
+
+            let is_safe = if let Some(app_base) = app_base_dir {
+                oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+            } else {
+                false
+            };
+
+            if !is_safe {
+                tracing::warn!("renderer: blocked path traversal or file access outside app_base_dir: {:?}", resolved_path);
+                return;
+            }
             
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;
@@ -872,6 +890,7 @@ impl Renderer {
         buffer: &mut CellBuffer,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
     ) {
         if profile.is_web {
             return;
@@ -925,6 +944,17 @@ impl Renderer {
             } else {
                 std::path::PathBuf::from(src)
             };
+
+            let is_safe = if let Some(app_base) = app_base_dir {
+                oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+            } else {
+                false
+            };
+
+            if !is_safe {
+                tracing::warn!("renderer: blocked video path traversal or file access outside app_base_dir: {:?}", resolved_path);
+                return;
+            }
 
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;

@@ -201,3 +201,48 @@ def test_18_trigger_login_generates_auth_url_with_state():
     auth_url = data.get("auth_url", "")
     assert "state=" in auth_url
     assert "client_id=" in auth_url
+
+
+def test_19_spotify_panel_htmx_events_contract():
+    import re
+    from pathlib import Path
+
+    possible_dirs = [
+        Path("examples/spotify"),
+        Path("../examples/spotify"),
+        Path("/app/examples/spotify"),
+    ]
+    spotify_dir = None
+    for d in possible_dirs:
+        if d.exists() and d.is_dir():
+            spotify_dir = d
+            break
+
+    assert spotify_dir is not None, "examples/spotify directory not found!"
+
+    panel_files = list(spotify_dir.glob("*.thtml"))
+    assert len(panel_files) >= 1, "No .thtml files found in examples/spotify!"
+
+    actions = set()
+    for pf in panel_files:
+        content = pf.read_text(encoding="utf-8")
+        matches = re.findall(r'event-htmx="([^"]+)"', content)
+        for act in matches:
+            # Ignore engine built-ins & navigation
+            if act.startswith(("set:", "inc:", "dec:", "toggle:", "append:", "clear:", "open:")):
+                continue
+            if act.endswith(".thtml"):
+                continue
+            actions.add(act)
+
+    assert len(actions) > 0, "No custom HTMX actions found in Spotify panel files!"
+
+    # Test each custom action against /events endpoint in test app
+    for action in actions:
+        r = client.post(
+            "/events",
+            json={"action": action, "state": {}, "session_id": 1},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200, f"Custom action '{action}' failed with status {r.status_code}"
+

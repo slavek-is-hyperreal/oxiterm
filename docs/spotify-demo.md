@@ -117,17 +117,10 @@ The script:
 
 ## Running Tests
 
-Tests must run **inside Docker** — never directly on the host:
+Tests must run **inside Docker** — never directly on the host. Run from the repository root:
 
 ```bash
-cd spotify-app-server/
-
-docker build -f Dockerfile.test -t spotify-app-test .
-
-docker run --rm \
-  --env-file .env \
-  -e OXITERM_APP_TOKEN=<your-token> \
-  spotify-app-test
+docker compose -f docker-compose.test.yml up --build test-spotify
 ```
 
 The test image (`Dockerfile.test`) installs `pytest`, `httpx`, and `pytest-mock` on top of the production dependencies. Each test gets an isolated `tmp_path` SQLite database — no writes to the production `.cache/spotify_app.db`.

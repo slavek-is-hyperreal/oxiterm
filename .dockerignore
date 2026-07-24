@@ -1,0 +1,5 @@
+target/
+.git/
+node_modules/
+spotify-app-server/venv/
+spotify-app-server/.cache/

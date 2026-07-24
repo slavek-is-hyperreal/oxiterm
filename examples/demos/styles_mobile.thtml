@@ -1,0 +1,44 @@
+<style>
+text { fg: #e2e8f0; }
+.card {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    margin-bottom: 1;
+}
+.blue   { border-color: #38bdf8; }
+.green  { border-color: #4ade80; }
+.card-title { fg: #f8fafc; height: 1; margin-bottom: 1; }
+.muted { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 40; height: 24; bg: #0f172a;">
+    <box style="height: 3; bg: #1e293b; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #334155;">
+        <text style="fg: #c084fc; height: 1;">🎨 CSS &amp; Cascade</text>
+        <text class="muted" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <box style="flex-direction: column; padding: 1; flex: 1;">
+        <box class="card blue" style="height: 5;">
+            <text class="card-title" style="fg: #38bdf8;">Card .blue</text>
+            <text class="muted">Class styling</text>
+        </box>
+
+        <box class="card green" style="height: 5;">
+            <text class="card-title" style="fg: #4ade80;">Card .green</text>
+            <text class="muted">Color variant</text>
+        </box>
+
+        <box style="border-style: single; border-color: #334155; padding: 1; flex-direction: column;">
+            <text style="fg: #94a3b8; height: 1;">Priorities (ascending):</text>
+            <text style="fg: #475569; height: 1;">1. tag</text>
+            <text style="fg: #64748b; height: 1;">2. .class</text>
+            <text style="fg: #94a3b8; height: 1;">3. #id</text>
+            <text style="fg: #e2e8f0; height: 1;">4. style="" (wins)</text>
+        </box>
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 1;">
+        <text class="muted">Mobile View</text>
+    </box>
+</box>

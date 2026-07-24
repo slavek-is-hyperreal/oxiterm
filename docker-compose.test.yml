@@ -1,5 +1,9 @@
 services:
-  test:
+  test-rust:
     build:
       context: .
       dockerfile: Dockerfile.test
+  test-spotify:
+    build:
+      context: .
+      dockerfile: spotify-app-server/Dockerfile.test

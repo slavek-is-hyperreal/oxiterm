@@ -12,7 +12,9 @@
 pub mod dom;
 pub mod style;
 pub mod input;
+pub mod pathsafe;
 
 pub use dom::{Node, NodeId, NodeTag, NodeAttributes};
 pub use style::{AnsiColor, ComputedStyle, BorderStyle, BorderChars, ColorDepth, TerminalProfile};
 pub use input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseInput, MouseButton, MouseAction};
+pub use pathsafe::is_within_base;

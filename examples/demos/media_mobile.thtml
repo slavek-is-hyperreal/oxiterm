@@ -1,0 +1,32 @@
+<style>
+.caption { fg: #64748b; height: 1; }
+.muted   { fg: #475569; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 40; height: 24; bg: #0f172a;">
+    <box style="height: 3; bg: #1e293b; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #334155;">
+        <text style="fg: #f87171; height: 1;">🖼️ Media Showcase</text>
+        <text class="muted" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <box style="flex-direction: column; padding: 1; flex: 1;">
+        <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
+            <img src="../assets/mascot.svg" alt="Ferris" style="width: 14; height: 6;" />
+            <text class="caption" style="margin-left: 1;">SVG (resvg)</text>
+        </box>
+
+        <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
+            <img src="../assets/bell.json" alt="Bell animation" style="width: 12; height: 5;" />
+            <text class="caption" style="margin-left: 1;">Lottie JSON</text>
+        </box>
+
+        <box style="flex-direction: row; align-items: center;">
+            <img src="../assets/toggle.riv" alt="Rive Toggle" style="width: 12; height: 3;" />
+            <text class="caption" style="margin-left: 1;">Rive Procedural</text>
+        </box>
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 1;">
+        <text class="muted">Mobile View</text>
+    </box>
+</box>

@@ -15,12 +15,12 @@ git clone https://github.com/slavek-is-hyperreal/oxiterm.git
 cd oxiterm
 cargo build --release -p oxiterm-cli
 
-# 2. Start a local dev server with Hot Reload
-./target/release/oxiterm-cli serve ./examples/hello.thtml --port 2222
+# 2. Start local project website & TUI server
+./run_site.sh
 
 # 3. Connect from any terminal or web browser
 ssh localhost -p 2222
-# or navigate to http://localhost:8080
+# or navigate to http://localhost:8087
 ```
 *(Publishing `oxiterm-cli` to crates.io is planned for a future release).*
 

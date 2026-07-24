@@ -209,10 +209,11 @@ pub mod web_impl {
                 let _ = self.send_bytes(vec![0x21]);
             }
 
+            let app_base_dir = self.session.app_base_dir.read().clone();
             for media in &active_media {
-                let is_safe = if let Some(ref base) = base_dir {
+                let is_safe = if let (Some(ref base), Some(ref app_base)) = (&base_dir, &app_base_dir) {
                     let full_path = base.join(&media.path);
-                    crate::pathsafe::is_within_base(base, &full_path)
+                    crate::pathsafe::is_within_base(app_base, &full_path)
                 } else {
                     false
                 };
@@ -222,7 +223,7 @@ pub mod web_impl {
                     if let Some(ref base) = base_dir {
                         let full_path = base.join(&media.path);
                         if full_path.exists() {
-                            warn!("media outside base (path traversal attempt): {:?}", full_path);
+                            warn!("media outside app_base_dir (path traversal attempt): {:?}", full_path);
                         } else {
                             tracing::debug!("media not found (missing asset): {:?}", full_path);
                         }

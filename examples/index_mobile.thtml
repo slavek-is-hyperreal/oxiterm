@@ -1,0 +1,43 @@
+<style>
+text { fg: #e2e8f0; }
+.brand { fg: #38bdf8; font-weight: bold; height: 1; }
+.muted { fg: #475569; height: 1; }
+.green { fg: #4ade80; height: 1; }
+.btn {
+    border-style: rounded;
+    border-color: #38bdf8;
+    padding-left: 1;
+    padding-right: 1;
+    height: 3;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1;
+}
+</style>
+
+<box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
+    <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
+        <text class="brand">⬡ OxiTerm</text>
+        <text class="green">v0.5.0</text>
+    </box>
+
+    <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
+        <img src="assets/mascot.svg" alt="OxiTerm Mascot" style="width: 14; height: 6;" />
+        <text style="fg: #f8fafc; font-weight: bold; height: 1; margin-top: 1;">Build TUI apps like websites</text>
+        <text class="muted" style="margin-bottom: 1;">ssh ssh.slavekm.pl -p 20236</text>
+
+        <box class="btn" style="width: 36; border-color: #38bdf8;" event-htmx="features.thtml">
+            <text style="fg: #38bdf8; height: 1;">✦ Features &amp; Demos</text>
+        </box>
+        <box class="btn" style="width: 36; border-color: #4ade80;" event-htmx="quickstart.thtml">
+            <text style="fg: #4ade80; height: 1;">⚡ Quickstart Guide</text>
+        </box>
+        <box class="btn" style="width: 36; border-color: #c084fc;" event-htmx="reference/thtml.thtml">
+            <text style="fg: #c084fc; height: 1;">📄 Specifications</text>
+        </box>
+    </box>
+
+    <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 1;">
+        <text class="muted">Mobile View | OxiTerm v0.5.0</text>
+    </box>
+</box>

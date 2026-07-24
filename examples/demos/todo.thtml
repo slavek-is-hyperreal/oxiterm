@@ -1,0 +1,101 @@
+<style>
+.task-done   { border-color: #334155; fg: #475569; }
+.task-active { border-color: #38bdf8; fg: #e2e8f0; }
+.task-todo   { border-color: #1e293b; fg: #94a3b8; }
+.task-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    border-style: rounded;
+    padding-left: 1;
+    padding-right: 1;
+    height: 3;
+    margin-bottom: 1;
+}
+.badge {
+    border-style: single;
+    padding-left: 1;
+    padding-right: 1;
+    height: 1;
+}
+.muted { fg: #475569; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #4ade80; height: 1;">📝 Todo List — append and List state</text>
+        <text class="muted" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- List -->
+        <box style="flex: 1; flex-direction: column; margin-right: 1;">
+
+            <box style="flex-direction: row; justify-content: space-between;
+                        align-items: center; margin-bottom: 1;">
+                <text style="fg: #4ade80; height: 1;">Tasks</text>
+                <box style="flex-direction: row; align-items: center;">
+                    <text class="muted">List: </text>
+                    <text style="fg: #4ade80; height: 1;" bind-state="task_list">[]</text>
+                </box>
+            </box>
+
+            <box class="task-row task-done">
+                <text style="height: 1;">[✓] Fix auth bug</text>
+                <box class="badge" style="border-color: #334155;">
+                    <text style="fg: #475569; height: 1;">DONE</text>
+                </box>
+            </box>
+
+            <box class="task-row task-active">
+                <text style="height: 1;">[→] Implement Hot Reload</text>
+                <box class="badge" style="border-color: #38bdf8;">
+                    <text style="fg: #38bdf8; height: 1;">ACTIVE</text>
+                </box>
+            </box>
+
+            <box class="task-row task-todo">
+                <text style="height: 1;">[ ] Write documentation</text>
+                <box class="badge" style="border-color: #1e293b;">
+                    <text class="muted">TODO</text>
+                </box>
+            </box>
+
+            <!-- Add to list via append: -->
+            <box style="height: 3; border-style: single; border-color: #4ade80;
+                        justify-content: center; align-items: center;
+                        margin-top: 1;" event-htmx="append:task_list=new task">
+                <text style="fg: #4ade80; height: 1;">[ + Add to state list ]</text>
+            </box>
+
+            <box style="height: 1; margin-top: 1;">
+                <text class="muted">append:task_list=new adds to List state</text>
+            </box>
+
+        </box>
+
+        <!-- Pattern description -->
+        <box style="width: 24; border-style: rounded; border-color: #334155;
+                    padding: 1; flex-direction: column;">
+            <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">List state</text>
+            <text class="muted">append:k=v</text>
+            <text class="muted">adds to list.</text>
+            <text class="muted">clear:k clears.</text>
+            <text class="muted">bind-state="k"</text>
+            <text class="muted">shows [a, b].</text>
+            <box style="height: 1;"></box>
+            <text class="muted">State persists</text>
+            <text class="muted">through navigation.</text>
+        </box>
+
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Add Item</text>
+    </box>
+
+</box>

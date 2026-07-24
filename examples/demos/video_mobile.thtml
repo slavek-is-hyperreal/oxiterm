@@ -1,0 +1,53 @@
+<style>
+.stat-row { flex-direction: row; height: 1; margin-bottom: 1; }
+.stat-key { width: 18; fg: #94a3b8; height: 1; }
+.stat-val { fg: #e2e8f0; height: 1; }
+.muted    { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #fb923c; height: 1;">🎬 Video Demo</text>
+        <text class="muted" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <!-- Content (Vertical Stack) -->
+    <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
+
+        <!-- Player -->
+        <box style="width: 44; height: 13; border-style: rounded; border-color: #fb923c;
+                    justify-content: center; align-items: center;
+                    bg: #000000; margin-bottom: 1;">
+            <video src="../assets/clip.mp4" alt="Video demo" style="width: 38; height: 9;" />
+        </box>
+
+        <!-- Information panel -->
+        <box style="width: 44; height: 10; border-style: rounded; border-color: #38bdf8;
+                    padding: 1; flex-direction: column;">
+            <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Pipeline Details</text>
+            <box class="stat-row">
+                <text class="stat-key">Decoder:</text>
+                <text class="stat-val">ffmpeg stdin</text>
+            </box>
+            <box class="stat-row">
+                <text class="stat-key">Format:</text>
+                <text class="stat-val">RGBA raw</text>
+            </box>
+            <box class="stat-row">
+                <text class="stat-key">FPS (Kitty):</text>
+                <text class="stat-val">30fps</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit (requires system ffmpeg)</text>
+    </box>
+
+</box>

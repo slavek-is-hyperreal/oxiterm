@@ -1,0 +1,77 @@
+<style>
+.panel {
+    border-style: rounded;
+    padding: 1;
+    flex-direction: column;
+    align-items: center;
+}
+.panel-title { height: 1; margin-bottom: 1; }
+.caption     { fg: #64748b; height: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #f87171; height: 1;">🖼️ Graphics and Animations — SVG · Lottie · Rive · PNG</text>
+        <text style="fg: #475569; height: 1;" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <box style="flex-direction: row; padding: 1; flex: 1;">
+
+        <!-- SVG -->
+        <box class="panel" style="border-color: #38bdf8; width: 20; margin-right: 1;">
+            <text class="panel-title" style="fg: #38bdf8;">SVG (resvg)</text>
+            <img src="../assets/mascot.svg" alt="Rust crab — Ferris" style="width: 16; height: 8;" />
+            <text class="caption">resvg+tiny_skia</text>
+        </box>
+
+        <!-- PNG/JPG -->
+        <box class="panel" style="border-color: #4ade80; width: 20; margin-right: 1;">
+            <text class="panel-title" style="fg: #4ade80;">Raster Image</text>
+            <img src="../assets/logo.jpg" alt="Project logo" style="width: 16; height: 8;" />
+            <text class="caption">Auto-negotiated</text>
+        </box>
+
+        <!-- Lottie -->
+        <box class="panel" style="border-color: #fbbf24; width: 18; margin-right: 1;">
+            <text class="panel-title" style="fg: #fbbf24;">Lottie JSON</text>
+            <img src="../assets/bell.json" alt="Bell animation" style="width: 14; height: 6;" />
+            <text class="caption">Frame ticker</text>
+        </box>
+
+        <!-- Rive Toggle -->
+        <box class="panel" style="border-color: #c084fc; width: 18;">
+            <text class="panel-title" style="fg: #c084fc;">Rive .riv</text>
+            <img src="../assets/toggle.riv" alt="Rive Toggle" style="width: 14; height: 3;" />
+            <text class="caption">Procedural Widget</text>
+        </box>
+
+    </box>
+
+    <!-- Protocols row -->
+    <box style="flex-direction: row; padding-left: 1; padding-right: 1;
+                height: 4; border-style: single; border-color: #1e293b;
+                margin-left: 1; margin-right: 1; align-items: center;">
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #38bdf8; height: 1;">Kitty Graphics</text>
+            <text style="fg: #334155; height: 1;">Kitty WezTerm Ghostty</text>
+        </box>
+        <box style="width: 1; bg: #334155;"></box>
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #4ade80; height: 1;">Sixel</text>
+            <text style="fg: #334155; height: 1;">Konsole mlterm</text>
+        </box>
+        <box style="width: 1; bg: #334155;"></box>
+        <box style="flex: 1; align-items: center; flex-direction: column;">
+            <text style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
+            <text style="fg: #334155; height: 1;">All terminals</text>
+        </box>
+    </box>
+
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation</text>
+    </box>
+
+</box>

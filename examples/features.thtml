@@ -1,0 +1,103 @@
+<style>
+text { fg: #e2e8f0; }
+.muted  { fg: #475569; height: 1; }
+.head   { fg: #38bdf8; font-weight: bold; height: 1; }
+.row-title { fg: #f8fafc; height: 1; width: 34; }
+.row-desc  { fg: #94a3b8; height: 1; flex: 1; }
+.row-btn   { border-style: rounded; border-color: #38bdf8; padding-left: 1; padding-right: 1; height: 1; align-items: center; }
+.feature-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    height: 1;
+    margin-bottom: 1;
+}
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2; border-style: single; border-color: #1e293b;">
+        <text class="head">✦ OxiTerm Features &amp; Live Demos</text>
+        <text class="muted" event-htmx="index.thtml">&lt; Back to Home</text>
+    </box>
+
+    <!-- Features List -->
+    <box style="flex: 1; flex-direction: column; padding: 1;">
+
+        <box class="feature-row">
+            <text class="row-title">1. Reactive State (Int/Bool/Str/List)</text>
+            <box class="row-btn" style="border-color: #38bdf8;" event-htmx="demos/state.thtml">
+                <text style="fg: #38bdf8; height: 1;">▶ Try State Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">2. HTMX Actions (inc/dec/set/clear)</text>
+            <box class="row-btn" style="border-color: #4ade80;" event-htmx="demos/counter.thtml">
+                <text style="fg: #4ade80; height: 1;">▶ Try Counter Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">3. Input Fields &amp; Password Masking</text>
+            <box class="row-btn" style="border-color: #f59e0b;" event-htmx="demos/input.thtml">
+                <text style="fg: #f59e0b; height: 1;">▶ Try Input Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">4. TCSS Styling (Classes, #ID, Cascade)</text>
+            <box class="row-btn" style="border-color: #c084fc;" event-htmx="demos/styles.thtml">
+                <text style="fg: #c084fc; height: 1;">▶ Try Styles Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">5. Tabs &amp; Conditional Views (bind-show)</text>
+            <box class="row-btn" style="border-color: #38bdf8;" event-htmx="demos/navigation.thtml">
+                <text style="fg: #38bdf8; height: 1;">▶ Try Tabs Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">6. Vector Media (SVG / Lottie / Rive)</text>
+            <box class="row-btn" style="border-color: #f87171;" event-htmx="demos/media.thtml">
+                <text style="fg: #f87171; height: 1;">▶ Try Media Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">7. MP4 Video Playback (ffmpeg)</text>
+            <box class="row-btn" style="border-color: #fb923c;" event-htmx="demos/video.thtml">
+                <text style="fg: #fb923c; height: 1;">▶ Try Video Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">8. Dynamic List Loops (&lt;for&gt; tag)</text>
+            <box class="row-btn" style="border-color: #a3e635;" event-htmx="demos/todo.thtml">
+                <text style="fg: #a3e635; height: 1;">▶ Try Todo Demo</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">9. App Server OAuth Integration</text>
+            <box class="row-btn" style="border-color: #1DB954;" event-htmx="spotify/panel.thtml">
+                <text style="fg: #1DB954; height: 1;">▶ Try Spotify App</text>
+            </box>
+        </box>
+
+        <box class="feature-row">
+            <text class="row-title">10. Auto Mobile View (_mobile)</text>
+            <text class="row-desc">Resize terminal window &lt; 800px width</text>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
+        <text class="muted">[Tab] Select Demo  [Enter] Open Live Demo</text>
+    </box>
+
+</box>

@@ -1,0 +1,71 @@
+<style>
+.panel {
+    border-style: rounded;
+    border-color: #334155;
+    padding: 1;
+    margin-bottom: 1;
+}
+.label  { fg: #94a3b8; height: 1; }
+.value  { fg: #38bdf8; height: 1; }
+.muted  { fg: #475569; height: 1; }
+.btn    { border-style: single; border-color: #4ade80; padding-left: 1;
+          padding-right: 1; height: 3; align-items: center; }
+.btn-danger { border-style: single; border-color: #f87171; padding-left: 1;
+              padding-right: 1; height: 3; align-items: center; }
+</style>
+
+<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #1e293b; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #334155;">
+        <text style="fg: #4ade80; height: 1;">⌨ Input Demo</text>
+        <text class="muted" event-htmx="../features.thtml">&lt; Back</text>
+    </box>
+
+    <!-- Main Stack -->
+    <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
+
+        <!-- Name Input -->
+        <box class="panel" style="flex-direction: column; width: 44;">
+            <text class="label">Name (type text, enter to submit):</text>
+            <input bind-value="name_input" placeholder="e.g. Slavek"
+                   style="height: 1; border-style: single; border-color: #38bdf8;
+                          padding-left: 1; margin-top: 1;"/>
+            <box style="flex-direction: row; margin-top: 1;">
+                <text class="muted">Typed: </text>
+                <text class="value" bind-state="name_input"> </text>
+            </box>
+        </box>
+
+        <!-- Search Input -->
+        <box class="panel" style="flex-direction: column; width: 44;">
+            <text class="label">Search phrase:</text>
+            <input bind-value="search_input" placeholder="type here..."
+                   style="height: 1; border-style: single; border-color: #a78bfa;
+                          padding-left: 1; margin-top: 1;"/>
+            <box style="flex-direction: row; margin-top: 1;">
+                <text class="muted">Search: </text>
+                <text style="fg: #a78bfa; height: 1;" bind-state="search_input"> </text>
+            </box>
+        </box>
+
+        <!-- Buttons & Help -->
+        <box style="flex-direction: row; width: 44; justify-content: space-between; margin-top: 1;">
+            <box class="btn" event-htmx="clear:name_input" style="width: 20;">
+                <text style="fg: #4ade80; height: 1;">Clear Name</text>
+            </box>
+            <box class="btn-danger" event-htmx="clear:search_input" style="width: 20;">
+                <text style="fg: #f87171; height: 1;">Clear Search</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Navigation  [Enter] Submit</text>
+    </box>
+
+</box>

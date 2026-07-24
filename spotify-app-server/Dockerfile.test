@@ -2,14 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements-test.txt .
+COPY spotify-app-server/requirements-test.txt .
 RUN pip install --no-cache-dir -r requirements-test.txt
 
-COPY app.py .
-COPY test_app.py .
+COPY spotify-app-server/app.py .
+COPY spotify-app-server/test_app.py .
+COPY examples/spotify/ ./examples/spotify/
 
-# .env is injected at runtime via --env-file — never baked into the image.
-# Run tests with:
-#   docker build -f Dockerfile.test -t spotify-app-test .
-#   docker run --rm --env-file .env -e OXITERM_APP_TOKEN=<token> spotify-app-test
 CMD ["python", "-m", "pytest", "test_app.py", "-v"]

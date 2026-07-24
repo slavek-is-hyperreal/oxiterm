@@ -1,0 +1,76 @@
+<style>
+text { fg: #e2e8f0; }
+.muted   { fg: #475569; height: 1; }
+.blue    { fg: #38bdf8; height: 1; }
+.purple  { fg: #c084fc; height: 1; }
+.yellow  { fg: #fbbf24; height: 1; }
+.green   { fg: #4ade80; height: 1; }
+.orange  { fg: #fb923c; height: 1; }
+.pink    { fg: #f472b6; height: 1; }
+.dim     { fg: #334155; height: 1; }
+.section { fg: #94a3b8; height: 1; margin-bottom: 1; }
+</style>
+
+<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+
+    <!-- Header -->
+    <box style="height: 3; bg: #0f172a; align-items: center;
+                justify-content: space-between; padding-left: 2; padding-right: 2;
+                border-style: single; border-color: #1e293b;">
+        <text style="fg: #fbbf24; font-weight: bold; height: 1;">🏗 Architecture — OxiTerm SSR Pipeline</text>
+        <text class="muted" event-htmx="../index.thtml">&lt; Back</text>
+    </box>
+
+    <box style="flex: 1; flex-direction: row; padding: 1;">
+
+        <!-- Pipeline diagram -->
+        <box style="flex-direction: column; width: 28; margin-right: 2; justify-content: center;">
+            <text class="section">SSR Pipeline:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
+                <text class="blue">  THTML File</text>
+                <text class="dim">      ↓</text>
+                <text class="purple">  nom Parser → DOM Arena</text>
+                <text class="dim">      ↓</text>
+                <text class="yellow">  TCSS Style Cascade</text>
+                <text class="dim">      ↓</text>
+                <text class="green">  Taffy Flexbox Layout</text>
+                <text class="dim">      ↓</text>
+                <text class="orange">  CellBuffer Render</text>
+                <text class="dim">      ↓</text>
+                <text class="pink">  SSH / WebSocket Client</text>
+            </box>
+        </box>
+
+        <!-- Optimizations & A11y -->
+        <box style="flex-direction: column; flex: 1;">
+            <text class="section">Performance &amp; Accessibility:</text>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
+                <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Resilient Reactor Thread (RRT)</text>
+                <text class="muted">Non-blocking SSH input reader.</text>
+            </box>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
+                <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Dynamic Ticking Loop</text>
+                <text class="muted">Idle: 5ms poll. Animation: 66ms (15fps)</text>
+            </box>
+            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
+                <text style="fg: #4ade80; height: 1; margin-bottom: 1;">Accessibility Status (a11y)</text>
+                <text class="muted">--a11y linear rendering active.</text>
+                <text class="muted">AT-SPI / D-Bus transport is a stub.</text>
+            </box>
+        </box>
+
+    </box>
+
+    <!-- Source file footer -->
+    <box style="height: 3; border-style: single; border-color: #1e293b; margin-left: 1; margin-right: 1;
+                align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2;">
+        <text style="fg: #94a3b8; height: 1;">Full Spec Markdown: docs/ARCHITECTURE.md</text>
+        <text style="fg: #fbbf24; height: 1;" event-htmx="open:https://github.com/slavek-is-hyperreal/oxiterm/blob/main/docs/ARCHITECTURE.md">GitHub →</text>
+    </box>
+
+    <!-- Footer -->
+    <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
+        <text class="muted">[Q] Exit  [Tab] Navigate</text>
+    </box>
+
+</box>

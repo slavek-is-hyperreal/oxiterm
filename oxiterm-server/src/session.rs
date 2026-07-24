@@ -1590,8 +1590,9 @@ impl EventLoop {
                     let mut profile = self.session.terminal_profile.read().clone();
                     profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
+                    let app_base_dir = self.session.app_base_dir.read().clone();
                     self.buffer.back.clear();
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, self.scroll_offset);
+                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
 
                     // Focus ring: draw markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
