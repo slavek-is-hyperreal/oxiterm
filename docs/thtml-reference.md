@@ -113,7 +113,66 @@ The `bind-show` attribute is used to reactively hide interface elements. Nodes w
 
 ---
 
-## 7. State Types
+## 7. Layout & Sizing Model
+
+### 7.1 Box model: border-box
+
+OxiTerm calculates element dimensions using the **border-box** model (`engine.rs` uses Taffy's default `BorderBox`). This means declared `height` and `width` include the **border and padding**, not just the inner content.
+
+Consequence for borders: an element with `border-style` reserves 1 row for the top border and 1 row for the bottom border:
+
+| Declaration | Border Rows | Content Rows |
+|---|---|---|
+| `border-style: single; height: 3` | 2 | **1** |
+| `border-style: single; height: 5` | 2 | 3 |
+| `border-style: single; height: 1` | 2 | **−1 → collision** |
+
+> [!WARNING]
+> An element with a border **cannot** have `height: 1` or `height: 2` — borders alone consume 2 rows, leaving no space for content and causing border lines to collide with adjacent elements. The minimum sensible height for a bordered element is `height: 3` (1 content row). The same rule applies to width: `width` with a border must be $\ge 2 + \text{content width}$.
+
+Similarly for width: a class like `.btn { border-style: single; padding-left: 1; padding-right: 1; }` consumes 2 (border) + 2 (padding) = 4 columns before content appears.
+
+### 7.2 Rigidly Sized Containers Must Fit Children
+
+A container with an explicit `height` (e.g., `height: 7`) **does not expand** when its contents are taller — children will overflow outside its borders. Authors must calculate the total height:
+
+```
+container height ≥ top_border(1) + Σ(children heights + their margins) + bottom_border(1)
+```
+
+Example: A bordered bar containing a progress row (`height: 1`), margin (`margin-top: 1`), and a row of `.btn` buttons (`height: 3`):
+```
+border(1) + progress(1) + margin(1) + buttons(3) + border(1) = 7
+```
+Such a container must have `height: 7`, no less.
+
+> [!IMPORTANT]
+> Remember that `.btn` (and any bordered element) occupies **3 rows**, not 1. The most common layout error is counting a button row as 1 row. If you do not want to calculate heights manually, use `height: auto` or `flex: 1` — the container will adapt to its content automatically.
+
+### 7.3 Text Width and Wrapping
+
+By default (`wrap: none`), a `<text>` node gets a width equal to its character glyph count and **never shrinks** — in a narrow container, it pushes the parent or overflows past the right border. This is intentional (it prevents clickable text from collapsing into 1 column), but means long unwrapped text breaks the layout.
+
+With `wrap: word`, text breaks across multiple lines, but **only at spaces (word boundaries)** — the longest single word determines the minimum width and is not broken.
+
+| Scenario | Behavior |
+|---|---|
+| Short text, `wrap: none` | Single line, width = glyph count |
+| Long text with spaces, `wrap: word` | Wraps at spaces onto multiple lines |
+| Long **single token** without spaces (e.g., URL), `wrap: word` | **Does not wrap** — tokens longer than container overflow right border |
+
+> [!WARNING]
+> `wrap: word` will not break a long URL or single token without spaces — wrapping occurs only at spaces (word boundaries). To fit a long token, **constrain the container** (e.g., give the parent an explicit `width` smaller than available space) so that the token has visible margins. Do not expect `wrap: word` to break tokens automatically.
+
+### 7.4 Page Vertical Budget
+
+The document root typically has a fixed height (e.g., `height: 24` for a standard terminal). Sections with rigid `height` sum up; a single section with `flex: 1` absorbs the remainder. If the sum of rigid sections + minimum height of the `flex` section exceeds root height, the page will scroll (`PgDn`/`PgUp` indicators appear).
+
+Recommended pattern: **Persistent sections** (header, footer) receive rigid `height`, while the **content area** receives `flex: 1`, allowing it to shrink automatically to available space without manual height calculation.
+
+---
+
+## 8. State Types
 
 `StateManager` stores typed state values. The table below illustrates how different types are rendered on screen by the `bind-state` attribute:
 
@@ -129,7 +188,7 @@ The `bind-show` attribute is used to reactively hide interface elements. Nodes w
 
 ---
 
-## 8. Interacting with `<input>` Fields
+## 9. Interacting with `<input>` Fields
 
 The data entry flow in input fields is as follows:
 1. The user moves focus to the `<input>` field using the `Tab` key or arrow keys.
@@ -146,7 +205,7 @@ Example binding input with reactive text:
 
 ---
 
-## 9. Comments
+## 10. Comments
 
 Standard HTML comments are completely skipped when parsing the document tree:
 ```html
@@ -155,7 +214,7 @@ Standard HTML comments are completely skipped when parsing the document tree:
 
 ---
 
-## 10. Data Safety and Sanitization
+## 11. Data Safety and Sanitization
 
 OxiTerm ensures that input provided by THTML files and user interaction does not disrupt terminal output or lead to rendering errors:
 * **Styles (`style="..."`):** Any ANSI escape sequences are detected and stripped using regex. This prevents injection attacks with destructive terminal control codes.
