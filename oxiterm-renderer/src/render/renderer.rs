@@ -480,6 +480,57 @@ impl Renderer {
         image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(pixmap.width(), pixmap.height(), rgba_data).unwrap()
     }
 
+    pub(crate) fn draw_missing_placeholder(
+        abs_x: i32,
+        abs_y: i32,
+        width: u16,
+        height: u16,
+        label: &str,
+        buffer: &mut CellBuffer,
+    ) {
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        for dy in 0..height {
+            for dx in 0..width {
+                let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
+                let ch = if is_border { '*' } else { ' ' };
+                Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
+                    ch,
+                    fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                    ..Default::default()
+                });
+            }
+        }
+
+        let full_text = format!("brak grafiki: {}", label);
+        let full_len = full_text.chars().count() as u16;
+        let short_len = label.chars().count() as u16;
+
+        let (display_str, display_len) = if width >= full_len + 2 {
+            (full_text.as_str(), full_len)
+        } else if width >= short_len + 2 {
+            (label, short_len)
+        } else if width >= 3 {
+            ("?", 1)
+        } else {
+            ("", 0)
+        };
+
+        if display_len > 0 && height >= 2 {
+            let start_x = abs_x + (width as i32 - display_len as i32) / 2;
+            let start_y = abs_y + height as i32 / 2;
+            for (i, c) in display_str.chars().enumerate() {
+                Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
+                    ch: c,
+                    fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
     fn render_img(
         node: &oxiterm_proto::dom::Node,
         abs_x: i32,
@@ -491,9 +542,6 @@ impl Renderer {
         base_dir: Option<&Path>,
         app_base_dir: Option<&Path>,
     ) {
-        if profile.is_web {
-            return;
-        }
 
         if let Some(ref src) = node.attrs.src {
             let resolved_path = if let Some(base) = base_dir {
@@ -523,6 +571,16 @@ impl Renderer {
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;
             if pixel_w == 0 || pixel_h == 0 {
+                return;
+            }
+
+            let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
+            if !resolved_path.exists() {
+                Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
+                return;
+            }
+
+            if profile.is_web {
                 return;
             }
 
@@ -856,33 +914,8 @@ impl Renderer {
                 }
                 Err(e) => {
                     tracing::warn!("Failed to render image from {:?}: {}", resolved_path, e);
-                    for dy in 0..height {
-                        for dx in 0..width {
-                            let ch = if dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1 {
-                                '*'
-                            } else {
-                                ' '
-                            };
-                            Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
-                                ch,
-                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
-                                ..Default::default()
-                            });
-                        }
-                    }
                     let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
-                    let len = name.chars().count() as u16;
-                    if width > len + 2 && height > 2 {
-                        let start_x = abs_x + (width - len) as i32 / 2;
-                        let start_y = abs_y + height as i32 / 2;
-                        for (i, c) in name.chars().enumerate() {
-                            Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
-                                ch: c,
-                                fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
-                                ..Default::default()
-                            });
-                        }
-                    }
+                    Self::draw_missing_placeholder(abs_x, abs_y, width, height, name, buffer);
                 }
             }
         }
@@ -899,52 +932,6 @@ impl Renderer {
         base_dir: Option<&Path>,
         app_base_dir: Option<&Path>,
     ) {
-        if profile.is_web {
-            return;
-        }
-
-        let draw_fallback = |resolved_path: &Path, buffer: &mut CellBuffer| {
-            for dy in 0..height {
-                for dx in 0..width {
-                    let is_border = dy == 0 || dy == height - 1 || dx == 0 || dx == width - 1;
-                    let ch = if is_border { '*' } else { ' ' };
-                    Self::safe_set(buffer, abs_x + dx as i32, abs_y + dy as i32, Cell {
-                        ch,
-                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
-                        ..Default::default()
-                    });
-                }
-            }
-            let name = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            let is_missing = {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    true
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    !crate::render::cache::VideoPlayerRegistry::is_ffmpeg_available()
-                }
-            };
-            let display_name = if is_missing {
-                format!("[Video Error: ffmpeg missing! {}]", name)
-            } else {
-                format!("[Video: {}]", name)
-            };
-            let len = display_name.chars().count() as u16;
-            if width > len + 2 && height > 2 {
-                let start_x = abs_x + (width - len) as i32 / 2;
-                let start_y = abs_y + height as i32 / 2;
-                for (i, c) in display_name.chars().enumerate() {
-                    Self::safe_set(buffer, start_x + i as i32, start_y, Cell {
-                        ch: c,
-                        fg: oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0),
-                        ..Default::default()
-                    });
-                }
-            }
-        };
-
         if let Some(ref src) = node.attrs.src {
             let resolved_path = if let Some(base) = base_dir {
                 base.join(src)
@@ -973,6 +960,16 @@ impl Renderer {
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;
             if pixel_w == 0 || pixel_h == 0 {
+                return;
+            }
+
+            let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
+            if !resolved_path.exists() {
+                Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
+                return;
+            }
+
+            if profile.is_web {
                 return;
             }
 
@@ -1055,7 +1052,7 @@ impl Renderer {
                     }
                 }
             }
-            draw_fallback(&resolved_path, buffer);
+            Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
         }
     }
 }
@@ -1189,6 +1186,91 @@ mod tests {
         // Falling back should draw border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
         assert_eq!(buffer.cells[14].ch, '*');
+    }
+
+    #[test]
+    fn test_contract_9_placeholder_full_label() {
+        let mut buffer = CellBuffer::new(30, 5);
+        Renderer::draw_missing_placeholder(0, 0, 30, 5, "mascot.svg", &mut buffer);
+        let row2: String = (0..30).map(|x| buffer.cells[2 * 30 + x].ch).collect();
+        assert!(row2.contains("brak grafiki: mascot.svg"));
+    }
+
+    #[test]
+    fn test_contract_10_placeholder_question_mark_for_small_width() {
+        let mut buffer = CellBuffer::new(6, 4);
+        Renderer::draw_missing_placeholder(0, 0, 6, 4, "mascot.svg", &mut buffer);
+        let row2: String = (0..6).map(|x| buffer.cells[2 * 6 + x].ch).collect();
+        assert!(row2.contains('?'));
+        assert!(!row2.contains("mascot.svg"));
+    }
+
+    #[test]
+    fn test_contract_11_placeholder_border_only_for_tiny_width() {
+        let mut buffer = CellBuffer::new(2, 2);
+        Renderer::draw_missing_placeholder(0, 0, 2, 2, "mascot.svg", &mut buffer);
+        assert_eq!(buffer.cells[0].ch, '*');
+        assert_eq!(buffer.cells[1].ch, '*');
+        assert_eq!(buffer.cells[2].ch, '*');
+        assert_eq!(buffer.cells[3].ch, '*');
+    }
+
+    #[test]
+    fn test_contract_12_video_placeholder_adaptive_label() {
+        let mut buffer = CellBuffer::new(20, 5);
+        Renderer::draw_missing_placeholder(0, 0, 20, 5, "clip.mp4", &mut buffer);
+        let row2: String = (0..20).map(|x| buffer.cells[2 * 20 + x].ch).collect();
+        assert!(row2.contains("clip.mp4"));
+    }
+
+    #[test]
+    fn test_contract_13_web_mode_missing_file_renders_placeholder() {
+        let mut doc = THTMLDocument::new();
+        let mut img_node = Node::new(NodeTag::Img);
+        img_node.attrs.src = Some("missing_web_image.png".to_string());
+        img_node.style.width = Some(40);
+        img_node.style.height = Some(5);
+        let node_id = doc.arena.alloc(img_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 40, 5, None).unwrap();
+        let mut buffer = CellBuffer::new(40, 5);
+        let mut profile = TerminalProfile::default();
+        profile.is_web = true;
+        let base = std::path::Path::new(".");
+        Renderer::render_node(&doc, &layout, &mut buffer, &profile, None, Some(base), 0);
+
+        assert_eq!(buffer.cells[0].ch, '*');
+        let row2: String = (0..40).map(|x| buffer.cells[2 * 40 + x].ch).collect();
+        assert!(row2.contains("brak grafiki: missing_web_image.png"));
+    }
+
+    #[test]
+    fn test_contract_14_web_mode_existing_file_skips_pixel_decoding() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("test_web_existing.png");
+        std::fs::write(&test_file, b"FAKE_PNG_DATA").unwrap();
+
+        let mut doc = THTMLDocument::new();
+        let mut img_node = Node::new(NodeTag::Img);
+        img_node.attrs.src = Some("test_web_existing.png".to_string());
+        img_node.style.width = Some(30);
+        img_node.style.height = Some(5);
+        let node_id = doc.arena.alloc(img_node);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        let layout = engine.compute(&mut doc, 30, 5, None).unwrap();
+        let mut buffer = CellBuffer::new(30, 5);
+        let mut profile = TerminalProfile::default();
+        profile.is_web = true;
+        Renderer::render_node(&doc, &layout, &mut buffer, &profile, Some(&temp_dir), Some(&temp_dir), 0);
+
+        // Should not render red border '*' for existing file on web
+        assert_ne!(buffer.cells[0].ch, '*');
+
+        let _ = std::fs::remove_file(test_file);
     }
 
     #[test]

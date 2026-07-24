@@ -291,7 +291,7 @@ mod tests {
             <box>
                 <button id="btn" alt="Submit Info">Click</button>
                 <input name="user" placeholder="Enter User"/>
-                <img alt="Logo image"/>
+                <img src="logo.png" style="width: 10; height: 5;" alt="Logo image"/>
             </box>
         "#;
         let doc = THTMLParser::parse(html).unwrap();

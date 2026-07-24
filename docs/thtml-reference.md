@@ -64,7 +64,8 @@ The following attributes can be applied to any node type:
 
 | Tag | Attribute | Description |
 |---|---|---|
-| `<img>`, `<video>` | `src` | Relative path to the resource file (relative to the directory containing the `.thtml` file). Paths are checked for Path Traversal attack attempts. |
+| `<img>`, `<video>` | `src` | **Required.** Relative path to the resource file (relative to the directory containing the `.thtml` file). Paths are checked for Path Traversal attack attempts. |
+| `<img>`, `<video>` | `style` / TCSS | **Required.** Must declare explicit `width` (>0) and `height` (>0) inline or via TCSS class. Omission triggers a parsing error. |
 | `<img>`, `<video>` | `alt` | Textual description of the media element, used in accessibility mode (`--a11y`). |
 | `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
 | `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |

@@ -110,6 +110,8 @@ impl THTMLParser {
         let stylesheet = crate::parser::tcss::parse_tcss(&style_content).unwrap_or_default();
         crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
         
+        Self::validate_media_nodes(&doc)?;
+
         Ok(doc)
     }
 
@@ -125,6 +127,70 @@ impl THTMLParser {
             Self::insert_node_recursive(doc, node_id, child)?;
         }
         
+        Ok(())
+    }
+
+    fn validate_media_nodes(doc: &THTMLDocument) -> Result<()> {
+        for (_node_id, node) in doc.arena.iter() {
+            if node.tag == NodeTag::Img || node.tag == NodeTag::Video {
+                let tag_str = if node.tag == NodeTag::Img { "img" } else { "video" };
+                
+                let src_opt = node.attrs.src.as_deref().filter(|s| !s.trim().is_empty());
+                let has_width = node.style.width.map_or(false, |w| w > 0);
+                let has_height = node.style.height.map_or(false, |h| h > 0);
+
+                if src_opt.is_none() || !has_width || !has_height {
+                    let src_str = src_opt.unwrap_or("");
+                    let mut missing_list = Vec::new();
+                    let mut present_list = Vec::new();
+
+                    if src_opt.is_none() {
+                        missing_list.push("src");
+                    } else {
+                        present_list.push(format!("src=\"{}\"", src_str));
+                    }
+
+                    if !has_width {
+                        missing_list.push("width");
+                    } else if let Some(w) = node.style.width {
+                        present_list.push(format!("width={}", w));
+                    }
+
+                    if !has_height {
+                        missing_list.push("height");
+                    } else if let Some(h) = node.style.height {
+                        present_list.push(format!("height={}", h));
+                    }
+
+                    let elem_display = if src_str.is_empty() {
+                        format!("<{}>", tag_str)
+                    } else {
+                        format!("<{} src=\"{}\">", tag_str, src_str)
+                    };
+
+                    let missing_str = missing_list.join(", ");
+                    let present_str = if present_list.is_empty() {
+                        "none".to_string()
+                    } else {
+                        present_list.join(", ")
+                    };
+
+                    let sample_src = if src_str.is_empty() { "assets/mascot.svg" } else { src_str };
+
+                    let err_msg = format!(
+                        "THTML Validation Error: <{}> requires explicit dimensions.\n\n  Element:  {}\n  Missing:  {}\n  Present:  {}\n\n  Why:      Images have no intrinsic size in OxiTerm — the engine cannot\n            know the file's dimensions before loading it, so width and\n            height must be declared by the author. Without them the element\n            collapses to zero size and renders nothing.\n\n  Fix:      Add the missing dimension, e.g.:\n              <{} src=\"{}\" style=\"width: 18; height: 9;\" />\n            or via a TCSS class:\n              .mascot {{ width: 18; height: 9; }}",
+                        tag_str,
+                        elem_display,
+                        missing_str,
+                        present_str,
+                        tag_str,
+                        sample_src
+                    );
+
+                    return Err(anyhow::anyhow!(err_msg));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -476,5 +542,80 @@ mod tests {
         let root = doc.get_root();
         let node = doc.get_node(root.children[0]).unwrap();
         assert_eq!(node.attrs.input_type.as_deref(), Some("password"));
+    }
+
+    #[test]
+    fn test_contract_1_valid_img_dimensions() {
+        let input = r#"<img src="x.svg" style="width:10; height:5;" />"#;
+        assert!(THTMLParser::parse(input).is_ok());
+    }
+
+    #[test]
+    fn test_contract_2_missing_height_error() {
+        let input = r#"<img src="x.svg" style="width:10;" />"#;
+        let err_msg = match THTMLParser::parse(input) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error"),
+        };
+        assert!(err_msg.contains("Missing:  height"));
+        assert!(err_msg.contains("src=\"x.svg\""));
+    }
+
+    #[test]
+    fn test_contract_3_missing_src_error() {
+        let input = r#"<img style="width:10; height:5;" />"#;
+        let err_msg = match THTMLParser::parse(input) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error"),
+        };
+        assert!(err_msg.contains("Missing:  src"));
+    }
+
+    #[test]
+    fn test_contract_4_missing_both_dimensions_error() {
+        let input = r#"<img src="x.svg" />"#;
+        let err_msg = match THTMLParser::parse(input) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error"),
+        };
+        assert!(err_msg.contains("width"));
+        assert!(err_msg.contains("height"));
+    }
+
+    #[test]
+    fn test_contract_5_dimensions_via_tcss_class() {
+        let input = r#"
+            <style>
+                .thumb { width: 10; height: 5; }
+            </style>
+            <img class="thumb" src="x.svg" />
+        "#;
+        assert!(THTMLParser::parse(input).is_ok());
+    }
+
+    #[test]
+    fn test_contract_6_valid_video_dimensions() {
+        let input = r#"<video src="v.mp4" style="width:20; height:8;" />"#;
+        assert!(THTMLParser::parse(input).is_ok());
+    }
+
+    #[test]
+    fn test_contract_7_video_missing_dimensions_error() {
+        let input = r#"<video src="v.mp4" />"#;
+        let err_msg = match THTMLParser::parse(input) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error"),
+        };
+        assert!(err_msg.contains("<video> requires explicit dimensions"));
+    }
+
+    #[test]
+    fn test_contract_8_error_message_contains_literal_src() {
+        let input = r#"<img src="custom/path/mascot.svg" style="width: 10;" />"#;
+        let err_msg = match THTMLParser::parse(input) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error"),
+        };
+        assert!(err_msg.contains("src=\"custom/path/mascot.svg\""));
     }
 }
