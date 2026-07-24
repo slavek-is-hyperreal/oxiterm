@@ -45,33 +45,33 @@
         <!-- TAB 1: AUTHENTICATION (Default when tab=false or tab=auth) -->
         <box bind-show="tab=false" class="card-green" style="flex-direction: column; flex: 1;">
             <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
-            <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4ceae146db8ded92dae9ed9ddd)</text>
+            <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4fceae146db8ded92dae9ed9ddd)</text>
             
             <box style="flex-direction: row; margin-top: 1;">
-                <box class="btn" event-htmx="open:https://accounts.spotify.com/authorize?client_id=a2cff4ceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private" style="margin-right: 1;">
+                <box class="btn" event-htmx="open:https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private" style="margin-right: 1;">
                     <text class="txt-green">[ 🔑 Otwórz Autoryzację Spotify w Przeglądarce ]</text>
                 </box>
             </box>
 
             <box style="border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
                 <text class="txt-muted">Direct OAuth Link (skopiuj dla SSH / przeglądarki):</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4ceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
+                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
             </box>
         </box>
 
         <box bind-show="tab=auth" class="card-green" style="flex-direction: column; flex: 1;">
             <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
-            <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4ceae146db8ded92dae9ed9ddd)</text>
+            <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4fceae146db8ded92dae9ed9ddd)</text>
             
             <box style="flex-direction: row; margin-top: 1;">
-                <box class="btn" event-htmx="open:https://accounts.spotify.com/authorize?client_id=a2cff4ceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private" style="margin-right: 1;">
+                <box class="btn" event-htmx="open:https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private" style="margin-right: 1;">
                     <text class="txt-green">[ 🔑 Otwórz Autoryzację Spotify w Przeglądarce ]</text>
                 </box>
             </box>
 
             <box style="border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
                 <text class="txt-muted">Direct OAuth Link (skopiuj dla SSH / przeglądarki):</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4ceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
+                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">https://accounts.spotify.com/authorize?client_id=a2cff4fceae146db8ded92dae9ed9ddd&response_type=code&redirect_uri=https%3A%2F%2Foxiterm.slavekm.pl%2Fcallback&scope=user-read-playback-state+user-modify-playback-state+user-read-currently-playing+playlist-read-private</text>
             </box>
         </box>
 

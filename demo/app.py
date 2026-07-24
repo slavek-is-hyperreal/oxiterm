@@ -18,7 +18,7 @@ logger = logging.getLogger("spotify_app_server")
 app = FastAPI(title="OxiTerm Spotify App Server")
 
 # Spotify Configuration
-CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "a2cff4ceae146db8ded92dae9ed9ddd")
+CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "a2cff4fceae146db8ded92dae9ed9ddd")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://oxiterm.slavekm.pl/callback")
 SCOPE = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
