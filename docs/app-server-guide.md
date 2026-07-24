@@ -4,11 +4,42 @@ OxiTerm is responsible for the user interface layer (THTML/TCSS), handling termi
 
 ---
 
-## 1. Communication Protocol
+## 1. Authentication
 
-Communication between OxiTerm and the external server takes place using HTTP POST requests. On every `event-htmx` event, OxiTerm sends an asynchronous request in a background thread with a JSON payload to the URL defined in the `OXITERM_APP_SERVER` environment variable.
+Both channels between OxiTerm and your App Server are protected by a shared secret token.
 
-### JSON Payload Schema (OxiTerm → App Server)
+### Setting the token
+
+Set `OXITERM_APP_TOKEN` on the OxiTerm server:
+```bash
+export OXITERM_APP_TOKEN="<your-secret-token>"
+```
+
+Set the **same** token on your App Server and verify it on every incoming request.
+
+### OxiTerm → App Server (Bearer header)
+
+OxiTerm attaches the token to every outgoing `POST /events` request:
+```
+Authorization: Bearer <token>
+```
+
+Your App Server **must** verify this header with a constant-time comparison (e.g. `secrets.compare_digest` in Python, `crypto.timingSafeEqual` in Node). Reject requests with a wrong or missing token with `401 Unauthorized`.
+
+### Enabling / disabling the push endpoint
+
+If `OXITERM_APP_TOKEN` is **unset or empty**, OxiTerm disables the inbound push endpoint entirely — all `POST /sessions/{id}/patch` requests receive `404 Not Found`. Setting a non-empty token enables it. This is a **circuit breaker**, not optional hardening.
+
+> [!IMPORTANT]
+> All five code examples below include the `Authorization: Bearer` check. An App Server that skips this check allows any caller on the network to inject arbitrary state into any active user session.
+
+---
+
+## 2. Communication Protocol
+
+### OxiTerm → App Server (`POST /events`)
+
+On every `event-htmx` event, OxiTerm sends an asynchronous HTTP POST to the URL in `OXITERM_APP_SERVER`:
 
 ```json
 {
@@ -21,8 +52,6 @@ Communication between OxiTerm and the external server takes place using HTTP POS
 }
 ```
 
-### Field Descriptions
-
 | Field | Type | Description |
 |---|---|---|
 | `action` | string | The raw value of the `event-htmx` attribute (e.g. `"login"`, `"save_record"`) that triggered the event. |
@@ -31,37 +60,71 @@ Communication between OxiTerm and the external server takes place using HTTP POS
 | `username` | string \| null | Optional. The authenticated user's name, when the session was authenticated (SSH key / proxy-forwarded identity); `null` for anonymous/guest sessions. |
 | `auth_method` | string \| null | Optional. How the session authenticated (e.g. the SSH/identity method), when known. |
 
-### Dynamic State Patching (App Server → OxiTerm)
+#### State Patch Response (App Server → OxiTerm)
 
-If the App Server returns a status code of **`200 OK`** with a JSON object, OxiTerm parses the response body as a **State Patch** and applies it to the active session state. If no state updates are needed, the response should have a status code of **`204 No Content`** (or `200 OK` with an empty body).
+If the App Server returns `200 OK` with a JSON object, OxiTerm applies it as a **state patch** to the session. For no state change, return `204 No Content` (or `200 OK` with an empty body).
 
-#### Example State Patch Response (App Server → OxiTerm)
 ```json
 {
   "email_error": "Invalid email domain",
   "step": "3"
 }
 ```
-This patch will insert or update the keys `email_error` and `step` in the session's `StateManager`, and OxiTerm will immediately redraw the terminal UI to reflect the updated state.
 
 > [!NOTE]
-> Event dispatching by OxiTerm runs asynchronously in a spawned thread to avoid blocking the terminal event loop. The state patch is applied to the session as soon as the HTTP request completes.
+> Event dispatching runs asynchronously in a spawned thread to avoid blocking the terminal event loop. The state patch is applied as soon as the HTTP request completes.
 
 ---
 
-## 2. Python Implementation
+### App Server → OxiTerm (`POST /sessions/{id}/patch`)
 
-### Flask (with State Patching)
+Your App Server can push state patches to OxiTerm at any time — without waiting for a user event:
+
+```
+POST /sessions/{session_id}/patch
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"now_playing": "Dark Side of the Moon", "progress": "42"}
+```
+
+| Response code | Meaning |
+|---|---|
+| `200` | Patch applied to the session |
+| `401` | Token missing or wrong |
+| `404` | Endpoint disabled (empty token) **or** session does not exist |
+| `400` | `{id}` is not a valid integer |
+
+> [!NOTE]
+> The mapping from `session_id` to a user identity belongs to your App Server. **Never send that mapping back** to OxiTerm in a state patch — it would become visible to the client.
+
+---
+
+## 3. Python Implementation
+
+### Flask (with Bearer auth + State Patching)
 ```bash
 pip install flask
 ```
 
 ```python
-from flask import Flask, request, jsonify
+import hmac, os
+from flask import Flask, request, jsonify, abort
+
 app = Flask(__name__)
+APP_TOKEN = os.environ["OXITERM_APP_TOKEN"]
+
+def require_bearer():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        abort(401)
+    token = auth[len("Bearer "):]
+    if not hmac.compare_digest(token, APP_TOKEN):
+        abort(401)
 
 @app.route("/events", methods=["POST"])
 def handle_event():
+    require_bearer()
     payload    = request.json
     action     = payload["action"]
     state      = payload["state"]
@@ -70,32 +133,36 @@ def handle_event():
     if action == "validate_form":
         email = state.get("email", "")
         if "@" not in email:
-            print(f"Session {session_id}: Invalid email format")
-            # Return a state patch to show an error message in the UI
-            return jsonify({
-                "email_error": "Invalid email format"
-            }), 200
+            return jsonify({"email_error": "Invalid email format"}), 200
 
     elif action == "save_record":
         print(f"Saving record for session {session_id}: {state}")
 
-    # No state change needed
     return "", 204
 
 if __name__ == "__main__":
     app.run(port=3000)
 ```
 
-### FastAPI (asynchronous server with Pydantic and State Patching)
+### FastAPI (asynchronous, with Bearer auth + State Patching)
 ```bash
 pip install fastapi uvicorn
 ```
 
 ```python
-from fastapi import FastAPI, Response, status
+import hmac, os
+from fastapi import FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel
 
 app = FastAPI()
+APP_TOKEN = os.environ["OXITERM_APP_TOKEN"]
+
+def require_bearer(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401)
+    token = authorization[len("Bearer "):]
+    if not hmac.compare_digest(token, APP_TOKEN):
+        raise HTTPException(status_code=401)
 
 class OxiEvent(BaseModel):
     action: str
@@ -103,7 +170,9 @@ class OxiEvent(BaseModel):
     session_id: int
 
 @app.post("/events")
-async def handle(ev: OxiEvent, response: Response):
+async def handle(ev: OxiEvent, response: Response,
+                 authorization: str = Header(...)):
+    require_bearer(authorization)
     match ev.action:
         case "validate_form":
             email = ev.state.get("email", "")
@@ -111,7 +180,7 @@ async def handle(ev: OxiEvent, response: Response):
                 return {"email_error": "Invalid email format"}
         case "save_record":
             await save_to_db(ev.session_id, ev.state)
-            
+
     response.status_code = status.HTTP_204_NO_CONTENT
     return {}
 
@@ -123,35 +192,45 @@ async def save_to_db(session_id: int, state: dict[str, str]):
 
 ---
 
-## 3. Node.js Implementation (JavaScript / TypeScript)
+## 4. Node.js Implementation (JavaScript / TypeScript)
 
-### Express
+### Express (with Bearer auth)
 ```bash
 npm install express
 ```
 
 ```javascript
 const express = require("express");
+const crypto  = require("crypto");
 const app = express();
 app.use(express.json());
 
-app.post("/events", (req, res) => {
+const APP_TOKEN = process.env.OXITERM_APP_TOKEN;
+
+function requireBearer(req, res, next) {
+  const auth = req.headers["authorization"] || "";
+  if (!auth.startsWith("Bearer ")) return res.status(401).end();
+  const token = auth.slice("Bearer ".length);
+  // constant-time comparison
+  try {
+    const a = Buffer.from(token);
+    const b = Buffer.from(APP_TOKEN);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b))
+      return res.status(401).end();
+  } catch { return res.status(401).end(); }
+  next();
+}
+
+app.post("/events", requireBearer, (req, res) => {
   const { action, state, session_id } = req.body;
 
   switch (action) {
     case "login":
       if (state.username === "admin" && state.password === "secret") {
-        console.log(`Session ${session_id}: authentication succeeded`);
-        return res.json({
-          auth_error: "",
-          logged_in: "true"
-        });
+        return res.json({ auth_error: "", logged_in: "true" });
       } else {
-        return res.json({
-          auth_error: "Invalid username or password"
-        });
+        return res.json({ auth_error: "Invalid username or password" });
       }
-
     case "fetch_data":
       fetchFromDB(state).then(data => {
         console.log(`Session ${session_id}: data fetched`, data);
@@ -164,21 +243,33 @@ app.post("/events", (req, res) => {
 app.listen(3000);
 ```
 
-### Hono (Bun / Edge)
+### Hono (Bun / Edge, with Bearer auth)
 ```javascript
 import { Hono } from "hono"
+import { timingSafeEqual } from "node:crypto"
+
 const app = new Hono()
+const APP_TOKEN = process.env.OXITERM_APP_TOKEN
+
+function checkBearer(c) {
+  const auth = c.req.header("Authorization") || ""
+  if (!auth.startsWith("Bearer ")) return false
+  const token = auth.slice("Bearer ".length)
+  try {
+    const a = Buffer.from(token)
+    const b = Buffer.from(APP_TOKEN)
+    return a.length === b.length && timingSafeEqual(a, b)
+  } catch { return false }
+}
 
 app.post("/events", async c => {
+  if (!checkBearer(c)) return c.body(null, 401)
   const { action, state, session_id } = await c.req.json()
-  
+
   if (action === "check_username") {
-    const username = state.username || "";
-    if (username.length < 3) {
-      return c.json({ username_error: "Too short!" })
-    } else {
-      return c.json({ username_error: "" })
-    }
+    const username = state.username || ""
+    if (username.length < 3) return c.json({ username_error: "Too short!" })
+    return c.json({ username_error: "" })
   }
 
   return c.body(null, 204)
@@ -189,9 +280,7 @@ export default { port: 3000, fetch: app.fetch }
 
 ---
 
-## 4. Rust Implementation (Axum)
-
-Running your application server in Rust allows you to share event structure types (e.g., through a shared crate in a workspace).
+## 5. Rust Implementation (Axum, with Bearer auth)
 
 ```toml
 [dependencies]
@@ -202,9 +291,13 @@ serde_json = "1"
 ```
 
 ```rust
-use axum::{Router, Json, response::IntoResponse, http::StatusCode, routing::post};
+use axum::{
+    Router, Json, extract::TypedHeader,
+    headers::{Authorization, authorization::Bearer},
+    response::IntoResponse, http::StatusCode, routing::post,
+};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 
 #[derive(Deserialize)]
 struct OxiEvent {
@@ -213,7 +306,20 @@ struct OxiEvent {
     session_id: usize,
 }
 
-async fn handle(Json(ev): Json<OxiEvent>) -> impl IntoResponse {
+fn token_ok(bearer: &str) -> bool {
+    let expected = env::var("OXITERM_APP_TOKEN").unwrap_or_default();
+    // Constant-time comparison
+    if bearer.len() != expected.len() { return false; }
+    bearer.bytes().zip(expected.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+}
+
+async fn handle(
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    Json(ev): Json<OxiEvent>,
+) -> impl IntoResponse {
+    if !token_ok(auth.token()) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     match ev.action.as_str() {
         "save_config" => {
             let k = ev.state.get("config_key").cloned().unwrap_or_default();
@@ -225,16 +331,12 @@ async fn handle(Json(ev): Json<OxiEvent>) -> impl IntoResponse {
             let age_str = ev.state.get("age").cloned().unwrap_or_default();
             if let Ok(age) = age_str.parse::<u32>() {
                 if age < 18 {
-                    return (
-                        StatusCode::OK,
+                    return (StatusCode::OK,
                         Json(serde_json::json!({ "age_error": "Must be 18 or older" }))
                     ).into_response();
                 }
             }
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({ "age_error": "" }))
-            ).into_response()
+            (StatusCode::OK, Json(serde_json::json!({ "age_error": "" }))).into_response()
         }
         _ => StatusCode::NO_CONTENT.into_response()
     }
@@ -250,7 +352,7 @@ async fn main() {
 
 ---
 
-## 5. Complete Flow (Login Form Example)
+## 6. Complete Flow (Login Form Example)
 
 Here is how to construct a THTML interface to pass input values to your application server:
 
@@ -269,7 +371,7 @@ Here is how to construct a THTML interface to pass input values to your applicat
   <input bind-value="username" class="field" placeholder="Enter username..."/>
 
   <text style="fg: #94a3b8; height: 1; margin-top: 1;">Password:</text>
-  <input bind-value="password" class="field" placeholder="••••••"/>
+  <input type="password" bind-value="password" class="field" placeholder="••••••"/>
 
   <!-- Display auth error if set in state -->
   <text bind-state="auth_error" style="fg: #f87171; height: 1; margin-top: 1;"/>
@@ -281,7 +383,7 @@ Here is how to construct a THTML interface to pass input values to your applicat
 </box>
 ```
 
-When the user fills in the fields and clicks the "Log In" button, OxiTerm will send the following POST request to the App Server:
+When the user fills in the fields and clicks "Log In", OxiTerm sends:
 ```json
 {
   "action": "login",
@@ -294,19 +396,20 @@ When the user fills in the fields and clicks the "Log In" button, OxiTerm will s
 }
 ```
 
-If the credentials are correct, the App Server can respond with:
+If the credentials are correct, the App Server responds with:
 ```json
 {
   "auth_error": "",
   "logged_in": "true"
 }
 ```
-Updating the session state.
 
 ---
 
-## 6. Concurrency and Multi-Session Patterns
+## 7. Concurrency and Multi-Session Patterns
 
-When the OxiTerm server handles multiple users concurrently, the application server must properly distinguish between sessions:
-* **User Identification:** Always use the `session_id` field as the unique key to identify the current connection. You can map `session_id` to a logged-in user identifier in a cache (e.g. in Redis or an in-memory HashMap).
-* **State Isolation:** OxiTerm automatically isolates and maintains a separate `StateManager` state for each connected SSH/Web session. Your App Server should also maintain complete data isolation between different `session_id` values.
+When OxiTerm handles multiple users concurrently, your App Server must properly distinguish between sessions:
+
+* **User Identification:** Use `session_id` as the unique key for the current connection. Map it to a logged-in user identifier in a cache (e.g. Redis or an in-memory dictionary).
+* **State Isolation:** OxiTerm automatically isolates a separate `StateManager` per session. Your App Server must also maintain complete data isolation between different `session_id` values.
+* **Identity Mapping Security:** The mapping from `session_id` to a user identity belongs to your App Server. **Do not send it back to OxiTerm in a state patch** — doing so exposes one user's identity to another user's client if sessions are ever confused.
