@@ -1116,6 +1116,7 @@ pub mod web_impl {
             std::fs::write(&test_file, b"FAKE_PNG_BYTES").unwrap();
 
             let session_path = temp_dir.join("session.thtml");
+            *session.app_base_dir.write() = Some(temp_dir.clone());
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
             *session.web_frame_tx.write() = Some((1, tx));
@@ -1163,6 +1164,7 @@ pub mod web_impl {
             std::fs::write(&test_file, b"CACHED_BYTES").unwrap();
 
             let session_path = temp_dir.join("session.thtml");
+            *session.app_base_dir.write() = Some(temp_dir.clone());
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(10);
             *session.web_frame_tx.write() = Some((1, tx));
@@ -1247,6 +1249,7 @@ pub mod web_impl {
 
             let (tx, mut rx) = tokio::sync::mpsc::channel(1);
             *session.web_frame_tx.write() = Some((1, tx));
+            *session.app_base_dir.write() = Some(temp_dir.clone());
             session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
             let mut sink = WsFrameSink::new(session.clone(), Some(temp_dir.join("session.thtml")));
 

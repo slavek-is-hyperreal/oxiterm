@@ -503,9 +503,16 @@ impl Renderer {
             };
 
             let is_safe = if let Some(app_base) = app_base_dir {
-                oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+                if resolved_path.exists() {
+                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+                } else if let Some(parent) = resolved_path.parent() {
+                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
+                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
+                } else {
+                    false
+                }
             } else {
-                false
+                true
             };
 
             if !is_safe {
@@ -946,9 +953,16 @@ impl Renderer {
             };
 
             let is_safe = if let Some(app_base) = app_base_dir {
-                oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+                if resolved_path.exists() {
+                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+                } else if let Some(parent) = resolved_path.parent() {
+                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
+                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
+                } else {
+                    false
+                }
             } else {
-                false
+                true
             };
 
             if !is_safe {
@@ -1145,7 +1159,8 @@ mod tests {
         let layout = engine.compute(&mut doc, 6, 4, None).unwrap();
 
         let mut buffer = CellBuffer::new(6, 4);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
+        let base = std::path::Path::new(".");
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, Some(base), 0);
 
         // Since the file is non-existent, it should render the fallback border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -1168,7 +1183,8 @@ mod tests {
         let layout = engine.compute(&mut doc, 15, 5, None).unwrap();
 
         let mut buffer = CellBuffer::new(15, 5);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
+        let base = std::path::Path::new(".");
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, Some(base), 0);
 
         // Falling back should draw border of '*'
         assert_eq!(buffer.cells[0].ch, '*');

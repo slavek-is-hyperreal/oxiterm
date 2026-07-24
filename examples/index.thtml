@@ -86,7 +86,7 @@ text { fg: #e2e8f0; }
     <!-- Footer -->
     <box style="height: 1; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2;">
         <text style="fg: #475569; height: 1;">OxiTerm v0.5.0 — Open Source (MIT / Apache 2.0)</text>
-        <text style="fg: #38bdf8; height: 1;" event-htmx="open:https://github.com/slavek-is-hyperreal/oxiterm">github.com/slavek-is-hyperreal/oxiterm →</text>
+        <text style="fg: #38bdf8; height: 1;" event-htmx="open:https://github.com/slavek-is-hyperreal/oxiterm">github.com/slavek-is-hyperreal/oxiterm &gt;</text>
     </box>
 
 </box>

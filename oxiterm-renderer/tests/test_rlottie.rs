@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_23_lottie_load() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let bell_path = manifest_dir.parent().unwrap().join("examples").join("bell.json");
+        let bell_path = manifest_dir.parent().unwrap().join("examples").join("assets").join("bell.json");
         let contents = std::fs::read_to_string(bell_path).unwrap();
         
         let anim = rlottie::Animation::from_data(contents, "bell".to_string(), "/unused".to_string());
@@ -23,7 +23,7 @@ mod tests {
     #[test]
     fn test_24_lottie_render_frame() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let bell_path = manifest_dir.parent().unwrap().join("examples").join("bell.json");
+        let bell_path = manifest_dir.parent().unwrap().join("examples").join("assets").join("bell.json");
         let contents = std::fs::read_to_string(bell_path).unwrap();
         
         let mut anim = rlottie::Animation::from_data(contents, "bell".to_string(), "/unused".to_string()).unwrap();
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn test_26_full_path_render_node() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let bell_path = manifest_dir.parent().unwrap().join("examples").join("bell.json");
+        let bell_path = manifest_dir.parent().unwrap().join("examples").join("assets").join("bell.json");
         
         let mut doc = THTMLDocument::new();
         let mut img_node = Node::new(NodeTag::Img);

@@ -28,63 +28,63 @@ text { fg: #e2e8f0; }
         <box class="feature-row">
             <text class="row-title">1. Reactive State (Int/Bool/Str/List)</text>
             <box class="row-btn" style="border-color: #38bdf8;" event-htmx="demos/state.thtml">
-                <text style="fg: #38bdf8; height: 1;">▶ Try State Demo</text>
+                <text style="fg: #38bdf8; height: 1;">&gt; Try State Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">2. HTMX Actions (inc/dec/set/clear)</text>
             <box class="row-btn" style="border-color: #4ade80;" event-htmx="demos/counter.thtml">
-                <text style="fg: #4ade80; height: 1;">▶ Try Counter Demo</text>
+                <text style="fg: #4ade80; height: 1;">&gt; Try Counter Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">3. Input Fields &amp; Password Masking</text>
             <box class="row-btn" style="border-color: #f59e0b;" event-htmx="demos/input.thtml">
-                <text style="fg: #f59e0b; height: 1;">▶ Try Input Demo</text>
+                <text style="fg: #f59e0b; height: 1;">&gt; Try Input Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">4. TCSS Styling (Classes, #ID, Cascade)</text>
             <box class="row-btn" style="border-color: #c084fc;" event-htmx="demos/styles.thtml">
-                <text style="fg: #c084fc; height: 1;">▶ Try Styles Demo</text>
+                <text style="fg: #c084fc; height: 1;">&gt; Try Styles Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">5. Tabs &amp; Conditional Views (bind-show)</text>
             <box class="row-btn" style="border-color: #38bdf8;" event-htmx="demos/navigation.thtml">
-                <text style="fg: #38bdf8; height: 1;">▶ Try Tabs Demo</text>
+                <text style="fg: #38bdf8; height: 1;">&gt; Try Tabs Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">6. Vector Media (SVG / Lottie / Rive)</text>
             <box class="row-btn" style="border-color: #f87171;" event-htmx="demos/media.thtml">
-                <text style="fg: #f87171; height: 1;">▶ Try Media Demo</text>
+                <text style="fg: #f87171; height: 1;">&gt; Try Media Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">7. MP4 Video Playback (ffmpeg)</text>
             <box class="row-btn" style="border-color: #fb923c;" event-htmx="demos/video.thtml">
-                <text style="fg: #fb923c; height: 1;">▶ Try Video Demo</text>
+                <text style="fg: #fb923c; height: 1;">&gt; Try Video Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">8. Dynamic List Loops (&lt;for&gt; tag)</text>
             <box class="row-btn" style="border-color: #a3e635;" event-htmx="demos/todo.thtml">
-                <text style="fg: #a3e635; height: 1;">▶ Try Todo Demo</text>
+                <text style="fg: #a3e635; height: 1;">&gt; Try Todo Demo</text>
             </box>
         </box>
 
         <box class="feature-row">
             <text class="row-title">9. App Server OAuth Integration</text>
             <box class="row-btn" style="border-color: #1DB954;" event-htmx="spotify/panel.thtml">
-                <text style="fg: #1DB954; height: 1;">▶ Try Spotify App</text>
+                <text style="fg: #1DB954; height: 1;">&gt; Try Spotify App</text>
             </box>
         </box>
 

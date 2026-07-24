@@ -69,7 +69,7 @@ text { fg: #e2e8f0; }
     <box style="height: 3; border-style: single; border-color: #1e293b; margin-left: 1; margin-right: 1;
                 align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2;">
         <text style="fg: #94a3b8; height: 1;">Full Spec Markdown: docs/thtml-reference.md</text>
-        <text style="fg: #38bdf8; height: 1;" event-htmx="open:https://github.com/slavek-is-hyperreal/oxiterm/blob/main/docs/thtml-reference.md">GitHub →</text>
+        <text style="fg: #38bdf8; height: 1;" event-htmx="open:https://github.com/slavek-is-hyperreal/oxiterm/blob/main/docs/thtml-reference.md">GitHub &gt;</text>
     </box>
 
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
