@@ -304,17 +304,22 @@ async def poll_spotify_and_push_patches():
         if active_oxiterm_sessions:
             try:
                 loop = asyncio.get_event_loop()
+                oxiterm_url = os.getenv("OXITERM_URL", "http://host.docker.internal:8087")
                 for sid, (stoken, _) in list(active_oxiterm_sessions.items()):
                     user = await loop.run_in_executor(None, lambda: get_user_by_session_token(stoken))
                     if user and user.get("access_token"):
                         patch = await loop.run_in_executor(None, lambda: fetch_playback_for_user(user["access_token"]))
                         patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
                         patch["user_session_token"] = stoken
-                        url = f"http://127.0.0.1:8087/sessions/{sid}/patch"
+                        url = f"{oxiterm_url}/sessions/{sid}/patch"
                         try:
-                            await loop.run_in_executor(None, lambda: requests.post(url, json=patch, timeout=0.8))
-                        except Exception:
-                            pass
+                            r = await loop.run_in_executor(None, lambda: requests.post(url, json=patch, timeout=0.8))
+                            if r.status_code == 404:
+                                active_oxiterm_sessions.pop(sid, None)
+                            elif r.status_code != 200:
+                                logger.warning(f"Push patch to {url} returned status {r.status_code}")
+                        except Exception as push_err:
+                            logger.error(f"Push patch to {url} failed: {push_err}")
             except Exception as e:
                 logger.error(f"Background polling error: {e}")
 

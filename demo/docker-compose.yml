@@ -8,6 +8,8 @@ services:
     ports:
       - "8889:8889"
       - "8888:8888"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     volumes:
