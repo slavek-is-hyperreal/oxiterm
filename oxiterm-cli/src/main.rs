@@ -141,18 +141,18 @@ async fn main() -> Result<()> {
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
-            let doc_path = PathBuf::from("examples/hello.thtml");
+            let doc_path = PathBuf::from("examples/index.thtml");
             let (doc, final_path) = if doc_path.exists() {
                 match oxiterm_server::loader::load_thtml_file(&doc_path) {
                     Ok(d) => (Some(d), Some(doc_path)),
                     Err(e) => {
-                        warn!("Failed to load examples/hello.thtml: {}. Using embedded fallback.", e);
-                        let embedded = include_str!("../../examples/hello.thtml");
+                        warn!("Failed to load examples/index.thtml: {}. Using embedded fallback.", e);
+                        let embedded = include_str!("../../examples/index.thtml");
                         (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
                     }
                 }
             } else {
-                let embedded = include_str!("../../examples/hello.thtml");
+                let embedded = include_str!("../../examples/index.thtml");
                 (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
             };
 

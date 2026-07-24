@@ -290,7 +290,7 @@ impl Playground {
         profile.supports_kitty_gfx = true;
         profile.supports_sixel = true;
         
-        oxiterm_renderer::render::renderer::Renderer::render_node(&doc, &layout, &mut back, &profile, None, 0);
+        oxiterm_renderer::render::renderer::Renderer::render_node(&doc, &layout, &mut back, &profile, None, None, 0);
         
         let fmt = format.unwrap_or_else(|| "ansi".to_string());
         if fmt.eq_ignore_ascii_case("html") {
