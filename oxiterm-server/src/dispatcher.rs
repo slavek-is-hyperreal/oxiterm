@@ -77,43 +77,8 @@ impl AppDispatcher {
 mod tests {
     use super::*;
     use std::sync::Arc;
-
-    // Mutex to serialize env-var mutations across concurrent tests in this module
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    struct EnvGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        original_values: std::collections::HashMap<String, Option<String>>,
-    }
-
-    impl EnvGuard {
-        fn lock_and_set(vars: &[(&str, Option<&str>)]) -> Self {
-            let lock = ENV_LOCK.lock().unwrap();
-            let mut original_values = std::collections::HashMap::new();
-            for &(key, val) in vars {
-                let orig = std::env::var(key).ok();
-                original_values.insert(key.to_string(), orig);
-                if let Some(v) = val {
-                    std::env::set_var(key, v);
-                } else {
-                    std::env::remove_var(key);
-                }
-            }
-            Self { _lock: lock, original_values }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (key, val) in &self.original_values {
-                if let Some(v) = val {
-                    std::env::set_var(key, v);
-                } else {
-                    std::env::remove_var(key);
-                }
-            }
-        }
-    }
+    // Use the single shared ENV_LOCK from crate::test_env to avoid races with web.rs tests.
+    use crate::test_env::EnvGuard;
 
     fn make_payload(action: &str, session_id: usize) -> DispatchPayload {
         let mut state = HashMap::new();
@@ -138,12 +103,15 @@ mod tests {
     }
 
     #[test]
-    fn test_payload_deserializes() {
-        let raw = r#"{"action":"inc:counter","state":{"counter":"1"},"session_id":7}"#;
+    fn test_payload_deserializes_round_trip() {
+        // Verify full round-trip including identity fields.
+        let raw = r#"{"action":"inc:counter","state":{"counter":"1"},"session_id":7,"username":"alice","auth_method":"TrustedHeader"}"#;
         let payload: DispatchPayload = serde_json::from_str(raw).unwrap();
         assert_eq!(payload.action, "inc:counter");
         assert_eq!(payload.session_id, 7);
         assert_eq!(payload.state.get("counter").unwrap(), "1");
+        assert_eq!(payload.username.as_deref(), Some("alice"));
+        assert_eq!(payload.auth_method.as_deref(), Some("TrustedHeader"));
     }
 
     #[test]
@@ -167,7 +135,8 @@ mod tests {
     }
 
     #[test]
-    fn test_dispatch_no_server() {
+    fn test_dispatch_unreachable_does_not_panic() {
+        // Ensures that dispatching to an unreachable server is a no-op and never panics.
         let d = AppDispatcher::new("http://127.0.0.1:1/events".to_string());
         let payload = make_payload("click", 42);
 
@@ -206,10 +175,20 @@ mod tests {
         stream.write_all(response.as_bytes()).unwrap();
         drop(stream);
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        let state = session.state.read();
-        assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
+        // Poll up to 2 s at 50 ms intervals instead of a fixed sleep.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            {
+                let state = session.state.read();
+                if state.get("new_key") == Some(&crate::state::StateValue::Str("patched_val".to_string())) {
+                    break;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("state patch was not applied within 2 s");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 
     #[test]
@@ -217,6 +196,8 @@ mod tests {
         use std::net::TcpListener;
         use std::io::{Write, Read};
 
+        // Uses the shared ENV_LOCK so this test cannot race with web.rs tests
+        // that also mutate OXITERM_APP_TOKEN.
         let _env = EnvGuard::lock_and_set(&[("OXITERM_APP_TOKEN", Some("test_app_token_123"))]);
 
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

@@ -1294,41 +1294,8 @@ pub mod web_impl {
             }
         }
 
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-        struct EnvGuard {
-            _lock: std::sync::MutexGuard<'static, ()>,
-            original_values: std::collections::HashMap<String, Option<String>>,
-        }
-
-        impl EnvGuard {
-            fn lock_and_set(vars: &[(&str, Option<&str>)]) -> Self {
-                let lock = ENV_LOCK.lock().unwrap();
-                let mut original_values = std::collections::HashMap::new();
-                for &(key, val) in vars {
-                    let orig = std::env::var(key).ok();
-                    original_values.insert(key.to_string(), orig);
-                    if let Some(v) = val {
-                        std::env::set_var(key, v);
-                    } else {
-                        std::env::remove_var(key);
-                    }
-                }
-                Self { _lock: lock, original_values }
-            }
-        }
-
-        impl Drop for EnvGuard {
-            fn drop(&mut self) {
-                for (key, val) in &self.original_values {
-                    if let Some(v) = val {
-                        std::env::set_var(key, v);
-                    } else {
-                        std::env::remove_var(key);
-                    }
-                }
-            }
-        }
+        // Use the single shared ENV_LOCK from crate::test_env to avoid races with dispatcher.rs tests.
+        use crate::test_env::EnvGuard;
 
         async fn boot_test_server(reg: Arc<SessionRegistry>) -> std::net::SocketAddr {
             let rate_limiter = Arc::new(crate::ratelimit::RateLimiter::new(60));

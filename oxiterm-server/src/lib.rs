@@ -27,3 +27,6 @@ pub mod expand;
 pub use config::OxiTermConfig;
 pub use metrics::SessionMetrics;
 pub use ratelimit::RateLimiter;
+
+#[cfg(test)]
+pub mod test_env;
