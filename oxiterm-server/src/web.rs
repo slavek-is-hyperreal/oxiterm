@@ -715,11 +715,10 @@ pub mod web_impl {
             s
         };
 
-        if let Some(ref id) = identity {
-            client_session.attach_identity(id.clone());
-        }
-
         client_session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let user_identity = identity.unwrap_or_else(crate::identity::UserIdentity::guest);
+        client_session.attach_identity(user_identity);
 
         let new_epoch = client_session.connection_epoch.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
@@ -2049,6 +2048,20 @@ pub mod web_impl {
 
             // Wait, current_page should be Some("other.thtml")
             assert_eq!(current, Some("other.thtml".to_string()));
+        }
+
+        #[test]
+        fn test_40_web_guest_connection_has_is_web_true() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+
+            session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+            let user_identity = crate::identity::UserIdentity::guest();
+            session.attach_identity(user_identity);
+
+            let state = session.state.read();
+            assert_eq!(state.get("_is_web"), Some(&crate::state::StateValue::Str("true".to_string())));
+            assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("guest".to_string())));
         }
     }
 }

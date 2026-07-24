@@ -16,7 +16,7 @@ pub struct EnvGuard {
 
 impl EnvGuard {
     pub fn lock_and_set(vars: &[(&str, Option<&str>)]) -> Self {
-        let lock = ENV_LOCK.lock().unwrap();
+        let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut original_values = HashMap::new();
         for &(key, val) in vars {
             let orig = std::env::var(key).ok();
