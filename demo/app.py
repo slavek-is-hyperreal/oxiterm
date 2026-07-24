@@ -321,6 +321,8 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
     session_id = payload.session_id
     
     stoken = state_vars.get("user_session_token", "")
+    if not stoken and session_id in active_oxiterm_sessions:
+        stoken, _ = active_oxiterm_sessions[session_id]
     user = get_user_by_session_token(stoken) if stoken else None
     
     if user:
