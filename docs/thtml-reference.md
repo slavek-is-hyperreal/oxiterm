@@ -69,6 +69,7 @@ The following attributes can be applied to any node type:
 | `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
 | `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |
 | `<input>` | `bind-value` | State key in `StateManager` where the typed text is saved **in real-time** (on every keystroke). |
+| `<input>` | `type` | Input type. When set to `"password"`, each character is displayed as a mask glyph (`*`) in the terminal. The actual value stored under `bind-value` is always the raw text, never masked. |
 | `<for>` | `each` | Name of a `List` state key. The `<for>` node's single template child is cloned once per list item; the literal `{item}` inside the template's text is replaced with that item's value. The list re-expands reactively when the state changes. |
 
 ---
@@ -84,7 +85,8 @@ The `event-htmx` attribute supports a single action or a sequence of actions. In
 | `toggle:key` | Flips the boolean state (Bool) value | `event-htmx="toggle:sidebar_open"` |
 | `set:key=value` | Sets the state (Str) to the specified text | `event-htmx="set:tab=settings"` |
 | `append:key=value` | Appends the specified text value to a list state (List) | `event-htmx="append:logs=new_event"` |
-| `clear:key` | Resets state to default value for its type (`0`, `false`, `""` or `[]`) | `event-htmx="clear:counter"` |
+| `clear:key` | Resets state to the default value for its type (`0`, `false`, `""` or `[]`). **No-op if the key does not already exist in the state** — it does not create a new entry. | `event-htmx="clear:counter"` |
+| `open:URL` | Opens the URL in the system default browser. **Web sessions only** — on SSH sessions this action is silently ignored (a warning is logged). Only `http` and `https` schemes are permitted; other schemes are rejected. | `event-htmx="open:https://example.com"` |
 | `file.thtml` | Switches the current application screen to another `.thtml` file | `event-htmx="dashboard.thtml"` |
 | `custom_action` | Dispatches action and state payload to the external App Server, receiving optional state patches | `event-htmx="validate_form"` |
 | `action1;action2` | Executes multiple actions sequentially | `event-htmx="set:tab=x;inc:views"` |
@@ -120,6 +122,9 @@ The `bind-show` attribute is used to reactively hide interface elements. Nodes w
 | **Bool** | `bool` | Word form: `true` or `false` | `true` |
 | **Str** | `String` | Raw string contents | `Hello world` |
 | **List** | `Vec<String>` | List of values enclosed in square brackets | `[item1, item2, item3]` |
+
+> [!WARNING]
+> State keys whose names begin with `_` are **reserved for internal use**. Any attempt by an App Server to write to a reserved key via a state patch is silently rejected with a warning in the server log. Do not use `_`-prefixed keys in THTML bindings or App Server patches.
 
 ---
 
