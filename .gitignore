@@ -9,12 +9,12 @@ authorized_keys
 project_bundle.txt
 venv/
 .venv/
-demo/venv/
+spotify-app-server/venv/
 .cache-spotify
-demo/.env
+spotify-app-server/.env
 
 # Python cache & test artifacts
-demo/.cache/
+spotify-app-server/.cache/
 __pycache__/
 **/__pycache__/
 *.pyc
