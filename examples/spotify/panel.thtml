@@ -11,7 +11,7 @@
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #121212;">
 
-    <!-- Top Header -->
+    <!-- Top Header — always visible -->
     <box style="height: 7; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
         <!-- Row 1: Title & Device on left, Auth status & Menu on right -->
         <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 1;">
@@ -24,137 +24,146 @@
                 <text class="txt-muted" event-htmx="../features.thtml">&lt; Back</text>
             </box>
         </box>
-        <!-- Row 2: Buttons under title -->
+        <!-- Row 2: Odśwież + Wyloguj (height: 3 per §7.2 — contains .btn) -->
         <box style="flex-direction: row; align-items: center; height: 3; margin-top: 1;">
             <box class="btn" style="margin-right: 1;" event-htmx="tab:player">
                 <text class="txt-green">🔄 Odśwież</text>
             </box>
             <box class="btn" event-htmx="logout">
-                <text class="txt-red">🚪 Wyloguj</text>
+                <text class="txt-muted">🚪 Wyloguj</text>
             </box>
         </box>
     </box>
 
-    <!-- Navigation Tabs Bar -->
-    <box style="flex-direction: row; height: 3; bg: #121212; padding-left: 1; padding-right: 1; margin-top: 1;">
-        <box class="btn" style="margin-right: 1;" event-htmx="set:tab=auth">
-            <text class="txt-green">🔑 Autoryzacja</text>
-        </box>
-        <box class="btn" style="margin-right: 1;" event-htmx="set:tab=search">
-            <text class="txt-green">🔍 Wyszukiwarka</text>
-        </box>
-        <box class="btn" style="margin-right: 1;" event-htmx="set:tab=playlists">
-            <text class="txt-green">🎧 Moje Playlisty</text>
-        </box>
-        <box class="btn" event-htmx="set:tab=player">
-            <text class="txt-green">📻 Odtwarzacz</text>
-        </box>
-    </box>
-
-    <!-- Main Content Area -->
-    <box style="flex: 1; padding: 1; flex-direction: column;">
-
-        <!-- TAB 1: AUTHENTICATION (Default when tab=false or tab=auth) -->
-        <box bind-show="tab=false" class="card-green" style="flex-direction: column; flex: 1;">
+    <!-- AUTH GATE: visible when NOT authenticated (is_authenticated=false or key absent) -->
+    <box bind-show="is_authenticated=false" style="flex: 1; padding: 1; flex-direction: column;">
+        <box class="card-green" style="flex-direction: column; flex: 1;">
             <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
             <text class="txt-white">Aplikacja: SSHMusicControl</text>
-            
-            <box style="flex-direction: row; margin-top: 1;">
-                <box class="btn" event-htmx="trigger_login" style="margin-right: 1;">
-                    <text class="txt-green">[ 🔑 Wygeneruj Link Autoryzacji Spotify ]</text>
+
+            <!-- WEB: clickable button — trigger_open → App Server → open_url → 0x33 → browser -->
+            <box bind-show="_is_web=true" style="flex-direction: row; margin-top: 1;">
+                <box class="btn" event-htmx="trigger_open">
+                    <text class="txt-green">[ 🔑 Otwórz link autoryzacji Spotify ]</text>
                 </box>
             </box>
 
-            <box style="flex-direction: column; border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
-                <text class="txt-muted">Direct OAuth Link (skopiuj dla SSH / przeglądarki):</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
+            <!-- SSH: generate URL, then display for copy-paste from terminal -->
+            <box bind-show="_is_web=false" style="flex-direction: column; margin-top: 1;">
+                <box style="flex-direction: row;">
+                    <box class="btn" event-htmx="trigger_login">
+                        <text class="txt-green">[ 🔑 Wygeneruj Link Autoryzacji Spotify ]</text>
+                    </box>
+                </box>
+                <box style="flex-direction: column; border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
+                    <text class="txt-muted">Direct OAuth Link (zaznacz i skopiuj z terminala):</text>
+                    <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
+                </box>
             </box>
+
         </box>
-
-        <box bind-show="tab=auth" class="card-green" style="flex-direction: column; flex: 1;">
-            <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
-            <text class="txt-white">Aplikacja: SSHMusicControl</text>
-            
-            <box style="flex-direction: row; margin-top: 1;">
-                <box class="btn" event-htmx="trigger_login" style="margin-right: 1;">
-                    <text class="txt-green">[ 🔑 Wygeneruj Link Autoryzacji Spotify ]</text>
-                </box>
-            </box>
-
-            <box style="flex-direction: column; border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
-                <text class="txt-muted">Direct OAuth Link (skopiuj dla SSH / przeglądarki):</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
-            </box>
-        </box>
-
-        <!-- TAB 2: SEARCH -->
-        <box bind-show="tab=search" class="card" style="flex-direction: column; flex: 1;">
-            <text class="txt-white" style="margin-bottom: 1;">🔍 Wyszukaj utwór na Spotify</text>
-            
-            <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
-                <input bind-value="search_query" placeholder="Wpisz nazwisko artysty lub tytuł..." event-htmx="search" style="flex: 1; height: 1; border-style: single; border-color: #1DB954; padding-left: 1; margin-right: 1;"/>
-                <box class="btn" event-htmx="search">
-                    <text class="txt-green">Szukaj</text>
-                </box>
-            </box>
-
-            <box style="flex-direction: column; flex: 1;">
-                <box bind-show="res_1_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="res_1_title">Utwór 1</text>
-                    <box class="btn" event-htmx="play_uri:res_1_uri"><text class="txt-green">> Odtwórz</text></box>
-                </box>
-                <box bind-show="res_2_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="res_2_title">Utwór 2</text>
-                    <box class="btn" event-htmx="play_uri:res_2_uri"><text class="txt-green">> Odtwórz</text></box>
-                </box>
-                <box bind-show="res_3_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="res_3_title">Utwór 3</text>
-                    <box class="btn" event-htmx="play_uri:res_3_uri"><text class="txt-green">> Odtwórz</text></box>
-                </box>
-            </box>
-        </box>
-
-        <!-- TAB 3: PLAYLISTS -->
-        <box bind-show="tab=playlists" class="card" style="flex-direction: column; flex: 1;">
-            <text class="txt-white" style="margin-bottom: 1;">🎧 Twoje Ulubione Playlisty</text>
-            <box style="flex-direction: column; flex: 1;">
-                <box bind-show="pl_1_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="pl_1_name">Playlista 1</text>
-                    <box class="btn" event-htmx="play_uri:pl_1_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
-                </box>
-                <box bind-show="pl_2_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="pl_2_name">Playlista 2</text>
-                    <box class="btn" event-htmx="play_uri:pl_2_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
-                </box>
-                <box bind-show="pl_3_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
-                    <text class="txt-white" bind-state="pl_3_name">Playlista 3</text>
-                    <box class="btn" event-htmx="play_uri:pl_3_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
-                </box>
-            </box>
-        </box>
-
-        <!-- TAB 4: FULL PLAYER -->
-        <box bind-show="tab=player" class="card-green" style="flex-direction: column; flex: 1; align-items: center; justify-content: center;">
-            <text class="txt-green" bind-state="track_name" style="height: 1;">Tytuł utworu</text>
-            <text class="txt-white" bind-state="artist_name" style="height: 1; margin-top: 1;">Wykonawca</text>
-            <text class="txt-muted" bind-state="album_name" style="height: 1; margin-top: 1;">Album</text>
-            
-            <box style="flex-direction: row; margin-top: 2;">
-                <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
-                <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                <box class="btn" event-htmx="player_next"><text class="txt-green">Next ►►</text></box>
-            </box>
-        </box>
-
     </box>
 
-    <!-- Bottom Persistent Now Playing Bar -->
+    <!-- APPLICATION: visible when authenticated (is_authenticated=true) -->
+    <box bind-show="is_authenticated=true" style="flex: 1; flex-direction: column;">
+
+        <!-- Navigation Tabs Bar — NO Autoryzacja tab -->
+        <box style="flex-direction: row; height: 3; bg: #121212; padding-left: 1; padding-right: 1; margin-top: 1;">
+            <box class="btn" style="margin-right: 1;" event-htmx="set:tab=player">
+                <text class="txt-green">📻 Odtwarzacz</text>
+            </box>
+            <box class="btn" style="margin-right: 1;" event-htmx="set:tab=search">
+                <text class="txt-green">🔍 Wyszukiwarka</text>
+            </box>
+            <box class="btn" event-htmx="set:tab=playlists">
+                <text class="txt-green">🎧 Moje Playlisty</text>
+            </box>
+        </box>
+
+        <!-- Main Content Area -->
+        <box style="flex: 1; padding: 1; flex-direction: column;">
+
+            <!-- Default tab (tab=false) + Player Tab (tab=player) -->
+            <box bind-show="tab=false" class="card-green" style="flex-direction: column; flex: 1; align-items: center; justify-content: center;">
+                <text class="txt-green" bind-state="track_name" style="height: 1;">Tytuł utworu</text>
+                <text class="txt-white" bind-state="artist_name" style="height: 1; margin-top: 1;">Wykonawca</text>
+                <text class="txt-muted" bind-state="album_name" style="height: 1; margin-top: 1;">Album</text>
+
+                <box style="flex-direction: row; margin-top: 2;">
+                    <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
+                    <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
+                    <box class="btn" event-htmx="player_next"><text class="txt-green">Next ►►</text></box>
+                </box>
+            </box>
+
+            <box bind-show="tab=player" class="card-green" style="flex-direction: column; flex: 1; align-items: center; justify-content: center;">
+                <text class="txt-green" bind-state="track_name" style="height: 1;">Tytuł utworu</text>
+                <text class="txt-white" bind-state="artist_name" style="height: 1; margin-top: 1;">Wykonawca</text>
+                <text class="txt-muted" bind-state="album_name" style="height: 1; margin-top: 1;">Album</text>
+
+                <box style="flex-direction: row; margin-top: 2;">
+                    <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
+                    <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
+                    <box class="btn" event-htmx="player_next"><text class="txt-green">Next ►►</text></box>
+                </box>
+            </box>
+
+            <!-- TAB: SEARCH -->
+            <box bind-show="tab=search" class="card" style="flex-direction: column; flex: 1;">
+                <text class="txt-white" style="margin-bottom: 1;">🔍 Wyszukaj utwór na Spotify</text>
+
+                <box style="flex-direction: row; align-items: center; margin-bottom: 1;">
+                    <input bind-value="search_query" placeholder="Wpisz nazwisko artysty lub tytuł..." event-htmx="search" style="flex: 1; height: 3; border-style: single; border-color: #1DB954; padding-left: 1; margin-right: 1;"/>
+                    <box class="btn" event-htmx="search">
+                        <text class="txt-green">Szukaj</text>
+                    </box>
+                </box>
+
+                <box style="flex-direction: column; flex: 1;">
+                    <box bind-show="res_1_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="res_1_title">Utwór 1</text>
+                        <box class="btn" event-htmx="play_uri:res_1_uri"><text class="txt-green">> Odtwórz</text></box>
+                    </box>
+                    <box bind-show="res_2_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="res_2_title">Utwór 2</text>
+                        <box class="btn" event-htmx="play_uri:res_2_uri"><text class="txt-green">> Odtwórz</text></box>
+                    </box>
+                    <box bind-show="res_3_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="res_3_title">Utwór 3</text>
+                        <box class="btn" event-htmx="play_uri:res_3_uri"><text class="txt-green">> Odtwórz</text></box>
+                    </box>
+                </box>
+            </box>
+
+            <!-- TAB: PLAYLISTS -->
+            <box bind-show="tab=playlists" class="card" style="flex-direction: column; flex: 1;">
+                <text class="txt-white" style="margin-bottom: 1;">🎧 Twoje Ulubione Playlisty</text>
+                <box style="flex-direction: column; flex: 1;">
+                    <box bind-show="pl_1_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="pl_1_name">Playlista 1</text>
+                        <box class="btn" event-htmx="play_uri:pl_1_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
+                    </box>
+                    <box bind-show="pl_2_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="pl_2_name">Playlista 2</text>
+                        <box class="btn" event-htmx="play_uri:pl_2_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
+                    </box>
+                    <box bind-show="pl_3_show=true" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 1;">
+                        <text class="txt-white" bind-state="pl_3_name">Playlista 3</text>
+                        <box class="btn" event-htmx="play_uri:pl_3_uri"><text class="txt-green">> Odtwórz Playlistę</text></box>
+                    </box>
+                </box>
+            </box>
+
+        </box>
+    </box>
+
+    <!-- Bottom Persistent Now Playing Bar — always visible -->
     <box style="height: 7; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
         <!-- Row 1: Full-width Progress Bar -->
         <box style="flex-direction: row; align-items: center; justify-content: center; height: 1;">
             <text class="txt-muted" bind-state="progress_bar">[------------------------------------------------] 00:00 / 00:00</text>
         </box>
-        <!-- Row 2: Buttons on Left, Title & Artist on Right -->
+        <!-- Row 2: Buttons on Left, Title & Artist on Right (height: 3 per §7.2 — contains .btn) -->
         <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 3; margin-top: 1;">
             <box style="flex-direction: row; align-items: center;">
                 <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
