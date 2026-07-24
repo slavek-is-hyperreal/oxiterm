@@ -19,7 +19,7 @@
 .muted { fg: #64748b; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+<box style="flex-direction: column; width: 80; height: 28; bg: #0f172a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center; justify-content: center;
@@ -32,10 +32,10 @@
         
         <!-- Main wrapper panel -->
         <box style="border-style: single; border-color: #334155; padding: 1;
-                    width: 76; height: 19; flex-direction: column;">
+                    width: 76; height: 22; flex-direction: column;">
             
             <!-- First row of cards -->
-            <box style="flex-direction: row; height: 5; margin-bottom: 1; justify-content: space-between;">
+            <box style="flex-direction: row; height: 6; margin-bottom: 1; justify-content: space-between;">
                 <box class="card card-counter" style="width: 17;" event-htmx="counter.thtml">
                     <text style="fg: #f59e0b; height: 1;">🔢 Counter</text>
                     <text class="muted label">State &amp; inc/dec</text>
@@ -55,7 +55,7 @@
             </box>
 
             <!-- Second row of cards -->
-            <box style="flex-direction: row; height: 5; margin-bottom: 1; justify-content: space-between;">
+            <box style="flex-direction: row; height: 6; margin-bottom: 1; justify-content: space-between;">
                 <box class="card card-nav" style="width: 17;" event-htmx="navigation_demo.thtml">
                     <text style="fg: #38bdf8; height: 1;">📑 Navigation</text>
                     <text class="muted label">Tabs &amp; bind-show</text>
@@ -75,7 +75,7 @@
             </box>
 
             <!-- Third row of cards -->
-            <box style="flex-direction: row; height: 5; justify-content: space-between;">
+            <box style="flex-direction: row; height: 6; justify-content: space-between;">
                 <box class="card card-spotify" style="width: 17;" event-htmx="SSHSpotifyControl.thtml">
                     <text style="fg: #1DB954; height: 1;">🎵 Spotify</text>
                     <text class="muted label">Control &amp; OAuth</text>
