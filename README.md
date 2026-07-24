@@ -1,6 +1,6 @@
 # 🚀 OxiTerm — Build TUI like a Website
 
-OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH. No client installation required—just `ssh yourdomain.com`.
+OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH and Web (Canvas/WASM). No client installation required — connect via `ssh yourdomain.com` or open a web browser.
 
 ### 🌟 "TUI as a Website"
 Why build complex terminal apps with low-level libraries when you can use **THTML**?
@@ -10,25 +10,33 @@ Why build complex terminal apps with low-level libraries when you can use **THTM
 
 ### 🛠 Developer Workflow
 ```bash
-# 1. Install the OxiTerm CLI
-cargo install oxiterm-cli
+# 1. Clone the repository and build from source
+git clone https://github.com/slavek-is-hyperreal/oxiterm.git
+cd oxiterm
+cargo build --release -p oxiterm-cli
 
 # 2. Start a local dev server with Hot Reload
-oxiterm serve ./myapp.thtml --port 2222
+./target/release/oxiterm-cli serve ./examples/hello.thtml --port 2222
 
-# 3. Connect from any terminal
+# 3. Connect from any terminal or web browser
 ssh localhost -p 2222
+# or navigate to http://localhost:8080
 ```
+*(Publishing `oxiterm-cli` to crates.io is planned for a future release).*
 
 ### 💎 Key Features
-- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and a built-in procedural toggle widget for .riv sources (no Rive runtime involved).
+- **App Server Integration**: Connect external backends (Python, Node.js, Rust) via `event-htmx` HTTP requests (`POST /events`) and receive real-time state patches or push updates (`POST /sessions/{id}/patch`). See [app-server-guide.md](docs/app-server-guide.md).
+- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and a built-in procedural toggle widget for `.riv` sources (no Rive runtime involved).
 - **Auto-Negotiated Rendering**: Dynamic detection of terminal capabilities (Kitty Graphics Protocol, Sixel, Unicode half-blocks) with automatic fallbacks.
-- **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside Rive canvas nodes.
+- **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside canvas nodes.
 - **Mobile-Responsive Layouts**: Viewport-aware routing and server-side device detection with dynamic `_mobile.thtml` template resolution.
 - **Bounded Backpressure**: Secure `BoundedFrameChannel` architecture prevents memory exhaustion.
 - **PUA-B Unicode Stabilization**: Pixel-perfect layouts across different terminal emulators.
 - **Predictive Echo**: Zero-latency feedback for keyboard input.
-- **Developer Tools**: `oxiterm check` for syntax validation and `oxiterm demo` for instant inspiration.
+
+### 📁 Repository Layout
+- `examples/` — Isolated single-feature demonstrations of the OxiTerm engine (THTML tags, SVG, Lottie, input fields).
+- `spotify-app-server/` — Complete, end-to-end multi-user Spotify Control Center application showing full App Server integration (FastAPI, OAuth 2.0, background push patches, web/SSH/mobile UI). See [spotify-demo.md](docs/spotify-demo.md).
 
 ### 🚀 Quick Start (THTML Example)
 ```html
@@ -41,6 +49,3 @@ ssh localhost -p 2222
   <img src="mascot.svg" style="width: 20; height: 10;" />
 </box>
 ```
-
----
-*Built with ❤️ in Rust for the modern terminal.*

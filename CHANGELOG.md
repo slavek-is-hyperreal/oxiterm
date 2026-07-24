@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0] — 2026-07-24
+
+### 🎵 Spotify Control Center Showcase Application (Plan 2.5 / 2.6)
+- **Spotify Control Center**: Complete multi-user showcase application (`spotify-app-server/`) featuring Spotify OAuth 2.0 PKCE authentication, live background track playback polling, state patch updates via `POST /sessions/{id}/patch`, and multi-device UI (`spotify_panel.thtml` for Web/SSH and `spotify_panel_mobile.thtml` for Mobile).
+- **Renamed Demo Directory**: Renamed `demo/` → `spotify-app-server/` with full git history preservation (`git mv`) to distinguish feature examples (`examples/`) from full application backends.
+- **Documentation & Verification Suite**: Comprehensive documentation audit across `docs/` (`app-server-guide.md`, `thtml-reference.md`, `getting-started.md`, `spotify-demo.md`, `ARCHITECTURE.md`), eliminating inaccurate feature claims (D-Bus transport / Rive runtime) and updating script paths (`$BASH_SOURCE`).
+
+### 🛡️ Security Hardening & App Server Protocol (Plans 2.5, 2.5b, 2.5c)
+- **Fail-Closed App Authorization**: Both boundary endpoints (`POST /patch` on OxiTerm and `POST /events` on Python/FastAPI) enforce fail-closed authentication. Missing or empty `OXITERM_APP_TOKEN` acts as a circuit breaker, causing `/patch` to return `404 Not Found` (disabled).
+- **Mutual Bearer Authentication**: `AppDispatcher` attaches `Authorization: Bearer <token>` to all event dispatches. Application servers verify requests with constant-time string comparison (`secrets.compare_digest`).
+- **OAuth State Hardening**: `state` parameter in OAuth flow is time-limited (TTL 600 s) and strictly single-use (`pop()`).
+- **Strict Session Isolation**: Eliminated cross-session fallback queries (`ORDER BY last_seen`) and session-token leaks in state patches or server logs.
+- **XSS & Template Sanitization**: HTML escape applied to error query parameters on `/callback`.
+- **Docker Test Pipeline**: Separated production `Dockerfile` from `Dockerfile.test`. Tests run exclusively inside Docker using an isolated `tmp_path` SQLite database.
+- **Versioned Git Hooks**: Integrated `gitleaks` pre-commit hook under `.githooks/pre-commit`.
+- **Shared Rust Test Guard**: Extracted `EnvGuard` into `crate::test_env` to serialize environment variable mutations across `web.rs` and `dispatcher.rs` unit tests without race conditions.
+
 ## [0.4.0] — 2026-07-19
 
 ### 🖥 Web Client & Responsive Design
