@@ -12,20 +12,26 @@
 <box style="flex-direction: column; width: 80; height: 24; bg: #121212;">
 
     <!-- Top Header -->
-    <box style="height: 3; bg: #181818; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
-        <box style="flex-direction: row; align-items: center;">
-            <text class="txt-green" style="margin-right: 1;">🎵 Spotify SSH Control</text>
-            <text class="txt-muted" bind-state="device_name">Szukam urządzenia...</text>
+    <box style="height: 5; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
+        <!-- Row 1: Title & Device on left, Auth status & Menu on right -->
+        <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 1;">
+            <box style="flex-direction: row; align-items: center;">
+                <text class="txt-green" style="margin-right: 1;">🎵 Spotify SSH Control</text>
+                <text class="txt-muted" bind-state="device_name">Szukam urządzenia...</text>
+            </box>
+            <box style="flex-direction: row; align-items: center;">
+                <text class="txt-green" bind-state="auth_status" style="margin-right: 2;">Sprawdzanie auth...</text>
+                <text class="txt-muted" event-htmx="hello.thtml">&lt; Menu</text>
+            </box>
         </box>
-        <box style="flex-direction: row; align-items: center;">
+        <!-- Row 2: Buttons under title -->
+        <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
             <box class="btn" style="height: 1; margin-right: 1;" event-htmx="tab:player">
                 <text class="txt-green">🔄 Odśwież</text>
             </box>
-            <box class="btn" style="height: 1; margin-right: 1;" event-htmx="logout">
+            <box class="btn" style="height: 1;" event-htmx="logout">
                 <text class="txt-red">🚪 Wyloguj</text>
             </box>
-            <text class="txt-muted" event-htmx="hello.thtml" style="margin-right: 2;">&lt; Menu</text>
-            <text class="txt-green" bind-state="auth_status">Sprawdzanie auth...</text>
         </box>
     </box>
 
