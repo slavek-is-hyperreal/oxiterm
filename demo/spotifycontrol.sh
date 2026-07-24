@@ -6,6 +6,9 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "🎵 Uruchamianie OxiTerm Spotify Control Center..."
 
+# 0. Konfiguracja wersjonowanych githooks
+git -C "$ROOT_DIR" config core.hooksPath .githooks 2>/dev/null || true
+
 # 1. Sprawdzenie pliku .env
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "⚠️ Brak pliku .env! Tworzenie z domyślnym Client ID..."

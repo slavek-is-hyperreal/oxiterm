@@ -24,13 +24,17 @@
 
     <!-- Mobile Body -->
     <box style="flex: 1; padding: 1; flex-direction: column;">
-        <box bind-show="tab=auth" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
-            <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify</text>
-            <box class="btn" event-htmx="trigger_login" style="margin-bottom: 1;">
-                <text class="txt-green">[ 🔑 Generuj Link ]</text>
+        <!-- Default tab (tab=false) & Player Tab (tab=player) -->
+        <box bind-show="tab=false" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
+            <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
+            <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
+            <text class="txt-muted" bind-state="progress_bar" style="margin-top: 1;">[--------] 00:00</text>
+
+            <box style="flex-direction: row; margin-top: 2;">
+                <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
+                <box class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
             </box>
-            <text class="txt-muted">Direct OAuth Link:</text>
-            <text class="txt-green" bind-state="auth_url" style="margin-top: 1;"></text>
         </box>
 
         <box bind-show="tab=player" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
@@ -43,6 +47,31 @@
                 <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
                 <box class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
             </box>
+        </box>
+
+        <!-- Search Tab (tab=search) -->
+        <box bind-show="tab=search" class="card" style="flex: 1; flex-direction: column;">
+            <text class="txt-green" style="margin-bottom: 1;">🔍 Wyszukiwarka Utworów</text>
+            <box style="flex-direction: row; margin-bottom: 1;">
+                <input bind-state="search_query" placeholder="Wpisz nazwę utworu..." style="flex: 1; margin-right: 1;" />
+                <box class="btn" event-htmx="search"><text class="txt-green">Szukaj</text></box>
+            </box>
+            <box bind-show="res_1_show=true" class="btn" style="margin-bottom: 1;" event-htmx="play_uri:{res_1_uri}">
+                <text class="txt-white" bind-state="res_1_title">Wynik 1</text>
+            </box>
+            <box bind-show="res_2_show=true" class="btn" style="margin-bottom: 1;" event-htmx="play_uri:{res_2_uri}">
+                <text class="txt-white" bind-state="res_2_title">Wynik 2</text>
+            </box>
+        </box>
+
+        <!-- Auth Tab (tab=auth) -->
+        <box bind-show="tab=auth" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
+            <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify</text>
+            <box class="btn" event-htmx="trigger_login" style="margin-bottom: 1;">
+                <text class="txt-green">[ 🔑 Generuj Link ]</text>
+            </box>
+            <text class="txt-muted">Direct OAuth Link:</text>
+            <text class="txt-green" bind-state="auth_url" style="margin-top: 1;"></text>
         </box>
     </box>
 

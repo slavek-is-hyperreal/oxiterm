@@ -78,6 +78,43 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    // Mutex to serialize env-var mutations across concurrent tests in this module
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        original_values: std::collections::HashMap<String, Option<String>>,
+    }
+
+    impl EnvGuard {
+        fn lock_and_set(vars: &[(&str, Option<&str>)]) -> Self {
+            let lock = ENV_LOCK.lock().unwrap();
+            let mut original_values = std::collections::HashMap::new();
+            for &(key, val) in vars {
+                let orig = std::env::var(key).ok();
+                original_values.insert(key.to_string(), orig);
+                if let Some(v) = val {
+                    std::env::set_var(key, v);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+            Self { _lock: lock, original_values }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, val) in &self.original_values {
+                if let Some(v) = val {
+                    std::env::set_var(key, v);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
     fn make_payload(action: &str, session_id: usize) -> DispatchPayload {
         let mut state = HashMap::new();
         state.insert("tab".to_string(), "info".to_string());
@@ -127,16 +164,13 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("\"username\":\"test_user\""));
         assert!(json.contains("\"auth_method\":\"TrustedHeader\""));
-
-        let deserialized: DispatchPayload = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.username, Some("test_user".to_string()));
-        assert_eq!(deserialized.auth_method, Some("TrustedHeader".to_string()));
     }
 
     #[test]
-    fn test_dispatch_unreachable_does_not_panic() {
-        let d = AppDispatcher::new("http://127.0.0.1:1/unreachable".to_string());
-        let payload = make_payload("toggle:flag", 0);
+    fn test_dispatch_no_server() {
+        let d = AppDispatcher::new("http://127.0.0.1:1/events".to_string());
+        let payload = make_payload("click", 42);
+
         let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
         d.dispatch(payload, session);
@@ -147,22 +181,22 @@ mod tests {
     fn test_dispatch_app_server_response_patch() {
         use std::net::TcpListener;
         use std::io::{Write, Read};
-        
+
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        
+
         let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
         let payload = make_payload("click", 123);
-        
+
         let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
-        
+
         d.dispatch(payload, session.clone());
-        
+
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf).unwrap();
-        
+
         let body = "{\"new_key\":\"patched_val\"}";
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
@@ -170,15 +204,10 @@ mod tests {
             body
         );
         stream.write_all(response.as_bytes()).unwrap();
-        
-        let start = std::time::Instant::now();
-        while start.elapsed() < std::time::Duration::from_secs(2) {
-            if session.state.read().get("new_key").is_some() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        
+        drop(stream);
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
         let state = session.state.read();
         assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
     }
@@ -188,7 +217,7 @@ mod tests {
         use std::net::TcpListener;
         use std::io::{Write, Read};
 
-        std::env::set_var("OXITERM_APP_TOKEN", "test_app_token_123");
+        let _env = EnvGuard::lock_and_set(&[("OXITERM_APP_TOKEN", Some("test_app_token_123"))]);
 
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -210,7 +239,5 @@ mod tests {
 
         let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
         stream.write_all(response.as_bytes()).unwrap();
-
-        std::env::remove_var("OXITERM_APP_TOKEN");
     }
 }

@@ -130,14 +130,16 @@ def delete_user_session(session_token: str):
         logger.error(f"Error deleting session: {e}")
 
 def verify_app_token(request: Request):
-    if OXITERM_APP_TOKEN:
-        auth_header = request.headers.get("Authorization", "")
-        token_prefix = "Bearer "
-        if not auth_header.startswith(token_prefix):
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        token = auth_header[len(token_prefix):]
-        if not secrets.compare_digest(token, OXITERM_APP_TOKEN):
-            raise HTTPException(status_code=401, detail="Unauthorized")
+    if not OXITERM_APP_TOKEN:
+        # Fail-closed: If token is unset or empty, /events endpoint is disabled (401)
+        raise HTTPException(status_code=401, detail="Unauthorized: OXITERM_APP_TOKEN not configured")
+    auth_header = request.headers.get("Authorization", "")
+    token_prefix = "Bearer "
+    if not auth_header.startswith(token_prefix):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = auth_header[len(token_prefix):]
+    if not secrets.compare_digest(token, OXITERM_APP_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 class OxiEventPayload(BaseModel):
     action: str
