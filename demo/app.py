@@ -158,11 +158,40 @@ async def spotify_callback(code: str, state: Optional[str] = None):
         logger.error(f"OAuth Callback error: {e}")
         return Response(content=f"Błąd autoryzacji OAuth: {e}", status_code=400)
 
+active_sessions: Dict[int, float] = {}
+
+@app.on_event("startup")
+async def start_background_loop():
+    asyncio.create_task(poll_spotify_and_push_patches())
+
+async def poll_spotify_and_push_patches():
+    while True:
+        await asyncio.sleep(1.5)
+        now = time.time()
+        stale = [sid for sid, last_seen in list(active_sessions.items()) if now - last_seen > 300]
+        for sid in stale:
+            active_sessions.pop(sid, None)
+
+        if active_sessions:
+            try:
+                loop = asyncio.get_event_loop()
+                patch = await loop.run_in_executor(None, fetch_playback_state_patch)
+                if patch and patch.get("is_authenticated") == "true":
+                    for sid in list(active_sessions.keys()):
+                        url = f"http://127.0.0.1:8087/sessions/{sid}/patch"
+                        try:
+                            await loop.run_in_executor(None, lambda: requests.post(url, json=patch, timeout=0.8))
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.error(f"Background polling error: {e}")
+
 @app.post("/events")
 async def handle_oxiterm_event(payload: OxiEventPayload):
     action = payload.action
     state_vars = payload.state
     session_id = payload.session_id
+    active_sessions[session_id] = time.time()
     
     logger.info(f"Session {session_id} action: '{action}'")
     patch = {}

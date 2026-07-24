@@ -1326,6 +1326,7 @@ impl EventLoop {
                     };
                     match event {
                                 InputEvent::StatePatched => {
+                                    Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
                                     self.expand_all_for_nodes();
                                     needs_render = true;
                                 }

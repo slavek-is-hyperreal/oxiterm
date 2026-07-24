@@ -451,34 +451,28 @@ pub mod web_impl {
         // Handle POST /sessions/{id}/patch (Phase 5)
         if path.starts_with("/sessions/") && path.ends_with("/patch") && req.method() == hyper::Method::POST {
             let app_token = std::env::var("OXITERM_APP_TOKEN").ok();
-            if app_token.is_none() {
-                // If token is unset, patch endpoint is disabled (404)
-                return Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Full::new(Bytes::from("Not Found")))
-                    .unwrap());
-            }
-
-            // Check Bearer authorization token
-            let auth_header = req.headers().get("Authorization").and_then(|h| h.to_str().ok()).unwrap_or_default();
-            let token_prefix = "Bearer ";
-            if !auth_header.starts_with(token_prefix) {
-                return Ok(http_401());
-            }
-            let token = &auth_header[token_prefix.len()..];
-            use subtle::ConstantTimeEq;
-            let token_bytes = token.as_bytes();
-            let expected_bytes = app_token.unwrap();
-            let expected_bytes = expected_bytes.as_bytes();
-            let len_match = token_bytes.len() == expected_bytes.len();
-            let (to_compare_a, to_compare_b) = if len_match {
-                (token_bytes, expected_bytes)
-            } else {
-                (expected_bytes, expected_bytes)
-            };
-            let token_valid = to_compare_a.ct_eq(to_compare_b).unwrap_u8() == 1 && len_match;
-            if !token_valid {
-                return Ok(http_401());
+            if let Some(ref expected_str) = app_token {
+                if !expected_str.is_empty() {
+                    let auth_header = req.headers().get("Authorization").and_then(|h| h.to_str().ok()).unwrap_or_default();
+                    let token_prefix = "Bearer ";
+                    if !auth_header.starts_with(token_prefix) {
+                        return Ok(http_401());
+                    }
+                    let token = &auth_header[token_prefix.len()..];
+                    use subtle::ConstantTimeEq;
+                    let token_bytes = token.as_bytes();
+                    let expected_bytes = expected_str.as_bytes();
+                    let len_match = token_bytes.len() == expected_bytes.len();
+                    let (to_compare_a, to_compare_b) = if len_match {
+                        (token_bytes, expected_bytes)
+                    } else {
+                        (token_bytes, token_bytes)
+                    };
+                    let is_match = bool::from(to_compare_a.ct_eq(to_compare_b)) && len_match;
+                    if !is_match {
+                        return Ok(http_401());
+                    }
+                }
             }
 
             // Extract session id
@@ -878,6 +872,12 @@ pub mod web_impl {
             event_loop.frame_sink = frame_sink;
             event_loop.source_path = resolved_source_path;
             event_loop.base_source_path = base_source_path;
+            if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
+                info!("Web EventLoop initializing AppDispatcher targeting {}", url);
+                event_loop.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(url));
+            } else {
+                warn!("Web EventLoop: OXITERM_APP_SERVER env var not set");
+            }
 
             std::thread::spawn(move || {
                 event_loop.run();
