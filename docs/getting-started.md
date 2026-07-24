@@ -197,12 +197,14 @@ When running OxiTerm applications over WebSockets (via browser clients), the pla
 
 If your application requires complex business logic, database access, or external APIs, you can connect an external application server.
 
-Run OxiTerm with the `OXITERM_APP_SERVER` variable:
+Run OxiTerm with the `OXITERM_APP_SERVER` and `OXITERM_APP_TOKEN` variables:
 ```bash
-OXITERM_APP_SERVER=http://localhost:3000/events oxiterm serve app.thtml
+OXITERM_APP_SERVER=http://localhost:3000/events \
+OXITERM_APP_TOKEN=<your-secret-token> \
+oxiterm serve app.thtml
 ```
 
-For every user action (`event-htmx`), OxiTerm will dispatch an asynchronous POST request in the background with the current state:
+For every user action (`event-htmx`), OxiTerm will dispatch an asynchronous POST request in the background with the current state. The request includes an `Authorization: Bearer <token>` header — your App Server **must** verify it on every request:
 ```json
 {
   "action": "save_profile",
@@ -213,7 +215,7 @@ For every user action (`event-htmx`), OxiTerm will dispatch an asynchronous POST
 
 The App Server can return a `200 OK` response with a JSON object to apply a **State Patch** back to the active session state. If no state changes are required, it can return a `204 No Content` status.
 
-For more information, see [app-server-guide.md](app-server-guide.md).
+For complete protocol details, examples in five languages, and the push endpoint (`POST /sessions/{id}/patch`), see [app-server-guide.md](app-server-guide.md).
 
 ---
 
@@ -247,7 +249,7 @@ You can configure the server behavior using the following environment variables:
 | `OXITERM_NO_AUTH` | `false` | Disables SSH authentication (required in dev mode when authorized_keys are missing) |
 | `OXITERM_WEB_PORT` | `8080` | HTTP/WebSocket server port for web browser access |
 | `OXITERM_APP_SERVER` | (none) | URL of the external application server for event-htmx actions |
-| `OXITERM_APP_TOKEN` | (none) | Shared secret sent with / required by App Server requests |
+| `OXITERM_APP_TOKEN` | (none) | **Circuit breaker for the `/patch` push endpoint.** When set to a non-empty value, OxiTerm includes `Authorization: Bearer <token>` in every outgoing `/events` POST, and enables `POST /sessions/{id}/patch` for push patches from the App Server. **Unset or empty ⇒ the `/patch` endpoint returns 404 (disabled).** |
 | `OXITERM_MAX_SESSIONS` | (config default) | Maximum number of concurrent sessions the server will hold |
 | `OXITERM_MEDIA_BASE_URL` | (none) | Base path/URL used to resolve media (`src`) resources |
 | `OXITERM_METRICS_HOST` | (config default) | Bind host for the Prometheus metrics endpoint |
