@@ -66,12 +66,17 @@ def render_progress_bar(progress_ms: int, duration_ms: int, length: int = 24) ->
 
 def fetch_playback_state_patch() -> Dict[str, str]:
     sp = get_spotify_client()
+    auth_manager = get_spotify_oauth()
+    auth_url = auth_manager.get_authorize_url()
+
     if not sp:
         return {
             "auth_status": "Brak autoryzacji",
             "is_authenticated": "false",
+            "auth_url": auth_url,
+            "auth_msg": "Kliknij lub skopiuj link autoryzacyjny Spotify:",
             "track_name": "Wymagane logowanie Spotify",
-            "artist_name": "Kliknij [ Loguj ze Spotify ]",
+            "artist_name": "Otwórz link autoryzacyjny z zakładek",
             "progress_bar": "[------------------------] 00:00 / 00:00",
             "play_icon": "Play",
             "device_name": "Brak połączenia"
@@ -93,12 +98,13 @@ def fetch_playback_state_patch() -> Dict[str, str]:
             return {
                 "is_authenticated": "true",
                 "auth_status": "Zalogowano",
+                "auth_url": auth_url,
                 "track_name": track_name[:40],
                 "artist_name": artists[:35],
                 "album_name": album_name[:35],
                 "device_name": f"📱 {device}",
                 "is_playing": "true" if is_playing else "false",
-                "play_icon": "❚❚ Pause" if is_playing else "▶ Play",
+                "play_icon": "❚❚ Pause" if is_playing else "Play",
                 "progress_bar": render_progress_bar(progress_ms, duration_ms),
                 "volume": f"{volume}%"
             }
@@ -106,16 +112,18 @@ def fetch_playback_state_patch() -> Dict[str, str]:
             return {
                 "is_authenticated": "true",
                 "auth_status": "Zalogowano",
+                "auth_url": auth_url,
                 "track_name": "Brak aktywnego odtwarzania",
                 "artist_name": "Włącz Spotify na swoim urządzeniu",
                 "progress_bar": "[------------------------] 00:00 / 00:00",
-                "play_icon": "▶ Play",
+                "play_icon": "Play",
                 "device_name": "Czekam na urządzenie Spotify..."
             }
     except Exception as e:
         logger.error(f"Error fetching playback state: {e}")
         return {
             "is_authenticated": "false",
+            "auth_url": auth_url,
             "auth_status": f"Błąd API: {str(e)[:30]}"
         }
 
@@ -152,17 +160,13 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
     logger.info(f"Session {session_id} action: '{action}'")
     patch = {}
     sp = get_spotify_client()
+    auth_manager = get_spotify_oauth()
+    auth_url = auth_manager.get_authorize_url()
 
     # 1. Action: trigger_login
     if action == "trigger_login":
-        auth_manager = get_spotify_oauth()
-        auth_url = auth_manager.get_authorize_url()
         logger.info(f"Generated Spotify OAuth URL: {auth_url}")
-        try:
-            webbrowser.open(auth_url)
-        except Exception as e:
-            logger.warning(f"Could not auto-open browser: {e}")
-        patch["auth_msg"] = "Otwarto stronę autoryzacji w przeglądarce!"
+        patch["auth_msg"] = "Link autoryzacji wygenerowany!"
         patch["auth_url"] = auth_url
 
     # 2. Action: set_tab

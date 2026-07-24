@@ -46,29 +46,35 @@
         <box bind-show="tab=false" class="card-green" style="flex-direction: column; flex: 1;">
             <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
             <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4ceae146db8ded92dae9ed9ddd)</text>
-            <text class="txt-muted" style="margin-top: 1;">Kliknięcie poniższego przycisku otworzy stronę autoryzacji w przeglądarce.</text>
+            <text class="txt-muted" style="margin-top: 1;">Dla klienta Web kliknięcie przycisku otwiera kartę autoryzacji Spotify.</text>
             
-            <box style="flex-direction: row; margin-top: 2;">
-                <box class="btn" event-htmx="trigger_login">
-                    <text class="txt-green">[ Otwórz Autoryzację Spotify w Przeglądarce ]</text>
+            <box style="flex-direction: row; margin-top: 1;">
+                <box class="btn" event-htmx="trigger_login" style="margin-right: 1;">
+                    <text class="txt-green">[ Odśwież Link OAuth ]</text>
                 </box>
             </box>
 
-            <text class="txt-green" bind-state="auth_msg" style="margin-top: 2;"></text>
+            <box style="border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
+                <text class="txt-muted">Link OAuth (skopiuj jeśli używasz SSH):</text>
+                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">Ładowanie linku Spotify...</text>
+            </box>
         </box>
 
         <box bind-show="tab=auth" class="card-green" style="flex-direction: column; flex: 1;">
             <text class="txt-green" style="margin-bottom: 1;">🔑 Logowanie ze Spotify (OAuth 2.0 PKCE)</text>
             <text class="txt-white">Aplikacja: SSHMusicControl (Client ID: a2cff4ceae146db8ded92dae9ed9ddd)</text>
-            <text class="txt-muted" style="margin-top: 1;">Kliknięcie poniższego przycisku otworzy stronę autoryzacji w przeglądarce.</text>
+            <text class="txt-muted" style="margin-top: 1;">Dla klienta Web kliknięcie przycisku otwiera kartę autoryzacji Spotify.</text>
             
-            <box style="flex-direction: row; margin-top: 2;">
-                <box class="btn" event-htmx="trigger_login">
-                    <text class="txt-green">[ Otwórz Autoryzację Spotify w Przeglądarce ]</text>
+            <box style="flex-direction: row; margin-top: 1;">
+                <box class="btn" event-htmx="trigger_login" style="margin-right: 1;">
+                    <text class="txt-green">[ Odśwież Link OAuth ]</text>
                 </box>
             </box>
 
-            <text class="txt-green" bind-state="auth_msg" style="margin-top: 2;"></text>
+            <box style="border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
+                <text class="txt-muted">Link OAuth (skopiuj jeśli używasz SSH):</text>
+                <text class="txt-green" bind-state="auth_url" style="margin-top: 1;">Ładowanie linku Spotify...</text>
+            </box>
         </box>
 
         <!-- TAB 2: SEARCH -->
