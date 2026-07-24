@@ -1,0 +1,17 @@
+services:
+  spotify-app-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spotify-app-server
+    restart: unless-stopped
+    ports:
+      - "8889:8889"
+      - "8888:8888"
+    env_file:
+      - .env
+    volumes:
+      - spotify-cache:/app/.cache-spotify
+
+volumes:
+  spotify-cache:
