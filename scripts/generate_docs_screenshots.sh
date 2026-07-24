@@ -4,7 +4,7 @@
 
 set -e
 
-PROJECT_ROOT="/my_data/oxiterm"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGES_DIR="$PROJECT_ROOT/docs/images"
 mkdir -p "$IMAGES_DIR"
 
@@ -17,7 +17,7 @@ for tool in kitty xdotool scrot; do
 done
 
 echo "Building oxiterm-cli..."
-cargo build --bin oxiterm-cli --features oxiterm-server/web
+cargo build --bin oxiterm-cli
 
 # Cleanup trap to kill any leftover processes
 SERVER_PID=""

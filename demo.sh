@@ -1,7 +1,7 @@
 #!/bin/bash
 # demo.sh — uruchamia OxiTerm z menu examples/hello.thtml
 # SSH:  ssh -p 2222 localhost
-# Web:  http://localhost:8087
+# Web:  http://localhost:8080 (domyślny port web OxiTerma)
 
 set -e
 
@@ -10,7 +10,7 @@ EXAMPLES_DIR="$SCRIPT_DIR/examples"
 ENTRY_FILE="$EXAMPLES_DIR/hello.thtml"
 
 SSH_PORT="${OXITERM_PORT:-2222}"
-WEB_PORT="${OXITERM_WEB_PORT:-8087}"
+WEB_PORT="${OXITERM_WEB_PORT:-8080}"
 
 # --- build ---
 echo ">>> Budowanie oxiterm-cli..."

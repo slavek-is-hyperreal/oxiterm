@@ -23,7 +23,7 @@ mkdir -p test_screenshots
 
 # Build the executable once before testing to speed up startup in the loops
 echo "Building oxiterm-cli..."
-cargo build --bin oxiterm-cli --features oxiterm-server/web
+cargo build --bin oxiterm-cli
 
 # Cleanup trap to kill any leftover processes
 cleanup() {

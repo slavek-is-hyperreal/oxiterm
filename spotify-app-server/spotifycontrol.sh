@@ -34,7 +34,7 @@ sleep 2
 
 # 3. Uruchomienie OxiTerm TUI Server
 export OXITERM_APP_SERVER="http://localhost:8889/events"
-export OXITERM_APP_TOKEN="$(grep OXITERM_APP_TOKEN "$SCRIPT_DIR/.env" | cut -d= -f2 || true)"
+export OXITERM_APP_TOKEN="$(grep OXITERM_APP_TOKEN "$SCRIPT_DIR/.env" | cut -d= -f2- || true)"
 # export OXITERM_NO_AUTH="true" # Włączaj wyłącznie do bezautoryzacyjnych testów lokalnych
 export OXITERM_PORT="2222"
 export OXITERM_WEB_PORT="8080"

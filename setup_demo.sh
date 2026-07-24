@@ -4,7 +4,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUTH_FILE="$PROJECT_ROOT/authorized_keys"
 
-echo "🔧 Konfigurowanie demo OxiTerm..."
+echo "🔧 Konfigurowanie środowiska deweloperskiego OxiTerm..."
 
 # Szukanie klucza publicznego użytkownika
 PUB_KEY=""
@@ -24,17 +24,16 @@ else
 fi
 
 echo ""
-echo "🚀 Jak uruchomić demo:"
-echo "1. W jednym terminalu uruchom serwer (w trybie --release dla pełnej wydajności):"
-echo "   cd $PROJECT_ROOT && OXITERM_PASSWORD=krakow RUST_LOG=info cargo run --release -p oxiterm-server"
+echo "🚀 Jak uruchomić przykładowe demo:"
+echo "1. Uruchom serwer demo hello.thtml:"
+echo "   ./demo.sh"
 echo ""
-echo "2. W drugim terminalu połącz się:"
+echo "2. W drugim terminalu połącz się przez SSH:"
 echo "   ssh -p 2222 localhost"
+echo "   lub otwórz w przeglądarce: http://localhost:8080"
 echo ""
-echo "💡 Nawigacja w aplikacji:"
-echo "   [1] Aktualna pogoda"
-echo "   [2] 7-dniowa prognoza"
-echo "   [3] Szczegóły"
-echo "   [Tab] Przełącz widok"
-echo "   [R] Odśwież dane"
-echo "   [Q] Wyjdź"
+echo "💡 Nawigacja w aplikacji showcase (examples/hello.thtml):"
+echo "   [Tab] / [Strzałki]   Przełączanie fokusu elementów"
+echo "   [Enter]              Aktywacja przycisku lub zmiana zakładki"
+echo "   [PgUp] / [PgDn]      Przewijanie strony"
+echo "   [Q]                  Wyjście z sesji"

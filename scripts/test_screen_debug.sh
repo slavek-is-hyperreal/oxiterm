@@ -1,7 +1,7 @@
 #!/bin/bash
 set -x
 
-PROJECT_ROOT="/my_data/oxiterm"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGES_DIR="$PROJECT_ROOT/docs/images"
 mkdir -p "$IMAGES_DIR"
 
