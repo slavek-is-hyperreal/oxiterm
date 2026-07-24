@@ -1081,7 +1081,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 3, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 3);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         // Check top-left corner border character '┌'
         let tl_idx = buffer.flat_idx(0, 0).unwrap();
@@ -1114,7 +1114,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 1, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         // Check index 0: contains '🚀'
         assert_eq!(buffer.cells[0].ch, '🚀');
@@ -1145,7 +1145,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 6, 4, None).unwrap();
 
         let mut buffer = CellBuffer::new(6, 4);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         // Since the file is non-existent, it should render the fallback border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -1168,7 +1168,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 15, 5, None).unwrap();
 
         let mut buffer = CellBuffer::new(15, 5);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         // Falling back should draw border of '*'
         assert_eq!(buffer.cells[0].ch, '*');
@@ -1190,7 +1190,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 5, 2, None).unwrap();
 
         let mut buffer = CellBuffer::new(5, 2);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         assert_eq!(buffer.cells[0].ch, 'a');
         assert_eq!(buffer.cells[1].ch, 'a');
@@ -1218,7 +1218,7 @@ mod tests {
         let layout = engine.compute(&mut doc, 10, 1, None).unwrap();
 
         let mut buffer = CellBuffer::new(10, 1);
-        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
 
         for i in 0..6 {
             assert_eq!(buffer.cells[i].ch, '*');

@@ -142,18 +142,17 @@ async fn main() -> Result<()> {
             let rate_limiter = std::sync::Arc::new(oxiterm_server::ratelimit::RateLimiter::new(60));
             
             let doc_path = PathBuf::from("examples/index.thtml");
+            let fallback_thtml = r#"<box style="width: 80; height: 24; bg: #080f1a; flex-direction: column; align-items: center; justify-content: center; padding: 2;"><text style="fg: #38bdf8; font-weight: bold; height: 1; margin-bottom: 1;">⬡ OxiTerm Demo Server</text><text style="fg: #94a3b8; wrap: word; margin-bottom: 2;">examples/index.thtml could not be found in the current working directory.</text><text style="fg: #4ade80; wrap: word;">Please run oxiterm serve from the repository root directory.</text></box>"#;
             let (doc, final_path) = if doc_path.exists() {
                 match oxiterm_server::loader::load_thtml_file(&doc_path) {
                     Ok(d) => (Some(d), Some(doc_path)),
                     Err(e) => {
                         warn!("Failed to load examples/index.thtml: {}. Using embedded fallback.", e);
-                        let embedded = include_str!("../../examples/index.thtml");
-                        (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
+                        (oxiterm_server::loader::load_thtml_str(fallback_thtml).ok(), None)
                     }
                 }
             } else {
-                let embedded = include_str!("../../examples/index.thtml");
-                (oxiterm_server::loader::load_thtml_str(embedded).ok(), None)
+                (oxiterm_server::loader::load_thtml_str(fallback_thtml).ok(), None)
             };
 
             // Start Web/WebSocket server

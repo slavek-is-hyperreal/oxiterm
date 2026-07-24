@@ -82,7 +82,8 @@ mod tests {
         let mut profile = TerminalProfile::default();
         profile.supports_kitty_gfx = true;
         
-        Renderer::render_node(&doc, &layout, &mut buffer, &profile, None, 0);
+        let app_base = manifest_dir.parent().unwrap();
+        Renderer::render_node(&doc, &layout, &mut buffer, &profile, None, Some(app_base), 0);
 
         // CellBuffer.graphics should not be empty
         assert!(!buffer.graphics.is_empty());

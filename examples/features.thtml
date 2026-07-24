@@ -1,9 +1,9 @@
 <style>
 text { fg: #e2e8f0; }
-.muted  { fg: #475569; height: 1; }
+.muted  { fg: #475569; wrap: word; }
 .head   { fg: #38bdf8; font-weight: bold; height: 1; }
 .row-title { fg: #f8fafc; height: 1; width: 34; }
-.row-desc  { fg: #94a3b8; height: 1; flex: 1; }
+.row-desc  { fg: #94a3b8; wrap: word; flex: 1; }
 .row-btn   { border-style: rounded; border-color: #38bdf8; padding-left: 1; padding-right: 1; height: 1; align-items: center; }
 .feature-row {
     flex-direction: row;

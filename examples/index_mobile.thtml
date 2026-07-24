@@ -1,7 +1,7 @@
 <style>
 text { fg: #e2e8f0; }
 .brand { fg: #38bdf8; font-weight: bold; height: 1; }
-.muted { fg: #475569; height: 1; }
+.muted { fg: #475569; wrap: word; }
 .green { fg: #4ade80; height: 1; }
 .btn {
     border-style: rounded;

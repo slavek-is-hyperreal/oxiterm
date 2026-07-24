@@ -1,9 +1,9 @@
 <style>
 text { fg: #e2e8f0; }
-.muted  { fg: #475569; height: 1; }
+.muted  { fg: #475569; wrap: word; }
 .head   { fg: #4ade80; font-weight: bold; height: 1; }
 .step-t { fg: #38bdf8; font-weight: bold; height: 1; }
-.code   { fg: #a3e635; height: 1; }
+.code   { fg: #a3e635; wrap: word; }
 </style>
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
