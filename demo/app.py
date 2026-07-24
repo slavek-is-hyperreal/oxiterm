@@ -124,9 +124,9 @@ class OxiEventPayload(BaseModel):
     username: Optional[str] = None
     auth_method: Optional[str] = None
 
-def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 24) -> str:
+def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 48) -> str:
     if not duration_ms or duration_ms <= 0:
-        return "[------------------------] 00:00"
+        return "[" + "-" * width + "] 00:00 / 00:00"
     pct = min(max(progress_ms / duration_ms, 0.0), 1.0)
     filled = int(round(pct * width))
     bar = "=" * max(filled - 1, 0) + (">" if filled > 0 else "")

@@ -149,23 +149,25 @@
     </box>
 
     <!-- Bottom Persistent Now Playing Bar -->
-    <box style="height: 3; bg: #181818; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
-        <box style="flex-direction: row; align-items: center; width: 32;">
-            <text class="txt-white" bind-state="track_name" style="margin-right: 1;">Tytuł</text>
-            <text class="txt-muted" bind-state="artist_name">Wykonawca</text>
+    <box style="height: 4; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
+        <!-- Row 1: Full-width Progress Bar -->
+        <box style="flex-direction: row; align-items: center; justify-content: center; height: 1;">
+            <text class="txt-muted" bind-state="progress_bar">[------------------------------------------------] 00:00 / 00:00</text>
         </box>
-
-        <box style="flex-direction: row; align-items: center;">
-            <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
-            <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-            <box class="btn" style="margin-right: 1;" event-htmx="player_next"><text class="txt-green">►►</text></box>
-        </box>
-
-        <box style="flex-direction: row; align-items: center;">
-            <text class="txt-muted" bind-state="progress_bar" style="margin-right: 2;">[------------] 00:00</text>
-            <box class="btn" style="margin-right: 1;" event-htmx="vol_down"><text class="txt-green">🔊 -</text></box>
-            <text class="txt-white" bind-state="volume" style="margin-right: 1;">50%</text>
-            <box class="btn" event-htmx="vol_up"><text class="txt-green">+</text></box>
+        <!-- Row 2: Buttons on Left, Title & Artist on Right -->
+        <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 1; margin-top: 1;">
+            <box style="flex-direction: row; align-items: center;">
+                <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
+                <box class="btn" style="margin-right: 2;" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                <box class="btn" style="margin-right: 1;" event-htmx="vol_down"><text class="txt-green">🔊 -</text></box>
+                <text class="txt-white" bind-state="volume" style="margin-right: 1;">50%</text>
+                <box class="btn" event-htmx="vol_up"><text class="txt-green">+</text></box>
+            </box>
+            <box style="flex-direction: row; align-items: center;">
+                <text class="txt-white" bind-state="track_name" style="margin-right: 1;">Tytuł</text>
+                <text class="txt-muted" bind-state="artist_name">Wykonawca</text>
+            </box>
         </box>
     </box>
 
