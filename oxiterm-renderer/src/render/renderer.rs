@@ -512,7 +512,7 @@ impl Renderer {
                     false
                 }
             } else {
-                true
+                false
             };
 
             if !is_safe {
@@ -962,7 +962,7 @@ impl Renderer {
                     false
                 }
             } else {
-                true
+                false
             };
 
             if !is_safe {
