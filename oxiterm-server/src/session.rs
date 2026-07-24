@@ -187,13 +187,14 @@ pub struct ClientSession {
 impl ClientSession {
     /// Attempts to attach an identity to the session.
     ///
-    /// Injects reserved state keys and sets the identity field if identity is None (C2/M2).
+    /// Injects reserved state keys (including `_is_web`) and sets the identity field if identity is None (C2/M2).
     /// Returns true if the identity was successfully attached.
     pub fn attach_identity(&self, id: crate::identity::UserIdentity) -> bool {
         let mut stored = self.identity.write();
         if stored.is_none() {
+            let is_web = self.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
             let mut state = self.state.write();
-            id.inject_reserved_keys(&mut *state);
+            id.inject_reserved_keys(&mut *state, is_web);
             *stored = Some(id);
             true
         } else {
@@ -1363,6 +1364,12 @@ impl EventLoop {
                                         self.send_nav_throttle_notice();
                                     }
                                 }
+                                InputEvent::OpenUrl(url) => {
+                                    // Sent by dispatcher when App Server patch contains open_url.
+                                    // handle_open_url emits opcode 0x33 to web clients only;
+                                    // SSH sessions receive a warn! and no action.
+                                    self.handle_open_url(url, oxiterm_proto::dom::NodeId(0));
+                                }
                                 InputEvent::Reload => {
                                     if let Some(ref path) = self.source_path {
                                         match crate::loader::load_thtml_file(path) {
@@ -2090,6 +2097,19 @@ mod tests {
         });
         client_session.apply_state_patch(patch_arr_too_long);
         assert!(client_session.state.read().get("arr_key").is_none());
+    }
+
+    #[test]
+    fn test_38_apply_state_patch_rejects_reserved_is_web() {
+        // App Server MUST NOT be able to overwrite _is_web (reserved key, _ prefix)
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+
+        let patch = serde_json::json!({ "_is_web": "true" });
+        client_session.apply_state_patch(patch);
+
+        // _is_web was never written by engine, so it must remain absent
+        assert!(client_session.state.read().get("_is_web").is_none());
     }
 
 

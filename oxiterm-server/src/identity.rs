@@ -51,7 +51,7 @@ impl UserIdentity {
         }
     }
 
-    pub fn inject_reserved_keys(&self, state: &mut crate::state::StateManager) {
+    pub fn inject_reserved_keys(&self, state: &mut crate::state::StateManager, is_web: bool) {
         state.set(
             "_username".to_string(),
             crate::state::StateValue::Str(self.username.clone()),
@@ -59,6 +59,10 @@ impl UserIdentity {
         state.set(
             "_auth_method".to_string(),
             crate::state::StateValue::Str(format!("{:?}", self.auth_method)),
+        );
+        state.set(
+            "_is_web".to_string(),
+            crate::state::StateValue::Str(if is_web { "true" } else { "false" }.to_string()),
         );
     }
 }
@@ -96,7 +100,24 @@ mod tests {
         assert_eq!(g.auth_method, AuthMethod::Guest);
 
         let mut sm = crate::state::StateManager::new();
-        g.inject_reserved_keys(&mut sm);
+        g.inject_reserved_keys(&mut sm, false);
         assert_eq!(sm.get("_username"), Some(&crate::state::StateValue::Str("guest".to_string())));
+        assert_eq!(sm.get("_is_web"), Some(&crate::state::StateValue::Str("false".to_string())));
+    }
+
+    #[test]
+    fn test_36_inject_is_web_true_for_web_session() {
+        let id = UserIdentity::guest();
+        let mut sm = crate::state::StateManager::new();
+        id.inject_reserved_keys(&mut sm, true);
+        assert_eq!(sm.get("_is_web"), Some(&crate::state::StateValue::Str("true".to_string())));
+    }
+
+    #[test]
+    fn test_37_inject_is_web_false_for_ssh_session() {
+        let id = UserIdentity::ssh_no_auth("alice");
+        let mut sm = crate::state::StateManager::new();
+        id.inject_reserved_keys(&mut sm, false);
+        assert_eq!(sm.get("_is_web"), Some(&crate::state::StateValue::Str("false".to_string())));
     }
 }

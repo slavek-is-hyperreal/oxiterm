@@ -44,6 +44,12 @@ pub enum InputEvent {
     SwitchViewport(bool),
     /// Request to navigate to a relative path.
     NavigateTo(String),
+    /// Request to open a URL in the default web browser (web sessions only).
+    ///
+    /// Sent by the dispatcher when the App Server response patch contains an `open_url` key.
+    /// The EventLoop handles this by calling `handle_open_url`, which emits opcode `0x33`
+    /// to web clients. On SSH sessions it is silently ignored.
+    OpenUrl(String),
     /// An unparsed or unrecognized escape sequence.
     Unknown(Vec<u8>),
 }
