@@ -13,6 +13,7 @@
 .card-media    { border-color: #f87171; }
 .card-video    { border-color: #fb923c; }
 .card-showcase { border-color: #a3e635; }
+.card-spotify  { border-color: #1DB954; }
 
 .label { height: 1; }
 .muted { fg: #64748b; }
@@ -26,15 +27,15 @@
         <text style="fg: #38bdf8; height: 1;">🚀  OxiTerm — Interactive TUI over SSH  🚀</text>
     </box>
 
-    <!-- Center container for alignment (pushes footer down and centers content) -->
+    <!-- Center container for alignment -->
     <box style="flex: 1; align-items: center; justify-content: center;">
         
-        <!-- Main wrapper panel (one big box for all cards) -->
+        <!-- Main wrapper panel -->
         <box style="border-style: single; border-color: #334155; padding: 1;
-                    width: 76; height: 15; flex-direction: column;">
+                    width: 76; height: 19; flex-direction: column;">
             
             <!-- First row of cards -->
-            <box style="flex-direction: row; height: 6; margin-bottom: 1; justify-content: space-between;">
+            <box style="flex-direction: row; height: 5; margin-bottom: 1; justify-content: space-between;">
                 <box class="card card-counter" style="width: 17;" event-htmx="counter.thtml">
                     <text style="fg: #f59e0b; height: 1;">🔢 Counter</text>
                     <text class="muted label">State &amp; inc/dec</text>
@@ -54,14 +55,30 @@
             </box>
 
             <!-- Second row of cards -->
-            <box style="flex-direction: row; height: 6; justify-content: space-between;">
-                <box class="card card-nav" style="width: 17;" event-htmx="SSHSpotifyControl.thtml">
-                    <text style="fg: #1DB954; height: 1;">🎵 Spotify</text>
-                    <text class="muted label">Control &amp; OAuth</text>
+            <box style="flex-direction: row; height: 5; margin-bottom: 1; justify-content: space-between;">
+                <box class="card card-nav" style="width: 17;" event-htmx="navigation_demo.thtml">
+                    <text style="fg: #38bdf8; height: 1;">📑 Navigation</text>
+                    <text class="muted label">Tabs &amp; bind-show</text>
+                </box>
+                <box class="card card-media" style="width: 17;" event-htmx="media_demo.thtml">
+                    <text style="fg: #f87171; height: 1;">🖼️ Graphics</text>
+                    <text class="muted label">SVG/Lottie loop</text>
+                </box>
+                <box class="card card-video" style="width: 17;" event-htmx="video_demo.thtml">
+                    <text style="fg: #fb923c; height: 1;">🎬 Video</text>
+                    <text class="muted label">MP4 playback</text>
                 </box>
                 <box class="card card-showcase" style="width: 17;" event-htmx="showcase.thtml">
                     <text style="fg: #a3e635; height: 1;">🧪 Showcase</text>
                     <text class="muted label">Engine features</text>
+                </box>
+            </box>
+
+            <!-- Third row of cards -->
+            <box style="flex-direction: row; height: 5; justify-content: space-between;">
+                <box class="card card-spotify" style="width: 17;" event-htmx="SSHSpotifyControl.thtml">
+                    <text style="fg: #1DB954; height: 1;">🎵 Spotify</text>
+                    <text class="muted label">Control &amp; OAuth</text>
                 </box>
             </box>
             
