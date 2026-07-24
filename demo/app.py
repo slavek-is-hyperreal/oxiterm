@@ -1,5 +1,6 @@
 import os
 import time
+import html
 import secrets
 import sqlite3
 import logging
@@ -8,7 +9,7 @@ from typing import Dict, Any, Optional, Tuple
 from urllib.parse import quote
 
 import requests
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -21,10 +22,11 @@ logger = logging.getLogger("spotify_app_server")
 
 app = FastAPI(title="OxiTerm Multi-Tenant Spotify App Server")
 
-# Spotify Configuration
+# Spotify & Server Configuration
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "a2cff4fceae146db8ded92dae9ed9ddd")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://oxiterm.slavekm.pl/callback")
+OXITERM_APP_TOKEN = os.getenv("OXITERM_APP_TOKEN", "")
 SCOPE = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
@@ -33,7 +35,7 @@ DB_PATH = os.path.join(CACHE_DIR, "spotify_app.db")
 
 # In-memory map for transient OAuth state -> (session_id, timestamp)
 pending_oauth_states: Dict[str, Tuple[int, float]] = {}
-# Active session_id -> user_session_token mapping
+# Active session_id -> (session_token, timestamp) mapping
 active_oxiterm_sessions: Dict[int, Tuple[str, float]] = {}
 
 def init_db():
@@ -53,8 +55,18 @@ def init_db():
             )
         """)
         conn.commit()
+    try:
+        os.chmod(DB_PATH, 0o600)
+    except Exception:
+        pass
 
 init_db()
+
+def cleanup_pending_oauth_states():
+    now = time.time()
+    stale = [st for st, (_, ts) in list(pending_oauth_states.items()) if now - ts > 600]
+    for st in stale:
+        pending_oauth_states.pop(st, None)
 
 def get_user_by_session_token(session_token: str) -> Optional[Dict[str, Any]]:
     if not session_token:
@@ -117,6 +129,16 @@ def delete_user_session(session_token: str):
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
 
+def verify_app_token(request: Request):
+    if OXITERM_APP_TOKEN:
+        auth_header = request.headers.get("Authorization", "")
+        token_prefix = "Bearer "
+        if not auth_header.startswith(token_prefix):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        token = auth_header[len(token_prefix):]
+        if not secrets.compare_digest(token, OXITERM_APP_TOKEN):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
 class OxiEventPayload(BaseModel):
     action: str
     state: Dict[str, Any] = {}
@@ -175,7 +197,7 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
                 "device_name": "Brak aktywnego urządzenia",
                 "is_playing": "false",
                 "play_icon": "Play",
-                "progress_bar": "[------------------------] 00:00",
+                "progress_bar": render_progress_bar(0, 0),
                 "volume": "0%"
             }
     except Exception as e:
@@ -189,18 +211,23 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
         "device_name": "-",
         "is_playing": "false",
         "play_icon": "Play",
-        "progress_bar": "[------------------------] 00:00",
+        "progress_bar": render_progress_bar(0, 0),
         "volume": "0%"
     }
 
 @app.get("/callback")
 async def spotify_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     if error or not code:
-        return HTMLResponse(content=f"<h2>Błąd autoryzacji Spotify: {error}</h2>", status_code=400)
+        safe_error = html.escape(error) if error else "Brak kodu autoryzacji"
+        return HTMLResponse(content=f"<h2>Błąd autoryzacji Spotify: {safe_error}</h2>", status_code=400)
     
-    session_id = None
-    if state and state in pending_oauth_states:
-        session_id, _ = pending_oauth_states.pop(state)
+    # Strict state verification (CSRF protection)
+    if not state or state not in pending_oauth_states:
+        return HTMLResponse(content="<h2>Błąd autoryzacji: nieprawidłowy lub przeterminowany token state</h2>", status_code=400)
+    
+    session_id, state_ts = pending_oauth_states.pop(state)
+    if time.time() - state_ts > 600:
+        return HTMLResponse(content="<h2>Błąd autoryzacji: przeterminowany token state (powyżej 10 minut)</h2>", status_code=400)
 
     try:
         r = requests.post(
@@ -215,7 +242,7 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
             timeout=5
         )
         if r.status_code != 200:
-            return HTMLResponse(content=f"<h2>Błąd tokena Spotify: {r.text}</h2>", status_code=400)
+            return HTMLResponse(content="<h2>Błąd wymiany tokena Spotify</h2>", status_code=400)
         
         token_data = r.json()
         access_token = token_data["access_token"]
@@ -231,6 +258,7 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
         me = me_req.json()
         spotify_user_id = me.get("id", "unknown")
         display_name = me.get("display_name") or spotify_user_id
+        safe_display_name = html.escape(display_name)
         
         # Generate secure random 256-bit session token
         session_token = secrets.token_hex(32)
@@ -250,14 +278,9 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
             """, (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, time.time()))
             conn.commit()
 
-        if session_id is not None:
-            active_oxiterm_sessions[session_id] = (session_token, time.time())
-        else:
-            # Fallback: bind session_token to all currently active OxiTerm sessions
-            for active_sid in list(active_oxiterm_sessions.keys()):
-                active_oxiterm_sessions[active_sid] = (session_token, time.time())
-
-        logger.info(f"Successfully authenticated Spotify user '{display_name}' (ID: {spotify_user_id})!")
+        # Bind session_token strictly to session_id from state
+        active_oxiterm_sessions[session_id] = (session_token, time.time())
+        logger.info(f"Successfully authenticated Spotify user (ID: {spotify_user_id}) for session {session_id}!")
 
         html_content = f"""
         <!DOCTYPE html>
@@ -271,14 +294,13 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
                 h1 {{ color: #1DB954; font-size: 1.8rem; margin-bottom: 0.5rem; }}
                 p {{ color: #b3b3b3; line-height: 1.5; }}
                 .badge {{ background: #282828; color: #1DB954; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: bold; display: inline-block; margin: 1rem 0; }}
-                .btn {{ background: #1DB954; color: #000; text-decoration: none; padding: 0.8rem 1.5rem; border-radius: 50px; font-weight: bold; display: inline-block; margin-top: 1rem; }}
             </style>
         </head>
         <body>
             <div class="card">
                 <h1>✅ Zalogowano pomyślnie!</h1>
                 <p>Witaj w OxiTerm Spotify Control</p>
-                <div class="badge">Zalogowano jako: {display_name}</div>
+                <div class="badge">Zalogowano jako: {safe_display_name}</div>
                 <p>Możesz teraz zamknąć tę kartę i powrócić do konsoli OxiTerm.</p>
             </div>
         </body>
@@ -286,8 +308,8 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
         """
         return HTMLResponse(content=html_content)
     except Exception as e:
-        logger.error(f"OAuth Callback error: {e}")
-        return HTMLResponse(content=f"<h2>Błąd autoryzacji OAuth: {e}</h2>", status_code=400)
+        logger.error(f"OAuth Callback processing error: {e}")
+        return HTMLResponse(content="<h2>Błąd autoryzacji OAuth</h2>", status_code=400)
 
 @app.on_event("startup")
 async def start_background_loop():
@@ -296,6 +318,7 @@ async def start_background_loop():
 async def poll_spotify_and_push_patches():
     while True:
         await asyncio.sleep(1.5)
+        cleanup_pending_oauth_states()
         now = time.time()
         stale = [sid for sid, (_, last_seen) in list(active_oxiterm_sessions.items()) if now - last_seen > 300]
         for sid in stale:
@@ -305,48 +328,38 @@ async def poll_spotify_and_push_patches():
             try:
                 loop = asyncio.get_event_loop()
                 oxiterm_url = os.getenv("OXITERM_URL", "http://host.docker.internal:8087")
+                headers = {}
+                if OXITERM_APP_TOKEN:
+                    headers["Authorization"] = f"Bearer {OXITERM_APP_TOKEN}"
                 for sid, (stoken, _) in list(active_oxiterm_sessions.items()):
                     user = await loop.run_in_executor(None, lambda: get_user_by_session_token(stoken))
                     if user and user.get("access_token"):
                         patch = await loop.run_in_executor(None, lambda: fetch_playback_for_user(user["access_token"]))
                         patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
-                        patch["user_session_token"] = stoken
                         url = f"{oxiterm_url}/sessions/{sid}/patch"
                         try:
-                            r = await loop.run_in_executor(None, lambda: requests.post(url, json=patch, timeout=0.8))
+                            r = await loop.run_in_executor(None, lambda: requests.post(url, json=patch, headers=headers, timeout=0.8))
                             if r.status_code == 404:
                                 active_oxiterm_sessions.pop(sid, None)
                             elif r.status_code != 200:
-                                logger.warning(f"Push patch to {url} returned status {r.status_code}")
+                                logger.warning(f"Push patch to session {sid} returned status {r.status_code}")
                         except Exception as push_err:
-                            logger.error(f"Push patch to {url} failed: {push_err}")
+                            logger.error(f"Push patch to session {sid} failed: {push_err}")
             except Exception as e:
                 logger.error(f"Background polling error: {e}")
 
 @app.post("/events")
-async def handle_oxiterm_event(payload: OxiEventPayload):
+async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
+    verify_app_token(request)
+    
     action = payload.action
     state_vars = payload.state
     session_id = payload.session_id
     
-    stoken = state_vars.get("user_session_token", "")
-    if not stoken and session_id in active_oxiterm_sessions:
+    stoken = None
+    if session_id in active_oxiterm_sessions:
         stoken, _ = active_oxiterm_sessions[session_id]
     user = get_user_by_session_token(stoken) if stoken else None
-    
-    if not user and action != "logout":
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM users ORDER BY last_seen DESC LIMIT 1")
-                row = cursor.fetchone()
-                if row:
-                    user = dict(row)
-                    stoken = user["session_token"]
-                    active_oxiterm_sessions[session_id] = (stoken, time.time())
-        except Exception as e:
-            logger.error(f"Error checking default user fallback: {e}")
     
     if user:
         active_oxiterm_sessions[session_id] = (user["session_token"], time.time())
@@ -358,7 +371,7 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
         oauth_state = secrets.token_hex(16)
         pending_oauth_states[oauth_state] = (session_id, time.time())
         auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={oauth_state}&show_dialog=true"
-        logger.info(f"Generated Spotify OAuth URL for session {session_id}: {auth_url}")
+        logger.info(f"Generated Spotify OAuth URL for session {session_id}")
         patch["auth_msg"] = "Link autoryzacji wygenerowany!"
         patch["auth_url"] = auth_url
 
@@ -369,7 +382,6 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
             active_oxiterm_sessions.pop(session_id, None)
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
-        patch["user_session_token"] = ""
         patch["track_name"] = "Wymagana autoryzacja"
         patch["artist_name"] = "Zaloguj się do Spotify"
         patch["album_name"] = "-"
@@ -497,16 +509,10 @@ async def handle_oxiterm_event(payload: OxiEventPayload):
     if user and action != "logout":
         playback_patch = fetch_playback_for_user(user["access_token"])
         playback_patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
-        playback_patch["user_session_token"] = user["session_token"]
         patch.update(playback_patch)
     elif not user and action != "logout":
-        auth_state = secrets.token_hex(16)
-        pending_oauth_states[auth_state] = (session_id, time.time())
-        auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={auth_state}&show_dialog=true"
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
-        patch["auth_url"] = auth_url
-        patch["user_session_token"] = ""
 
     return patch
 

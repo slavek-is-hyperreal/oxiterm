@@ -43,7 +43,13 @@ impl AppDispatcher {
         let url = self.app_server_url.clone();
         std::thread::spawn(move || {
             info!("AppDispatcher: POST {} action={}", url, payload.action);
-            match ureq::post(&url).send_json(&payload) {
+            let mut req = ureq::post(&url);
+            if let Ok(token) = std::env::var("OXITERM_APP_TOKEN") {
+                if !token.is_empty() {
+                    req = req.set("Authorization", &format!("Bearer {}", token));
+                }
+            }
+            match req.send_json(&payload) {
                 Ok(resp) => {
                     info!("AppDispatcher: response {}", resp.status());
                     if resp.status() == 200 {
@@ -175,5 +181,36 @@ mod tests {
         
         let state = session.state.read();
         assert_eq!(state.get("new_key"), Some(&crate::state::StateValue::Str("patched_val".to_string())));
+    }
+
+    #[test]
+    fn test_22_dispatcher_sends_bearer_auth() {
+        use std::net::TcpListener;
+        use std::io::{Write, Read};
+
+        std::env::set_var("OXITERM_APP_TOKEN", "test_app_token_123");
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
+        let payload = make_payload("click", 123);
+
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        d.dispatch(payload, session);
+
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let n = stream.read(&mut buf).unwrap();
+        let request_str = String::from_utf8_lossy(&buf[..n]);
+
+        assert!(request_str.contains("Authorization: Bearer test_app_token_123"));
+
+        let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+        stream.write_all(response.as_bytes()).unwrap();
+
+        std::env::remove_var("OXITERM_APP_TOKEN");
     }
 }
