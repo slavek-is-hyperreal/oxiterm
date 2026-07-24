@@ -21,6 +21,9 @@
             <box class="btn" style="height: 1; margin-right: 1;" event-htmx="tab:player">
                 <text class="txt-green">🔄 Odśwież</text>
             </box>
+            <box class="btn" style="height: 1; margin-right: 1;" event-htmx="logout">
+                <text class="txt-red">🚪 Wyloguj</text>
+            </box>
             <text class="txt-muted" event-htmx="hello.thtml" style="margin-right: 2;">&lt; Menu</text>
             <text class="txt-green" bind-state="auth_status">Sprawdzanie auth...</text>
         </box>
