@@ -30,10 +30,10 @@ The showcase features interactive tabs (e.g. **Home**, **Media Showcase**, **Int
 - When the animation tab is active, OxiTerm automatically dynamically scales the session's event loop tick rate to 15 FPS (`66ms` tick) for smooth playback.
 - When inactive, the session drops back to an idle sleep state (`5ms` poll) to conserve server CPU cycles.
 
-### 4. Interactive Rive Slider (`toggle.riv`)
+### 4. Interactive Rive Toggle (`toggle.riv`)
 - Renders an interactive slider toggle component.
-- Translates hovering and mouse clicks directly into Rive runtime inputs.
-- Automatically triggers state transitions and keyframe animations inside the cell grid.
+- Implemented as a **procedural widget** — OxiTerm's renderer reads the `.riv` file format for geometry, then draws and animates it internally. **No Rive runtime is involved**; the file is not executed.
+- Hover and click coordinates drive the toggle state directly via OxiTerm's hit-test system.
 
 ---
 

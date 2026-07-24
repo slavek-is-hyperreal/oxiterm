@@ -79,7 +79,7 @@ OxiTerm's performance and stability in a network environment rely on several key
 
 When launching the server with the `--a11y` flag, the engine switches to the **LinearFrameSink** mode:
 * Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
-* OxiTerm can integrate with the DBus system bus on Linux systems to communicate directly with speech synthesizers and Braille displays.
+* The `oxiterm-a11y` crate exposes an AT-SPI/D-Bus API surface (`DBusBridge`, `register_at_spi`, `update_focus`), but **the transport layer is not yet implemented** — no D-Bus connections are established at runtime. The API is a skeleton for future integration with speech synthesizers and Braille displays.
 
 ---
 

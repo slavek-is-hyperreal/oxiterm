@@ -26,7 +26,7 @@
 - **Input Primitives**: `<input>` with `bind-value`, real-time `TextInput`, and the `AppDispatcher` that POSTs `event-htmx` actions + state to an external App Server and applies returned JSON state patches.
 - **Reactive StateManager Growth**: Dynamic tab highlighting and multi-action `event-htmx` chains (`a;b` / `a,b`); state patching applied back into the live session.
 - **Scroll & WASM Pipeline**: Server-side scroll rendering and the WASM web rendering path (the "v0.4 pipeline"), including a 6-byte binary cell-diff protocol shared with the web client.
-- **Accessibility Layer**: AT-SPI / DBus integration and the `LinearFrameSink` (`--a11y`) that renders the document as a linear text tree for screen readers; unified single-pass style cascade.
+- **Accessibility Layer**: `LinearFrameSink` (`--a11y`) renders the document as a linear text tree for screen readers. The AT-SPI/D-Bus API surface (`DBusBridge`, `register_at_spi`, `update_focus`) is a **skeleton without transport implementation** — no D-Bus connections are established at runtime.
 - **Media Buffering**: Frame buffering for video/animation media alongside the SVG/asset caches.
 - **Parser & Server Robustness**: CSS-comment stripping, HTML-entity decoding, SSH hot-reload, resilient file watching, and a fix for a navigation focus leak on hidden (`bind-show`) nodes.
 - **Web Fixes**: Resolved coordinate translation / connection-init hang and a blank-screen bug (canvas clear-dimension init + handshake packet ordering).

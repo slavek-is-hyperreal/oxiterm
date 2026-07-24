@@ -40,8 +40,8 @@ enum Commands {
         /// Web port to listen on
         #[arg(long, default_value_t = 8080)]
         web_port: u16,
-        /// Enable accessibility mode: output plain-text fallback via LinearFrameSink
-        /// and register AT-SPI2 nodes through D-Bus tunnel.
+        /// Enable accessible rendering via LinearFrameSink (linear text tree output).
+        /// AT-SPI2/D-Bus transport is not yet implemented — no external connections are made.
         #[arg(long)]
         a11y: bool,
     },
