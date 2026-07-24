@@ -1,6 +1,5 @@
 import os
 import sys
-import webbrowser
 import logging
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, Request, Response, status
@@ -23,7 +22,9 @@ CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "ea0a951bc68b4d5baa0813570b94
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://oxiterm.slavekm.pl/callback")
 SCOPE = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
 
-CACHE_PATH = os.path.join(os.path.dirname(__file__), ".cache-spotify")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_PATH = os.path.join(CACHE_DIR, "spotify_token.json")
 
 def get_spotify_oauth() -> SpotifyOAuth:
     return SpotifyOAuth(
@@ -77,6 +78,7 @@ def fetch_playback_state_patch() -> Dict[str, str]:
             "auth_msg": "Kliknij lub skopiuj link autoryzacyjny Spotify:",
             "track_name": "Wymagane logowanie Spotify",
             "artist_name": "Otwórz link autoryzacyjny z zakładek",
+            "album_name": "Aplikacja: SSHMusicControl",
             "progress_bar": "[------------------------] 00:00 / 00:00",
             "play_icon": "Play",
             "device_name": "Brak połączenia"
@@ -114,7 +116,8 @@ def fetch_playback_state_patch() -> Dict[str, str]:
                 "auth_status": "Zalogowano",
                 "auth_url": auth_url,
                 "track_name": "Brak aktywnego odtwarzania",
-                "artist_name": "Włącz Spotify na swoim urządzeniu",
+                "artist_name": "Włącz Spotify na urządzeniu",
+                "album_name": "Wybierz utwór z aplikacji Spotify",
                 "progress_bar": "[------------------------] 00:00 / 00:00",
                 "play_icon": "Play",
                 "device_name": "Czekam na urządzenie Spotify..."
@@ -133,15 +136,19 @@ async def spotify_callback(code: str, state: Optional[str] = None):
     auth_manager = get_spotify_oauth()
     try:
         token_info = auth_manager.get_access_token(code)
-        logger.info("Successfully authenticated with Spotify OAuth!")
+        logger.info(f"Successfully authenticated and saved token to {CACHE_PATH}!")
         return Response(
             content="""
             <!DOCTYPE html>
             <html>
-                <head><title>Spotify Auth Success</title></head>
+                <head>
+                    <title>Spotify Auth Success</title>
+                    <meta charset="utf-8">
+                </head>
                 <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 60px; background: #121212; color: #1DB954;">
                     <h1>✅ Logowanie do Spotify zakończone sukcesem!</h1>
-                    <p style="color: #ffffff; font-size: 1.2rem;">Możesz zamknąć tę kartę i przejść do swojego terminala OxiTerm.</p>
+                    <p style="color: #ffffff; font-size: 1.2rem;">Token autoryzacyjny został pomyślnie zapisany.</p>
+                    <p style="color: #b3b3b3; font-size: 1rem;">Możesz zamknąć tę kartę i przejść do swojego terminala OxiTerm.</p>
                 </body>
             </html>
             """,
