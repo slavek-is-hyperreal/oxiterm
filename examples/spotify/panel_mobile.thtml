@@ -71,7 +71,7 @@
                 <text class="txt-green">[ 🔑 Generuj Link ]</text>
             </box>
             <text class="txt-muted">Direct OAuth Link:</text>
-            <text class="txt-green" bind-state="auth_url" style="margin-top: 1;"></text>
+            <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
         </box>
     </box>
 
