@@ -25,7 +25,7 @@
             </box>
         </box>
         <!-- Row 2: Buttons under title -->
-        <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
+        <box style="flex-direction: row; align-items: center; height: 3; margin-top: 1;">
             <box class="btn" style="margin-right: 1;" event-htmx="tab:player">
                 <text class="txt-green">🔄 Odśwież</text>
             </box>
@@ -155,7 +155,7 @@
             <text class="txt-muted" bind-state="progress_bar">[------------------------------------------------] 00:00 / 00:00</text>
         </box>
         <!-- Row 2: Buttons on Left, Title & Artist on Right -->
-        <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 1; margin-top: 1;">
+        <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 3; margin-top: 1;">
             <box style="flex-direction: row; align-items: center;">
                 <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
                 <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
