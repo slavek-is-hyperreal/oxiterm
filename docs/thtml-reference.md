@@ -147,7 +147,7 @@ border(1) + progress(1) + margin(1) + buttons(3) + border(1) = 7
 Such a container must have `height: 7`, no less.
 
 > [!IMPORTANT]
-> Remember that `.btn` (and any bordered element) occupies **3 rows**, not 1. The most common layout error is counting a button row as 1 row. If you do not want to calculate heights manually, use `height: auto` or `flex: 1` — the container will adapt to its content automatically.
+> Remember that `.btn` (and any bordered element) occupies **3 rows**, not 1. The most common layout error is counting a button row as 1 row. If you do not want to calculate heights manually, omit `height` or use `flex: 1` — the container will adapt to its content automatically.
 
 ### 7.3 Text Width and Wrapping
 

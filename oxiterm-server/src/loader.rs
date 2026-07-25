@@ -12,13 +12,21 @@ use tracing::{info, warn};
 /// render at different widths across terminals and make the label drift off its hit box.
 /// `label` identifies the source (file path or "<inline>") in the message.
 fn warn_ambiguous_clickables(doc: &THTMLDocument, label: &str) {
-    for (node, text, bad) in doc.clickable_ambiguous_width() {
-        warn!(
-            "Clickable label {:?} (node {:?}) in {} contains ambiguous-width char(s) {:?}; \
-             clicks may miss on terminals that render them wide. Use unambiguous glyphs \
-             (e.g. '<' instead of '←').",
-            text, node, label, bad,
-        );
+    for (node, text, symbols, letters) in doc.clickable_ambiguous_width() {
+        if !symbols.is_empty() {
+            warn!(
+                "Clickable label {:?} (node {:?}) in {} contains ambiguous-width symbol(s) {:?}; \
+                 clicks may miss on terminals that render them wide. Use unambiguous glyphs \
+                 (e.g. '<' instead of '←').",
+                text, node, label, symbols,
+            );
+        }
+        if !letters.is_empty() {
+            tracing::debug!(
+                "Clickable label {:?} (node {:?}) in {} contains ambiguous-width letter(s) {:?}.",
+                text, node, label, letters,
+            );
+        }
     }
 }
 

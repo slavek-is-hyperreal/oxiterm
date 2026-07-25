@@ -19,12 +19,12 @@ text { fg: #e2e8f0; }
     </box>
 
     <box style="flex-direction: column; padding: 1; flex: 1;">
-        <box class="card blue" style="height: 5;">
+        <box class="card blue" style="height: 7;">
             <text class="card-title" style="fg: #38bdf8;">Card .blue</text>
             <text class="muted">Class styling</text>
         </box>
 
-        <box class="card green" style="height: 5;">
+        <box class="card green" style="height: 7;">
             <text class="card-title" style="fg: #4ade80;">Card .green</text>
             <text class="muted">Color variant</text>
         </box>

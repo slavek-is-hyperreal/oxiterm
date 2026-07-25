@@ -54,7 +54,9 @@ ENUM_PROPS = {
 
 COLOR_PROPS = {"fg", "color", "bg", "background-color", "border", "border-color"}
 
-KNOWN_PROPS = INT_PROPS | set(ENUM_PROPS) | COLOR_PROPS
+FLOAT_PROPS = {"flex"}
+
+KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS
 
 BORDER_PROPS = {"border", "border-color", "border-style"}
 
@@ -151,6 +153,21 @@ def check_declarations(where: str, decls: list[tuple[str, str]]) -> list[Finding
                 + (" (omit the property instead of writing 'auto')"
                    if value.strip().lower() == "auto" else ""),
             ))
+        if prop in FLOAT_PROPS:
+            try:
+                val = float(value.strip())
+                if val <= 0:
+                    findings.append((
+                        "E002", where,
+                        f"'{prop}: {value}' must be greater than 0 — "
+                        f"the parser discards this silently",
+                    ))
+            except ValueError:
+                findings.append((
+                    "E002", where,
+                    f"'{prop}: {value}' is not a number — "
+                    f"the parser discards this silently",
+                ))
         if prop in ENUM_PROPS and value.strip().lower() not in ENUM_PROPS[prop]:
             findings.append((
                 "E002", where,

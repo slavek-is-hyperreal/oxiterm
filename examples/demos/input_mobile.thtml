@@ -31,7 +31,7 @@
         <box class="panel" style="flex-direction: column; width: 44;">
             <text class="label">Name (type text, enter to submit):</text>
             <input bind-value="name_input" placeholder="e.g. Slavek"
-                   style="height: 1; border-style: single; border-color: #38bdf8;
+                   style="height: 3; border-style: single; border-color: #38bdf8;
                           padding-left: 1; margin-top: 1;"/>
             <box style="flex-direction: row; margin-top: 1;">
                 <text class="muted">Typed: </text>
@@ -43,7 +43,7 @@
         <box class="panel" style="flex-direction: column; width: 44;">
             <text class="label">Search phrase:</text>
             <input bind-value="search_input" placeholder="type here..."
-                   style="height: 1; border-style: single; border-color: #a78bfa;
+                   style="height: 3; border-style: single; border-color: #a78bfa;
                           padding-left: 1; margin-top: 1;"/>
             <box style="flex-direction: row; margin-top: 1;">
                 <text class="muted">Search: </text>

@@ -33,13 +33,15 @@ fn no_ambiguous_width_in_clickable_labels() {
             Ok(d) => d,
             Err(_) => continue, // parse errors are a different test's concern
         };
-        for (_, text, bad) in doc.clickable_ambiguous_width() {
-            violations.push(format!(
-                "{}: clickable {:?} has ambiguous-width {:?}",
-                file.file_name().unwrap().to_string_lossy(),
-                text,
-                bad
-            ));
+        for (_, text, symbols, _) in doc.clickable_ambiguous_width() {
+            if !symbols.is_empty() {
+                violations.push(format!(
+                    "{}: clickable {:?} has ambiguous-width symbol(s) {:?}",
+                    file.file_name().unwrap().to_string_lossy(),
+                    text,
+                    symbols
+                ));
+            }
         }
     }
 

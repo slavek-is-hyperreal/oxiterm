@@ -42,6 +42,8 @@ pub struct ComputedStyle {
     pub margin: Rect,
     /// Element border styling (if defined).
     pub border: Option<BorderStyle>,
+    /// Optional flex shorthand value (flex-grow factor).
+    pub flex: Option<f32>,
     /// Wrap mode for text content.
     pub wrap: WrapMode,
 }
@@ -251,5 +253,11 @@ mod tests {
         assert!(profile.supports_kitty_gfx);
         assert!(profile.supports_sgr_mouse);
         assert_eq!(profile.color_depth, ColorDepth::TrueColor);
+    }
+
+    #[test]
+    fn test_computed_style_default_flex() {
+        // T-7: ComputedStyle::default().flex is None
+        assert_eq!(ComputedStyle::default().flex, None);
     }
 }

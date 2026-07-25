@@ -40,6 +40,7 @@ Subsequent rules with the same priority overwrite previous ones (determined by t
 | `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
 | `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
 | `border-color` | Color | Specifies or overrides the border color. |
+| `flex` | Number > 0 (e.g. `1`, `2.5`) | Flex shorthand. Sets `flex-grow` factor, `flex-shrink: 1.0`, and `flex-basis: 0`. Expands element along container's main axis. |
 | `wrap` | `word` | Enables word-wrapping of `<text>` content to the element's width. With `wrap: word` (and a constrained width) the text flows onto multiple rows at word boundaries; without it text stays on a single row. |
 
 ---
@@ -96,10 +97,16 @@ To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
 
 ---
 
-## 5. What TCSS Does NOT Support (compared to browser CSS)
+## 5. Media Element Constraints
 
-* **No Units:** Dimensions, margins, and paddings are specified as pure integers (representing terminal character cells). Units such as `px`, `em`, `rem`, `%` are not supported.
+* **Media Min Size Floor:** Media elements (`<img>` and `<video>`) enforce a minimum size (`min_size`) based on their declared `width` and `height` attributes. Even when placed inside a flex container or subject to flex layout, media elements will not shrink below their declared dimensions.
+
+---
+
+## 6. What TCSS Does NOT Support & Unknown Property Handling
+
+* **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `px`, `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
+* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
-* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported in TCSS because the terminal enforces a fixed-width monospace font.
-* **No Text Styling Properties (yet):** `font-weight`, `font-style`, and `text-decoration` are **not** currently exposed by TCSS — the parser does not recognise them and they have no effect. (The renderer's cell format can carry bold/italic/underline, but no TCSS property maps to it today.)
+* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported because the terminal enforces a fixed-width monospace font.
 * **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.

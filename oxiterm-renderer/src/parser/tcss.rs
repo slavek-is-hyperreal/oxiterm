@@ -71,6 +71,10 @@ pub enum Declaration {
     BorderColor(AnsiColor),
     /// Text wrap mode (word wrapping).
     Wrap(oxiterm_proto::style::WrapMode),
+    /// Flex shorthand value (flex-grow factor).
+    Flex(f32),
+    /// Unrecognized property or invalid property value.
+    Unknown(String),
 }
 
 /// Strips block comments (`/* ... */`) from the TCSS input string.
@@ -188,6 +192,8 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
                 });
             }
         }
+        Declaration::Flex(val) => style.flex = Some(*val),
+        Declaration::Unknown(_) => {},
     }
 }
 
@@ -227,46 +233,129 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     let end_idx = input.find(|c| c == ';' || c == '}').unwrap_or(input.len());
     let (value, input) = input.split_at(end_idx);
 
+    let val_str = value.trim();
     let decl = match key {
-        "fg" | "color" => Some(Declaration::Fg(parse_color(value.trim()))),
-        "bg" | "background-color" => Some(Declaration::Bg(parse_color(value.trim()))),
-        "width" => Some(Declaration::Width(value.trim().parse().unwrap_or(0))),
-        "height" => Some(Declaration::Height(value.trim().parse().unwrap_or(0))),
-        "wrap" => match value.trim() {
+        "fg" | "color" => Some(Declaration::Fg(parse_color(val_str))),
+        "bg" | "background-color" => Some(Declaration::Bg(parse_color(val_str))),
+        "width" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::Width(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "height" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::Height(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "flex" => match val_str.parse::<f32>() {
+            Ok(v) if v > 0.0 => Some(Declaration::Flex(v)),
+            _ => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "wrap" => match val_str {
             "word" => Some(Declaration::Wrap(oxiterm_proto::style::WrapMode::Word)),
             _ => Some(Declaration::Wrap(oxiterm_proto::style::WrapMode::None)),
         },
-        "flex-direction" => match value.trim() {
+        "flex-direction" => match val_str {
             "column" => Some(Declaration::FlexDirection(FlexDirection::Column)),
             _ => Some(Declaration::FlexDirection(FlexDirection::Row)),
         },
-        "align-items" => match value.trim() {
+        "align-items" => match val_str {
             "flex-end" => Some(Declaration::AlignItems(AlignItems::FlexEnd)),
             "center" => Some(Declaration::AlignItems(AlignItems::Center)),
             "stretch" => Some(Declaration::AlignItems(AlignItems::Stretch)),
             _ => Some(Declaration::AlignItems(AlignItems::FlexStart)),
         },
-        "justify-content" => match value.trim() {
+        "justify-content" => match val_str {
             "flex-end" => Some(Declaration::JustifyContent(JustifyContent::FlexEnd)),
             "center" => Some(Declaration::JustifyContent(JustifyContent::Center)),
             "space-between" => Some(Declaration::JustifyContent(JustifyContent::SpaceBetween)),
             "space-around" => Some(Declaration::JustifyContent(JustifyContent::SpaceAround)),
             _ => Some(Declaration::JustifyContent(JustifyContent::FlexStart)),
         },
-        "padding" => Some(Declaration::Padding(value.trim().parse().unwrap_or(0))),
-        "padding-top" => Some(Declaration::PaddingTop(value.trim().parse().unwrap_or(0))),
-        "padding-right" => Some(Declaration::PaddingRight(value.trim().parse().unwrap_or(0))),
-        "padding-bottom" => Some(Declaration::PaddingBottom(value.trim().parse().unwrap_or(0))),
-        "padding-left" => Some(Declaration::PaddingLeft(value.trim().parse().unwrap_or(0))),
-        "margin" => Some(Declaration::Margin(value.trim().parse().unwrap_or(0))),
-        "margin-top" => Some(Declaration::MarginTop(value.trim().parse().unwrap_or(0))),
-        "margin-right" => Some(Declaration::MarginRight(value.trim().parse().unwrap_or(0))),
-        "margin-bottom" => Some(Declaration::MarginBottom(value.trim().parse().unwrap_or(0))),
-        "margin-left" => Some(Declaration::MarginLeft(value.trim().parse().unwrap_or(0))),
-        "border" => Some(Declaration::Border(parse_color(value.trim()))),
-        "border-style" => Some(Declaration::BorderStyle(value.trim().to_string())),
-        "border-color" => Some(Declaration::BorderColor(parse_color(value.trim()))),
-        _ => None,
+        "padding" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::Padding(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "padding-top" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::PaddingTop(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "padding-right" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::PaddingRight(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "padding-bottom" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::PaddingBottom(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "padding-left" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::PaddingLeft(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "margin" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::Margin(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "margin-top" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::MarginTop(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "margin-right" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::MarginRight(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "margin-bottom" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::MarginBottom(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "margin-left" => match val_str.parse::<u16>() {
+            Ok(v) => Some(Declaration::MarginLeft(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "border" => Some(Declaration::Border(parse_color(val_str))),
+        "border-style" => Some(Declaration::BorderStyle(val_str.to_string())),
+        "border-color" => Some(Declaration::BorderColor(parse_color(val_str))),
+        _ => {
+            tracing::warn!("Unknown TCSS property: {}", key);
+            Some(Declaration::Unknown(format!("{key}: {val_str}")))
+        }
     };
     
     Ok((input, decl))
@@ -462,5 +551,47 @@ mod tests {
         ";
         let stylesheet = parse_tcss(tcss).unwrap();
         assert_eq!(stylesheet.rules.len(), 2);
+    }
+
+    #[test]
+    fn test_tcss_flex_and_unknown_declarations() {
+        // T-1: flex: 1 -> Declaration::Flex(1.0)
+        let decls = parse_inline_tcss("flex: 1").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Flex(v)) if (*v - 1.0).abs() < f32::EPSILON));
+
+        // T-2: flex: 2.5 -> Declaration::Flex(2.5)
+        let decls = parse_inline_tcss("flex: 2.5").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Flex(v)) if (*v - 2.5).abs() < f32::EPSILON));
+
+        // T-3: flex: abc -> Declaration::Unknown("flex: abc")
+        let decls = parse_inline_tcss("flex: abc").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "flex: abc"));
+
+        // T-4: nonexistent-prop: 5 -> Declaration::Unknown("nonexistent-prop: 5")
+        let decls = parse_inline_tcss("nonexistent-prop: 5").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "nonexistent-prop: 5"));
+
+        // T-5: font-weight: bold -> Declaration::Unknown("font-weight: bold")
+        let decls = parse_inline_tcss("font-weight: bold").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "font-weight: bold"));
+
+        // T-6: height: auto -> Declaration::Unknown("height: auto")
+        let decls = parse_inline_tcss("height: auto").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "height: auto"));
+
+        // T-6b: ComputedStyle po zastosowaniu height: auto ma height == None
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        if let Some(decl) = decls.first() {
+            apply_declaration(&mut style, decl);
+        }
+        assert_eq!(style.height, None);
+
+        // T-21: flex: 0 -> Declaration::Unknown("flex: 0")
+        let decls = parse_inline_tcss("flex: 0").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "flex: 0"));
+
+        // T-22: flex: -1 -> Declaration::Unknown("flex: -1")
+        let decls = parse_inline_tcss("flex: -1").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "flex: -1"));
     }
 }

@@ -1,6 +1,6 @@
 <style>
 text { fg: #e2e8f0; }
-.brand { fg: #38bdf8; font-weight: bold; height: 1; }
+.brand { fg: #38bdf8; height: 1; }
 .muted { fg: #475569; wrap: word; }
 .green { fg: #4ade80; height: 1; }
 .btn {
@@ -23,7 +23,7 @@ text { fg: #e2e8f0; }
 
     <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
         <img src="assets/mascot.svg" alt="OxiTerm Mascot" style="width: 14; height: 6;" />
-        <text style="fg: #f8fafc; font-weight: bold; height: 1; margin-top: 1;">Build TUI apps like websites</text>
+        <text style="fg: #f8fafc; height: 1; margin-top: 1;">Build TUI apps like websites</text>
         <text class="muted" style="margin-bottom: 1;">ssh ssh.slavekm.pl -p 20236</text>
 
         <box class="btn" style="width: 36; border-color: #38bdf8;" event-htmx="features.thtml">

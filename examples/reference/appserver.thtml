@@ -16,7 +16,7 @@ text { fg: #e2e8f0; }
     <box style="height: 3; bg: #0f172a; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #1e293b;">
-        <text style="fg: #4ade80; font-weight: bold; height: 1;">🔌 App Server Protocol — OxiTerm</text>
+        <text style="fg: #4ade80; height: 1;">🔌 App Server Protocol — OxiTerm</text>
         <text class="muted" event-htmx="../index.thtml">&lt; Back</text>
     </box>
 

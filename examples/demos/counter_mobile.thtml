@@ -32,7 +32,7 @@
     <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
 
         <!-- Large Counter -->
-        <box class="panel" style="border-color: #f59e0b; width: 44; height: 12; align-items: center;
+        <box class="panel" style="border-color: #f59e0b; width: 44; height: 15; align-items: center;
                                   justify-content: center; margin-bottom: 1;">
             <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Current value:</text>
             <box style="border-style: double; border-color: #f59e0b; padding: 1;
@@ -53,7 +53,7 @@
         </box>
 
         <!-- Compact Description -->
-        <box class="panel" style="border-color: #334155; width: 44; height: 10;">
+        <box class="panel" style="border-color: #334155; width: 44; height: 12;">
             <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Actions (event-htmx):</text>
             <text style="fg: #4ade80;  height: 1;">inc:counter   — increment</text>
             <text style="fg: #f87171;  height: 1;">dec:counter   — decrement</text>

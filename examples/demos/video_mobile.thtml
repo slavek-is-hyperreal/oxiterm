@@ -26,7 +26,7 @@
         </box>
 
         <!-- Information panel -->
-        <box style="width: 44; height: 10; border-style: rounded; border-color: #38bdf8;
+        <box style="width: 44; height: 12; border-style: rounded; border-color: #38bdf8;
                     padding: 1; flex-direction: column;">
             <text style="fg: #38bdf8; height: 1; margin-bottom: 1;">Pipeline Details</text>
             <box class="stat-row">

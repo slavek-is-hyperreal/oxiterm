@@ -16,7 +16,7 @@
     border-style: single;
     padding-left: 1;
     padding-right: 1;
-    height: 1;
+    height: 3;
 }
 .muted { fg: #475569; height: 1; }
 </style>

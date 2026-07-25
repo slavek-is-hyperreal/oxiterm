@@ -387,8 +387,28 @@ impl LayoutEngine {
             // Keep visible during static previews/playground evaluations if state evaluator is absent.
         }
 
+        let (flex_grow, flex_shrink, flex_basis) = match style.flex {
+            Some(val) => (val, 1.0, Dimension::Length(0.0)),
+            None => (0.0, 1.0, Dimension::Auto),
+        };
+
+        let min_height: Dimension = if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
+            height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto)
+        } else {
+            Dimension::Auto
+        };
+
+        let final_min_width: Dimension = if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
+            width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto)
+        } else {
+            min_width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto)
+        };
+
         Style {
             display,
+            flex_grow,
+            flex_shrink,
+            flex_basis,
             flex_direction: match style.flex_direction {
                 oxiterm_proto::style::FlexDirection::Row => FlexDirection::Row,
                 oxiterm_proto::style::FlexDirection::Column => FlexDirection::Column,
@@ -406,18 +426,14 @@ impl LayoutEngine {
                 oxiterm_proto::style::JustifyContent::SpaceBetween => JustifyContent::SpaceBetween,
                 oxiterm_proto::style::JustifyContent::SpaceAround => JustifyContent::SpaceAround,
             }),
-            // Measured text must keep its measured cross size: without this, a parent's
-            // default `align-items: stretch` would blow an auto-height paragraph up to the
-            // container's cross size (e.g. a Row of height MAX). Non-measured nodes inherit
-            // the parent's alignment (so centered single-line labels stay centered).
             align_self: if measured_text { Some(AlignItems::Start) } else { None },
             size: Size {
                 width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
                 height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
             },
             min_size: Size {
-                width: min_width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
-                height: Dimension::Auto,
+                width: final_min_width,
+                height: min_height,
             },
             padding: Rect {
                 left: LengthPercentage::Length(style.padding.left as f32),
@@ -835,6 +851,195 @@ mod tests {
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
         assert_eq!(rect.height, 1);
+    }
+
+    #[test]
+    fn test_flex_style_mapping_t8() {
+        let engine = LayoutEngine::new();
+        let mut node = Node::new(NodeTag::Box);
+        node.style.flex = Some(1.0);
+        let style = engine.map_style(&node, None);
+        assert_eq!(style.flex_grow, 1.0);
+        assert_eq!(style.flex_shrink, 1.0);
+        assert_eq!(style.flex_basis, taffy::style::Dimension::Length(0.0));
+    }
+
+    #[test]
+    fn test_flex_layout_t9() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        
+        let mut col = Node::new(NodeTag::Box);
+        col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
+        col.style.height = Some(10);
+        let col_id = doc.arena.alloc(col);
+        doc.append_child(doc.root, col_id).unwrap();
+
+        let mut child1 = Node::new(NodeTag::Box);
+        child1.style.height = Some(3);
+        let c1_id = doc.arena.alloc(child1);
+        doc.append_child(col_id, c1_id).unwrap();
+
+        let mut child2 = Node::new(NodeTag::Box);
+        child2.style.flex = Some(1.0);
+        let c2_id = doc.arena.alloc(child2);
+        doc.append_child(col_id, c2_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let rect1 = result.nodes.get(&c1_id).unwrap();
+        let rect2 = result.nodes.get(&c2_id).unwrap();
+        assert_eq!(rect1.height, 3);
+        assert_eq!(rect2.height, 7);
+    }
+
+    #[test]
+    fn test_flex_layout_t10a_and_t10b() {
+        // T-10a: column h=10, 2 children flex: 1, both with 1 line content -> 5 rows each
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        let mut col = Node::new(NodeTag::Box);
+        col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
+        col.style.height = Some(10);
+        let col_id = doc.arena.alloc(col.clone());
+        doc.append_child(doc.root, col_id).unwrap();
+
+        let mut child1 = Node::new(NodeTag::Text);
+        child1.text = Some("Line 1".to_string());
+        child1.style.flex = Some(1.0);
+        let c1_id = doc.arena.alloc(child1);
+        doc.append_child(col_id, c1_id).unwrap();
+
+        let mut child2 = Node::new(NodeTag::Text);
+        child2.text = Some("Line 1".to_string());
+        child2.style.flex = Some(1.0);
+        let c2_id = doc.arena.alloc(child2);
+        doc.append_child(col_id, c2_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(result.nodes.get(&c1_id).unwrap().height, 5);
+        assert_eq!(result.nodes.get(&c2_id).unwrap().height, 5);
+
+        // T-10b: column h=10, 2 children flex: 1, 1st with 1 line content, 2nd with 3 lines -> 5 rows each
+        let mut doc2 = THTMLDocument::new();
+        let col2_id = doc2.arena.alloc(col);
+        doc2.append_child(doc2.root, col2_id).unwrap();
+
+        let mut c1_b = Node::new(NodeTag::Text);
+        c1_b.text = Some("Line 1".to_string());
+        c1_b.style.flex = Some(1.0);
+        let c1_b_id = doc2.arena.alloc(c1_b);
+        doc2.append_child(col2_id, c1_b_id).unwrap();
+
+        let mut c2_b = Node::new(NodeTag::Text);
+        c2_b.text = Some("Line 1\nLine 2\nLine 3".to_string());
+        c2_b.style.flex = Some(1.0);
+        let c2_b_id = doc2.arena.alloc(c2_b);
+        doc2.append_child(col2_id, c2_b_id).unwrap();
+
+        let result2 = engine.compute(&mut doc2, 80, 0, None).unwrap();
+        assert_eq!(result2.nodes.get(&c1_b_id).unwrap().height, 5);
+        assert_eq!(result2.nodes.get(&c2_b_id).unwrap().height, 5);
+    }
+
+    #[test]
+    fn test_flex_media_t18_t18b() {
+        // T-18 & T-18b: column h=10, rigid child h=12, child flex: 1 containing <img width=16 height=8>
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+
+        let mut col = Node::new(NodeTag::Box);
+        col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
+        col.style.height = Some(10);
+        let col_id = doc.arena.alloc(col);
+        doc.append_child(doc.root, col_id).unwrap();
+
+        let mut rigid = Node::new(NodeTag::Box);
+        rigid.style.height = Some(12);
+        let rigid_id = doc.arena.alloc(rigid);
+        doc.append_child(col_id, rigid_id).unwrap();
+
+        let mut flex_container = Node::new(NodeTag::Box);
+        flex_container.style.flex = Some(1.0);
+        let flex_id = doc.arena.alloc(flex_container);
+        doc.append_child(col_id, flex_id).unwrap();
+
+        let mut img = Node::new(NodeTag::Img);
+        img.style.width = Some(16);
+        img.style.height = Some(8);
+        let img_id = doc.arena.alloc(img);
+        doc.append_child(flex_id, img_id).unwrap();
+
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let flex_rect = result.nodes.get(&flex_id).unwrap();
+        let img_rect = result.nodes.get(&img_id).unwrap();
+
+        // T-18: container rect has height >= 8
+        assert!(flex_rect.height >= 8, "flex container height must be >= 8, got {}", flex_rect.height);
+        // T-18b: img rect has 16x8
+        assert_eq!(img_rect.width, 16);
+        assert_eq!(img_rect.height, 8);
+    }
+
+    #[test]
+    fn test_examples_video_mobile_t19() {
+        // T-19: examples/demos/video_mobile.thtml (viewport 48x30) -> <video> rect has width 38 and height 9
+        let path = if std::path::Path::new("examples/demos/video_mobile.thtml").exists() {
+            "examples/demos/video_mobile.thtml"
+        } else {
+            "../examples/demos/video_mobile.thtml"
+        };
+        let template = std::fs::read_to_string(path).unwrap();
+        let mut doc = crate::parser::THTMLParser::parse(&template).unwrap();
+        let stylesheet = crate::parser::tcss::parse_tcss(&template).unwrap();
+        crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
+
+        let mut engine = LayoutEngine::new();
+        let result = engine.compute(&mut doc, 48, 30, None).unwrap();
+
+        let mut found_video = None;
+        for (&id, rect) in &result.nodes {
+            if let Some(node) = doc.arena.get(id) {
+                if node.tag == NodeTag::Video {
+                    found_video = Some(rect.clone());
+                    break;
+                }
+            }
+        }
+        let video_rect = found_video.expect("video node must be in layout");
+        assert_eq!(video_rect.width, 38);
+        assert_eq!(video_rect.height, 9);
+    }
+
+    #[test]
+    fn test_examples_index_t20() {
+        // T-20: examples/index.thtml (viewport 80x24) -> <img> rect keeps 16x8 after enabling flex
+        let path = if std::path::Path::new("examples/index.thtml").exists() {
+            "examples/index.thtml"
+        } else {
+            "../examples/index.thtml"
+        };
+        let template = std::fs::read_to_string(path).unwrap();
+        let mut doc = crate::parser::THTMLParser::parse(&template).unwrap();
+        let stylesheet = crate::parser::tcss::parse_tcss(&template).unwrap();
+        crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
+
+        let mut engine = LayoutEngine::new();
+        let result = engine.compute(&mut doc, 80, 24, None).unwrap();
+
+        let mut found_img = None;
+        for (&id, rect) in &result.nodes {
+            if let Some(node) = doc.arena.get(id) {
+                if node.tag == NodeTag::Img {
+                    found_img = Some(rect.clone());
+                    break;
+                }
+            }
+        }
+        if let Some(img_rect) = found_img {
+            assert_eq!(img_rect.width, 16);
+            assert_eq!(img_rect.height, 8);
+        }
     }
 }
 

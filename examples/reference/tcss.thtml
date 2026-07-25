@@ -16,7 +16,7 @@ text { fg: #e2e8f0; }
     <box style="height: 3; bg: #0f172a; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
                 border-style: single; border-color: #1e293b;">
-        <text style="fg: #c084fc; font-weight: bold; height: 1;">🎨 TCSS Reference — OxiTerm</text>
+        <text style="fg: #c084fc; height: 1;">🎨 TCSS Reference — OxiTerm</text>
         <text style="fg: #475569; height: 1;" event-htmx="../index.thtml">&lt; Back</text>
     </box>
 
@@ -46,9 +46,7 @@ text { fg: #e2e8f0; }
             </box>
             <text class="section">Text &amp; Wrap:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
-                <box class="row"><text class="prop">font-weight  </text><text class="muted">bold</text></box>
-                <box class="row"><text class="prop">font-style   </text><text class="muted">italic</text></box>
-                <box class="row"><text class="prop">text-decoration</text><text class="muted">underline</text></box>
+                <box class="row"><text class="prop">flex: 1      </text><text class="muted">grow ratio</text></box>
                 <box class="row"><text class="prop">wrap: word   </text><text class="muted">word wrap</text></box>
             </box>
         </box>

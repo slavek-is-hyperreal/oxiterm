@@ -5,14 +5,14 @@ text { fg: #e2e8f0; }
     border-style: rounded;
     padding-left: 1;
     padding-right: 1;
-    height: 1;
+    height: 3;
     margin-bottom: 1;
 }
 </style>
 
 <box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
-        <text style="fg: #38bdf8; font-weight: bold; height: 1;">✦ Features</text>
+        <text style="fg: #38bdf8; height: 1;">✦ Features</text>
         <text class="muted" event-htmx="index.thtml">&lt; Back</text>
     </box>
 

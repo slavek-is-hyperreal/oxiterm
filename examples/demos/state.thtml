@@ -72,7 +72,7 @@
             </box>
 
             <!-- Separator -->
-            <box style="height: 1; border-style: single; border-color: #1e293b; margin-bottom: 1;"></box>
+            <box style="height: 1; bg: #1e293b; margin-bottom: 1;"></box>
 
             <!-- Type legend -->
             <text style="fg: #64748b; height: 1;">States live in the server StateManager.</text>
