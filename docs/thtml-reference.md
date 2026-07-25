@@ -41,7 +41,7 @@ OxiTerm supports exactly eight tags. Using an unknown tag will cause a document 
 | `<for>` | Loop template | One template child | Repeats its child once per element of a `List` state value named by the `each` attribute (see §4). |
 
 > [!WARNING]
-> The `<img>` and `<input>` tags can be self-closing (`<img />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
+> The `<img>`, `<video>`, and `<input>` tags can be self-closing (`<img />`, `<video />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
 
 ---
 
@@ -166,9 +166,9 @@ With `wrap: word`, text breaks across multiple lines, but **only at spaces (word
 
 ### 7.4 Page Vertical Budget
 
-The document root typically has a fixed height (e.g., `height: 24` for a standard terminal). Sections with rigid `height` sum up; a single section with `flex: 1` absorbs the remainder. If the sum of rigid sections + minimum height of the `flex` section exceeds root height, the page will scroll (`PgDn`/`PgUp` indicators appear).
+The document root typically has a fixed height (e.g., `height: 24` for a standard terminal). Sections with rigid `height` sum up; a section with `flex: 1` (which sets `flex-grow: 1.0`, `flex-shrink: 1.0`, and `flex-basis: 0`) absorbs the remainder. If the sum of rigid sections + minimum height of the `flex` section exceeds root height, the page will scroll (`PgDn`/`PgUp` indicators appear).
 
-Recommended pattern: **Persistent sections** (header, footer) receive rigid `height`, while the **content area** receives `flex: 1`, allowing it to shrink automatically to available space without manual height calculation.
+Recommended pattern: **Persistent sections** (header, footer) receive rigid `height`, while the **content area** receives `flex: 1`, allowing it to grow to fill available space without manual height calculation.
 
 ---
 

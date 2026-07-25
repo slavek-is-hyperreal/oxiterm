@@ -983,7 +983,7 @@ mod tests {
 
     #[test]
     fn test_examples_video_mobile_t19() {
-        // T-19: examples/demos/video_mobile.thtml (viewport 48x30) -> <video> rect has width 38 and height 9
+        // T-19: examples/demos/video_mobile.thtml (width 48) -> <video> rect has width 38 and height 9
         let path = if std::path::Path::new("examples/demos/video_mobile.thtml").exists() {
             "examples/demos/video_mobile.thtml"
         } else {
@@ -995,7 +995,7 @@ mod tests {
         crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
 
         let mut engine = LayoutEngine::new();
-        let result = engine.compute(&mut doc, 48, 30, None).unwrap();
+        let result = engine.compute(&mut doc, 48, 0, None).unwrap();
 
         let mut found_video = None;
         for (&id, rect) in &result.nodes {
@@ -1013,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_examples_index_t20() {
-        // T-20: examples/index.thtml (viewport 80x24) -> <img> rect keeps 16x8 after enabling flex
+        // T-20: examples/index.thtml (width 80) -> <img> rect keeps 16x8 after enabling flex
         let path = if std::path::Path::new("examples/index.thtml").exists() {
             "examples/index.thtml"
         } else {
@@ -1025,7 +1025,7 @@ mod tests {
         crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
 
         let mut engine = LayoutEngine::new();
-        let result = engine.compute(&mut doc, 80, 24, None).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
 
         let mut found_img = None;
         for (&id, rect) in &result.nodes {
@@ -1036,10 +1036,9 @@ mod tests {
                 }
             }
         }
-        if let Some(img_rect) = found_img {
-            assert_eq!(img_rect.width, 16);
-            assert_eq!(img_rect.height, 8);
-        }
+        let img_rect = found_img.expect("img node must be in layout");
+        assert_eq!(img_rect.width, 16);
+        assert_eq!(img_rect.height, 8);
     }
 }
 

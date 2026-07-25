@@ -55,7 +55,7 @@ On every `event-htmx` event, OxiTerm sends an asynchronous HTTP POST to the URL 
 | Field | Type | Description |
 |---|---|---|
 | `action` | string | The raw value of the `event-htmx` attribute (e.g. `"login"`, `"save_record"`) that triggered the event. |
-| `state` | object | A key-value dictionary representing the current session state. All state values are sent as strings. |
+| `state` | object | A key-value dictionary representing active session state values referenced on the current page. All state values are sent as strings. |
 | `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
 | `username` | string \| null | Optional. The authenticated user's name, when the session was authenticated (SSH key / proxy-forwarded identity); `null` for anonymous/guest sessions. |
 | `auth_method` | string \| null | Optional. How the session authenticated (e.g. the SSH/identity method), when known. |
@@ -73,6 +73,13 @@ If the App Server returns `200 OK` with a JSON object, OxiTerm applies it as a *
 
 > [!NOTE]
 > Event dispatching runs asynchronously in a spawned thread to avoid blocking the terminal event loop. The state patch is applied as soon as the HTTP request completes.
+
+#### Client Navigation (`open_url` / `open:URL`)
+
+OxiTerm supports redirecting Web clients to external or internal URLs:
+
+- **From `event-htmx`:** Setting `event-htmx="open:https://example.com"` triggers inline navigation. Web clients open the target URL, while SSH sessions log a warning.
+- **From App Server State Patch:** Including `{"open_url": "https://example.com"}` in a state patch instructs OxiTerm to trigger client navigation. `open_url` is reserved for navigation events and is not saved to persistent session state.
 
 ---
 
