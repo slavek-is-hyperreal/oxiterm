@@ -25,6 +25,8 @@ pub enum NodeTag {
     Video,
     /// A loop element.
     For,
+    /// A diagram element rendering Mermaid flowcharts.
+    Diagram,
 }
 
 /// Attributes associated with a THTML node, mapping styling,
@@ -57,6 +59,10 @@ pub struct NodeAttributes {
     pub each: Option<String>,
     /// The input type (e.g. "password", "text") for masking and input behavior.
     pub input_type: Option<String>,
+    /// Preview mode for diagram element ("minimap", "fit", "crop").
+    pub preview: Option<String>,
+    /// Anchor node ID for diagram crop preview mode.
+    pub preview_anchor: Option<String>,
 }
 
 /// A unique identifier for a node inside the document's arena.

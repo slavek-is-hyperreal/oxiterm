@@ -132,7 +132,44 @@ impl THTMLParser {
 
     fn validate_media_nodes(doc: &THTMLDocument) -> Result<()> {
         for (_node_id, node) in doc.arena.iter() {
-            if node.tag == NodeTag::Img || node.tag == NodeTag::Video {
+            if node.tag == NodeTag::Diagram {
+                let src_opt = node.attrs.src.as_deref().filter(|s| !s.trim().is_empty());
+                let alt_opt = node.attrs.alt.as_deref().filter(|s| !s.trim().is_empty());
+                let has_width = node.style.width.map_or(false, |w| w > 0);
+                let has_height = node.style.height.map_or(false, |h| h > 0);
+
+                if src_opt.is_none() || alt_opt.is_none() || !has_width || !has_height {
+                    let mut missing_list = Vec::new();
+                    if src_opt.is_none() { missing_list.push("src"); }
+                    if alt_opt.is_none() { missing_list.push("alt"); }
+                    if !has_width { missing_list.push("width"); }
+                    if !has_height { missing_list.push("height"); }
+
+                    let missing_str = missing_list.join(", ");
+                    return Err(anyhow::anyhow!(
+                        "THTML Validation Error: <diagram> requires explicit attributes.\nMissing: {}",
+                        missing_str
+                    ));
+                }
+
+                if let Some(ref p) = node.attrs.preview {
+                    if p != "minimap" && p != "fit" && p != "crop" {
+                        return Err(anyhow::anyhow!(
+                            "THTML Validation Error: <diagram> preview attribute value '{}' is unrecognized. Must be one of: minimap, fit, crop",
+                            p
+                        ));
+                    }
+                }
+
+                if node.attrs.preview_anchor.is_some() {
+                    let p = node.attrs.preview.as_deref().unwrap_or("minimap");
+                    if p != "crop" {
+                        return Err(anyhow::anyhow!(
+                            "THTML Validation Error: <diagram> preview-anchor attribute is allowed only when preview=\"crop\""
+                        ));
+                    }
+                }
+            } else if node.tag == NodeTag::Img || node.tag == NodeTag::Video {
                 let tag_str = if node.tag == NodeTag::Img { "img" } else { "video" };
                 
                 let src_opt = node.attrs.src.as_deref().filter(|s| !s.trim().is_empty());
@@ -300,6 +337,7 @@ fn tag_name_to_str(tag: NodeTag) -> &'static str {
         NodeTag::Img => "img",
         NodeTag::Video => "video",
         NodeTag::For => "for",
+        NodeTag::Diagram => "diagram",
     }
 }
 
@@ -313,6 +351,7 @@ fn parse_tag_name(input: &str) -> ParseResult<'_, NodeTag> {
         map(tag("img"), |_| NodeTag::Img),
         map(tag("video"), |_| NodeTag::Video),
         map(tag("for"), |_| NodeTag::For),
+        map(tag("diagram"), |_| NodeTag::Diagram),
     ))(input)
 }
 
@@ -334,6 +373,8 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "bind-value" => attrs.bind_value = Some(value),
             "each" => attrs.each = Some(value),
             "type" => attrs.input_type = Some(value),
+            "preview" => attrs.preview = Some(value),
+            "preview-anchor" => attrs.preview_anchor = Some(value),
             _ => {}
         }
         input = rem;
@@ -445,6 +486,33 @@ mod tests {
         assert_eq!(btn.attrs.id, Some("btn".to_string()));
         assert_eq!(btn.attrs.bind_state, Some("count".to_string()));
         assert_eq!(btn.attrs.event_htmx, Some("inc:count".to_string()));
+    }
+
+    #[test]
+    fn test_t19_diagram_without_alt_fails_validation() {
+        let input = r#"<screen><diagram src="examples/assets/flow.mmd" style="width: 20; height: 10;" /></screen>"#;
+        let res = THTMLParser::parse(input);
+        assert!(res.is_err());
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("alt"), "Error message must name missing alt attribute, got: {}", msg);
+    }
+
+    #[test]
+    fn test_t20_diagram_invalid_preview_value_fails() {
+        let input = r#"<screen><diagram src="examples/assets/flow.mmd" alt="Test" preview="cropp" style="width: 20; height: 10;" /></screen>"#;
+        let res = THTMLParser::parse(input);
+        assert!(res.is_err());
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("cropp") || msg.contains("preview"), "Error message must name invalid preview value, got: {}", msg);
+    }
+
+    #[test]
+    fn test_t21_diagram_preview_anchor_without_crop_fails() {
+        let input = r#"<screen><diagram src="examples/assets/flow.mmd" alt="Test" preview="minimap" preview-anchor="nodeA" style="width: 20; height: 10;" /></screen>"#;
+        let res = THTMLParser::parse(input);
+        assert!(res.is_err());
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("preview-anchor"), "Error message must name preview-anchor error, got: {}", msg);
     }
 
     #[test]

@@ -197,6 +197,17 @@ Use `bind-show="_is_web=true"` / `="_is_web=false"` to give each transport the a
 
 `pathsafe::resolve_variant` looks for `<stem>_mobile.thtml` beside the requested file and serves it to mobile viewports, falling back to the base file when absent. If you add a page and mobile matters, add the `_mobile` sibling; every page in `examples/` has one.
 
+### 5.2 Diagram element (`<diagram>`)
+
+The `<diagram>` tag renders Mermaid flowcharts to character cell grids.
+Required attributes: `src`, `alt`, `width`, `height`.
+Optional preview modes: `preview="minimap"` (default), `preview="fit"`, `preview="crop"`.
+`preview-anchor="node_id"` is allowed ONLY when `preview="crop"`.
+
+```html
+<diagram src="examples/assets/flow.mmd" alt="System Flowchart" preview="minimap" style="width: 40; height: 12;" />
+```
+
 ---
 
 ## 6. Glyph choice in clickable labels

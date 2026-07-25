@@ -376,6 +376,18 @@ impl Renderer {
                         app_base_dir,
                     );
                 }
+                NodeTag::Diagram => {
+                    Self::render_diagram(
+                        node,
+                        content_x,
+                        content_y,
+                        content_w,
+                        content_h,
+                        buffer,
+                        base_dir,
+                        app_base_dir,
+                    );
+                }
                 _ => {}
             }
 
@@ -1055,6 +1067,106 @@ impl Renderer {
             Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
         }
     }
+
+    fn render_diagram(
+        node: &oxiterm_proto::dom::Node,
+        abs_x: i32,
+        abs_y: i32,
+        width: u16,
+        height: u16,
+        buffer: &mut CellBuffer,
+        base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
+    ) {
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        if let Some(ref src) = node.attrs.src {
+            let resolved_path = if let Some(base) = base_dir {
+                base.join(src)
+            } else {
+                std::path::PathBuf::from(src)
+            };
+
+            let is_safe = if let Some(app_base) = app_base_dir {
+                if resolved_path.exists() {
+                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
+                } else if let Some(parent) = resolved_path.parent() {
+                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
+                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !is_safe {
+                tracing::warn!("renderer: diagram path traversal blocked outside app_base_dir: {:?}", resolved_path);
+                return;
+            }
+
+            let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Diagram");
+            if !resolved_path.exists() {
+                Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
+                return;
+            }
+
+            let content = match Self::read_asset(&resolved_path) {
+                Ok(b) => String::from_utf8_lossy(&b).to_string(),
+                Err(_) => return,
+            };
+
+            let graph = match crate::diagram::parse_mermaid(&content) {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+
+            let layout = crate::diagram::compute_layout(&graph);
+            let full_grid = crate::diagram::CellGrid::render_grid(&graph, &layout);
+
+            let target_cols = width as usize;
+            let target_rows = height as usize;
+            let fits_in_box = full_grid.cols <= target_cols && full_grid.rows <= target_rows.saturating_sub(1);
+
+            let alt = node.attrs.alt.as_deref().unwrap_or("Diagram");
+            let header_str = if fits_in_box {
+                format!("{} | {} nodes, {} edges | ({}x{})", alt, graph.nodes.len(), graph.edges.len(), full_grid.cols, full_grid.rows)
+            } else {
+                format!("{} | {} nodes, {} edges | ({}x{}) [Enter]", alt, graph.nodes.len(), graph.edges.len(), full_grid.cols, full_grid.rows)
+            };
+
+            let fg = oxiterm_proto::style::AnsiColor::Color256(15);
+            for (i, ch) in header_str.chars().enumerate() {
+                if (i as u16) < width {
+                    Self::safe_set(buffer, abs_x + i as i32, abs_y, Cell { ch, fg, ..Default::default() });
+                }
+            }
+
+            let body_rows = target_rows.saturating_sub(1);
+            if body_rows == 0 {
+                return;
+            }
+
+            let preview_mode = node.attrs.preview.as_deref().unwrap_or("minimap");
+            let body_grid = if fits_in_box {
+                full_grid
+            } else {
+                match preview_mode {
+                    "crop" => full_grid.crop(target_cols, body_rows, node.attrs.preview_anchor.as_deref(), &graph, &layout),
+                    _ => full_grid.minimap(target_cols, body_rows),
+                }
+            };
+
+            for r in 0..body_grid.rows {
+                for c in 0..body_grid.cols {
+                    let ch = body_grid.get(c, r);
+                    Self::safe_set(buffer, abs_x + c as i32, abs_y + 1 + r as i32, Cell { ch, fg, ..Default::default() });
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1063,6 +1175,22 @@ mod tests {
     use crate::layout::engine::LayoutEngine;
     use oxiterm_proto::dom::{Node, NodeTag};
     use oxiterm_proto::style::{AnsiColor, BorderStyle, BorderChars};
+
+    #[test]
+    fn test_t22_diagram_src_outside_base_dir_draws_nothing() {
+        let mut buffer = CellBuffer::new(40, 20);
+        let mut node = Node::new(NodeTag::Diagram);
+        node.attrs.src = Some("../secret.mmd".to_string());
+        node.attrs.alt = Some("Secret".to_string());
+
+        let base_dir = Path::new("/app/examples");
+        let app_base_dir = Path::new("/app/examples");
+
+        Renderer::render_diagram(&node, 0, 0, 40, 20, &mut buffer, Some(base_dir), Some(app_base_dir));
+
+        let non_empty = buffer.cells.iter().filter(|c| c.ch != ' ').count();
+        assert_eq!(non_empty, 0, "Diagram with path traversal outside app_base_dir must draw nothing");
+    }
 
     #[test]
     fn test_border_and_transparency_rendering() {

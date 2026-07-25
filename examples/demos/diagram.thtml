@@ -1,0 +1,16 @@
+<screen>
+  <style>
+    .header { width: 100%; height: 3; border: single; }
+    .title { width: 100%; height: 1; text-align: center; }
+    .main { width: 100%; height: 16; }
+    .diag { width: 60; height: 14; border: single; }
+  </style>
+
+  <box class="header">
+    <text class="title">OxiTerm Diagram Demo</text>
+  </box>
+
+  <box class="main">
+    <diagram class="diag" src="examples/assets/flow.mmd" alt="Architektura OxiTerm" preview="minimap" />
+  </box>
+</screen>

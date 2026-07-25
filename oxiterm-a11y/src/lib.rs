@@ -58,6 +58,7 @@ fn build_a11y_node(doc: &THTMLDocument, id: NodeId, node: &oxiterm_proto::dom::N
         NodeTag::Button => AtSpRole::Button,
         NodeTag::Img => AtSpRole::Image,
         NodeTag::Video => AtSpRole::Image,
+        NodeTag::Diagram => AtSpRole::Image,
         NodeTag::For => AtSpRole::Container,
     };
 
@@ -77,7 +78,7 @@ fn build_a11y_node(doc: &THTMLDocument, id: NodeId, node: &oxiterm_proto::dom::N
             }
             value = node.text.clone();
         }
-        NodeTag::Img | NodeTag::Video => {
+        NodeTag::Img | NodeTag::Video | NodeTag::Diagram => {
             if let Some(ref alt) = node.attrs.alt {
                 label = alt.clone();
             }
@@ -208,6 +209,15 @@ fn fallback_recursive(doc: &THTMLDocument, node_id: NodeId, out: &mut String) {
                 }
                 out.push_str("]\n");
             }
+            NodeTag::Diagram => {
+                out.push_str("[Diagram: ");
+                if let Some(ref alt) = node.attrs.alt {
+                    out.push_str(alt);
+                } else {
+                    out.push_str("Diagram");
+                }
+                out.push_str("]\n");
+            }
         }
 
         for &child in &node.children {
@@ -223,42 +233,31 @@ pub fn emit_linear_stream(text: &str, writer: &mut impl Write) -> anyhow::Result
     Ok(())
 }
 
-/// A FrameSink implementing linear plain-text output.
-pub struct LinearFrameSink<W: Write + Send> {
+/// A11y linear frame sink delivering screen-reader streams over terminal sessions.
+pub struct LinearFrameSink<W: Write> {
     writer: W,
-    last_text: String,
     dirty: bool,
 }
 
-impl<W: Write + Send> LinearFrameSink<W> {
-    /// Creates a new `LinearFrameSink`.
+impl<W: Write> LinearFrameSink<W> {
     pub fn new(writer: W) -> Self {
-        Self {
-            writer,
-            last_text: String::new(),
-            dirty: false,
-        }
+        Self { writer, dirty: true }
+    }
+
+    pub fn render_document(&mut self, doc: &THTMLDocument) -> anyhow::Result<()> {
+        let text = render_linear_fallback(doc);
+        emit_linear_stream(&text, &mut self.writer)?;
+        self.dirty = false;
+        Ok(())
     }
 }
 
-impl<W: Write + Send> oxiterm_renderer::render::emitter::FrameSink for LinearFrameSink<W> {
-    fn update_document(&mut self, doc: &THTMLDocument) -> anyhow::Result<()> {
-        let text = render_linear_fallback(doc);
-        if text != self.last_text {
-            emit_linear_stream(&text, &mut self.writer)?;
-            self.last_text = text;
+impl<W: Write> oxiterm_renderer::FrameSink for LinearFrameSink<W> {
+    fn update_cells(&mut self, _buffer: &oxiterm_renderer::render::buffer::CellBuffer) -> anyhow::Result<()> {
+        if !self.dirty {
             self.dirty = true;
         }
         Ok(())
-    }
-
-    fn send_frame(&mut self, _front: &oxiterm_renderer::render::buffer::CellBuffer, _back: &oxiterm_renderer::render::buffer::CellBuffer) -> anyhow::Result<bool> {
-        if self.dirty {
-            self.dirty = false;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
     }
 
     fn setup(&mut self) -> anyhow::Result<()> {
@@ -283,6 +282,23 @@ mod tests {
     fn test_detect_a11y_mode() {
         assert!(detect_a11y_mode(&vec!["--a11y".to_string()]));
         assert!(!detect_a11y_mode(&vec!["--port".to_string(), "2222".to_string()]));
+    }
+
+    #[test]
+    fn test_t23_a11y_diagram_projection_has_no_box_chars() {
+        let html = r#"
+            <box>
+                <diagram src="examples/assets/flow.mmd" alt="System Architecture" style="width: 30; height: 10;" />
+            </box>
+        "#;
+        let doc = THTMLParser::parse(html).unwrap();
+        let text = render_linear_fallback(&doc);
+
+        assert!(text.contains("[Diagram: System Architecture]"));
+        assert!(!text.contains('┌'), "A11y projection must contain no frame box characters");
+        assert!(!text.contains('─'), "A11y projection must contain no frame box characters");
+        assert!(!text.contains('│'), "A11y projection must contain no frame box characters");
+        assert!(!text.contains('└'), "A11y projection must contain no frame box characters");
     }
 
     #[test]

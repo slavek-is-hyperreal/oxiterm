@@ -11,6 +11,7 @@ pub mod document;
 pub mod parser;
 pub mod render;
 pub mod layout;
+pub mod diagram;
 
 pub use arena::NodeArena;
 pub use document::THTMLDocument;

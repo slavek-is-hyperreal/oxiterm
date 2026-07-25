@@ -222,7 +222,28 @@ Standard HTML comments are completely skipped when parsing the document tree:
 
 ---
 
-## 11. Data Safety and Sanitization
+## 12. Diagram Element (`<diagram>`)
+
+The `<diagram>` tag renders Mermaid flowchart diagrams as character cell grids:
+
+```html
+<diagram src="examples/assets/flow.mmd" alt="System Architecture" preview="minimap" style="width: 40; height: 12;" />
+```
+
+### Attributes
+
+| Attribute | Required | Values | Description |
+|---|---|---|---|
+| `src` | Yes | Path | Path to `.mmd` Mermaid source file (must pass `is_within_base` relative to `app_base_dir`). |
+| `alt` | Yes | String | Alternative text description for accessibility and header title. |
+| `width` | Yes | Number / Style | Explicit width in character cells (required via style or inline). |
+| `height` | Yes | Number / Style | Explicit height in character cells (required via style or inline). |
+| `preview` | No | `minimap` \| `fit` \| `crop` | Preview rendering mode (default: `minimap`). |
+| `preview-anchor` | No | Node ID | Target node ID to center crop window on (allowed ONLY with `preview="crop"`). |
+
+---
+
+## 13. Data Safety and Sanitization
 
 OxiTerm ensures that input provided by THTML files and user interaction does not disrupt terminal output or lead to rendering errors:
 * **Styles (`style="..."`):** Any ANSI escape sequences are detected and stripped using regex. This prevents injection attacks with destructive terminal control codes.
