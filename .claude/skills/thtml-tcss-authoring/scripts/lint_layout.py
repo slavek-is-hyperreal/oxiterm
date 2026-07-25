@@ -60,7 +60,7 @@ KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS
 
 BORDER_PROPS = {"border", "border-color", "border-style"}
 
-VALID_TAGS = {"screen", "box", "text", "input", "button", "img", "video", "for"}
+VALID_TAGS = {"screen", "box", "text", "input", "button", "img", "video", "for", "diagram"}
 
 CLICKABLE_ATTRS = {"event-htmx"}
 

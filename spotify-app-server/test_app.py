@@ -568,4 +568,512 @@ def test_p41_t7_session_transition_unauthenticated_to_authenticated_emits_set_ap
         assert patch_data.get("set_app_token") == tok
 
 
+# ---------------------------------------------------------------------------
+# PLAN 4.2 Part A Tests (T-1 .. T-8)
+# ---------------------------------------------------------------------------
+
+def _insert_play_user(db_path, tok="stoken_play_test"):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('user_play', 'User Play', 'acc_play', 'ref_play', 9999999999, ?, 9999999999)
+        """, (tok,))
+        conn.commit()
+    return tok
+
+
+def test_t1_play_uri_resolves_key_from_state_and_sends_uris(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "spotify:track:abc12345"},
+                "session_id": 101,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        call_kwargs = mock_put.call_args[1]
+        assert call_kwargs.get("json") == {"uris": ["spotify:track:abc12345"]}
+
+
+def test_t2_play_uri_missing_key_in_state_sends_no_spotify_request(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {},
+                "session_id": 102,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 0
+        data = r.json()
+        assert data.get("player_error") != ""
+        assert "Brak URI" in data.get("player_error", "")
+
+
+def test_t3_play_uri_empty_key_value_sends_no_spotify_request(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "   "},
+                "session_id": 103,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 0
+        data = r.json()
+        assert data.get("player_error") != ""
+
+
+def test_t4_play_uri_playlist_sends_context_uri(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:pl_1_uri",
+                "state": {"pl_1_uri": "spotify:playlist:xyz789"},
+                "session_id": 104,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        assert mock_put.call_args[1].get("json") == {"context_uri": "spotify:playlist:xyz789"}
+
+
+def test_t5_play_uri_episode_sends_uris_not_context_uri(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:ep_1_uri",
+                "state": {"ep_1_uri": "spotify:episode:ep999"},
+                "session_id": 105,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        assert mock_put.call_args[1].get("json") == {"uris": ["spotify:episode:ep999"]}
+
+
+def test_t6_play_uri_show_sends_context_uri(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:sh_1_uri",
+                "state": {"sh_1_uri": "spotify:show:show456"},
+                "session_id": 106,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        assert mock_put.call_args[1].get("json") == {"context_uri": "spotify:show:show456"}
+
+
+def test_t7_play_uri_unknown_type_sends_no_request(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "spotify:unknown_type:123"},
+                "session_id": 107,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 0
+        data = r.json()
+        assert data.get("player_error") != ""
+
+
+def test_t8_play_uri_non_spotify_prefix_never_creates_request(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "https://attacker.com/malicious"},
+                "session_id": 108,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 0
+        data = r.json()
+        assert data.get("player_error") != ""
+
+
+# ---------------------------------------------------------------------------
+# PLAN 4.2 Part B Tests (T-9 .. T-11)
+# ---------------------------------------------------------------------------
+
+def test_t9_spotify_403_populates_player_error_and_logs_status(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 403
+        mock_put.return_value.text = "Forbidden / Not Premium"
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "spotify:track:abc12345"},
+                "session_id": 109,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("player_error") != ""
+        assert "403" in data.get("player_error", "")
+
+
+def test_t10_spotify_204_clears_player_error(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "spotify:track:abc12345"},
+                "session_id": 110,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("player_error") == ""
+
+
+def test_t11_network_exception_populates_player_error_poller_continues(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    import requests
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.side_effect = requests.RequestException("Connection refused")
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:res_1_uri",
+                "state": {"res_1_uri": "spotify:track:abc12345"},
+                "session_id": 111,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("player_error") != ""
+
+
+# ---------------------------------------------------------------------------
+# PLAN 4.2 Part C Tests (T-12 .. T-20 & T-23)
+# ---------------------------------------------------------------------------
+
+def test_t12_all_me_player_calls_include_additional_types_episode():
+    """Static analysis test verifying every GET /v1/me/player call in app.py passes additional_types=episode."""
+    app_py_path = os.path.join(os.path.dirname(__file__), "app.py")
+    with open(app_py_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    import re
+    # Match /v1/me/player when NOT followed by slash or endpoint sub-path (/play, /pause, /next, etc.)
+    matches = [m.start() for m in re.finditer(r"/v1/me/player(?=[\"?\s,]|\Z)", content)]
+    assert len(matches) >= 1, "Must find /v1/me/player calls in app.py"
+    for idx in matches:
+        snippet = content[idx:idx + 120]
+        assert "additional_types=episode" in snippet, f"Call at position {idx} missing additional_types=episode: {snippet}"
+
+
+def test_t13_episode_item_parses_show_name_and_publisher(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_ep13")
+    active_oxiterm_sessions[301] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 120000,
+        "currently_playing_type": "episode",
+        "item": {
+            "type": "episode",
+            "name": "Episode 42: Python Internals",
+            "duration_ms": 1800000,
+            "show": {
+                "name": "Tech Talk Podcast",
+                "publisher": "Tech Media Network"
+            }
+        },
+        "actions": {"disallows": {}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("track_name") == "Episode 42: Python Internals"[:35]
+        assert patch_data.get("artist_name") == "Tech Talk Podcast"[:35]
+        assert patch_data.get("album_name") == "Tech Media Network"[:35]
+
+
+def test_t14_track_item_parses_track_and_artists_without_regression(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_tr14")
+    active_oxiterm_sessions[302] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 60000,
+        "currently_playing_type": "track",
+        "item": {
+            "type": "track",
+            "name": "Get Lucky",
+            "duration_ms": 240000,
+            "artists": [{"name": "Daft Punk"}, {"name": "Pharrell Williams"}],
+            "album": {"name": "Random Access Memories"}
+        },
+        "actions": {"disallows": {}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("track_name") == "Get Lucky"
+        assert "Daft Punk" in patch_data.get("artist_name", "")
+        assert patch_data.get("album_name") == "Random Access Memories"[:35]
+
+
+def test_t15_null_item_with_currently_playing_episode_handles_gracefully(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_null15")
+    active_oxiterm_sessions[303] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": False,
+        "progress_ms": 0,
+        "currently_playing_type": "episode",
+        "item": None,
+        "actions": {"disallows": {}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("track_name") == "Brak odtwarzania"
+
+
+def test_t23_null_item_does_not_reset_auth_state(isolated_db):
+    """CRITICAL K-1: item == null MUST NOT set is_authenticated=false or revoke session auth."""
+    tok = _insert_play_user(isolated_db, tok="stoken_t23")
+    active_oxiterm_sessions[304] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": False,
+        "progress_ms": 0,
+        "currently_playing_type": "unknown",
+        "item": None,
+        "actions": {"disallows": {}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert "is_authenticated" not in patch_data or patch_data.get("is_authenticated") == "true"
+
+
+def test_t16_disallows_skipping_next_sets_can_next_false(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_dis16")
+    active_oxiterm_sessions[305] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"disallows": {"skipping_next": True}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "false"
+        assert patch_data.get("can_prev") == "true"
+
+
+def test_t17_disallows_empty_sets_all_controls_true(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_dis17")
+    active_oxiterm_sessions[306] = (tok, time.time())
+
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"disallows": {}}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "true"
+        assert patch_data.get("can_prev") == "true"
+        assert patch_data.get("can_seek") == "true"
+
+
+def test_t18_seek_fwd_clamped_to_duration_ms(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    mock_pb = {
+        "progress_ms": 175000,
+        "item": {"duration_ms": 180000}
+    }
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_pb
+        mock_put.return_value.status_code = 204
+
+        r = client.post(
+            "/events",
+            json={
+                "action": "seek_fwd",
+                "state": {},
+                "session_id": 307,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        url = mock_put.call_args[0][0]
+        assert "position_ms=180000" in url
+
+
+def test_t19_seek_back_clamped_to_zero(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    mock_pb = {
+        "progress_ms": 5000,
+        "item": {"duration_ms": 180000}
+    }
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_pb
+        mock_put.return_value.status_code = 204
+
+        r = client.post(
+            "/events",
+            json={
+                "action": "seek_back",
+                "state": {},
+                "session_id": 308,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        url = mock_put.call_args[0][0]
+        assert "position_ms=0" in url
+
+
+def test_t20_seek_fwd_issues_put_to_seek_endpoint(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    mock_pb = {
+        "progress_ms": 30000,
+        "item": {"duration_ms": 180000}
+    }
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_pb
+        mock_put.return_value.status_code = 204
+
+        r = client.post(
+            "/events",
+            json={
+                "action": "seek_fwd",
+                "state": {},
+                "session_id": 309,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        url = mock_put.call_args[0][0]
+        assert "/v1/me/player/seek" in url
+        assert "position_ms=45000" in url
+
+
+
+
+
 

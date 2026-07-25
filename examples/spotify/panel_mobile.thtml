@@ -9,6 +9,20 @@
 
 <box style="flex-direction: column; width: 48; height: 30; bg: #121212;">
 
+    <!-- Hidden State Bindings for URI Resolution & Controls -->
+    <box bind-show="never_true">
+        <text bind-state="res_1_uri"></text>
+        <text bind-state="res_2_uri"></text>
+        <text bind-state="res_3_uri"></text>
+        <text bind-state="pl_1_uri"></text>
+        <text bind-state="pl_2_uri"></text>
+        <text bind-state="pl_3_uri"></text>
+        <text bind-state="player_error"></text>
+        <text bind-state="can_next"></text>
+        <text bind-state="can_prev"></text>
+        <text bind-state="can_seek"></text>
+    </box>
+
     <!-- Mobile Header — always visible -->
     <box style="height: 3; bg: #181818; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #282828;">
         <text class="txt-green">🎵 Spotify Mobile</text>

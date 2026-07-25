@@ -11,6 +11,20 @@
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #121212;">
 
+    <!-- Hidden State Bindings for URI Resolution & Controls -->
+    <box bind-show="never_true">
+        <text bind-state="res_1_uri"></text>
+        <text bind-state="res_2_uri"></text>
+        <text bind-state="res_3_uri"></text>
+        <text bind-state="pl_1_uri"></text>
+        <text bind-state="pl_2_uri"></text>
+        <text bind-state="pl_3_uri"></text>
+        <text bind-state="player_error"></text>
+        <text bind-state="can_next"></text>
+        <text bind-state="can_prev"></text>
+        <text bind-state="can_seek"></text>
+    </box>
+
     <!-- Top Header — always visible -->
     <box style="height: 7; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
         <!-- Row 1: Title & Device on left, Auth status & Menu on right -->

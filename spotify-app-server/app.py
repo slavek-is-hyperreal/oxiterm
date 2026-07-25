@@ -168,30 +168,56 @@ def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 48) -> 
 def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
-        r = requests.get("https://api.spotify.com/v1/me/player", headers=headers, timeout=3)
+        r = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
         if r.status_code == 200:
             pb = r.json()
-            if pb and pb.get("item"):
-                item = pb["item"]
-                track_name = item.get("name", "Brak tytułu")
-                artists = ", ".join([a["name"] for a in item.get("artists", [])])
-                album_name = item.get("album", {}).get("name", "Album")
-                device = pb.get("device", {}).get("name", "Brak urządzenia")
+            if pb:
+                item = pb.get("item")
+                item_type = item.get("type") if item else None
+
+                if item and item_type == "episode":
+                    track_name = item.get("name", "Brak tytułu")
+                    show_obj = item.get("show") or {}
+                    artists = show_obj.get("name", "Podcast")
+                    album_name = show_obj.get("publisher", "")
+                elif item and item_type == "track":
+                    track_name = item.get("name", "Brak tytułu")
+                    artists = ", ".join([a["name"] for a in item.get("artists", [])])
+                    album_name = item.get("album", {}).get("name", "Album")
+                else:
+                    curr_type = pb.get("currently_playing_type")
+                    if curr_type and curr_type != "unknown":
+                        logger.warning(f"Playback item is null for currently_playing_type '{curr_type}'")
+                    track_name = "Brak odtwarzania"
+                    artists = "-"
+                    album_name = "-"
+
+                device = pb.get("device", {}).get("name", "Brak urządzenia") if pb.get("device") else "Brak urządzenia"
                 is_playing = pb.get("is_playing", False)
-                progress_ms = pb.get("progress_ms", 0)
-                duration_ms = item.get("duration_ms", 1)
-                volume = pb.get("device", {}).get("volume_percent", 50)
-                
+                progress_ms = pb.get("progress_ms", 0) or 0
+                duration_ms = item.get("duration_ms", 1) if item else 1
+                volume = pb.get("device", {}).get("volume_percent", 50) if pb.get("device") else 50
+
+                actions = pb.get("actions") or {}
+                disallows = actions.get("disallows") or {}
+                can_next = "false" if disallows.get("skipping_next") else "true"
+                can_prev = "false" if disallows.get("skipping_prev") else "true"
+                can_seek = "false" if disallows.get("seeking") else "true"
+
                 return {
                     "is_authenticated": "true",
-                    "track_name": track_name[:40],
+                    "track_name": track_name[:35],
                     "artist_name": artists[:35],
                     "album_name": album_name[:35],
                     "device_name": f"📱 {device}",
                     "is_playing": "true" if is_playing else "false",
                     "play_icon": "❚❚ Pause" if is_playing else "Play",
                     "progress_bar": render_progress_bar(progress_ms, duration_ms),
-                    "volume": f"{volume}%"
+                    "volume": f"{volume}%",
+                    "can_next": can_next,
+                    "can_prev": can_prev,
+                    "can_seek": can_seek,
+                    "player_error": ""
                 }
         elif r.status_code == 204:
             return {
@@ -203,11 +229,32 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
                 "is_playing": "false",
                 "play_icon": "Play",
                 "progress_bar": render_progress_bar(0, 0),
-                "volume": "0%"
+                "volume": "0%",
+                "can_next": "true",
+                "can_prev": "true",
+                "can_seek": "true",
+                "player_error": ""
+            }
+        else:
+            logger.error(f"Error fetching playback for token: status {r.status_code}, body: {r.text[:100]}")
+            return {
+                "is_authenticated": "true",
+                "track_name": "Błąd pobierania odtwarzacza",
+                "artist_name": "Sprawdź połączenie",
+                "album_name": "-",
+                "device_name": "-",
+                "is_playing": "false",
+                "play_icon": "Play",
+                "progress_bar": render_progress_bar(0, 0),
+                "volume": "0%",
+                "can_next": "true",
+                "can_prev": "true",
+                "can_seek": "true",
+                "player_error": f"Błąd Spotify ({r.status_code})"
             }
     except Exception as e:
         logger.error(f"Error fetching playback for token: {e}")
-    
+
     return {
         "is_authenticated": "true",
         "track_name": "Błąd pobierania odtwarzacza",
@@ -217,7 +264,11 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
         "is_playing": "false",
         "play_icon": "Play",
         "progress_bar": render_progress_bar(0, 0),
-        "volume": "0%"
+        "volume": "0%",
+        "can_next": "true",
+        "can_prev": "true",
+        "can_seek": "true",
+        "player_error": "Błąd połączenia"
     }
 
 @app.get("/callback")
@@ -463,8 +514,8 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
         if user:
             try:
                 headers = {"Authorization": f"Bearer {user['access_token']}"}
-                pb_req = requests.get("https://api.spotify.com/v1/me/player", headers=headers, timeout=3)
-                if pb_req.status_code == 200:
+                pb_req = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
+                if 200 <= pb_req.status_code < 300:
                     pb = pb_req.json()
                     if pb and pb.get("is_playing"):
                         requests.put("https://api.spotify.com/v1/me/player/pause", headers=headers, timeout=3)
@@ -490,23 +541,51 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
             except Exception as e:
                 logger.error(f"Player prev error: {e}")
 
-    # 7. Action: play_uri:...
+    # 7. Action: play_uri:<key_name>
     elif action.startswith("play_uri:"):
-        uri = action.split(":", 1)[1]
-        if user and uri:
-            try:
-                headers = {"Authorization": f"Bearer {user['access_token']}"}
-                payload_data = {"context_uri": uri} if ("playlist" in uri or "album" in uri) else {"uris": [uri]}
-                requests.put("https://api.spotify.com/v1/me/player/play", json=payload_data, headers=headers, timeout=3)
-            except Exception as e:
-                logger.error(f"Play URI error: {e}")
+        key_name = action.split(":", 1)[1]
+        uri = state_vars.get(key_name, "").strip() if state_vars else ""
+        if not uri:
+            logger.warning(f"play_uri: missing or empty key '{key_name}' in state payload for session {session_id}")
+            patch["player_error"] = "Brak URI dla elementu"
+        elif not uri.startswith("spotify:"):
+            logger.warning(f"play_uri: invalid URI scheme '{uri}' for key '{key_name}' in session {session_id}")
+            patch["player_error"] = "Nieprawidłowy format URI"
+        else:
+            parts = uri.split(":")
+            if len(parts) >= 3 and parts[0] == "spotify":
+                type_seg = parts[1]
+                if type_seg in ("playlist", "album", "show", "artist"):
+                    payload_data = {"context_uri": uri}
+                elif type_seg in ("track", "episode"):
+                    payload_data = {"uris": [uri]}
+                else:
+                    logger.warning(f"play_uri: unsupported URI type '{type_seg}' for URI '{uri}' in session {session_id}")
+                    patch["player_error"] = f"Nieobsługiwany typ URI: {type_seg}"
+                    payload_data = None
+            else:
+                patch["player_error"] = "Nieprawidłowa struktura URI"
+                payload_data = None
+
+            if payload_data and user:
+                try:
+                    headers = {"Authorization": f"Bearer {user['access_token']}"}
+                    r = requests.put("https://api.spotify.com/v1/me/player/play", json=payload_data, headers=headers, timeout=3)
+                    if 200 <= r.status_code < 300:
+                        patch["player_error"] = ""
+                    else:
+                        logger.error(f"Spotify play API error {r.status_code}: {r.text[:100]}")
+                        patch["player_error"] = f"Błąd Spotify ({r.status_code})"
+                except Exception as e:
+                    logger.error(f"Play URI error: {e}")
+                    patch["player_error"] = "Błąd połączenia ze Spotify"
 
     # 8. Action: vol_up / vol_down
     elif action == "vol_up":
         if user:
             try:
                 headers = {"Authorization": f"Bearer {user['access_token']}"}
-                pb_req = requests.get("https://api.spotify.com/v1/me/player", headers=headers, timeout=3)
+                pb_req = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
                 if pb_req.status_code == 200:
                     pb = pb_req.json()
                     if pb and pb.get("device"):
@@ -520,7 +599,7 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
         if user:
             try:
                 headers = {"Authorization": f"Bearer {user['access_token']}"}
-                pb_req = requests.get("https://api.spotify.com/v1/me/player", headers=headers, timeout=3)
+                pb_req = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
                 if pb_req.status_code == 200:
                     pb = pb_req.json()
                     if pb and pb.get("device"):
@@ -530,11 +609,41 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
             except Exception as e:
                 logger.error(f"Vol down error: {e}")
 
+    # 9. Action: seek_fwd / seek_back
+    elif action in ("seek_fwd", "seek_back"):
+        if user:
+            try:
+                headers = {"Authorization": f"Bearer {user['access_token']}"}
+                pb_req = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
+                if 200 <= pb_req.status_code < 300:
+                    pb = pb_req.json()
+                    if pb and pb.get("item"):
+                        progress = pb.get("progress_ms", 0) or 0
+                        duration = pb["item"].get("duration_ms", 0) or 0
+                        SEEK_INTERVAL_MS = 15000
+                        if action == "seek_fwd":
+                            target_ms = min(progress + SEEK_INTERVAL_MS, duration)
+                        else:
+                            target_ms = max(progress - SEEK_INTERVAL_MS, 0)
+                        s_req = requests.put(f"https://api.spotify.com/v1/me/player/seek?position_ms={target_ms}", headers=headers, timeout=3)
+                        if 200 <= s_req.status_code < 300:
+                            patch["player_error"] = ""
+                        else:
+                            patch["player_error"] = f"Błąd Spotify ({s_req.status_code})"
+                else:
+                    patch["player_error"] = f"Błąd Spotify ({pb_req.status_code})"
+            except Exception as e:
+                logger.error(f"Seek error: {e}")
+                patch["player_error"] = "Błąd połączenia ze Spotify"
+
     # Merge active playback state if user is logged in
     if user and action != "logout":
+        saved_error = patch.get("player_error")
         playback_patch = fetch_playback_for_user(user["access_token"])
         playback_patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
         patch.update(playback_patch)
+        if saved_error is not None and saved_error != "":
+            patch["player_error"] = saved_error
     elif not user and action != "logout":
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
