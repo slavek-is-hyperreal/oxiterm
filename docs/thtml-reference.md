@@ -40,8 +40,8 @@ OxiTerm supports exactly eight tags. Using an unknown tag will cause a document 
 | `<video>` | Video player | None | Play video files smoothly in the background. Requires `ffmpeg` in the system. |
 | `<for>` | Loop template | One template child | Repeats its child once per element of a `List` state value named by the `each` attribute (see §4). |
 
-> [!WARNING]
-> The `<img>`, `<video>`, and `<input>` tags can be self-closing (`<img />`, `<video />`, `<input />`). All other tags absolutely require closing tags (e.g., `<text>Content</text>`).
+> [!NOTE]
+> Any tag can be self-closing (ending with `/>`, e.g. `<img />`, `<text bind-state="msg" />`). A self-closing tag contains no children or inner text content, so `<text />` is useful with `bind-state`, while `<for />` is semantically invalid because `<for>` requires a child template.
 
 ---
 
