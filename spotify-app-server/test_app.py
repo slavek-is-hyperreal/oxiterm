@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 import sqlite3
 import pytest
 from unittest.mock import patch
@@ -510,5 +511,61 @@ def test_t20_username_payload_field_does_not_affect_identity_resolution(isolated
         data = r.json()
         assert data.get("is_authenticated") == "true"
         assert "User T20" in data.get("auth_status", "")
+
+
+def test_p41_t6_poller_two_cycles_set_app_token_only_in_first(isolated_db):
+    tok = "stoken_poller_t6"
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_t6', 'User T6', 'acc_t6', 'ref_t6', 9999999999, 'stoken_poller_t6', 9999999999)
+        """)
+        conn.commit()
+
+    active_oxiterm_sessions[88] = (tok, time.time())
+    app_module.last_sent_app_token.pop(88, None)
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_post.return_value.status_code = 200
+
+        # First cycle
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        first_patch = mock_post.call_args[1].get("json") or mock_post.call_args[0][1]
+        assert first_patch.get("set_app_token") == tok
+
+        # Second cycle
+        mock_post.reset_mock()
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        second_patch = mock_post.call_args[1].get("json") or mock_post.call_args[0][1]
+        assert "set_app_token" not in second_patch
+
+
+def test_p41_t7_session_transition_unauthenticated_to_authenticated_emits_set_app_token(isolated_db):
+    tok = "stoken_transition_t7"
+
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_t7', 'User T7', 'acc_t7', 'ref_t7', 9999999999, 'stoken_transition_t7', 9999999999)
+        """)
+        conn.commit()
+
+    active_oxiterm_sessions[77] = (tok, time.time())
+    app_module.last_sent_app_token.pop(77, None)
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_post.return_value.status_code = 200
+
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("set_app_token") == tok
+
 
 

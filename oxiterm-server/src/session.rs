@@ -235,14 +235,20 @@ impl ClientSession {
                     serde_json::Value::Null => String::new(),
                     other => other.to_string(),
                 };
-                let mut state = self.state.write();
-                if tok_str.is_empty() {
-                    state.remove("_app_token");
-                } else {
-                    state.set("_app_token".to_string(), crate::state::StateValue::Str(tok_str.clone()));
+                let current_token = match self.state.read().get("_app_token") {
+                    Some(crate::state::StateValue::Str(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                if tok_str != current_token {
+                    let mut state = self.state.write();
+                    if tok_str.is_empty() {
+                        state.remove("_app_token");
+                    } else {
+                        state.set("_app_token".to_string(), crate::state::StateValue::Str(tok_str.clone()));
+                    }
+                    drop(state);
+                    self.send_app_token_frame(&tok_str);
                 }
-                drop(state);
-                self.send_app_token_frame(&tok_str);
             }
 
             // Anchored by spec [SEC-11a]: limit 100 keys per patch
@@ -1407,14 +1413,7 @@ impl EventLoop {
                                     self.handle_open_url(url, oxiterm_proto::dom::NodeId(0));
                                 }
                                 InputEvent::SetAppToken(token) => {
-                                    let mut state = self.session.state.write();
-                                    if token.is_empty() {
-                                        state.remove("_app_token");
-                                    } else {
-                                        state.set("_app_token".to_string(), crate::state::StateValue::Str(token.clone()));
-                                    }
-                                    drop(state);
-                                    self.session.send_app_token_frame(&token);
+                                    self.handle_set_app_token(token);
                                 }
                                 InputEvent::Reload => {
                                     if let Some(ref path) = self.source_path {
@@ -1847,6 +1846,19 @@ impl EventLoop {
                     }
                 }
             }
+        }
+    pub(crate) fn handle_set_app_token(&mut self, token: String) {
+        let current_token = match self.session.state.read().get("_app_token") {
+            Some(crate::state::StateValue::Str(s)) => s.clone(),
+            _ => String::new(),
+        };
+        if token.is_empty() {
+            if !current_token.is_empty() {
+                self.session.state.write().remove("_app_token");
+            }
+        } else if token != current_token {
+            self.session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str(token));
+            self.try_dispatch("app_token_sync");
         }
     }
 }
@@ -3484,6 +3496,126 @@ mod tests {
 
         let state = session.state.read();
         assert!(state.get("_app_token").is_none(), "_app_token must be removed when set_app_token is empty");
+    }
+
+    #[test]
+    fn test_p41_t1_apc_new_token_dispatches_and_sets_state() {
+        use std::net::TcpListener;
+        use std::io::{Write, Read};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        let doc = oxiterm_renderer::document::THTMLDocument {
+            arena: oxiterm_proto::dom::Arena::new(),
+            root: oxiterm_proto::dom::NodeId(0),
+            dirty_nodes: Vec::new(),
+        };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        el.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(format!("http://127.0.0.1:{}/events", port)));
+
+        // Receive APC SetAppToken with a new non-empty token
+        el.handle_set_app_token("new_app_token_123".to_string());
+
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let n = stream.read(&mut buf).unwrap();
+        let req_str = String::from_utf8_lossy(&buf[..n]);
+
+        assert!(req_str.contains("\"app_token\":\"new_app_token_123\""));
+
+        let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+        stream.write_all(response.as_bytes()).unwrap();
+
+        let state = session.state.read();
+        assert_eq!(state.get("_app_token"), Some(&crate::state::StateValue::Str("new_app_token_123".to_string())));
+    }
+
+    #[test]
+    fn test_p41_t2_apc_same_token_no_dispatch_and_no_frame() {
+        let (web_tx, mut web_rx) = tokio::sync::mpsc::channel(10);
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        *session.web_frame_tx.write() = Some((0, web_tx));
+
+        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("same_token_123".to_string()));
+
+        let doc = oxiterm_renderer::document::THTMLDocument {
+            arena: oxiterm_proto::dom::Arena::new(),
+            root: oxiterm_proto::dom::NodeId(0),
+            dirty_nodes: Vec::new(),
+        };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        el.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new("http://127.0.0.1:1/events".to_string()));
+
+        // Receive APC SetAppToken with the same token
+        el.handle_set_app_token("same_token_123".to_string());
+
+        // Verify no 0x35 frame was sent to web_rx
+        assert!(web_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_p41_t3_apc_empty_token_removes_state_no_dispatch() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("old_token".to_string()));
+
+        let doc = oxiterm_renderer::document::THTMLDocument {
+            arena: oxiterm_proto::dom::Arena::new(),
+            root: oxiterm_proto::dom::NodeId(0),
+            dirty_nodes: Vec::new(),
+        };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+
+        el.handle_set_app_token("".to_string());
+
+        let state = session.state.read();
+        assert!(state.get("_app_token").is_none());
+    }
+
+    #[test]
+    fn test_p41_t4_patch_same_set_app_token_no_frame() {
+        let (web_tx, mut web_rx) = tokio::sync::mpsc::channel(10);
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        *session.web_frame_tx.write() = Some((0, web_tx));
+
+        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("existing_token".to_string()));
+
+        session.apply_state_patch(serde_json::json!({
+            "set_app_token": "existing_token"
+        }));
+
+        assert!(web_rx.try_recv().is_err(), "Frame 0x35 must NOT be emitted when set_app_token equals current _app_token");
+    }
+
+    #[test]
+    fn test_p41_t5_patch_new_set_app_token_emits_frame() {
+        let (web_tx, mut web_rx) = tokio::sync::mpsc::channel(10);
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        *session.web_frame_tx.write() = Some((0, web_tx));
+
+        session.apply_state_patch(serde_json::json!({
+            "set_app_token": "brand_new_token_999"
+        }));
+
+        let frame = web_rx.try_recv().expect("Frame 0x35 must be emitted when set_app_token changes");
+        assert_eq!(frame[0], 0x35);
+        assert_eq!(String::from_utf8_lossy(&frame[1..]), "brand_new_token_999");
     }
 }
 

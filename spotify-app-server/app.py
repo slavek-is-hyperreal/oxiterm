@@ -37,6 +37,8 @@ DB_PATH = os.path.join(CACHE_DIR, "spotify_app.db")
 pending_oauth_states: Dict[str, Tuple[int, float]] = {}
 # Active session_id -> (session_token, timestamp) mapping
 active_oxiterm_sessions: Dict[int, Tuple[str, float]] = {}
+# Active session_id -> last_sent_app_token mapping
+last_sent_app_token: Dict[int, str] = {}
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
@@ -336,12 +338,15 @@ async def poll_once():
                 if user and user.get("access_token"):
                     patch = await loop.run_in_executor(None, lambda tok=user["access_token"]: fetch_playback_for_user(tok))
                     patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
-                    patch["set_app_token"] = user["session_token"]
+                    if last_sent_app_token.get(sid) != user["session_token"]:
+                        patch["set_app_token"] = user["session_token"]
+                        last_sent_app_token[sid] = user["session_token"]
                     url = f"{oxiterm_url}/sessions/{sid}/patch"
                     try:
                         r = await loop.run_in_executor(None, lambda u=url, p=patch, h=headers: requests.post(u, json=p, headers=h, timeout=0.8))
                         if r.status_code == 404:
                             active_oxiterm_sessions.pop(sid, None)
+                            last_sent_app_token.pop(sid, None)
                         elif r.status_code == 200:
                             active_oxiterm_sessions[sid] = (stoken, time.time())
                         else:
@@ -398,6 +403,7 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
         if app_token:
             delete_user_session(app_token)
         active_oxiterm_sessions.pop(session_id, None)
+        last_sent_app_token.pop(session_id, None)
         patch["set_app_token"] = ""
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
