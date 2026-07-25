@@ -59,6 +59,7 @@ On every `event-htmx` event, OxiTerm sends an asynchronous HTTP POST to the URL 
 | `session_id` | integer | The unique identifier assigned to the given SSH or WebSocket session. Used to distinguish between individual connected users. |
 | `username` | string \| null | Optional. The authenticated user's name, when the session was authenticated (SSH key / proxy-forwarded identity); `null` for anonymous/guest sessions. |
 | `auth_method` | string \| null | Optional. How the session authenticated (e.g. the SSH/identity method), when known. |
+| `app_token` | string \| null | Optional. Permanent application session token presented by the web client via APC on connection. |
 
 #### State Patch Response (App Server → OxiTerm)
 
@@ -74,12 +75,13 @@ If the App Server returns `200 OK` with a JSON object, OxiTerm applies it as a *
 > [!NOTE]
 > Event dispatching runs asynchronously in a spawned thread to avoid blocking the terminal event loop. The state patch is applied as soon as the HTTP request completes.
 
-#### Client Navigation (`open_url` / `open:URL`)
+#### Client Navigation (`open_url` / `open:URL`) & App Token (`set_app_token`)
 
-OxiTerm supports redirecting Web clients to external or internal URLs:
+OxiTerm supports redirecting Web clients and managing permanent application tokens via state patches:
 
 - **From `event-htmx`:** Setting `event-htmx="open:https://example.com"` triggers inline navigation. Web clients open the target URL, while SSH sessions log a warning.
-- **From App Server State Patch:** Including `{"open_url": "https://example.com"}` in a state patch instructs OxiTerm to trigger client navigation. `open_url` is reserved for navigation events and is not saved to persistent session state.
+- **From App Server State Patch (`open_url`):** Including `{"open_url": "https://example.com"}` in a state patch instructs OxiTerm to trigger client navigation. `open_url` is reserved for navigation events and is not saved to persistent session state.
+- **From App Server State Patch (`set_app_token`):** Including `{"set_app_token": "<token>"}` in a state patch (or `/events` response) sets the internal `_app_token` session state and delivers opcode `0x35` to the web client to persist the token in browser `localStorage`. An empty string `""` clears `_app_token` and instructs the client to delete it. `set_app_token` is removed before applying key-value state patches.
 
 ---
 

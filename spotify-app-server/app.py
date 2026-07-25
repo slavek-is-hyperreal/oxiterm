@@ -147,6 +147,7 @@ class OxiEventPayload(BaseModel):
     session_id: int
     username: Optional[str] = None
     auth_method: Optional[str] = None
+    app_token: Optional[str] = None
 
 def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 48) -> str:
     if not duration_ms or duration_ms <= 0:
@@ -262,11 +263,16 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
         display_name = me.get("display_name") or spotify_user_id
         safe_display_name = html.escape(display_name)
         
-        # Generate secure random 256-bit session token
+        # Generate secure random 256-bit session token for new user, or reuse existing
         session_token = secrets.token_hex(32)
         
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT session_token FROM users WHERE spotify_user_id = ?", (spotify_user_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                session_token = row[0]
+
             cursor.execute("""
                 INSERT INTO users (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -275,7 +281,6 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
                     access_token=excluded.access_token,
                     refresh_token=excluded.refresh_token,
                     expires_at=excluded.expires_at,
-                    session_token=excluded.session_token,
                     last_seen=excluded.last_seen
             """, (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, time.time()))
             conn.commit()
@@ -317,38 +322,40 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
 async def start_background_loop():
     asyncio.create_task(poll_spotify_and_push_patches())
 
+async def poll_once():
+    cleanup_pending_oauth_states()
+    if active_oxiterm_sessions:
+        try:
+            loop = asyncio.get_event_loop()
+            oxiterm_url = os.getenv("OXITERM_URL", "http://host.docker.internal:8087")
+            headers = {}
+            if OXITERM_APP_TOKEN:
+                headers["Authorization"] = f"Bearer {OXITERM_APP_TOKEN}"
+            for sid, (stoken, _) in list(active_oxiterm_sessions.items()):
+                user = await loop.run_in_executor(None, lambda st=stoken: get_user_by_session_token(st))
+                if user and user.get("access_token"):
+                    patch = await loop.run_in_executor(None, lambda tok=user["access_token"]: fetch_playback_for_user(tok))
+                    patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
+                    patch["set_app_token"] = user["session_token"]
+                    url = f"{oxiterm_url}/sessions/{sid}/patch"
+                    try:
+                        r = await loop.run_in_executor(None, lambda u=url, p=patch, h=headers: requests.post(u, json=p, headers=h, timeout=0.8))
+                        if r.status_code == 404:
+                            active_oxiterm_sessions.pop(sid, None)
+                        elif r.status_code == 200:
+                            active_oxiterm_sessions[sid] = (stoken, time.time())
+                        else:
+                            logger.warning(f"Push patch to session {sid} returned status {r.status_code}")
+                    except Exception as push_err:
+                        logger.error(f"Push patch to session {sid} failed: {push_err}")
+        except Exception as e:
+            logger.error(f"Background polling error: {e}")
+
 async def poll_spotify_and_push_patches():
     while True:
         await asyncio.sleep(1.5)
-        cleanup_pending_oauth_states()
-        now = time.time()
-        stale = [sid for sid, (_, last_seen) in list(active_oxiterm_sessions.items()) if now - last_seen > 300]
-        for sid in stale:
-            active_oxiterm_sessions.pop(sid, None)
+        await poll_once()
 
-        if active_oxiterm_sessions:
-            try:
-                loop = asyncio.get_event_loop()
-                oxiterm_url = os.getenv("OXITERM_URL", "http://host.docker.internal:8087")
-                headers = {}
-                if OXITERM_APP_TOKEN:
-                    headers["Authorization"] = f"Bearer {OXITERM_APP_TOKEN}"
-                for sid, (stoken, _) in list(active_oxiterm_sessions.items()):
-                    user = await loop.run_in_executor(None, lambda: get_user_by_session_token(stoken))
-                    if user and user.get("access_token"):
-                        patch = await loop.run_in_executor(None, lambda: fetch_playback_for_user(user["access_token"]))
-                        patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
-                        url = f"{oxiterm_url}/sessions/{sid}/patch"
-                        try:
-                            r = await loop.run_in_executor(None, lambda: requests.post(url, json=patch, headers=headers, timeout=0.8))
-                            if r.status_code == 404:
-                                active_oxiterm_sessions.pop(sid, None)
-                            elif r.status_code != 200:
-                                logger.warning(f"Push patch to session {sid} returned status {r.status_code}")
-                        except Exception as push_err:
-                            logger.error(f"Push patch to session {sid} failed: {push_err}")
-            except Exception as e:
-                logger.error(f"Background polling error: {e}")
 
 @app.post("/events")
 async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
@@ -357,11 +364,9 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
     action = payload.action
     state_vars = payload.state
     session_id = payload.session_id
+    app_token = payload.app_token
     
-    stoken = None
-    if session_id in active_oxiterm_sessions:
-        stoken, _ = active_oxiterm_sessions[session_id]
-    user = get_user_by_session_token(stoken) if stoken else None
+    user = get_user_by_session_token(app_token) if app_token else None
     
     if user:
         active_oxiterm_sessions[session_id] = (user["session_token"], time.time())
@@ -390,9 +395,10 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
 
     # 2. Action: logout
     elif action == "logout":
-        if stoken:
-            delete_user_session(stoken)
-            active_oxiterm_sessions.pop(session_id, None)
+        if app_token:
+            delete_user_session(app_token)
+        active_oxiterm_sessions.pop(session_id, None)
+        patch["set_app_token"] = ""
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
         patch["track_name"] = "Wymagana autoryzacja"

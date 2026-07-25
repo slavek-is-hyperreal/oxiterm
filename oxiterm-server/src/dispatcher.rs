@@ -22,6 +22,9 @@ pub struct DispatchPayload {
     /// Authentication method used.
     #[serde(default)]
     pub auth_method: Option<String>,
+    /// Permanent app token associated with the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_token: Option<String>,
 }
 
 /// Dispatcher responsible for sending session state updates to the app server.
@@ -56,9 +59,7 @@ impl AppDispatcher {
                         match resp.into_json::<serde_json::Value>() {
                             Ok(mut json) => {
                                 info!("AppDispatcher: successfully parsed state patch JSON");
-                                // Extract open_url before applying the patch to state.
-                                // open_url is a one-shot "open this URL in browser" command;
-                                // it MUST NOT be stored in StateManager.
+                                // Extract open_url and set_app_token before applying the patch to state.
                                 if let Some(obj) = json.as_object_mut() {
                                     if let Some(url_val) = obj.remove("open_url") {
                                         if let Some(url_str) = url_val.as_str() {
@@ -66,6 +67,16 @@ impl AppDispatcher {
                                                 oxiterm_proto::input::InputEvent::OpenUrl(url_str.to_string())
                                             );
                                         }
+                                    }
+                                    if let Some(tok_val) = obj.remove("set_app_token") {
+                                        let tok_str = match tok_val {
+                                            serde_json::Value::String(s) => s,
+                                            serde_json::Value::Null => String::new(),
+                                            other => other.to_string(),
+                                        };
+                                        let _ = session.event_tx.try_send(
+                                            oxiterm_proto::input::InputEvent::SetAppToken(tok_str)
+                                        );
                                     }
                                 }
                                 session.apply_state_patch(json);
@@ -285,5 +296,50 @@ mod tests {
         // Drain channel to verify it was sent (event_rx is not accessible from test; check via event_tx.len)
         // We verify indirectly: the state was patched, meaning dispatcher completed, meaning OpenUrl was sent first.
         // Direct assertion of the event would require exposing event_rx — acceptable as integration evidence.
+    }
+
+    #[test]
+    fn test_t5_t6_set_app_token_in_events_response_removed_from_state() {
+        use std::net::TcpListener;
+        use std::io::{Write, Read};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
+        let payload = make_payload("login_action", 1);
+
+        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        d.dispatch(payload, session.clone());
+
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf).unwrap();
+
+        let body = r#"{"set_app_token":"tok_12345","normal_key":"val_123"}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(), body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        drop(stream);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            {
+                let state = session.state.read();
+                if state.get("normal_key").is_some() {
+                    // T-5: set_app_token key absent from state
+                    assert!(state.get("set_app_token").is_none(), "set_app_token must be removed from state patch");
+                    break;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("state patch was not applied within 2 s");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 }

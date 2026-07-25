@@ -547,6 +547,17 @@
                 vbuf[1] = isMobile ? 1 : 0;
                 ws.send(vbuf);
 
+                // Send app token APC if present in localStorage
+                const appToken = localStorage.getItem('oxiterm_app_token');
+                if (appToken) {
+                    const tokenBytes = new TextEncoder().encode(appToken);
+                    const apcBuf = new Uint8Array(3 + tokenBytes.length + 2);
+                    apcBuf[0] = 0x1b; apcBuf[1] = 0x5f; apcBuf[2] = 0x41; // ESC _ A
+                    apcBuf.set(tokenBytes, 3);
+                    apcBuf[apcBuf.length - 2] = 0x1b; apcBuf[apcBuf.length - 1] = 0x5c; // ESC \
+                    ws.send(apcBuf);
+                }
+
                 // Request navigation if page param present
                 if (pageParam) {
                     const pageBytes = new TextEncoder().encode(pageParam);
@@ -709,6 +720,17 @@
             if (bytes[0] === 0x33) {
                 const url = new TextDecoder().decode(bytes.subarray(1));
                 window.open(url, '_blank', 'noopener');
+                return;
+            }
+
+            // ── 0x35 app token ────────────────────────────────────────────────
+            if (bytes[0] === 0x35) {
+                const token = new TextDecoder().decode(bytes.subarray(1));
+                if (token) {
+                    localStorage.setItem('oxiterm_app_token', token);
+                } else {
+                    localStorage.removeItem('oxiterm_app_token');
+                }
                 return;
             }
 

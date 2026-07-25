@@ -50,6 +50,8 @@ pub enum InputEvent {
     /// The EventLoop handles this by calling `handle_open_url`, which emits opcode `0x33`
     /// to web clients. On SSH sessions it is silently ignored.
     OpenUrl(String),
+    /// Application token set or updated via APC escape sequence or App Server state patch.
+    SetAppToken(String),
     /// An unparsed or unrecognized escape sequence.
     Unknown(Vec<u8>),
 }

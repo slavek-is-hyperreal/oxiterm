@@ -67,6 +67,13 @@ impl StateManager {
         }
     }
 
+    /// Removes a key from the state store.
+    pub fn remove(&mut self, key: &str) {
+        if self.store.remove(key).is_some() {
+            self.dirty_keys.insert(key.to_string());
+        }
+    }
+
     /// Registers a node to be dirtied when the specified state key is modified.
     pub fn subscribe(&mut self, key: String, node_id: NodeId) {
         self.subscriptions.entry(key).or_default().push(node_id);

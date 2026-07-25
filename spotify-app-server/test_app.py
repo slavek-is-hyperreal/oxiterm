@@ -47,8 +47,94 @@ def _mock_spotify(mock_post, mock_get, *, user_id="spot_user_1", display_name="U
     mock_get.return_value.json.return_value = {"id": user_id, "display_name": display_name}
 
 # ---------------------------------------------------------------------------
+# Tests T-1..T-4 (Phase 1 — Session vitality)
+# ---------------------------------------------------------------------------
+
+def test_t1_push_200_updates_last_seen(isolated_db):
+    import asyncio
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('u1', 'User 1', 'acc_1', 'ref_1', 9999999999, 'stoken_1', 9999999999)
+        """)
+        conn.commit()
+
+    old_ts = time.time() - 100
+    active_oxiterm_sessions[42] = ("stoken_1", old_ts)
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        mock_post.return_value.status_code = 200
+        mock_get.return_value.status_code = 204
+
+        asyncio.run(app_module.poll_once())
+
+        assert 42 in active_oxiterm_sessions
+        new_token, new_ts = active_oxiterm_sessions[42]
+        assert new_token == "stoken_1"
+        assert new_ts > old_ts
+
+
+def test_t2_push_404_removes_session(isolated_db):
+    import asyncio
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('u1', 'User 1', 'acc_1', 'ref_1', 9999999999, 'stoken_1', 9999999999)
+        """)
+        conn.commit()
+
+    active_oxiterm_sessions[42] = ("stoken_1", time.time())
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        mock_post.return_value.status_code = 404
+        mock_get.return_value.status_code = 204
+
+        asyncio.run(app_module.poll_once())
+
+        assert 42 not in active_oxiterm_sessions
+
+
+def test_t3_session_survives_400s_of_pushes_without_events(isolated_db):
+    import asyncio
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('u1', 'User 1', 'acc_1', 'ref_1', 9999999999, 'stoken_1', 9999999999)
+        """)
+        conn.commit()
+
+    # Session registered 400 seconds ago
+    start_ts = time.time() - 400
+    active_oxiterm_sessions[42] = ("stoken_1", start_ts)
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        mock_post.return_value.status_code = 200
+        mock_get.return_value.status_code = 204
+
+        asyncio.run(app_module.poll_once())
+
+        assert 42 in active_oxiterm_sessions
+        _, ts = active_oxiterm_sessions[42]
+        assert ts > start_ts
+
+
+def test_t4_no_time_based_deletion_in_code():
+    import inspect
+    source = inspect.getsource(app_module.poll_spotify_and_push_patches)
+    if hasattr(app_module, "poll_once"):
+        source += inspect.getsource(app_module.poll_once)
+    assert "now - last_seen > 300" not in source
+    assert "> 300" not in source
+
+
+
+# ---------------------------------------------------------------------------
 # Tests 08–18
 # ---------------------------------------------------------------------------
+
 
 def test_08_events_unauthorized_without_bearer():
     r = client.post("/events", json={"action": "tab:player", "state": {}, "session_id": 1})
@@ -245,4 +331,184 @@ def test_19_spotify_panel_htmx_events_contract():
             headers={"Authorization": "Bearer test_secret_token_123"}
         )
         assert r.status_code == 200, f"Custom action '{action}' failed with status {r.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# Tests T-13..T-20 (Phase 3 — App identity)
+# ---------------------------------------------------------------------------
+
+def test_t13_events_with_valid_app_token_returns_authenticated(isolated_db):
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_t13', 'User T13', 'acc_t13', 'ref_t13', 9999999999, 'app_token_valid_123', 9999999999)
+        """)
+        conn.commit()
+
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={"action": "set:tab=player", "state": {}, "session_id": 99, "app_token": "app_token_valid_123"},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("is_authenticated") == "true"
+        assert "User T13" in data.get("auth_status", "")
+
+
+def test_t14_events_with_unknown_app_token_returns_unauthenticated():
+    r = client.post(
+        "/events",
+        json={"action": "set:tab=player", "state": {}, "session_id": 99, "app_token": "unknown_token_999"},
+        headers={"Authorization": "Bearer test_secret_token_123"}
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("is_authenticated") == "false"
+
+
+def test_t15_events_without_app_token_returns_unauthenticated():
+    r = client.post(
+        "/events",
+        json={"action": "set:tab=player", "state": {}, "session_id": 99},
+        headers={"Authorization": "Bearer test_secret_token_123"}
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("is_authenticated") == "false"
+
+
+def test_t16_relogin_same_spotify_user_id_keeps_existing_session_token(isolated_db):
+    state1 = "state_relogin_1"
+    pending_oauth_states[state1] = (10, time.time())
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        _mock_spotify(mock_post, mock_get, user_id="same_user_1", display_name="Same User")
+        r1 = client.get(f"/callback?code=c1&state={state1}")
+        assert r1.status_code == 200
+
+    with sqlite3.connect(isolated_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT session_token FROM users WHERE spotify_user_id = 'same_user_1'")
+        initial_token = cursor.fetchone()[0]
+
+    # Relogin the same user
+    state2 = "state_relogin_2"
+    pending_oauth_states[state2] = (11, time.time())
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        _mock_spotify(mock_post, mock_get, user_id="same_user_1", display_name="Same User Updated")
+        r2 = client.get(f"/callback?code=c2&state={state2}")
+        assert r2.status_code == 200
+
+    with sqlite3.connect(isolated_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT session_token FROM users WHERE spotify_user_id = 'same_user_1'")
+        token_after_relogin = cursor.fetchone()[0]
+
+    assert token_after_relogin == initial_token, "session_token must NOT be overwritten on relogin"
+
+
+def test_t17_new_spotify_user_id_generates_new_nonempty_session_token(isolated_db):
+    state = "state_new_user"
+    pending_oauth_states[state] = (12, time.time())
+
+    with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
+        _mock_spotify(mock_post, mock_get, user_id="brand_new_user_777", display_name="New User")
+        r = client.get(f"/callback?code=c_new&state={state}")
+        assert r.status_code == 200
+
+    with sqlite3.connect(isolated_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT session_token FROM users WHERE spotify_user_id = 'brand_new_user_777'")
+        row = cursor.fetchone()
+        assert row is not None
+        stoken = row[0]
+        assert len(stoken) > 0
+
+
+def test_t18_logout_action_removes_user_from_db_and_emits_empty_set_app_token(isolated_db):
+    tok = "stoken_logout_test"
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_logout', 'User Logout', 'acc', 'ref', 9999999999, 'stoken_logout_test', 9999999999)
+        """)
+        conn.commit()
+
+    r = client.post(
+        "/events",
+        json={"action": "logout", "state": {}, "session_id": 55, "app_token": tok},
+        headers={"Authorization": "Bearer test_secret_token_123"}
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("set_app_token") == ""
+    assert data.get("is_authenticated") == "false"
+
+    with sqlite3.connect(isolated_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE session_token = ?", (tok,))
+        assert cursor.fetchone() is None
+
+
+def test_t19_events_after_logout_returns_unauthenticated(isolated_db):
+    tok = "stoken_logout_t19"
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_t19', 'User T19', 'acc', 'ref', 9999999999, 'stoken_logout_t19', 9999999999)
+        """)
+        conn.commit()
+
+    # Logout
+    client.post(
+        "/events",
+        json={"action": "logout", "state": {}, "session_id": 55, "app_token": tok},
+        headers={"Authorization": "Bearer test_secret_token_123"}
+    )
+
+    # Subsequent /events with previous token
+    r = client.post(
+        "/events",
+        json={"action": "set:tab=player", "state": {}, "session_id": 55, "app_token": tok},
+        headers={"Authorization": "Bearer test_secret_token_123"}
+    )
+    assert r.status_code == 200
+    assert r.json().get("is_authenticated") == "false"
+
+
+def test_t20_username_payload_field_does_not_affect_identity_resolution(isolated_db):
+    tok = "stoken_t20"
+    with sqlite3.connect(isolated_db) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO users
+                (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
+            VALUES ('spot_t20', 'User T20', 'acc', 'ref', 9999999999, 'stoken_t20', 9999999999)
+        """)
+        conn.commit()
+
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        # Send payload with username different from user in db
+        r = client.post(
+            "/events",
+            json={
+                "action": "set:tab=player",
+                "state": {},
+                "session_id": 55,
+                "username": "completely_unrelated_username",
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("is_authenticated") == "true"
+        assert "User T20" in data.get("auth_status", "")
+
 

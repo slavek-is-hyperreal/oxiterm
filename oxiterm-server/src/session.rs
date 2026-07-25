@@ -212,11 +212,39 @@ impl ClientSession {
         self.event_rx.lock().reopen();
     }
 
+    /// Sends a permanent app token frame (0x35) to web clients.
+    pub fn send_app_token_frame(&self, token: &str) {
+        if self.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Some((_, ref tx)) = *self.web_frame_tx.read() {
+                let mut frame = vec![0x35];
+                frame.extend_from_slice(token.as_bytes());
+                let _ = tx.try_send(frame);
+            }
+        }
+    }
+
     /// Evaluates dynamic client state change patches.
     ///
     /// Enforces limits on key lengths, array items, and payload sizes to mitigate DoS.
     pub fn apply_state_patch(&self, patch: serde_json::Value) {
-        if let serde_json::Value::Object(obj) = patch {
+        if let serde_json::Value::Object(mut obj) = patch {
+            // Intercept set_app_token before state limits or key prefix checks
+            if let Some(tok_val) = obj.remove("set_app_token") {
+                let tok_str = match tok_val {
+                    serde_json::Value::String(s) => s,
+                    serde_json::Value::Null => String::new(),
+                    other => other.to_string(),
+                };
+                let mut state = self.state.write();
+                if tok_str.is_empty() {
+                    state.remove("_app_token");
+                } else {
+                    state.set("_app_token".to_string(), crate::state::StateValue::Str(tok_str.clone()));
+                }
+                drop(state);
+                self.send_app_token_frame(&tok_str);
+            }
+
             // Anchored by spec [SEC-11a]: limit 100 keys per patch
             if obj.len() > 100 {
                 warn!("Ignoring state patch with too many keys: {}", obj.len());
@@ -1048,12 +1076,20 @@ impl EventLoop {
                     None => (None, None),
                 }
             };
+            let app_token = {
+                let state_guard = self.session.state.read();
+                match state_guard.get("_app_token") {
+                    Some(crate::state::StateValue::Str(tok)) if !tok.is_empty() => Some(tok.clone()),
+                    _ => None,
+                }
+            };
             let payload = crate::dispatcher::DispatchPayload {
                 action: action.to_string(),
                 state: state_snapshot,
                 session_id: self.session.id,
                 username,
                 auth_method,
+                app_token,
             };
             dispatcher.dispatch(payload, self.session.clone());
         }
@@ -1369,6 +1405,16 @@ impl EventLoop {
                                     // handle_open_url emits opcode 0x33 to web clients only;
                                     // SSH sessions receive a warn! and no action.
                                     self.handle_open_url(url, oxiterm_proto::dom::NodeId(0));
+                                }
+                                InputEvent::SetAppToken(token) => {
+                                    let mut state = self.session.state.write();
+                                    if token.is_empty() {
+                                        state.remove("_app_token");
+                                    } else {
+                                        state.set("_app_token".to_string(), crate::state::StateValue::Str(token.clone()));
+                                    }
+                                    drop(state);
+                                    self.session.send_app_token_frame(&token);
                                 }
                                 InputEvent::Reload => {
                                     if let Some(ref path) = self.source_path {
@@ -3344,6 +3390,100 @@ mod tests {
             "10 keypresses with empty INPUT bucket must produce bind_value of length 10; got {:?}",
             text_val,
         );
+    }
+
+    #[test]
+    fn test_t7_apply_state_patch_handles_set_app_token() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        session.apply_state_patch(serde_json::json!({
+            "set_app_token": "token_xyz_123",
+            "foo": "bar"
+        }));
+
+        let state = session.state.read();
+        assert!(state.get("set_app_token").is_none(), "set_app_token must not be saved as regular key");
+        assert_eq!(state.get("_app_token"), Some(&crate::state::StateValue::Str("token_xyz_123".to_string())));
+        assert_eq!(state.get("foo"), Some(&crate::state::StateValue::Str("bar".to_string())));
+    }
+
+    #[test]
+    fn test_t8_patch_targeting_app_token_directly_rejected() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        session.apply_state_patch(serde_json::json!({
+            "_app_token": "malicious_token"
+        }));
+
+        let state = session.state.read();
+        assert!(state.get("_app_token").is_none(), "direct patch to _app_token must be rejected");
+    }
+
+    #[test]
+    fn test_t10_events_payload_contains_app_token_when_present() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("secret_token_123".to_string()));
+
+        let doc = oxiterm_renderer::document::THTMLDocument {
+            arena: oxiterm_proto::dom::Arena::new(),
+            root: oxiterm_proto::dom::NodeId(0),
+            dirty_nodes: Vec::new(),
+        };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+
+        let app_token = {
+            let state_guard = el.session.state.read();
+            match state_guard.get("_app_token") {
+                Some(crate::state::StateValue::Str(tok)) if !tok.is_empty() => Some(tok.clone()),
+                _ => None,
+            }
+        };
+        assert_eq!(app_token, Some("secret_token_123".to_string()));
+    }
+
+    #[test]
+    fn test_t11_events_payload_app_token_none_when_absent() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        let doc = oxiterm_renderer::document::THTMLDocument {
+            arena: oxiterm_proto::dom::Arena::new(),
+            root: oxiterm_proto::dom::NodeId(0),
+            dirty_nodes: Vec::new(),
+        };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+
+        let app_token = {
+            let state_guard = el.session.state.read();
+            match state_guard.get("_app_token") {
+                Some(crate::state::StateValue::Str(tok)) if !tok.is_empty() => Some(tok.clone()),
+                _ => None,
+            }
+        };
+        assert_eq!(app_token, None);
+    }
+
+    #[test]
+    fn test_t12_empty_set_app_token_removes_app_token_from_state() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("existing_token".to_string()));
+
+        session.apply_state_patch(serde_json::json!({
+            "set_app_token": ""
+        }));
+
+        let state = session.state.read();
+        assert!(state.get("_app_token").is_none(), "_app_token must be removed when set_app_token is empty");
     }
 }
 

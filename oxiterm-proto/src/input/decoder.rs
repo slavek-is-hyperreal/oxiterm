@@ -271,6 +271,10 @@ impl InputStateMachine {
                     self.reset();
                     if data.starts_with(&[0x1b, b'_', b'G']) {
                         Some(InputEvent::CapabilityResponse(data))
+                    } else if data.starts_with(&[0x1b, b'_', b'A']) {
+                        let payload = &data[3..data.len().saturating_sub(2)];
+                        let token = String::from_utf8_lossy(payload).to_string();
+                        Some(InputEvent::SetAppToken(token))
                     } else {
                         Some(InputEvent::Unknown(data))
                     }
@@ -431,5 +435,17 @@ mod tests {
         
         let ev2 = sm.feed(0x13);
         assert_eq!(ev2, Some(InputEvent::Xoff));
+    }
+
+    #[test]
+    fn test_t9_apc_app_token_decodes() {
+        let mut sm = InputStateMachine::new();
+        let mut seq = vec![0x1b, b'_', b'A'];
+        seq.extend_from_slice(b"my_secret_app_token_123");
+        seq.extend_from_slice(&[0x1b, b'\\']);
+
+        let events = sm.feed_slice(&seq);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], InputEvent::SetAppToken("my_secret_app_token_123".to_string()));
     }
 }
