@@ -234,12 +234,12 @@ pub fn emit_linear_stream(text: &str, writer: &mut impl Write) -> anyhow::Result
 }
 
 /// A11y linear frame sink delivering screen-reader streams over terminal sessions.
-pub struct LinearFrameSink<W: Write> {
+pub struct LinearFrameSink<W: Write + Send> {
     writer: W,
     dirty: bool,
 }
 
-impl<W: Write> LinearFrameSink<W> {
+impl<W: Write + Send> LinearFrameSink<W> {
     pub fn new(writer: W) -> Self {
         Self { writer, dirty: true }
     }
@@ -252,11 +252,20 @@ impl<W: Write> LinearFrameSink<W> {
     }
 }
 
-impl<W: Write> oxiterm_renderer::FrameSink for LinearFrameSink<W> {
-    fn update_cells(&mut self, _buffer: &oxiterm_renderer::render::buffer::CellBuffer) -> anyhow::Result<()> {
-        if !self.dirty {
-            self.dirty = true;
+impl<W: Write + Send> oxiterm_renderer::FrameSink for LinearFrameSink<W> {
+    fn send_frame(&mut self, _front: &oxiterm_renderer::render::buffer::CellBuffer, _back: &oxiterm_renderer::render::buffer::CellBuffer) -> anyhow::Result<bool> {
+        if self.dirty {
+            self.dirty = false;
+            Ok(true)
+        } else {
+            Ok(false)
         }
+    }
+
+    fn update_document(&mut self, doc: &THTMLDocument) -> anyhow::Result<()> {
+        let text = render_linear_fallback(doc);
+        emit_linear_stream(&text, &mut self.writer)?;
+        self.dirty = false;
         Ok(())
     }
 

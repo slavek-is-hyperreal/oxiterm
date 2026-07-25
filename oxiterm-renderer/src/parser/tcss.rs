@@ -411,6 +411,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
             oxiterm_proto::dom::NodeTag::Img => "img",
             oxiterm_proto::dom::NodeTag::Video => "video",
             oxiterm_proto::dom::NodeTag::For => "for",
+            oxiterm_proto::dom::NodeTag::Diagram => "diagram",
         };
 
         let mut new_style = oxiterm_proto::style::ComputedStyle::default();

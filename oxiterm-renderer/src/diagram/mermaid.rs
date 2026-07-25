@@ -51,7 +51,7 @@ pub fn parse_mermaid(source: &str) -> Result<Graph> {
 
     for raw_line in source.lines() {
         let line = raw_line.trim();
-        if line.is_empty() || line.startswith("%%") {
+        if line.is_empty() || line.starts_with("%%") {
             continue;
         }
 
@@ -130,6 +130,14 @@ fn add_or_update_node(nodes: &mut Vec<DiagramNode>, id: String, label: String) {
     } else {
         nodes.push(DiagramNode { id, label });
     }
+}
+
+fn parse_node_line(line: &str, nodes: &mut Vec<DiagramNode>) -> Result<()> {
+    let (id, label) = parse_node_spec(line);
+    if !id.is_empty() {
+        add_or_update_node(nodes, id, label);
+    }
+    Ok(())
 }
 
 fn parse_edge_line(line: &str, nodes: &mut Vec<DiagramNode>, edges: &mut Vec<DiagramEdge>) -> Result<()> {

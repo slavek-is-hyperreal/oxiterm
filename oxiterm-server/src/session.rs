@@ -1847,6 +1847,8 @@ impl EventLoop {
                 }
             }
         }
+    }
+
     pub(crate) fn handle_set_app_token(&mut self, token: String) {
         let current_token = match self.session.state.read().get("_app_token") {
             Some(crate::state::StateValue::Str(s)) => s.clone(),
