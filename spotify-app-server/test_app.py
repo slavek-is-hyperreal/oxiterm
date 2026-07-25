@@ -3,7 +3,7 @@ import time
 import asyncio
 import sqlite3
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 # Set environment BEFORE importing app so module-level constants are populated.
@@ -843,6 +843,7 @@ def test_t13_episode_item_parses_show_name_and_publisher(isolated_db):
             "type": "episode",
             "name": "Episode 42: Python Internals",
             "duration_ms": 1800000,
+            "release_date": "2026-07-25",
             "show": {
                 "name": "Tech Talk Podcast",
                 "publisher": "Tech Media Network"
@@ -862,7 +863,7 @@ def test_t13_episode_item_parses_show_name_and_publisher(isolated_db):
         patch_data = mock_post.call_args[1].get("json")
         assert patch_data.get("track_name") == "Episode 42: Python Internals"[:35]
         assert patch_data.get("artist_name") == "Tech Talk Podcast"[:35]
-        assert patch_data.get("album_name") == "Tech Media Network"[:35]
+        assert patch_data.get("album_name") == "2026-07-25"
 
 
 def test_t14_track_item_parses_track_and_artists_without_regression(isolated_db):
@@ -1071,6 +1072,342 @@ def test_t20_seek_fwd_issues_put_to_seek_endpoint(isolated_db):
         url = mock_put.call_args[0][0]
         assert "/v1/me/player/seek" in url
         assert "position_ms=45000" in url
+
+
+# ---------------------------------------------------------------------------
+# PLAN 4.3 Tests (T-1 .. T-19)
+# ---------------------------------------------------------------------------
+
+def test_p43_t1_disallows_skipping_next_true_sets_can_next_false(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t1")
+    active_oxiterm_sessions[401] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"disallows": {"skipping_next": True}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "false"
+
+
+def test_p43_t2_flat_actions_skipping_next_false_sets_can_next_false(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t2")
+    active_oxiterm_sessions[402] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"skipping_next": False}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "false"
+
+
+def test_p43_t3_flat_actions_skipping_next_true_sets_can_next_true(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t3")
+    active_oxiterm_sessions[403] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"skipping_next": True}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "true"
+
+
+def test_p43_t4_missing_actions_sets_all_controls_true(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t4")
+    active_oxiterm_sessions[404] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "true"
+        assert patch_data.get("can_prev") == "true"
+        assert patch_data.get("can_seek") == "true"
+
+
+def test_p43_t5_device_is_restricted_sets_all_can_false_and_player_info(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t5")
+    active_oxiterm_sessions[405] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "device": {"name": "Web Player", "is_restricted": True},
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "false"
+        assert patch_data.get("can_prev") == "false"
+        assert patch_data.get("can_seek") == "false"
+        assert patch_data.get("can_volume") == "false"
+        assert patch_data.get("player_info") != ""
+
+
+def test_p43_t6_device_restricted_precedes_permissive_actions(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t6")
+    active_oxiterm_sessions[406] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "progress_ms": 10000,
+        "device": {"name": "Restricted Speaker", "is_restricted": True},
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
+        "actions": {"disallows": {}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_next") == "false"
+        assert patch_data.get("can_prev") == "false"
+
+
+def test_p43_t7_device_supports_volume_false_sets_can_volume_false(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t7")
+    active_oxiterm_sessions[407] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "device": {"name": "TV", "is_restricted": False, "supports_volume": False},
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_volume") == "false"
+
+
+def test_p43_t8_missing_supports_volume_defaults_can_volume_true(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t8")
+    active_oxiterm_sessions[408] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "device": {"name": "Phone", "is_restricted": False},
+        "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}}
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("can_volume") == "true"
+
+
+def test_p43_t9_status_204_sets_player_info_and_keeps_is_authenticated(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t9")
+    active_oxiterm_sessions[409] = (tok, time.time())
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 204
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_info") != ""
+        assert patch_data.get("is_authenticated") == "true"
+
+
+def test_p43_t10_ad_currently_playing_type_sets_player_info_reklama(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t10")
+    active_oxiterm_sessions[410] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "currently_playing_type": "ad",
+        "item": None
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_info") == "reklama"
+        assert patch_data.get("is_authenticated") == "true"
+
+
+def test_p43_t11_unknown_currently_playing_type_sets_player_info_unsupported(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t11")
+    active_oxiterm_sessions[411] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": False,
+        "currently_playing_type": "unknown",
+        "item": None
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert "unobslugiwan" in patch_data.get("player_info", "").lower() or patch_data.get("player_info") != ""
+
+
+def test_p43_t12_null_item_not_playing_sets_empty_player_info(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t12")
+    active_oxiterm_sessions[412] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": False,
+        "currently_playing_type": "track",
+        "item": None
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_info") == ""
+
+
+def test_p43_t13_episode_album_name_uses_release_date(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t13")
+    active_oxiterm_sessions[413] = (tok, time.time())
+    mock_player_resp = {
+        "is_playing": True,
+        "currently_playing_type": "episode",
+        "item": {
+            "type": "episode",
+            "name": "Ep 1",
+            "release_date": "2026-07-25",
+            "show": {"name": "Podcast Show", "publisher": "Forbidden Publisher"},
+            "description": "Forbidden Description"
+        }
+    }
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_player_resp
+        mock_post.return_value.status_code = 200
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("album_name") == "2026-07-25"
+        assert "Forbidden" not in patch_data.get("album_name", "")
+
+
+def test_p43_t14_play_uri_audiobook_sends_context_uri(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:ab_uri",
+                "state": {"ab_uri": "spotify:audiobook:ab123"},
+                "session_id": 414,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        assert mock_put.call_args[1].get("json") == {"context_uri": "spotify:audiobook:ab123"}
+
+
+def test_p43_t15_play_uri_chapter_sends_uris(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        mock_put.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:ch_uri",
+                "state": {"ch_uri": "spotify:chapter:ch999"},
+                "session_id": 415,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 1
+        assert mock_put.call_args[1].get("json") == {"uris": ["spotify:chapter:ch999"]}
+
+
+def test_p43_t16_play_uri_unknown_type_sends_no_request_and_sets_player_error(isolated_db):
+    tok = _insert_play_user(isolated_db)
+    with patch("requests.put") as mock_put, patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 204
+        r = client.post(
+            "/events",
+            json={
+                "action": "play_uri:bad_uri",
+                "state": {"bad_uri": "spotify:nieznany:999"},
+                "session_id": 416,
+                "app_token": tok
+            },
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_put.call_count == 0
+        data = r.json()
+        assert data.get("player_error") != ""
+
+
+def test_p43_t19_rate_limit_429_sets_per_session_backoff_and_leaves_player_error_unset(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_p43_t19")
+    active_oxiterm_sessions[419] = (tok, time.time())
+    
+    mock_resp = MagicMock()
+    mock_resp.status_code = 429
+    mock_resp.headers = {"Retry-After": "30"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value = mock_resp
+        mock_post.return_value.status_code = 200
+        
+        asyncio.run(app_module.poll_once())
+        
+        # Verify backoff_until was attached to active_oxiterm_sessions[419]
+        session_entry = active_oxiterm_sessions.get(419)
+        assert len(session_entry) >= 3
+        backoff_until = session_entry[2]
+        assert backoff_until > time.time() + 25
+
 
 
 

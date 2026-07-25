@@ -165,51 +165,114 @@ def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 48) -> 
     dur_str = f"{dur_sec // 60:02d}:{dur_sec % 60:02d}"
     return f"[{bar}] {prog_str} / {dur_str}"
 
-def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
+def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None) -> Dict[str, str]:
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
         r = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
+        if r.status_code == 429:
+            retry_hdr = r.headers.get("Retry-After")
+            try:
+                retry_sec = int(retry_hdr) if retry_hdr else 10
+            except (ValueError, TypeError):
+                retry_sec = 10
+            logger.warning(f"Spotify API 429 Rate Limit encountered. Backoff {retry_sec}s for session {session_id}")
+            if session_id and session_id in active_oxiterm_sessions:
+                entry = active_oxiterm_sessions[session_id]
+                active_oxiterm_sessions[session_id] = (entry[0], entry[1], time.time() + retry_sec)
+            return {
+                "is_authenticated": "true",
+                "player_info": "Zbyt wiele zapytań — czekam na Spotify",
+                "player_error": ""
+            }
+
         if r.status_code == 200:
             pb = r.json()
             if pb:
                 item = pb.get("item")
                 item_type = item.get("type") if item else None
+                curr_type = pb.get("currently_playing_type")
 
+                # 1. Device resolution (K-10, K-11)
+                device_obj = pb.get("device") or {}
+                device_name = device_obj.get("name", "Brak urządzenia")
+                is_restricted = device_obj.get("is_restricted", False)
+                supports_vol = device_obj.get("supports_volume", True)
+
+                # 2. Actions resolution (K-8)
+                actions = pb.get("actions") or {}
+                if "disallows" in actions:
+                    disallows = actions.get("disallows") or {}
+                    can_next = "false" if disallows.get("skipping_next", False) else "true"
+                    can_prev = "false" if disallows.get("skipping_prev", False) else "true"
+                    can_seek = "false" if disallows.get("seeking", False) else "true"
+                elif actions:
+                    can_next = "true" if actions.get("skipping_next", True) else "false"
+                    can_prev = "true" if actions.get("skipping_prev", True) else "false"
+                    can_seek = "true" if actions.get("seeking", True) else "false"
+                else:
+                    can_next = "true"
+                    can_prev = "true"
+                    can_seek = "true"
+
+                if is_restricted:
+                    can_next = "false"
+                    can_prev = "false"
+                    can_seek = "false"
+                    can_volume = "false"
+                    device_restricted = "true"
+                    player_info = "urządzenie nie przyjmuje poleceń"
+                else:
+                    device_restricted = "false"
+                    can_volume = "true" if supports_vol else "false"
+                    player_info = ""
+
+                # 3. Item & Player Info classification (K-9, K-12, K-15, K-17, K-18)
                 if item and item_type == "episode":
                     track_name = item.get("name", "Brak tytułu")
                     show_obj = item.get("show") or {}
                     artists = show_obj.get("name", "Podcast")
-                    album_name = show_obj.get("publisher", "")
+                    album_name = item.get("release_date", "")
                 elif item and item_type == "track":
                     track_name = item.get("name", "Brak tytułu")
                     artists = ", ".join([a["name"] for a in item.get("artists", [])])
                     album_name = item.get("album", {}).get("name", "Album")
-                else:
-                    curr_type = pb.get("currently_playing_type")
-                    if curr_type and curr_type != "unknown":
-                        logger.warning(f"Playback item is null for currently_playing_type '{curr_type}'")
-                    track_name = "Brak odtwarzania"
+                elif item:
+                    track_name = "Treść nieobsługiwana"
                     artists = "-"
                     album_name = "-"
+                    if not is_restricted:
+                        player_info = "typ treści nieobsługiwany przez API Spotify"
+                else: # item is null
+                    if curr_type == "ad":
+                        track_name = "Reklama"
+                        artists = "-"
+                        album_name = "-"
+                        if not is_restricted:
+                            player_info = "reklama"
+                    elif curr_type and curr_type not in ("track", "episode"):
+                        track_name = "Nieobsługiwany typ"
+                        artists = "-"
+                        album_name = "-"
+                        if not is_restricted:
+                            player_info = "typ treści nieobsługiwany przez API Spotify"
+                    else:
+                        track_name = "Brak odtwarzania"
+                        artists = "-"
+                        album_name = "-"
+                        if not is_restricted:
+                            player_info = ""
 
-                device = pb.get("device", {}).get("name", "Brak urządzenia") if pb.get("device") else "Brak urządzenia"
                 is_playing = pb.get("is_playing", False)
                 progress_ms = pb.get("progress_ms", 0) or 0
                 duration_ms = item.get("duration_ms", 1) if item else 1
-                volume = pb.get("device", {}).get("volume_percent", 50) if pb.get("device") else 50
-
-                actions = pb.get("actions") or {}
-                disallows = actions.get("disallows") or {}
-                can_next = "false" if disallows.get("skipping_next") else "true"
-                can_prev = "false" if disallows.get("skipping_prev") else "true"
-                can_seek = "false" if disallows.get("seeking") else "true"
+                volume = device_obj.get("volume_percent", 50)
 
                 return {
                     "is_authenticated": "true",
                     "track_name": track_name[:35],
                     "artist_name": artists[:35],
                     "album_name": album_name[:35],
-                    "device_name": f"📱 {device}",
+                    "device_name": f"📱 {device_name}",
                     "is_playing": "true" if is_playing else "false",
                     "play_icon": "❚❚ Pause" if is_playing else "Play",
                     "progress_bar": render_progress_bar(progress_ms, duration_ms),
@@ -217,6 +280,9 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
                     "can_next": can_next,
                     "can_prev": can_prev,
                     "can_seek": can_seek,
+                    "can_volume": can_volume,
+                    "device_restricted": device_restricted,
+                    "player_info": player_info,
                     "player_error": ""
                 }
         elif r.status_code == 204:
@@ -233,6 +299,9 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
                 "can_next": "true",
                 "can_prev": "true",
                 "can_seek": "true",
+                "can_volume": "true",
+                "device_restricted": "false",
+                "player_info": "brak aktywnego urządzenia — dotknij telefonu",
                 "player_error": ""
             }
         else:
@@ -250,6 +319,9 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
                 "can_next": "true",
                 "can_prev": "true",
                 "can_seek": "true",
+                "can_volume": "true",
+                "device_restricted": "false",
+                "player_info": "",
                 "player_error": f"Błąd Spotify ({r.status_code})"
             }
     except Exception as e:
@@ -268,6 +340,9 @@ def fetch_playback_for_user(access_token: str) -> Dict[str, str]:
         "can_next": "true",
         "can_prev": "true",
         "can_seek": "true",
+        "can_volume": "true",
+        "device_restricted": "false",
+        "player_info": "",
         "player_error": "Błąd połączenia"
     }
 
@@ -371,6 +446,11 @@ async def spotify_callback(code: Optional[str] = None, state: Optional[str] = No
         logger.error(f"OAuth Callback processing error: {e}")
         return HTMLResponse(content="<h2>Błąd autoryzacji OAuth</h2>", status_code=400)
 
+def generate_auth_url(session_id: int) -> str:
+    oauth_state = secrets.token_hex(16)
+    pending_oauth_states[oauth_state] = (session_id, time.time())
+    return f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={oauth_state}&show_dialog=true"
+
 @app.on_event("startup")
 async def start_background_loop():
     asyncio.create_task(poll_spotify_and_push_patches())
@@ -384,10 +464,14 @@ async def poll_once():
             headers = {}
             if OXITERM_APP_TOKEN:
                 headers["Authorization"] = f"Bearer {OXITERM_APP_TOKEN}"
-            for sid, (stoken, _) in list(active_oxiterm_sessions.items()):
+            for sid, sess_entry in list(active_oxiterm_sessions.items()):
+                stoken = sess_entry[0]
+                backoff_until = sess_entry[2] if len(sess_entry) >= 3 else 0.0
+                if time.time() < backoff_until:
+                    continue
                 user = await loop.run_in_executor(None, lambda st=stoken: get_user_by_session_token(st))
                 if user and user.get("access_token"):
-                    patch = await loop.run_in_executor(None, lambda tok=user["access_token"]: fetch_playback_for_user(tok))
+                    patch = await loop.run_in_executor(None, lambda tok=user["access_token"], s=sid: fetch_playback_for_user(tok, session_id=s))
                     patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
                     if last_sent_app_token.get(sid) != user["session_token"]:
                         patch["set_app_token"] = user["session_token"]
@@ -399,7 +483,11 @@ async def poll_once():
                             active_oxiterm_sessions.pop(sid, None)
                             last_sent_app_token.pop(sid, None)
                         elif r.status_code == 200:
-                            active_oxiterm_sessions[sid] = (stoken, time.time())
+                            entry = active_oxiterm_sessions.get(sid)
+                            if entry and len(entry) >= 3 and entry[2] > time.time():
+                                active_oxiterm_sessions[sid] = (stoken, time.time(), entry[2])
+                            else:
+                                active_oxiterm_sessions[sid] = (stoken, time.time())
                         else:
                             logger.warning(f"Push patch to session {sid} returned status {r.status_code}")
                     except Exception as push_err:
@@ -425,31 +513,25 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
     user = get_user_by_session_token(app_token) if app_token else None
     
     if user:
-        active_oxiterm_sessions[session_id] = (user["session_token"], time.time())
+        entry = active_oxiterm_sessions.get(session_id)
+        if entry and len(entry) >= 3 and entry[2] > time.time():
+            active_oxiterm_sessions[session_id] = (user["session_token"], time.time(), entry[2])
+        else:
+            active_oxiterm_sessions[session_id] = (user["session_token"], time.time())
     
     patch = {}
     
     # 1. Action: trigger_login
     if action == "trigger_login":
-        oauth_state = secrets.token_hex(16)
-        pending_oauth_states[oauth_state] = (session_id, time.time())
-        auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={oauth_state}&show_dialog=true"
-        logger.info(f"Generated Spotify OAuth URL for session {session_id}")
-        patch["auth_msg"] = "Link autoryzacji wygenerowany!"
+        auth_url = generate_auth_url(session_id)
         patch["auth_url"] = auth_url
 
-    # 1b. Action: trigger_open (web sessions — opens browser via open_url → 0x33 frame)
+    # 2. Action: trigger_open
     elif action == "trigger_open":
-        oauth_state = secrets.token_hex(16)
-        pending_oauth_states[oauth_state] = (session_id, time.time())
-        auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={quote(REDIRECT_URI)}&scope={quote(SCOPE)}&state={oauth_state}&show_dialog=true"
-        logger.info(f"Generated Spotify OAuth URL (web open) for session {session_id}")
-        patch["auth_url"] = auth_url
-        # open_url is intercepted by dispatcher.rs before apply_state_patch;
-        # it triggers handle_open_url → opcode 0x33 → browser opens the URL.
+        auth_url = generate_auth_url(session_id)
         patch["open_url"] = auth_url
 
-    # 2. Action: logout
+    # 2b. Action: logout
     elif action == "logout":
         if app_token:
             delete_user_session(app_token)
@@ -463,20 +545,21 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
         patch["album_name"] = "-"
         patch["device_name"] = "-"
 
-    # 3. Action: set_tab
-    elif action.startswith("set:tab=") or action.startswith("tab:"):
-        tab_name = action.split("=", 1)[1] if "=" in action else action.split(":", 1)[1]
+    # 3. Action: set:tab=...
+    elif action.startswith("set:tab="):
+        tab_name = action.split("=", 1)[1]
         patch["tab"] = tab_name
         if tab_name == "playlists" and user:
             try:
                 headers = {"Authorization": f"Bearer {user['access_token']}"}
-                r = requests.get("https://api.spotify.com/v1/me/playlists?limit=6", headers=headers, timeout=3)
+                r = requests.get("https://api.spotify.com/v1/me/playlists?limit=5", headers=headers, timeout=3)
                 if r.status_code == 200:
-                    items = r.json().get("items", [])
-                    for i in range(1, 7):
-                        if i <= len(items):
-                            item = items[i-1]
-                            patch[f"pl_{i}_name"] = item.get("name", "")[:30]
+                    playlists = r.json().get("items", [])
+                    patch["playlists_count"] = str(len(playlists))
+                    for i in range(1, 6):
+                        if i <= len(playlists):
+                            item = playlists[i-1]
+                            patch[f"pl_{i}_name"] = item.get("name", "")[:25]
                             patch[f"pl_{i}_uri"] = item.get("uri", "")
                             patch[f"pl_{i}_show"] = "true"
                         else:
@@ -555,9 +638,9 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
             parts = uri.split(":")
             if len(parts) >= 3 and parts[0] == "spotify":
                 type_seg = parts[1]
-                if type_seg in ("playlist", "album", "show", "artist"):
+                if type_seg in ("playlist", "album", "show", "artist", "audiobook"):
                     payload_data = {"context_uri": uri}
-                elif type_seg in ("track", "episode"):
+                elif type_seg in ("track", "episode", "chapter"):
                     payload_data = {"uris": [uri]}
                 else:
                     logger.warning(f"play_uri: unsupported URI type '{type_seg}' for URI '{uri}' in session {session_id}")
@@ -639,7 +722,7 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
     # Merge active playback state if user is logged in
     if user and action != "logout":
         saved_error = patch.get("player_error")
-        playback_patch = fetch_playback_for_user(user["access_token"])
+        playback_patch = fetch_playback_for_user(user["access_token"], session_id=session_id)
         playback_patch["auth_status"] = f"Zalogowano: {user['display_name'][:20]}"
         patch.update(playback_patch)
         if saved_error is not None and saved_error != "":

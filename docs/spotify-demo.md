@@ -156,3 +156,35 @@ spotify-app-server/
 
 > [!NOTE]
 > `examples/` contains isolated single-feature engine demos (SVG, Lottie, Rive widget, input fields). `spotify-app-server/` is a complete end-to-end application demonstrating what can be built on top of the engine.
+
+---
+
+## Technical Appendix: Episodes, Controls, and API Limitations (Plan 4.3)
+
+### 1. Podcast & Episode Metadata
+Playback requests include `additional_types=episode` across all `/v1/me/player` endpoints:
+- **Episode Title**: mapped to `track_name` from `item.name`.
+- **Show Name**: mapped to `artist_name` from `item.show.name`.
+- **Release Date**: mapped to `album_name` from `item.release_date` (or empty string if absent). Note: `show.publisher` is deprecated by Spotify and is not used.
+
+### 2. Audiobooks and Chapter Limitations
+- **Catalog URIs**: `play_uri` supports `spotify:audiobook:<id>` (`context_uri`) and `spotify:chapter:<id>` (`uris`).
+- **API Limitation**: The Spotify `/v1/me/player` Web API endpoint only supports `currently_playing_type` values `track`, `episode`, `ad`, and `unknown`. Chapters cannot be un-marshalled from playback state. When an unsupported type is active, `player_info` displays `"typ treści nieobsługiwany przez API Spotify"` while maintaining session authentication (`is_authenticated: true`).
+
+### 3. Dynamic Player State Classification (`player_info`)
+The `player_info` key carries user-facing notifications for specific playback states:
+- **Inactive Device (HTTP 204)**: `"brak aktywnego urządzenia — dotknij telefonu"`
+- **Restricted Device (`device.is_restricted`)**: `"urządzenie nie przyjmuje poleceń"`
+- **Ad Playback (`currently_playing_type == "ad"`)**: `"reklama"`
+- **Unsupported Type**: `"typ treści nieobsługiwany przez API Spotify"`
+- **Normal Idle / Active Track**: `""` (empty string)
+
+### 4. Dual `actions` Structure & Device Precedence
+- **Disallows Resolution**: Checks `actions.disallows` first (where `true` means blocked), then flat `actions` boolean flags (where `true` means allowed), defaulting to `true` if `actions` is omitted.
+- **Device Precedence**: If `device.is_restricted` is `true`, all controls (`can_next`, `can_prev`, `can_seek`, `can_volume`) are forced to `"false"` regardless of `actions`.
+- **Volume Support**: If `device.supports_volume` is `false`, `can_volume` is set to `"false"`.
+
+### 5. Rate Limit Backoff & Decision Notes
+- **HTTP 429 Rate Limiting**: Managed per-session via the `Retry-After` header without populating `player_error`.
+- **Scope Note (`resume_point`)**: `resume_position_ms` is omitted to avoid introducing `user-read-playback-position` scope, which would invalidate active user refresh tokens and force re-authentication.
+

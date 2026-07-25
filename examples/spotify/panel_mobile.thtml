@@ -18,9 +18,12 @@
         <text bind-state="pl_2_uri"></text>
         <text bind-state="pl_3_uri"></text>
         <text bind-state="player_error"></text>
+        <text bind-state="player_info"></text>
         <text bind-state="can_next"></text>
         <text bind-state="can_prev"></text>
         <text bind-state="can_seek"></text>
+        <text bind-state="can_volume"></text>
+        <text bind-state="device_restricted"></text>
     </box>
 
     <!-- Mobile Header — always visible -->
