@@ -22,18 +22,32 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
-    """
-    Each test gets a fresh, isolated SQLite database rooted in pytest's tmp_path.
-    Prevents test_10 / test_16 inserts from contaminating the production .cache/spotify_app.db.
-    """
     test_db = str(tmp_path / "test_spotify.db")
     monkeypatch.setattr(app_module, "DB_PATH", test_db)
     init_db()
     pending_oauth_states.clear()
     active_oxiterm_sessions.clear()
+    app_module.last_sent_app_token.clear()
+    from poller import poller_manager
+    from spotify_api import spotify_api_client
+    poller_manager.accounts.clear()
+    poller_manager.watched_sessions.clear()
+    poller_manager.unwatched_sessions.clear()
+    poller_manager.last_sent_progress.clear()
+    poller_manager.last_sent_app_token.clear()
+    spotify_api_client._history.clear()
+    spotify_api_client._breaker_until_mono_ms = 0
     yield test_db
     pending_oauth_states.clear()
     active_oxiterm_sessions.clear()
+    app_module.last_sent_app_token.clear()
+    poller_manager.accounts.clear()
+    poller_manager.watched_sessions.clear()
+    poller_manager.unwatched_sessions.clear()
+    poller_manager.last_sent_progress.clear()
+    poller_manager.last_sent_app_token.clear()
+    spotify_api_client._history.clear()
+    spotify_api_client._breaker_until_mono_ms = 0
 
 # ---------------------------------------------------------------------------
 # Helper: mock Spotify token + profile exchange
@@ -572,13 +586,13 @@ def test_p41_t7_session_transition_unauthenticated_to_authenticated_emits_set_ap
 # PLAN 4.2 Part A Tests (T-1 .. T-8)
 # ---------------------------------------------------------------------------
 
-def _insert_play_user(db_path, tok="stoken_play_test"):
+def _insert_play_user(db_path, tok="stoken_play_test", user_id="user_play"):
     with sqlite3.connect(db_path) as conn:
         conn.execute("""
             INSERT OR REPLACE INTO users
                 (spotify_user_id, display_name, access_token, refresh_token, expires_at, session_token, last_seen)
-            VALUES ('user_play', 'User Play', 'acc_play', 'ref_play', 9999999999, ?, 9999999999)
-        """, (tok,))
+            VALUES (?, 'User Play', 'acc_play', 'ref_play', 9999999999, ?, 9999999999)
+        """, (user_id, tok))
         conn.commit()
     return tok
 
@@ -1388,103 +1402,166 @@ def test_p43_t16_play_uri_unknown_type_sends_no_request_and_sets_player_error(is
         assert data.get("player_error") != ""
 
 
-def test_p43_t19_rate_limit_429_sets_per_session_backoff_and_leaves_player_error_unset(isolated_db):
-    tok = _insert_play_user(isolated_db, tok="stoken_p43_t19")
-    active_oxiterm_sessions[419] = (tok, time.time())
-    
-    mock_resp = MagicMock()
-    mock_resp.status_code = 429
-    mock_resp.headers = {"Retry-After": "30"}
+def test_g3_429_during_poll_once_with_two_accounts(isolated_db):
+    tok1 = _insert_play_user(isolated_db, tok="stoken_g3_1", user_id="u_g3_1")
+    tok2 = _insert_play_user(isolated_db, tok="stoken_g3_2", user_id="u_g3_2")
+
+    active_oxiterm_sessions[4191] = (tok1, time.time())
+    active_oxiterm_sessions[4192] = (tok2, time.time())
+
+    mock_resp_429 = MagicMock()
+    mock_resp_429.status_code = 429
+    mock_resp_429.headers = {"Retry-After": "4500"}
 
     with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
-        mock_get.return_value = mock_resp
+        mock_get.return_value = mock_resp_429
         mock_post.return_value.status_code = 200
-        
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
+
         asyncio.run(app_module.poll_once())
-        
-        # Verify backoff_until was attached to active_oxiterm_sessions[419]
-        session_entry = active_oxiterm_sessions.get(419)
-        assert len(session_entry) >= 3
-        backoff_until = session_entry[2]
-        assert backoff_until > time.time() + 25
+
+        # First account hit 429, setting global breaker. Second account was NOT fetched in same cycle.
+        assert mock_get.call_count == 1
+        assert len(active_oxiterm_sessions[4191]) == 2
+        assert len(active_oxiterm_sessions[4192]) == 2
 
 
-def test_f1_status_200_empty_body_returns_inactive_player(isolated_db):
-    tok = _insert_play_user(isolated_db, tok="stoken_f1")
+def test_31_vol_up_with_model_present(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_t31", user_id="u_t31")
+    acc = app_module.poller_manager.accounts.get("u_t31")
+    if not acc:
+        app_module.poller_manager.register_session(310, "u_t31", "acc_t31", tok)
+        acc = app_module.poller_manager.accounts["u_t31"]
+    
+    acc.model = app_module.parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "device": {"volume_percent": 50},
+        "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
+    }, app_module.now_mono_ms())
+
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_put.return_value.status_code = 200
+        r = client.post(
+            "/events",
+            json={"action": "vol_up", "session_id": 310, "app_token": tok},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_get.call_count == 0
+        assert mock_put.call_count == 1
+        assert "volume?volume_percent=60" in mock_put.call_args[0][0]
+        data = r.json()
+        assert data.get("volume") == "60%"
+
+
+def test_32_seek_fwd_with_model_present(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_t32", user_id="u_t32")
+    app_module.poller_manager.register_session(320, "u_t32", "acc_t32", tok)
+    acc = app_module.poller_manager.accounts["u_t32"]
+    
+    acc.model = app_module.parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
+    }, app_module.now_mono_ms())
+
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_put.return_value.status_code = 200
+        r = client.post(
+            "/events",
+            json={"action": "seek_fwd", "session_id": 320, "app_token": tok},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_get.call_count == 0
+        assert mock_put.call_count == 1
+        assert "seek?position_ms=" in mock_put.call_args[0][0]
+
+
+def test_33_player_toggle_with_playing_model(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_t33", user_id="u_t33")
+    app_module.poller_manager.register_session(330, "u_t33", "acc_t33", tok)
+    acc = app_module.poller_manager.accounts["u_t33"]
+    
+    acc.model = app_module.parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
+    }, app_module.now_mono_ms())
+
+    with patch("requests.get") as mock_get, patch("requests.put") as mock_put:
+        mock_put.return_value.status_code = 200
+        r = client.post(
+            "/events",
+            json={"action": "player_toggle", "session_id": 330, "app_token": tok},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_get.call_count == 0
+        assert mock_put.call_count == 1
+        assert "pause" in mock_put.call_args[0][0]
+        data = r.json()
+        assert data.get("is_playing") == "false"
+
+
+def test_34_command_resets_ladder_no_inline_fetch(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_t34", user_id="u_t34")
+    app_module.poller_manager.register_session(340, "u_t34", "acc_t34", tok)
+    acc = app_module.poller_manager.accounts["u_t34"]
+    acc.model = app_module.parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
+    }, app_module.now_mono_ms())
+    acc.ladder_cursor = 5
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        r = client.post(
+            "/events",
+            json={"action": "player_next", "session_id": 340, "app_token": tok},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_get.call_count == 0
+        assert acc.ladder_cursor == 0
+
+
+def test_35_set_tab_player_no_spotify_call(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_t35", user_id="u_t35")
+    app_module.poller_manager.register_session(350, "u_t35", "acc_t35", tok)
+    acc = app_module.poller_manager.accounts["u_t35"]
+    acc.model = app_module.parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "uri": "t1", "name": "Model Song", "duration_ms": 180000}
+    }, app_module.now_mono_ms())
+
     with patch("requests.get") as mock_get:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {}
-        mock_get.return_value = mock_resp
-
-        res = app_module.fetch_playback_for_user("acc_tok_f1")
-        assert res.get("is_authenticated") == "true"
-        assert res.get("track_name") == "Brak aktywnego odtwarzacza"
-        assert res.get("player_error") == ""
-
-
-def test_f2_logger_exception_called_on_playback_error(isolated_db):
-    with patch("requests.get") as mock_get, patch.object(app_module.logger, "exception") as mock_log_exc:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.side_effect = ValueError("Corrupted JSON body")
-        mock_get.return_value = mock_resp
-
-        res = app_module.fetch_playback_for_user("acc_tok_f2")
-        assert res.get("player_error") == "Błąd połączenia"
-        assert mock_log_exc.called
+        r = client.post(
+            "/events",
+            json={"action": "set:tab=player", "session_id": 350, "app_token": tok},
+            headers={"Authorization": "Bearer test_secret_token_123"}
+        )
+        assert r.status_code == 200
+        assert mock_get.call_count == 0
+        data = r.json()
+        assert data.get("track_name") == "Model Song"
+        assert data.get("tab") == "player"
 
 
-def test_f3_null_fields_in_item_and_device_handled_safely(isolated_db):
-    # Test track with null name, null artist name, null album name, null device name
-    pb_track_nulls = {
-        "is_playing": True,
-        "currently_playing_type": "track",
-        "device": {"name": None, "supports_volume": True},
-        "item": {
-            "type": "track",
-            "name": None,
-            "artists": [{"name": None}],
-            "album": {"name": None},
-            "duration_ms": 120000
+def test_37_budget_log_emitted_per_cycle(isolated_db, caplog):
+    tok = _insert_play_user(isolated_db, tok="stoken_t37", user_id="u_t37")
+    active_oxiterm_sessions[370] = (tok, time.time())
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post, caplog.at_level("INFO"):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "is_playing": True, "progress_ms": 5000,
+            "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
         }
-    }
-    with patch("requests.get") as mock_get:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = pb_track_nulls
-        mock_get.return_value = mock_resp
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
 
-        res = app_module.fetch_playback_for_user("acc_tok_f3")
-        assert res.get("track_name") == "Brak tytułu"
-        assert res.get("artist_name") == "Nieznany wykonawca"
-        assert res.get("album_name") == "Album"
-        assert res.get("device_name") == "📱 Brak urządzenia"
-        assert res.get("player_error") == ""
+        asyncio.run(app_module.poll_once())
+        assert any("Spotify API budget:" in record.message for record in caplog.records)
 
-    # Test episode with null name, null show name, null release_date
-    pb_ep_nulls = {
-        "is_playing": True,
-        "currently_playing_type": "episode",
-        "item": {
-            "type": "episode",
-            "name": None,
-            "show": {"name": None, "publisher": None},
-            "release_date": None,
-            "duration_ms": 180000
-        }
-    }
-    with patch("requests.get") as mock_get:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = pb_ep_nulls
-        mock_get.return_value = mock_resp
-
-        res = app_module.fetch_playback_for_user("acc_tok_f3_ep")
-        assert res.get("track_name") == "Brak tytułu"
-        assert res.get("artist_name") == "Podcast"
-        assert res.get("album_name") == ""
-        assert res.get("player_error") == ""
 
 
 

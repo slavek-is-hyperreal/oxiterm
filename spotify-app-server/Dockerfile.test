@@ -6,7 +6,14 @@ COPY spotify-app-server/requirements-test.txt .
 RUN pip install --no-cache-dir -r requirements-test.txt
 
 COPY spotify-app-server/app.py .
+COPY spotify-app-server/clock.py .
+COPY spotify-app-server/spotify_api.py .
+COPY spotify-app-server/playback.py .
+COPY spotify-app-server/render.py .
+COPY spotify-app-server/poller.py .
 COPY spotify-app-server/test_app.py .
+COPY spotify-app-server/test_playback.py .
+COPY spotify-app-server/test_polling.py .
 COPY examples/spotify/ ./examples/spotify/
 
-CMD ["python", "-m", "pytest", "test_app.py", "-v"]
+CMD ["python", "-m", "pytest", "-v"]

@@ -525,9 +525,27 @@ pub mod web_impl {
             session.apply_state_patch(patch);
             let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
 
+            let page_val = session.current_page.read().clone();
+            {
+                static LAST_LOGGED: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashMap<usize, Option<String>>>> =
+                    std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashMap::new()));
+                let mut guard = LAST_LOGGED.lock();
+                let prev = guard.get(&session_id);
+                if prev != Some(&page_val) {
+                    info!("Session {} current_page: {:?}", session_id, page_val);
+                    guard.insert(session_id, page_val.clone());
+                }
+            }
+
+            let body_json = serde_json::json!({
+                "page": page_val
+            });
+            let resp_bytes = Bytes::from(body_json.to_string());
+
             return Ok(Response::builder()
                 .status(StatusCode::OK)
-                .body(Full::new(Bytes::from("OK")))
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(Full::new(resp_bytes))
                 .unwrap());
         }
         
@@ -1407,8 +1425,59 @@ pub mod web_impl {
             let mut response = String::new();
             stream.read_to_string(&mut response).await.unwrap();
             assert!(response.contains("200 OK"));
-            
             assert_eq!(session.state.read().get("valid_key"), Some(&crate::state::StateValue::Str("applied".to_string())));
+        }
+
+        #[tokio::test]
+        async fn test_38_patch_endpoint_returns_json_with_current_page() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            *session.current_page.write() = Some("spotify/panel.thtml".to_string());
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let body = r#"{"valid_key": "applied"}"#;
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("200 OK"));
+            assert!(response.contains(r#"{"page":"spotify/panel.thtml"}"#));
+        }
+
+        #[tokio::test]
+        async fn test_39_patch_endpoint_returns_json_with_null_page() {
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            let sid = session.id;
+            *session.current_page.write() = None;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let body = r#"{"valid_key": "applied"}"#;
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("200 OK"));
+            assert!(response.contains(r#"{"page":null}"#));
         }
 
         #[tokio::test]
