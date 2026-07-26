@@ -493,7 +493,7 @@ mod tests {
         let input = r#"<screen><diagram src="examples/assets/flow.mmd" style="width: 20; height: 10;" /></screen>"#;
         let res = THTMLParser::parse(input);
         assert!(res.is_err());
-        let msg = res.unwrap_err().to_string();
+        let msg = res.err().unwrap().to_string();
         assert!(msg.contains("alt"), "Error message must name missing alt attribute, got: {}", msg);
     }
 
@@ -502,7 +502,7 @@ mod tests {
         let input = r#"<screen><diagram src="examples/assets/flow.mmd" alt="Test" preview="cropp" style="width: 20; height: 10;" /></screen>"#;
         let res = THTMLParser::parse(input);
         assert!(res.is_err());
-        let msg = res.unwrap_err().to_string();
+        let msg = res.err().unwrap().to_string();
         assert!(msg.contains("cropp") || msg.contains("preview"), "Error message must name invalid preview value, got: {}", msg);
     }
 
@@ -511,7 +511,7 @@ mod tests {
         let input = r#"<screen><diagram src="examples/assets/flow.mmd" alt="Test" preview="minimap" preview-anchor="nodeA" style="width: 20; height: 10;" /></screen>"#;
         let res = THTMLParser::parse(input);
         assert!(res.is_err());
-        let msg = res.unwrap_err().to_string();
+        let msg = res.err().unwrap().to_string();
         assert!(msg.contains("preview-anchor"), "Error message must name preview-anchor error, got: {}", msg);
     }
 

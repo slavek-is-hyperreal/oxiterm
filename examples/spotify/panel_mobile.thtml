@@ -73,11 +73,12 @@
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
                 <text class="txt-muted" bind-state="progress_bar" style="margin-top: 1;">[--------] 00:00</text>
+                <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
                 </box>
             </box>
 
@@ -85,11 +86,12 @@
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
                 <text class="txt-muted" bind-state="progress_bar" style="margin-top: 1;">[--------] 00:00</text>
+                <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
                 </box>
             </box>
 

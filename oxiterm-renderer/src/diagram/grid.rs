@@ -244,12 +244,14 @@ impl CellGrid {
         if let Some(anchor_id) = anchor {
             // Anchor node must be inside crop window
             if let Some(anchor_pos) = layout.get_node(anchor_id) {
+                let center_x = anchor_pos.col + anchor_pos.width / 2;
+                let center_y = anchor_pos.row + anchor_pos.height / 2;
                 for y0 in 0..=max_y0 {
                     for x0 in 0..=max_x0 {
-                        let contains_anchor = x0 <= anchor_pos.col
-                            && anchor_pos.col < x0 + w
-                            && y0 <= anchor_pos.row
-                            && anchor_pos.row < y0 + h;
+                        let contains_anchor = x0 <= center_x
+                            && center_x < x0 + w
+                            && y0 <= center_y
+                            && center_y < y0 + h;
                         if contains_anchor {
                             let cnt = count_non_empty(x0, y0);
                             if !found_candidate || cnt > max_count {
