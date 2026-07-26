@@ -7,6 +7,7 @@
 .txt-green    { fg: #1DB954; height: 1; }
 .txt-white    { fg: #FFFFFF; height: 1; }
 .txt-muted    { fg: #B3B3B3; height: 1; }
+.txt-err      { fg: #FF5555; height: 1; }
 </style>
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #121212;">
@@ -106,6 +107,7 @@
                 <text class="txt-white" bind-state="artist_name" style="height: 1; margin-top: 1;">Wykonawca</text>
                 <text class="txt-muted" bind-state="album_name" style="height: 1; margin-top: 1;">Album</text>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="height: 1; margin-top: 1;"></text>
+                <text class="txt-err" bind-show="player_error" bind-state="player_error" style="height: 1; margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
                     <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
@@ -119,6 +121,7 @@
                 <text class="txt-white" bind-state="artist_name" style="height: 1; margin-top: 1;">Wykonawca</text>
                 <text class="txt-muted" bind-state="album_name" style="height: 1; margin-top: 1;">Album</text>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="height: 1; margin-top: 1;"></text>
+                <text class="txt-err" bind-show="player_error" bind-state="player_error" style="height: 1; margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
                     <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
