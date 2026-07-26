@@ -1097,14 +1097,14 @@ def test_p43_t1_disallows_skipping_next_true_sets_can_next_false(isolated_db):
         assert patch_data.get("can_next") == "false"
 
 
-def test_p43_t2_flat_actions_skipping_next_false_sets_can_next_false(isolated_db):
+def test_p43_t2_flat_actions_skipping_next_true_sets_can_next_false(isolated_db):
     tok = _insert_play_user(isolated_db, tok="stoken_p43_t2")
     active_oxiterm_sessions[402] = (tok, time.time())
     mock_player_resp = {
         "is_playing": True,
         "progress_ms": 10000,
         "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
-        "actions": {"skipping_next": False}
+        "actions": {"skipping_next": True}
     }
     with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
         mock_get.return_value.status_code = 200
@@ -1116,14 +1116,14 @@ def test_p43_t2_flat_actions_skipping_next_false_sets_can_next_false(isolated_db
         assert patch_data.get("can_next") == "false"
 
 
-def test_p43_t3_flat_actions_skipping_next_true_sets_can_next_true(isolated_db):
+def test_p43_t3_flat_actions_skipping_next_false_sets_can_next_true(isolated_db):
     tok = _insert_play_user(isolated_db, tok="stoken_p43_t3")
     active_oxiterm_sessions[403] = (tok, time.time())
     mock_player_resp = {
         "is_playing": True,
         "progress_ms": 10000,
         "item": {"type": "track", "name": "Song", "duration_ms": 100000, "artists": [], "album": {"name": "A"}},
-        "actions": {"skipping_next": True}
+        "actions": {"skipping_next": False}
     }
     with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
         mock_get.return_value.status_code = 200

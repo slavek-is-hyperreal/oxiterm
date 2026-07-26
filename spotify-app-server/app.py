@@ -198,17 +198,14 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
                 is_restricted = device_obj.get("is_restricted", False)
                 supports_vol = device_obj.get("supports_volume", True)
 
-                # 2. Actions resolution (K-8)
+                # 2. Actions resolution (G-1: DisallowsObject polarity, true = forbidden)
                 actions = pb.get("actions") or {}
-                if "disallows" in actions:
-                    disallows = actions.get("disallows") or {}
-                    can_next = "false" if disallows.get("skipping_next", False) else "true"
-                    can_prev = "false" if disallows.get("skipping_prev", False) else "true"
-                    can_seek = "false" if disallows.get("seeking", False) else "true"
-                elif actions:
-                    can_next = "true" if actions.get("skipping_next", True) else "false"
-                    can_prev = "true" if actions.get("skipping_prev", True) else "false"
-                    can_seek = "true" if actions.get("seeking", True) else "false"
+                src = actions.get("disallows") if "disallows" in actions and isinstance(actions.get("disallows"), dict) else actions
+
+                if src:
+                    can_next = "false" if src.get("skipping_next", False) else "true"
+                    can_prev = "false" if src.get("skipping_prev", False) else "true"
+                    can_seek = "false" if src.get("seeking", False) else "true"
                 else:
                     can_next = "true"
                     can_prev = "true"
@@ -269,10 +266,10 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
 
                 return {
                     "is_authenticated": "true",
-                    "track_name": track_name[:35],
-                    "artist_name": artists[:35],
-                    "album_name": album_name[:35],
-                    "device_name": f"📱 {device_name}",
+                    "track_name": (track_name or "")[:35],
+                    "artist_name": (artists or "")[:35],
+                    "album_name": (album_name or "")[:35],
+                    "device_name": f"📱 {(device_name or '')[:35]}",
                     "is_playing": "true" if is_playing else "false",
                     "play_icon": "❚❚ Pause" if is_playing else "Play",
                     "progress_bar": render_progress_bar(progress_ms, duration_ms),
