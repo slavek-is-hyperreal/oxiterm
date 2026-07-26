@@ -187,101 +187,123 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
 
         if r.status_code == 200:
             pb = r.json()
-            if pb:
-                item = pb.get("item")
-                item_type = item.get("type") if item else None
-                curr_type = pb.get("currently_playing_type")
+            if not pb:
+                return {
+                    "is_authenticated": "true",
+                    "track_name": "Brak aktywnego odtwarzacza",
+                    "artist_name": "Włącz muzykę na telefonie/PC",
+                    "album_name": "Spotify Connect",
+                    "device_name": "Brak aktywnego urządzenia",
+                    "is_playing": "false",
+                    "play_icon": "Play",
+                    "progress_bar": render_progress_bar(0, 0),
+                    "volume": "0%",
+                    "can_next": "true",
+                    "can_prev": "true",
+                    "can_seek": "true",
+                    "can_volume": "true",
+                    "device_restricted": "false",
+                    "player_info": "brak aktywnego urządzenia — dotknij telefonu",
+                    "player_error": ""
+                }
 
-                # 1. Device resolution (K-10, K-11)
-                device_obj = pb.get("device") or {}
-                device_name = device_obj.get("name", "Brak urządzenia")
-                is_restricted = device_obj.get("is_restricted", False)
-                supports_vol = device_obj.get("supports_volume", True)
+            item = pb.get("item") if isinstance(pb.get("item"), dict) else None
+            item_type = item.get("type") if item else None
+            curr_type = pb.get("currently_playing_type")
 
-                # 2. Actions resolution (G-1: DisallowsObject polarity, true = forbidden)
-                actions = pb.get("actions") or {}
-                src = actions.get("disallows") if "disallows" in actions and isinstance(actions.get("disallows"), dict) else actions
+            # 1. Device resolution (K-10, K-11)
+            device_obj = pb.get("device") if isinstance(pb.get("device"), dict) else {}
+            device_name = device_obj.get("name") or "Brak urządzenia"
+            is_restricted = device_obj.get("is_restricted") is True
+            supports_vol = device_obj.get("supports_volume") is not False
 
-                if src:
-                    can_next = "false" if src.get("skipping_next", False) else "true"
-                    can_prev = "false" if src.get("skipping_prev", False) else "true"
-                    can_seek = "false" if src.get("seeking", False) else "true"
-                else:
-                    can_next = "true"
-                    can_prev = "true"
-                    can_seek = "true"
+            # 2. Actions resolution (G-1: DisallowsObject polarity, true = forbidden)
+            actions = pb.get("actions") if isinstance(pb.get("actions"), dict) else {}
+            src = actions.get("disallows") if "disallows" in actions and isinstance(actions.get("disallows"), dict) else actions
 
-                if is_restricted:
-                    can_next = "false"
-                    can_prev = "false"
-                    can_seek = "false"
-                    can_volume = "false"
-                    device_restricted = "true"
-                    player_info = "urządzenie nie przyjmuje poleceń"
-                else:
-                    device_restricted = "false"
-                    can_volume = "true" if supports_vol else "false"
-                    player_info = ""
+            if src:
+                can_next = "false" if src.get("skipping_next", False) else "true"
+                can_prev = "false" if src.get("skipping_prev", False) else "true"
+                can_seek = "false" if src.get("seeking", False) else "true"
+            else:
+                can_next = "true"
+                can_prev = "true"
+                can_seek = "true"
 
-                # 3. Item & Player Info classification (K-9, K-12, K-15, K-17, K-18)
-                if item and item_type == "episode":
-                    track_name = item.get("name", "Brak tytułu")
-                    show_obj = item.get("show") or {}
-                    artists = show_obj.get("name", "Podcast")
-                    album_name = item.get("release_date", "")
-                elif item and item_type == "track":
-                    track_name = item.get("name", "Brak tytułu")
-                    artists = ", ".join([a["name"] for a in item.get("artists", [])])
-                    album_name = item.get("album", {}).get("name", "Album")
-                elif item:
-                    track_name = "Treść nieobsługiwana"
+            if is_restricted:
+                can_next = "false"
+                can_prev = "false"
+                can_seek = "false"
+                can_volume = "false"
+                device_restricted = "true"
+                player_info = "urządzenie nie przyjmuje poleceń"
+            else:
+                device_restricted = "false"
+                can_volume = "true" if supports_vol else "false"
+                player_info = ""
+
+            # 3. Item & Player Info classification (K-9, K-12, K-15, K-17, K-18)
+            if item and item_type == "episode":
+                track_name = item.get("name") or "Brak tytułu"
+                show_obj = item.get("show") if isinstance(item.get("show"), dict) else {}
+                artists = show_obj.get("name") or "Podcast"
+                album_name = item.get("release_date") or show_obj.get("publisher") or ""
+            elif item and item_type == "track":
+                track_name = item.get("name") or "Brak tytułu"
+                raw_artists = item.get("artists") if isinstance(item.get("artists"), list) else []
+                artists_list = [str(a.get("name")) for a in raw_artists if isinstance(a, dict) and a.get("name") is not None]
+                artists = ", ".join(artists_list) or "Nieznany wykonawca"
+                album_obj = item.get("album") if isinstance(item.get("album"), dict) else {}
+                album_name = album_obj.get("name") or "Album"
+            elif item:
+                track_name = "Treść nieobsługiwana"
+                artists = "-"
+                album_name = "-"
+                if not is_restricted:
+                    player_info = "typ treści nieobsługiwany przez API Spotify"
+            else: # item is null
+                if curr_type == "ad":
+                    track_name = "Reklama"
+                    artists = "-"
+                    album_name = "-"
+                    if not is_restricted:
+                        player_info = "reklama"
+                elif curr_type and curr_type not in ("track", "episode"):
+                    track_name = "Nieobsługiwany typ"
                     artists = "-"
                     album_name = "-"
                     if not is_restricted:
                         player_info = "typ treści nieobsługiwany przez API Spotify"
-                else: # item is null
-                    if curr_type == "ad":
-                        track_name = "Reklama"
-                        artists = "-"
-                        album_name = "-"
-                        if not is_restricted:
-                            player_info = "reklama"
-                    elif curr_type and curr_type not in ("track", "episode"):
-                        track_name = "Nieobsługiwany typ"
-                        artists = "-"
-                        album_name = "-"
-                        if not is_restricted:
-                            player_info = "typ treści nieobsługiwany przez API Spotify"
-                    else:
-                        track_name = "Brak odtwarzania"
-                        artists = "-"
-                        album_name = "-"
-                        if not is_restricted:
-                            player_info = ""
+                else:
+                    track_name = "Brak odtwarzania"
+                    artists = "-"
+                    album_name = "-"
+                    if not is_restricted:
+                        player_info = ""
 
-                is_playing = pb.get("is_playing", False)
-                progress_ms = pb.get("progress_ms", 0) or 0
-                duration_ms = item.get("duration_ms", 1) if item else 1
-                volume = device_obj.get("volume_percent", 50)
+            is_playing = pb.get("is_playing", False)
+            progress_ms = pb.get("progress_ms", 0) or 0
+            duration_ms = item.get("duration_ms", 1) if item else 1
+            volume = device_obj.get("volume_percent") if isinstance(device_obj.get("volume_percent"), int) else 50
 
-                return {
-                    "is_authenticated": "true",
-                    "track_name": (track_name or "")[:35],
-                    "artist_name": (artists or "")[:35],
-                    "album_name": (album_name or "")[:35],
-                    "device_name": f"📱 {(device_name or '')[:35]}",
-                    "is_playing": "true" if is_playing else "false",
-                    "play_icon": "❚❚ Pause" if is_playing else "Play",
-                    "progress_bar": render_progress_bar(progress_ms, duration_ms),
-                    "volume": f"{volume}%",
-                    "can_next": can_next,
-                    "can_prev": can_prev,
-                    "can_seek": can_seek,
-                    "can_volume": can_volume,
-                    "device_restricted": device_restricted,
-                    "player_info": player_info,
-                    "player_error": ""
-                }
+            return {
+                "is_authenticated": "true",
+                "track_name": str(track_name)[:35] if track_name is not None else "",
+                "artist_name": str(artists)[:35] if artists is not None else "",
+                "album_name": str(album_name)[:35] if album_name is not None else "",
+                "device_name": f"📱 {str(device_name)[:35]}" if device_name is not None else "📱 Brak urządzenia",
+                "is_playing": "true" if is_playing else "false",
+                "play_icon": "❚❚ Pause" if is_playing else "Play",
+                "progress_bar": render_progress_bar(progress_ms, duration_ms),
+                "volume": f"{volume}%",
+                "can_next": can_next,
+                "can_prev": can_prev,
+                "can_seek": can_seek,
+                "can_volume": can_volume,
+                "device_restricted": device_restricted,
+                "player_info": player_info,
+                "player_error": ""
+            }
         elif r.status_code == 204:
             return {
                 "is_authenticated": "true",
@@ -322,7 +344,7 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
                 "player_error": f"Błąd Spotify ({r.status_code})"
             }
     except Exception as e:
-        logger.error(f"Error fetching playback for token: {e}")
+        logger.exception(f"Error fetching playback for token: {e}")
 
     return {
         "is_authenticated": "true",

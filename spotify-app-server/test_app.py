@@ -1409,6 +1409,85 @@ def test_p43_t19_rate_limit_429_sets_per_session_backoff_and_leaves_player_error
         assert backoff_until > time.time() + 25
 
 
+def test_f1_status_200_empty_body_returns_inactive_player(isolated_db):
+    tok = _insert_play_user(isolated_db, tok="stoken_f1")
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {}
+        mock_get.return_value = mock_resp
+
+        res = app_module.fetch_playback_for_user("acc_tok_f1")
+        assert res.get("is_authenticated") == "true"
+        assert res.get("track_name") == "Brak aktywnego odtwarzacza"
+        assert res.get("player_error") == ""
+
+
+def test_f2_logger_exception_called_on_playback_error(isolated_db):
+    with patch("requests.get") as mock_get, patch.object(app_module.logger, "exception") as mock_log_exc:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("Corrupted JSON body")
+        mock_get.return_value = mock_resp
+
+        res = app_module.fetch_playback_for_user("acc_tok_f2")
+        assert res.get("player_error") == "Błąd połączenia"
+        assert mock_log_exc.called
+
+
+def test_f3_null_fields_in_item_and_device_handled_safely(isolated_db):
+    # Test track with null name, null artist name, null album name, null device name
+    pb_track_nulls = {
+        "is_playing": True,
+        "currently_playing_type": "track",
+        "device": {"name": None, "supports_volume": True},
+        "item": {
+            "type": "track",
+            "name": None,
+            "artists": [{"name": None}],
+            "album": {"name": None},
+            "duration_ms": 120000
+        }
+    }
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = pb_track_nulls
+        mock_get.return_value = mock_resp
+
+        res = app_module.fetch_playback_for_user("acc_tok_f3")
+        assert res.get("track_name") == "Brak tytułu"
+        assert res.get("artist_name") == "Nieznany wykonawca"
+        assert res.get("album_name") == "Album"
+        assert res.get("device_name") == "📱 Brak urządzenia"
+        assert res.get("player_error") == ""
+
+    # Test episode with null name, null show name, null release_date
+    pb_ep_nulls = {
+        "is_playing": True,
+        "currently_playing_type": "episode",
+        "item": {
+            "type": "episode",
+            "name": None,
+            "show": {"name": None, "publisher": None},
+            "release_date": None,
+            "duration_ms": 180000
+        }
+    }
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = pb_ep_nulls
+        mock_get.return_value = mock_resp
+
+        res = app_module.fetch_playback_for_user("acc_tok_f3_ep")
+        assert res.get("track_name") == "Brak tytułu"
+        assert res.get("artist_name") == "Podcast"
+        assert res.get("album_name") == ""
+        assert res.get("player_error") == ""
+
+
+
 
 
 
