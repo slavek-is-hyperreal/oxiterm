@@ -247,7 +247,7 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
                 track_name = item.get("name") or "Brak tytułu"
                 show_obj = item.get("show") if isinstance(item.get("show"), dict) else {}
                 artists = show_obj.get("name") or "Podcast"
-                album_name = item.get("release_date") or show_obj.get("publisher") or ""
+                album_name = item.get("release_date") or ""
             elif item and item_type == "track":
                 track_name = item.get("name") or "Brak tytułu"
                 raw_artists = item.get("artists") if isinstance(item.get("artists"), list) else []
