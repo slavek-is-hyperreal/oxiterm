@@ -165,22 +165,71 @@ def render_progress_bar(progress_ms: int, duration_ms: int, width: int = 48) -> 
     dur_str = f"{dur_sec // 60:02d}:{dur_sec % 60:02d}"
     return f"[{bar}] {prog_str} / {dur_str}"
 
+last_known_playback_state: Dict[int, Dict[str, str]] = {}
+
 def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None) -> Dict[str, str]:
+    if session_id and session_id in active_oxiterm_sessions:
+        entry = active_oxiterm_sessions[session_id]
+        if len(entry) >= 3 and time.time() < entry[2]:
+            cached = last_known_playback_state.get(session_id)
+            if cached:
+                res = dict(cached)
+                res["player_info"] = "Zbyt wiele zapytań — czekam na Spotify"
+                return res
+            return {
+                "is_authenticated": "true",
+                "track_name": "Limit zapytań API",
+                "artist_name": "Spotify zablokowało odświeżanie",
+                "album_name": "Odczekaj chwilę",
+                "device_name": "-",
+                "is_playing": "false",
+                "play_icon": "Play",
+                "progress_bar": render_progress_bar(0, 0),
+                "volume": "0%",
+                "can_next": "true",
+                "can_prev": "true",
+                "can_seek": "true",
+                "can_volume": "true",
+                "device_restricted": "false",
+                "player_info": "Zbyt wiele zapytań — czekam na Spotify",
+                "player_error": ""
+            }
+
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
         r = requests.get("https://api.spotify.com/v1/me/player?additional_types=episode", headers=headers, timeout=3)
         if r.status_code == 429:
             retry_hdr = r.headers.get("Retry-After")
             try:
-                retry_sec = int(retry_hdr) if retry_hdr else 10
+                raw_sec = int(retry_hdr) if retry_hdr else 10
+                retry_sec = min(max(raw_sec, 5), 60)
             except (ValueError, TypeError):
                 retry_sec = 10
             logger.warning(f"Spotify API 429 Rate Limit encountered. Backoff {retry_sec}s for session {session_id}")
             if session_id and session_id in active_oxiterm_sessions:
                 entry = active_oxiterm_sessions[session_id]
                 active_oxiterm_sessions[session_id] = (entry[0], entry[1], time.time() + retry_sec)
+
+            cached = last_known_playback_state.get(session_id) if session_id else None
+            if cached:
+                res = dict(cached)
+                res["player_info"] = "Zbyt wiele zapytań — czekam na Spotify"
+                return res
             return {
                 "is_authenticated": "true",
+                "track_name": "Limit zapytań API",
+                "artist_name": "Spotify zablokowało odświeżanie",
+                "album_name": "Odczekaj chwilę",
+                "device_name": "-",
+                "is_playing": "false",
+                "play_icon": "Play",
+                "progress_bar": render_progress_bar(0, 0),
+                "volume": "0%",
+                "can_next": "true",
+                "can_prev": "true",
+                "can_seek": "true",
+                "can_volume": "true",
+                "device_restricted": "false",
                 "player_info": "Zbyt wiele zapytań — czekam na Spotify",
                 "player_error": ""
             }
@@ -286,7 +335,7 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
             duration_ms = item.get("duration_ms", 1) if item else 1
             volume = device_obj.get("volume_percent") if isinstance(device_obj.get("volume_percent"), int) else 50
 
-            return {
+            res_dict = {
                 "is_authenticated": "true",
                 "track_name": str(track_name)[:35] if track_name is not None else "",
                 "artist_name": str(artists)[:35] if artists is not None else "",
@@ -304,8 +353,11 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
                 "player_info": player_info,
                 "player_error": ""
             }
+            if session_id:
+                last_known_playback_state[session_id] = res_dict
+            return res_dict
         elif r.status_code == 204:
-            return {
+            res_dict = {
                 "is_authenticated": "true",
                 "track_name": "Brak aktywnego odtwarzacza",
                 "artist_name": "Włącz muzykę na telefonie/PC",
@@ -323,6 +375,9 @@ def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None)
                 "player_info": "brak aktywnego urządzenia — dotknij telefonu",
                 "player_error": ""
             }
+            if session_id:
+                last_known_playback_state[session_id] = res_dict
+            return res_dict
         else:
             logger.error(f"Error fetching playback for token: status {r.status_code}, body: {r.text[:100]}")
             return {
@@ -516,7 +571,7 @@ async def poll_once():
 
 async def poll_spotify_and_push_patches():
     while True:
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(3.0)
         await poll_once()
 
 
@@ -556,6 +611,7 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
             delete_user_session(app_token)
         active_oxiterm_sessions.pop(session_id, None)
         last_sent_app_token.pop(session_id, None)
+        last_known_playback_state.pop(session_id, None)
         patch["set_app_token"] = ""
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
