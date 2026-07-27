@@ -279,17 +279,18 @@ class PollerManager:
     def tick_once(self, active_oxiterm_sessions: Dict[int, Tuple[str, float]]):
         now = self._clock_fn()
 
-        # 1. Check for expired pending messages and send single clearing push
-        for sid, sess in list(self.sessions.items()):
-            if sid not in active_oxiterm_sessions:
-                continue
-            acc = self.accounts.get(sess.spotify_user_id)
-            if acc and acc.pending_until_mono_ms != 0 and now >= acc.pending_until_mono_ms:
-                acc.pending_until_mono_ms = 0
-                acc.pending_error = ""
-                acc.pending_info = ""
-                clear_patch = {"player_error": "", "player_info": ""}
-                self.push_to_session(sid, clear_patch, active_oxiterm_sessions)
+        # 1. Check for expired pending messages and send clearing push to ALL active sessions of expired accounts
+        expired = [sp_id for sp_id, acc in list(self.accounts.items())
+                   if acc.pending_until_mono_ms != 0 and now >= acc.pending_until_mono_ms]
+        for sp_id in expired:
+            acc = self.accounts[sp_id]
+            acc.pending_until_mono_ms = 0
+            acc.pending_error = ""
+            acc.pending_info = ""
+            clear_patch = {"player_error": "", "player_info": ""}
+            for sid, sess in list(self.sessions.items()):
+                if sess.spotify_user_id == sp_id and sid in active_oxiterm_sessions:
+                    self.push_to_session(sid, clear_patch, active_oxiterm_sessions)
 
         # 2. Standard 1 Hz progress bar ticks
         for sid, sess in list(self.sessions.items()):

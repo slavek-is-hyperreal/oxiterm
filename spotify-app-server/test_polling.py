@@ -776,3 +776,34 @@ def test_69_no_pending_message_tick_once_standard_behavior():
         sent_json = mock_post.call_args[1].get("json")
         assert list(sent_json.keys()) == ["progress_bar"]
 
+def test_71_tick_once_pushes_clearing_patch_to_all_sessions_of_account():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.register_session(2, "u1", "acc1", "stok2")
+    acc = poller.accounts["u1"]
+    acc.model = parse_snapshot({
+        "is_playing": False, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    poller.set_pending("u1", error="Old Error", info="")
+    active_sessions = {1: ("stok1", time.time()), 2: ("stok2", time.time())}
+
+    # Advance clock past TTL
+    clock.advance_mono(6000)
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        poller.tick_once(active_sessions)
+        assert mock_post.call_count == 2
+        pushed_urls = [call[0][0] for call in mock_post.call_args_list]
+        assert set(pushed_urls) == {"http://host.docker.internal:8087/sessions/1/patch", "http://host.docker.internal:8087/sessions/2/patch"}
+        for call in mock_post.call_args_list:
+            assert call[1].get("json") == {"player_error": "", "player_info": ""}
+
+        # Second tick_once at same time pushes nothing
+        mock_post.reset_mock()
+        poller.tick_once(active_sessions)
+        assert mock_post.call_count == 0
+

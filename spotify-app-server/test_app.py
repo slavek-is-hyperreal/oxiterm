@@ -1687,12 +1687,16 @@ def test_64_command_sets_player_info_retained_after_poll_cycle(isolated_db):
 
         # Advance clock past PENDING_MSG_TTL_S (5.0s) -> next poll_once carries empty player_error
         start_mono = app_module.now_mono_ms()
-        app_module.poller_manager._clock_fn = lambda: start_mono + 6000
-        mock_post.reset_mock()
-        asyncio.run(app_module.poll_once())
-        assert mock_post.call_count >= 1
-        pushed_json_after = mock_post.call_args[1].get("json")
-        assert pushed_json_after.get("player_error") == ""
+        orig_clock_fn = app_module.poller_manager._clock_fn
+        try:
+            app_module.poller_manager._clock_fn = lambda: start_mono + 6000
+            mock_post.reset_mock()
+            asyncio.run(app_module.poll_once())
+            assert mock_post.call_count >= 1
+            pushed_json_after = mock_post.call_args[1].get("json")
+            assert pushed_json_after.get("player_error") == ""
+        finally:
+            app_module.poller_manager._clock_fn = orig_clock_fn
 
 
 
