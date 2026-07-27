@@ -270,7 +270,7 @@ def callback(code: Optional[str] = None, state: Optional[str] = None, error: Opt
         """
         return HTMLResponse(content=html_content)
     except Exception as e:
-        logger.error(f"OAuth Callback processing error: {e}")
+        logger.exception(f"OAuth Callback processing error: {e}")
         return HTMLResponse(content="<h2>Błąd autoryzacji OAuth</h2>", status_code=400)
 
 def generate_auth_url(session_id: int) -> str:
@@ -540,6 +540,13 @@ async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):
     elif not user and action != "logout":
         patch["is_authenticated"] = "false"
         patch["auth_status"] = "Brak autoryzacji"
+
+    if user and (patch.get("player_error") or patch.get("player_info")):
+        poller_manager.set_pending(
+            user["spotify_user_id"],
+            error=patch.get("player_error", ""),
+            info=patch.get("player_info", "")
+        )
 
     return patch
 

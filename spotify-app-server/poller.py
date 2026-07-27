@@ -11,6 +11,12 @@ from spotify_api import spotify_api_client
 
 logger = logging.getLogger("spotify_app_server")
 
+def get_pending_msg_ttl_s() -> float:
+    try:
+        return float(os.getenv("PENDING_MSG_TTL_S", "5.0"))
+    except Exception:
+        return 5.0
+
 def load_poll_gaps_from_env() -> PollGaps:
     def get_float(name: str, default: float) -> float:
         try:
@@ -59,6 +65,9 @@ class AccountState:
     model: Optional[Snapshot] = None
     ladder_cursor: Optional[int] = None
     next_deadline_mono_ms: int = 0
+    pending_error: str = ""
+    pending_info: str = ""
+    pending_until_mono_ms: int = 0
 
 class PollerManager:
     def __init__(self, clock_fn=now_mono_ms, wall_clock_fn=now_wall_ms, api_client=spotify_api_client):
@@ -87,6 +96,19 @@ class PollerManager:
             gap_s = self.gaps.ladder_s[0]
             eff_gap_s = max(gap_s, self.gaps.min_gap_s)
             account.next_deadline_mono_ms = self._clock_fn() + int(eff_gap_s * 1000)
+
+    def set_pending(self, spotify_user_id: str, error: str = "", info: str = ""):
+        account = self.accounts.get(spotify_user_id)
+        if account:
+            if not error and not info:
+                account.pending_error = ""
+                account.pending_info = ""
+                account.pending_until_mono_ms = 0
+            else:
+                account.pending_error = error
+                account.pending_info = info
+                ttl = get_pending_msg_ttl_s()
+                account.pending_until_mono_ms = self._clock_fn() + int(ttl * 1000)
 
     def register_session(self, sid: int, spotify_user_id: str, access_token: str, session_token: str):
         if spotify_user_id not in self.accounts:
@@ -241,6 +263,10 @@ class PollerManager:
                 continue
 
             err, info = accounts_fetched.get(sp_id, ("", ""))
+            if not err and not info and now < acc.pending_until_mono_ms:
+                err = acc.pending_error
+                info = acc.pending_info
+
             f_patch = full_patch(acc.model, now, player_error=err, player_info=info)
             f_patch["auth_status"] = f"Zalogowano: {sp_id[:20]}"
             if self.last_sent_app_token.get(sid) != acc.session_token:
@@ -252,6 +278,20 @@ class PollerManager:
 
     def tick_once(self, active_oxiterm_sessions: Dict[int, Tuple[str, float]]):
         now = self._clock_fn()
+
+        # 1. Check for expired pending messages and send single clearing push
+        for sid, sess in list(self.sessions.items()):
+            if sid not in active_oxiterm_sessions:
+                continue
+            acc = self.accounts.get(sess.spotify_user_id)
+            if acc and acc.pending_until_mono_ms != 0 and now >= acc.pending_until_mono_ms:
+                acc.pending_until_mono_ms = 0
+                acc.pending_error = ""
+                acc.pending_info = ""
+                clear_patch = {"player_error": "", "player_info": ""}
+                self.push_to_session(sid, clear_patch, active_oxiterm_sessions)
+
+        # 2. Standard 1 Hz progress bar ticks
         for sid, sess in list(self.sessions.items()):
             if sid not in active_oxiterm_sessions:
                 continue
@@ -272,8 +312,8 @@ class PollerManager:
             if acc.model and acc.model.is_playing:
                 b = next_second_boundary_mono_ms(acc.model, now)
                 if b is not None:
-                    if min_deadline is None or b < min_deadline:
-                        min_deadline = b
+                    if min_boundary is None or b < min_boundary:
+                        min_boundary = b
 
         # 2. Check nearest account fetch deadline
         for sp_id, acc in self.accounts.items():

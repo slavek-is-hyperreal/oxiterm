@@ -659,3 +659,120 @@ def test_60_fetch_500_carries_player_error():
         patch_data = mock_post.call_args[1].get("json")
         assert patch_data.get("player_error") == "Błąd serwera Spotify (HTTP 500)"
 
+def test_65_set_pending_message_carried_in_poll_once():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.accounts["u1"].model = parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    poller.set_pending("u1", error="Błąd Spotify (HTTP 403)", info="")
+    active_sessions = {1: ("stok1", time.time())}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True, "progress_ms": 10000, "item": {"type": "track", "name": "T1", "duration_ms": 180000}}
+        mock_post.return_value.status_code = 200
+
+        poller.poll_once(active_sessions)
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_error") == "Błąd Spotify (HTTP 403)"
+
+def test_66_pending_message_cleared_after_ttl_in_poll_once():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.accounts["u1"].model = parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    poller.set_pending("u1", error="Błąd Spotify (HTTP 403)", info="")
+    active_sessions = {1: ("stok1", time.time())}
+
+    # Advance clock past PENDING_MSG_TTL_S (5.0s -> 6000ms)
+    clock.advance_mono(6000)
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True, "progress_ms": 16000, "item": {"type": "track", "name": "T1", "duration_ms": 180000}}
+        mock_post.return_value.status_code = 200
+
+        poller.poll_once(active_sessions)
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_error") == ""
+
+def test_67_breaker_outranks_pending_message():
+    clock = FakeClock(mono_ms=100000)
+    api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
+    api._breaker_until_mono_ms = clock.now_mono_ms() + 50000
+    poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.accounts["u1"].model = parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    poller.set_pending("u1", error="Command Error", info="Command Info")
+    active_sessions = {1: ("stok1", time.time())}
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        poller.poll_once(active_sessions)
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert "Wstrzymano zapytania" in patch_data.get("player_info", "")
+        assert patch_data.get("player_error") == ""
+
+def test_68_tick_once_pushes_single_clearing_patch_on_expiry():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    acc = poller.accounts["u1"]
+    acc.model = parse_snapshot({
+        "is_playing": False, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    poller.set_pending("u1", error="Old Error", info="")
+    active_sessions = {1: ("stok1", time.time())}
+
+    # Advance clock past TTL
+    clock.advance_mono(6000)
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        poller.tick_once(active_sessions)
+        assert mock_post.call_count == 1
+        sent_json = mock_post.call_args[1].get("json")
+        assert sent_json == {"player_error": "", "player_info": ""}
+
+        # Second tick_once at same time pushes nothing
+        mock_post.reset_mock()
+        poller.tick_once(active_sessions)
+        assert mock_post.call_count == 0
+
+def test_69_no_pending_message_tick_once_standard_behavior():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    acc = poller.accounts["u1"]
+    acc.model = parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+
+    active_sessions = {1: ("stok1", time.time())}
+    clock.advance_mono(1000)
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        poller.tick_once(active_sessions)
+        assert mock_post.call_count == 1
+        sent_json = mock_post.call_args[1].get("json")
+        assert list(sent_json.keys()) == ["progress_bar"]
+

@@ -1660,7 +1660,7 @@ def test_64_command_sets_player_info_retained_after_poll_cycle(isolated_db):
     active_oxiterm_sessions[640] = (tok, time.time())
 
     with patch("requests.get") as mock_get, patch("requests.post") as mock_post, patch("requests.put") as mock_put:
-        mock_put.return_value.status_code = 200
+        mock_put.return_value.status_code = 403
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
             "is_playing": True, "progress_ms": 12000,
@@ -1668,17 +1668,31 @@ def test_64_command_sets_player_info_retained_after_poll_cycle(isolated_db):
         }
         mock_post.return_value.status_code = 200
 
-        # Command sets player_info
+        # Command sets player_error on 403
         r = client.post(
             "/events",
             json={"action": "player_toggle", "session_id": 640, "app_token": tok},
             headers={"Authorization": "Bearer test_secret_token_123"}
         )
         assert r.status_code == 200
+        cmd_error = r.json().get("player_error")
+        assert cmd_error == "Błąd Spotify (403)"
 
-        # Poll cycle runs
+        # One poll_once runs immediately afterwards -> pushed patch MUST carry the exact same player_error
+        mock_post.reset_mock()
         asyncio.run(app_module.poll_once())
         assert mock_post.call_count >= 1
+        pushed_json = mock_post.call_args[1].get("json")
+        assert pushed_json.get("player_error") == "Błąd Spotify (403)"
+
+        # Advance clock past PENDING_MSG_TTL_S (5.0s) -> next poll_once carries empty player_error
+        start_mono = app_module.now_mono_ms()
+        app_module.poller_manager._clock_fn = lambda: start_mono + 6000
+        mock_post.reset_mock()
+        asyncio.run(app_module.poll_once())
+        assert mock_post.call_count >= 1
+        pushed_json_after = mock_post.call_args[1].get("json")
+        assert pushed_json_after.get("player_error") == ""
 
 
 
