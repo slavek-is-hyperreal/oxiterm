@@ -18,20 +18,24 @@ def render_progress_bar(progress_ms: int, duration_ms: Optional[int]) -> str:
     bar = "=" * filled + "-" * (8 - filled)
     return f"[{bar}] {format_time(progress_ms)} / {format_time(duration_ms)}"
 
-def full_patch(snapshot: Snapshot, now_mono_ms: int) -> Dict[str, str]:
+def full_patch(snapshot: Snapshot, now_mono_ms: int, player_error: str = "", player_info: str = "") -> Dict[str, str]:
     current_progress = extrapolate(snapshot, now_mono_ms)
     
-    if snapshot.device_restricted:
-        player_info = "urządzenie nie przyjmuje poleceń"
+    if player_info:
+        p_info = player_info
+    elif snapshot.device_restricted:
+        p_info = "urządzenie nie przyjmuje poleceń"
     elif snapshot.kind == "unsupported":
         if snapshot.title == "Reklama":
-            player_info = "reklama"
+            p_info = "reklama"
         else:
-            player_info = "typ treści nieobsługiwany przez API Spotify"
+            p_info = "typ treści nieobsługiwany przez API Spotify"
     elif snapshot.poll_state == "IDLE" and snapshot.title == "Brak aktywnego odtwarzacza":
-        player_info = "brak aktywnego urządzenia — dotknij telefonu"
+        p_info = "brak aktywnego urządzenia — dotknij telefonu"
     else:
-        player_info = ""
+        p_info = ""
+
+    p_error = player_error if player_error else ""
 
     return {
         "is_authenticated": "true",
@@ -48,8 +52,8 @@ def full_patch(snapshot: Snapshot, now_mono_ms: int) -> Dict[str, str]:
         "can_seek": "true" if snapshot.can_seek else "false",
         "can_volume": "true" if snapshot.can_volume else "false",
         "device_restricted": "true" if snapshot.device_restricted else "false",
-        "player_info": player_info,
-        "player_error": ""
+        "player_info": p_info,
+        "player_error": p_error
     }
 
 def tick_patch(snapshot: Snapshot, now_mono_ms: int) -> Dict[str, str]:

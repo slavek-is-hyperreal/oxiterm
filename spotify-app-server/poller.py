@@ -46,6 +46,12 @@ def load_panel_pages_from_env() -> List[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 @dataclass
+class SessionState:
+    spotify_user_id: str
+    is_watching: bool = True
+    has_received_push: bool = False
+
+@dataclass
 class AccountState:
     spotify_user_id: str
     access_token: str
@@ -62,8 +68,7 @@ class PollerManager:
         self.gaps = load_poll_gaps_from_env()
         self.panel_pages = load_panel_pages_from_env()
         self.accounts: Dict[str, AccountState] = {}
-        self.watched_sessions: Dict[int, str] = {}  # sid -> spotify_user_id
-        self.unwatched_sessions: Set[int] = set()
+        self.sessions: Dict[int, SessionState] = {}
         self.last_sent_progress: Dict[int, str] = {}
         self.last_sent_app_token: Dict[int, str] = {}
 
@@ -96,32 +101,44 @@ class PollerManager:
             acc.access_token = access_token
             acc.session_token = session_token
 
-        if sid not in self.unwatched_sessions:
-            self.watched_sessions[sid] = spotify_user_id
+        if sid not in self.sessions:
+            self.sessions[sid] = SessionState(spotify_user_id=spotify_user_id, is_watching=True)
+        else:
+            self.sessions[sid].spotify_user_id = spotify_user_id
 
     def unregister_session(self, sid: int):
-        self.watched_sessions.pop(sid, None)
-        self.unwatched_sessions.discard(sid)
+        self.sessions.pop(sid, None)
         self.last_sent_progress.pop(sid, None)
         self.last_sent_app_token.pop(sid, None)
 
-    def poll_account(self, spotify_user_id: str, active_oxiterm_sessions: Dict[int, Tuple[str, float]]):
+    def poll_account(self, spotify_user_id: str, active_oxiterm_sessions: Dict[int, Tuple[str, float]]) -> Tuple[int, str, str]:
         now = self._clock_fn()
         account = self.accounts.get(spotify_user_id)
         if not account:
-            return
+            return (0, "", "")
 
         status_code, body, retry_after_s = self._api.get_player(account.access_token)
 
         if status_code == 0:
-            return
+            if self._api.is_paused(now):
+                rem = max(0, int((self._api._breaker_until_mono_ms - now) / 1000.0))
+                if not account.model:
+                    account.model = parse_snapshot(None, now, status_code=204)
+                return (0, "", f"Wstrzymano zapytania z powodu 429 ({rem} s)")
+            return (0, "", "")
 
         if status_code == 429:
             retry_s = retry_after_s if retry_after_s is not None else 30.0
             account.next_deadline_mono_ms = now + int(retry_s * 1000)
-            if account.model:
-                account.model.poll_state = "BLOCKED"
-            return
+            if not account.model:
+                account.model = parse_snapshot(None, now, status_code=204)
+            account.model.poll_state = "BLOCKED"
+            return (429, "", "Wstrzymano zapytania: przekroczono limit API (429)")
+
+        if status_code != 200 and status_code != 204:
+            if not account.model:
+                account.model = parse_snapshot(None, now, status_code=status_code)
+            return (status_code, f"Błąd serwera Spotify (HTTP {status_code})", "")
 
         new_snap = parse_snapshot(body, now, status_code=status_code)
         
@@ -133,6 +150,7 @@ class PollerManager:
         dl_ms, next_cursor = next_deadline(new_snap, now, account.ladder_cursor, self.gaps)
         account.next_deadline_mono_ms = dl_ms
         account.ladder_cursor = next_cursor
+        return (status_code, "", "")
 
     def push_to_session(self, sid: int, patch: Dict[str, str], active_oxiterm_sessions: Dict[int, Tuple[str, float]]) -> bool:
         oxiterm_url = os.getenv("OXITERM_URL", "http://host.docker.internal:8087")
@@ -149,29 +167,22 @@ class PollerManager:
                 self.unregister_session(sid)
                 return False
             elif r.status_code == 200:
-                try:
-                    resp_json = r.json()
-                    if isinstance(resp_json, dict) and "page" in resp_json:
-                        page_val = resp_json.get("page")
-                        if isinstance(page_val, str):
-                            if not self.is_page_watched(page_val):
-                                self.unwatched_sessions.add(sid)
-                                self.watched_sessions.pop(sid, None)
-                            else:
-                                self.unwatched_sessions.discard(sid)
-                                sp_id = self.watched_sessions.get(sid)
-                                if not sp_id and sid in active_oxiterm_sessions:
-                                    stoken = active_oxiterm_sessions[sid][0]
-                                    acc = next((a for a in self.accounts.values() if a.session_token == stoken), None)
-                                    if acc:
-                                        self.watched_sessions[sid] = acc.spotify_user_id
-                except Exception:
-                    pass
+                sess = self.sessions.get(sid)
+                if sess:
+                    sess.has_received_push = True
+                    try:
+                        resp_json = r.json()
+                        if isinstance(resp_json, dict) and "page" in resp_json:
+                            page_val = resp_json.get("page")
+                            if isinstance(page_val, str):
+                                sess.is_watching = self.is_page_watched(page_val)
+                    except Exception as parse_err:
+                        raw_body = (r.text or "")[:200]
+                        logger.exception(f"Push response JSON parse error for session {sid}, raw: {raw_body}")
 
-                # Update active_oxiterm_sessions wall timestamp (2-element tuple)
                 stoken = active_oxiterm_sessions.get(sid, ("", 0.0))[0]
-                if not stoken and sid in self.watched_sessions:
-                    acc = self.accounts.get(self.watched_sessions[sid])
+                if not stoken and sess:
+                    acc = self.accounts.get(sess.spotify_user_id)
                     if acc:
                         stoken = acc.session_token
                 active_oxiterm_sessions[sid] = (stoken, time.time())
@@ -180,8 +191,17 @@ class PollerManager:
                 logger.warning(f"Push patch to session {sid} returned status {r.status_code}")
                 return True
         except Exception as push_err:
-            logger.error(f"Push patch to session {sid} failed: {push_err}")
+            logger.exception(f"Push patch to session {sid} failed: {push_err}")
             return True
+
+    def any_deadline_due(self) -> bool:
+        now = self._clock_fn()
+        for sp_id, acc in self.accounts.items():
+            watching = any(s.is_watching for s in self.sessions.values() if s.spotify_user_id == sp_id)
+            unpushed = any(not s.has_received_push for s in self.sessions.values() if s.spotify_user_id == sp_id)
+            if (watching or unpushed) and now >= acc.next_deadline_mono_ms:
+                return True
+        return False
 
     def poll_once(self, active_oxiterm_sessions: Dict[int, Tuple[str, float]], get_user_by_stoken_fn=None):
         now = self._clock_fn()
@@ -195,42 +215,47 @@ class PollerManager:
                     sp_id = user["spotify_user_id"]
                     self.register_session(sid, sp_id, user["access_token"], user["session_token"])
 
-        # Determine which accounts need fetching
-        accounts_to_fetch = set()
-        for sid, sp_id in list(self.watched_sessions.items()):
+        # Unregister sessions no longer in active_oxiterm_sessions
+        for sid in list(self.sessions.keys()):
             if sid not in active_oxiterm_sessions:
                 self.unregister_session(sid)
-                continue
-            acc = self.accounts.get(sp_id)
-            if acc and now >= acc.next_deadline_mono_ms:
-                accounts_to_fetch.add(sp_id)
 
-        for sp_id in accounts_to_fetch:
-            self.poll_account(sp_id, active_oxiterm_sessions)
+        # Determine which accounts to fetch
+        accounts_fetched: Dict[str, Tuple[str, str]] = {}
+        for sp_id, acc in list(self.accounts.items()):
+            sids = [sid for sid, s in self.sessions.items() if s.spotify_user_id == sp_id]
+            has_watching = any(self.sessions[sid].is_watching or not self.sessions[sid].has_received_push for sid in sids)
+            if has_watching and now >= acc.next_deadline_mono_ms:
+                st_code, err, info = self.poll_account(sp_id, active_oxiterm_sessions)
+                accounts_fetched[sp_id] = (err, info)
 
         # Log budget usage per cycle
         used_calls = self._api.get_trailing_call_count(now)
         logger.info(f"Spotify API budget: {used_calls}/30s calls used in trailing 30s")
 
-        # Push full patch to EVERY watched session of EVERY account holding a model
-        for sid, sp_id in list(self.watched_sessions.items()):
+        # Push full patch to EVERY registered session of EVERY account holding a model
+        for sid, sess in list(self.sessions.items()):
+            sp_id = sess.spotify_user_id
             acc = self.accounts.get(sp_id)
-            if acc and acc.model:
-                f_patch = full_patch(acc.model, now)
-                f_patch["auth_status"] = f"Zalogowano: {sp_id[:20]}"
-                if self.last_sent_app_token.get(sid) != acc.session_token:
-                    f_patch["set_app_token"] = acc.session_token
-                    self.last_sent_app_token[sid] = acc.session_token
+            if not acc or not acc.model:
+                continue
 
-                if self.push_to_session(sid, f_patch, active_oxiterm_sessions):
-                    self.last_sent_progress[sid] = f_patch["progress_bar"]
+            err, info = accounts_fetched.get(sp_id, ("", ""))
+            f_patch = full_patch(acc.model, now, player_error=err, player_info=info)
+            f_patch["auth_status"] = f"Zalogowano: {sp_id[:20]}"
+            if self.last_sent_app_token.get(sid) != acc.session_token:
+                f_patch["set_app_token"] = acc.session_token
+                self.last_sent_app_token[sid] = acc.session_token
+
+            if self.push_to_session(sid, f_patch, active_oxiterm_sessions):
+                self.last_sent_progress[sid] = f_patch["progress_bar"]
 
     def tick_once(self, active_oxiterm_sessions: Dict[int, Tuple[str, float]]):
         now = self._clock_fn()
-        for sid, sp_id in list(self.watched_sessions.items()):
+        for sid, sess in list(self.sessions.items()):
             if sid not in active_oxiterm_sessions:
                 continue
-            acc = self.accounts.get(sp_id)
+            acc = self.accounts.get(sess.spotify_user_id)
             if acc and acc.model and acc.model.is_playing:
                 t_patch = tick_patch(acc.model, now)
                 prog_str = t_patch["progress_bar"]
@@ -238,20 +263,29 @@ class PollerManager:
                     if self.push_to_session(sid, t_patch, active_oxiterm_sessions):
                         self.last_sent_progress[sid] = prog_str
 
-    def get_next_tick_wake_delay_s(self) -> float:
+    def get_next_wake_delay_s(self) -> float:
         now = self._clock_fn()
-        min_boundary = None
+        min_deadline = None
+
+        # 1. Check nearest second boundary across playing accounts
         for acc in self.accounts.values():
             if acc.model and acc.model.is_playing:
                 b = next_second_boundary_mono_ms(acc.model, now)
                 if b is not None:
-                    if min_boundary is None or b < min_boundary:
-                        min_boundary = b
+                    if min_deadline is None or b < min_deadline:
+                        min_deadline = b
 
-        if min_boundary is not None:
-            delay_ms = max(10, min_boundary - now)
+        # 2. Check nearest account fetch deadline
+        for sp_id, acc in self.accounts.items():
+            watching = any(s.is_watching for s in self.sessions.values() if s.spotify_user_id == sp_id)
+            if watching:
+                if min_deadline is None or acc.next_deadline_mono_ms < min_deadline:
+                    min_deadline = acc.next_deadline_mono_ms
+
+        if min_deadline is not None:
+            delay_ms = max(10, min_deadline - now)
             return delay_ms / 1000.0
-        
+
         try:
             return float(os.getenv("TICK_FALLBACK_S", "1.0"))
         except Exception:

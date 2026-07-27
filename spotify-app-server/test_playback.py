@@ -241,8 +241,16 @@ def test_49_phase_locked_tick_simulation():
         t_patch = tick_patch(snap, clock.now_mono_ms())
         pushed_strings.append(t_patch["progress_bar"])
     
-    assert len(pushed_strings) == 180
-    assert len(set(pushed_strings)) == 180  # All unique, no repeat, no gap
+    expected_strings = []
+    for sec in range(1, 181):
+        ratio = min(max((sec * 1000) / 180000, 0.0), 1.0)
+        filled = int(ratio * 8)
+        bar = "=" * filled + "-" * (8 - filled)
+        mins = sec // 60
+        secs = sec % 60
+        expected_strings.append(f"[{bar}] {mins:02d}:{secs:02d} / 03:00")
+
+    assert pushed_strings == expected_strings
 
 def test_50_fetch_replacing_model_mid_second():
     clock = FakeClock(mono_ms=100000)

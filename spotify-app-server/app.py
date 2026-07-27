@@ -94,7 +94,7 @@ def get_user_by_session_token(session_token: str) -> Optional[Dict[str, Any]]:
                         return refreshed
                 return user
     except Exception as e:
-        logger.error(f"Error fetching user by session_token: {e}")
+        logger.exception(f"Error fetching user by session_token: {e}")
     return None
 
 def refresh_spotify_user_token(user_id: int, refresh_token: str) -> Optional[Dict[str, Any]]:
@@ -125,7 +125,7 @@ def refresh_spotify_user_token(user_id: int, refresh_token: str) -> Optional[Dic
                 cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
                 return dict(cursor.fetchone())
     except Exception as e:
-        logger.error(f"Error refreshing token for user_id {user_id}: {e}")
+        logger.exception(f"Error refreshing token for user_id {user_id}: {e}")
     return None
 
 def delete_user_session(session_token: str):
@@ -135,7 +135,7 @@ def delete_user_session(session_token: str):
             cursor.execute("DELETE FROM users WHERE session_token = ?", (session_token,))
             conn.commit()
     except Exception as e:
-        logger.error(f"Error deleting session: {e}")
+        logger.exception(f"Error deleting session: {e}")
 
 def verify_app_token(request: Request):
     if not OXITERM_APP_TOKEN:
@@ -149,13 +149,18 @@ def verify_app_token(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 def fetch_playback_for_user(access_token: str, session_id: Optional[int] = None) -> Dict[str, str]:
-    status_code, body, _ = spotify_api_client.get_player(access_token)
-    if status_code == 429:
-        return {"player_info": "Zbyt wiele zapytań — czekam na Spotify", "player_error": ""}
-    elif status_code not in (200, 204) and status_code != 0:
+    try:
+        status_code, body, _ = spotify_api_client.get_player(access_token)
+        if status_code == 429:
+            return {"player_info": "Zbyt wiele zapytań — czekam na Spotify", "player_error": ""}
+        elif status_code not in (200, 204) and status_code != 0:
+            logger.exception(f"Playback fetch error: status {status_code}")
+            return {"player_error": "Błąd połączenia"}
+        snap = parse_snapshot(body, now_mono_ms(), status_code=status_code)
+        return full_patch(snap, now_mono_ms())
+    except Exception as e:
+        logger.exception(f"Playback fetch error: {e}")
         return {"player_error": "Błąd połączenia"}
-    snap = parse_snapshot(body, now_mono_ms(), status_code=status_code)
-    return full_patch(snap, now_mono_ms())
 
 class OxiEventPayload(BaseModel):
     action: str
@@ -207,12 +212,10 @@ def callback(code: Optional[str] = None, state: Optional[str] = None, error: Opt
         refresh_token = token_data.get("refresh_token", "")
         expires_in = token_data.get("expires_in", 3600)
         expires_at = time.time() + expires_in
-
-        me_resp = requests.get("https://api.spotify.com/v1/me", headers={"Authorization": f"Bearer {access_token}"}, timeout=5)
-        if me_resp.status_code != 200:
+        st_code, me_data, _ = spotify_api_client.get_me(access_token)
+        if st_code != 200 or not me_data:
             return HTMLResponse(content="<h2>Błąd pobierania profilu Spotify</h2>", status_code=400)
 
-        me_data = me_resp.json()
         spotify_user_id = me_data["id"]
         display_name = me_data.get("display_name") or spotify_user_id
 
@@ -281,14 +284,18 @@ async def start_background_loop():
 
 async def poll_once():
     cleanup_pending_oauth_states()
-    poller_manager.poll_once(active_oxiterm_sessions, get_user_by_session_token)
+    await asyncio.to_thread(poller_manager.poll_once, active_oxiterm_sessions, get_user_by_session_token)
 
 async def poll_spotify_and_push_patches():
     while True:
-        await poll_once()
-        poller_manager.tick_once(active_oxiterm_sessions)
-        delay_s = poller_manager.get_next_tick_wake_delay_s()
-        await asyncio.sleep(delay_s)
+        try:
+            if poller_manager.any_deadline_due():
+                await poll_once()
+            poller_manager.tick_once(active_oxiterm_sessions)
+            await asyncio.sleep(poller_manager.get_next_wake_delay_s())
+        except Exception as e:
+            logger.exception(f"Background loop error: {e}")
+            await asyncio.sleep(1.0)
 
 @app.post("/events")
 async def handle_oxiterm_event(payload: OxiEventPayload, request: Request):

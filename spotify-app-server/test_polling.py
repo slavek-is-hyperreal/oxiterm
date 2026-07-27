@@ -156,13 +156,12 @@ def test_25_tick_once_playing_pushes_only_progress_bar():
     api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
     poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
 
-    acc = AccountState("u1", "acc1", "stok1")
+    poller.register_session(10, "u1", "acc1", "stok1")
+    acc = poller.accounts["u1"]
     acc.model = parse_snapshot({
         "is_playing": True, "progress_ms": 10000,
         "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
     }, clock.now_mono_ms())
-    poller.accounts["u1"] = acc
-    poller.watched_sessions[10] = "u1"
     poller.last_sent_progress[10] = "[=-------] 00:10 / 03:00"
 
     active_sessions = {10: ("stok1", time.time())}
@@ -182,13 +181,12 @@ def test_26_tick_once_paused_deduplicated():
     api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
     poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
 
-    acc = AccountState("u1", "acc1", "stok1")
+    poller.register_session(10, "u1", "acc1", "stok1")
+    acc = poller.accounts["u1"]
     acc.model = parse_snapshot({
         "is_playing": False, "progress_ms": 10000,
         "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
     }, clock.now_mono_ms())
-    poller.accounts["u1"] = acc
-    poller.watched_sessions[10] = "u1"
 
     active_sessions = {10: ("stok1", time.time())}
 
@@ -271,7 +269,7 @@ def test_29_non_dict_push_body_counts_as_watched():
         mock_post.return_value.text = "OK"  # Non-dict string
 
         poller.poll_once(active_sessions, get_user_fn)
-        assert 10 in poller.watched_sessions
+        assert poller.sessions[10].is_watching is True
 
 def test_30_push_404_removes_session_leaves_tuple_2_elements():
     clock = FakeClock(mono_ms=100000)
@@ -292,7 +290,7 @@ def test_30_push_404_removes_session_leaves_tuple_2_elements():
 
         poller.poll_once(active_sessions, get_user_fn)
         assert 10 not in active_sessions
-        assert 10 not in poller.watched_sessions
+        assert 10 not in poller.sessions
 
 def test_41_events_command_resets_ladder():
     clock = FakeClock(mono_ms=100000)
@@ -442,3 +440,222 @@ def test_47_budget_exhausted_at_ladder_0_does_not_advance_cursor():
         poller.poll_once(active_sessions, get_user_fn)
         assert mock_get.call_count == 0
         assert acc.ladder_cursor == 0
+
+def test_52_probe_d1_session_returns_to_panel():
+    clock = FakeClock(mono_ms=100000)
+    api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
+    poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
+
+    active_sessions = {7: ("stok7", time.time())}
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u7", "access_token": "acc7", "session_token": "stok7"}
+
+    player_resp = {
+        "is_playing": True, "progress_ms": 5000,
+        "item": {"type": "track", "uri": "spotify:track:7", "name": "Track 7", "duration_ms": 180000}
+    }
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = player_resp
+
+        # Cycle 1: on panel -> pushes=1, fetch=1
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_get.call_count == 1
+        assert mock_post.call_count == 1
+        assert poller.sessions[7].is_watching is True
+
+        # Cycle 2: leaves panel -> pushes=1, fetch=0 (skipped because is_watching is False after this push)
+        mock_post.reset_mock()
+        mock_get.reset_mock()
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "features.thtml"}
+        poller.accounts["u7"].next_deadline_mono_ms = 0
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_get.call_count == 1  # Was watching before cycle 2
+        assert mock_post.call_count == 1
+        assert poller.sessions[7].is_watching is False
+
+        # Cycle 3: RETURNS to panel -> fetch=0 (was unwatched), but push=1 returns panel!
+        mock_post.reset_mock()
+        mock_get.reset_mock()
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
+        poller.accounts["u7"].next_deadline_mono_ms = 0
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_get.call_count == 0  # Gated on is_watching
+        assert mock_post.call_count == 1  # Push still happens!
+        assert poller.sessions[7].is_watching is True  # Recovered!
+
+        # Cycle 4: still on panel -> fetch=1, push=1
+        mock_post.reset_mock()
+        mock_get.reset_mock()
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
+        poller.accounts["u7"].next_deadline_mono_ms = 0
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_get.call_count == 1
+        assert mock_post.call_count == 1
+
+def test_53_non_dict_push_body_preserves_is_watching():
+    clock = FakeClock(mono_ms=100000)
+    api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
+    poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
+
+    active_sessions = {8: ("stok8", time.time())}
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u8", "access_token": "acc8", "session_token": "stok8"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True, "progress_ms": 1000, "item": {"type": "track", "name": "T"}}
+        
+        # 1. Unwatch via features.thtml
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "features.thtml"}
+        poller.poll_once(active_sessions, get_user_fn)
+        assert poller.sessions[8].is_watching is False
+
+        # 2. Push returns MagicMock / unparseable body -> is_watching stays False
+        mock_post.return_value.json.return_value = MagicMock()
+        poller.accounts["u8"].next_deadline_mono_ms = 0
+        poller.poll_once(active_sessions, get_user_fn)
+        assert poller.sessions[8].is_watching is False
+
+def test_54_session_never_received_push_is_watched_and_fetched():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(9, "u9", "acc9", "stok9")
+    assert poller.sessions[9].is_watching is True
+    assert poller.sessions[9].has_received_push is False
+
+def test_55_push_404_removes_session_from_sessions_and_active():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    active_sessions = {10: ("stok10", time.time())}
+    poller.register_session(10, "u10", "acc10", "stok10")
+
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u10", "access_token": "acc10", "session_token": "stok10"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True}
+        mock_post.return_value.status_code = 404
+
+        poller.poll_once(active_sessions, get_user_fn)
+        assert 10 not in poller.sessions
+        assert 10 not in active_sessions
+        assert isinstance(active_sessions.get(10, ()), tuple)
+
+def test_56_ten_seconds_simulated_loop_tick_splits():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    acc = AccountState("u1", "acc1", "stok1")
+    acc.model = parse_snapshot({
+        "is_playing": True, "progress_ms": 10000,
+        "item": {"type": "track", "uri": "t1", "name": "T1", "duration_ms": 180000}
+    }, clock.now_mono_ms())
+    poller.accounts["u1"] = acc
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.sessions[1].has_received_push = True
+    poller.last_sent_progress[1] = "0:10 / 3:00"
+
+    active_sessions = {1: ("stok1", time.time())}
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"page": "spotify/panel.thtml"}
+
+        for _ in range(9):
+            clock.advance_mono(1000)
+            poller.tick_once(active_sessions)
+
+        assert mock_post.call_count == 9
+        for call in mock_post.call_args_list:
+            patch_data = call[1].get("json")
+            assert len(patch_data) == 1
+            assert "progress_bar" in patch_data
+
+def test_57_budget_log_emitted_once_per_fetch_cycle():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    active_sessions = {1: ("stok1", time.time())}
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u1", "access_token": "acc1", "session_token": "stok1"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post, patch("poller.logger.info") as mock_log_info:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True}
+        mock_post.return_value.status_code = 200
+
+        poller.poll_once(active_sessions, get_user_fn)
+        budget_logs = [c for c in mock_log_info.call_args_list if "Spotify API budget" in str(c)]
+        assert len(budget_logs) == 1
+
+def test_58_two_accounts_only_fetching_account_sessions_receive_full_patch():
+    clock = FakeClock(mono_ms=100000)
+    poller = PollerManager(clock_fn=clock.now_mono_ms)
+    poller.register_session(1, "u1", "acc1", "stok1")
+    poller.register_session(2, "u2", "acc2", "stok2")
+    poller.sessions[1].has_received_push = True
+    poller.sessions[2].has_received_push = True
+
+    poller.accounts["u1"].next_deadline_mono_ms = clock.now_mono_ms()  # Due
+    poller.accounts["u2"].next_deadline_mono_ms = clock.now_mono_ms() + 100000  # Not due
+
+    active_sessions = {1: ("stok1", time.time()), 2: ("stok2", time.time())}
+    def get_user_fn(stoken):
+        if stoken == "stok1": return {"spotify_user_id": "u1", "access_token": "acc1", "session_token": "stok1"}
+        return {"spotify_user_id": "u2", "access_token": "acc2", "session_token": "stok2"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"is_playing": True, "progress_ms": 1000, "item": {"type": "track", "name": "T1"}}
+        mock_post.return_value.status_code = 200
+
+        poller.poll_once(active_sessions, get_user_fn)
+        # Full patch pushed ONLY to session 1
+        assert mock_post.call_count == 1
+        assert mock_post.call_args[0][0].endswith("/sessions/1/patch")
+
+def test_59_breaker_paused_carries_player_info_and_empty_error():
+    clock = FakeClock(mono_ms=100000)
+    api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
+    api._breaker_until_mono_ms = clock.now_mono_ms() + 50000
+    poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
+    poller.register_session(1, "u1", "acc1", "stok1")
+
+    active_sessions = {1: ("stok1", time.time())}
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u1", "access_token": "acc1", "session_token": "stok1"}
+
+    with patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert "Wstrzymano zapytania" in patch_data.get("player_info", "")
+        assert patch_data.get("player_error") == ""
+
+def test_60_fetch_500_carries_player_error():
+    clock = FakeClock(mono_ms=100000)
+    api = SpotifyApiClient(clock_fn=clock.now_mono_ms)
+    poller = PollerManager(clock_fn=clock.now_mono_ms, api_client=api)
+    poller.register_session(1, "u1", "acc1", "stok1")
+
+    active_sessions = {1: ("stok1", time.time())}
+    def get_user_fn(stoken):
+        return {"spotify_user_id": "u1", "access_token": "acc1", "session_token": "stok1"}
+
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 500
+        mock_post.return_value.status_code = 200
+
+        poller.poll_once(active_sessions, get_user_fn)
+        assert mock_post.call_count == 1
+        patch_data = mock_post.call_args[1].get("json")
+        assert patch_data.get("player_error") == "Błąd serwera Spotify (HTTP 500)"
+
