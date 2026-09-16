@@ -48,11 +48,11 @@ pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Resul
     Ok(())
 }
 
-/// Requests activation of SGR mouse event reporting.
+/// Requests activation of SGR mouse event reporting with button drag tracking (1002h + 1006h).
 pub fn enable_sgr_mouse(channel: ChannelId, session: &mut Session) -> Result<()> {
-    debug!("Enabling SGR Mouse Protocol on channel {:?}", channel);
+    debug!("Enabling SGR Mouse Protocol with drag tracking on channel {:?}", channel);
     session.data(channel, b"\x1b[?1006h".to_vec().into());
-    session.data(channel, b"\x1b[?1000h".to_vec().into());
+    session.data(channel, b"\x1b[?1002h".to_vec().into());
     Ok(())
 }
 

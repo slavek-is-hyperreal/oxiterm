@@ -15,12 +15,10 @@ Read this whole file before writing markup. The exhaustive reference lives in `d
 
 This is the single most important fact about TCSS. In `oxiterm-renderer/src/parser/tcss.rs`:
 
-- An **unrecognised property** falls through to `_ => None` and is **discarded without a warning**.
-- A **malformed integer value** goes through `value.trim().parse().unwrap_or(0)` and becomes **`0`**.
+- An **unrecognised property** triggers a `tracing::warn!("Unknown TCSS property: {}", key)` and is **discarded**.
+- A **malformed integer value** triggers a warning and becomes **`0`**.
 
-So `flex: 1`, `overflow: hidden`, `display: flex`, `gap: 2`, `text-align: center`, `font-weight: bold`, `position: absolute` all vanish silently. And `height: auto` becomes `height: 0`, collapsing the element to nothing.
-
-Nothing in the toolchain catches this. `oxiterm check` will report the file as valid. There is no console warning. The only symptom is a layout that looks wrong, which is why layout bugs in this project are historically diagnosed by *reading the parser*, not by reading error output.
+So properties not in TCSS like `overflow: hidden`, `display: flex`, `gap: 2`, `text-align: center`, `font-weight: bold` are discarded. And `height: auto` fails integer parsing and becomes `height: 0`, collapsing the element to nothing.
 
 **Therefore: only use properties from the table in §2. If you want a property that is not in that table, it does not exist, and you must achieve the effect with explicit integers instead.**
 
@@ -36,6 +34,12 @@ These are all of them. There are no others.
 | `height` | integer (rows) | Omit for content-sizing. **Never write `auto`.** |
 | `fg` / `color` | color | Text colour. |
 | `bg` / `background-color` | color | Background colour. |
+| `position` | `relative` (default), `absolute`, `fixed` | `absolute` positions relative to closest ancestor; `fixed` anchors to screen origin. |
+| `top` / `bottom` | integer (rows) | Inset offsets for positioned elements. |
+| `left` / `right` | integer (columns) | Inset offsets for positioned elements. |
+| `z-index` | integer | Stacking context order (higher draws above lower; hit-testing checks highest z-index first). Default `0`. |
+| `opacity` | float (0.0 to 1.0) | Multiplies rendering opacity (1.0 default). |
+| `transition` | comma-separated specs | E.g. `transition: opacity 300ms ease-out, width 200ms spring`. Easings: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1,y1,x2,y2)`, `spring` / `spring(m,k,c)`. |
 | `flex-direction` | `row` (default), `column` | Any other value silently becomes `row`. |
 | `align-items` | `flex-start` (default), `flex-end`, `center`, `stretch` | Cross axis. |
 | `justify-content` | `flex-start` (default), `flex-end`, `center`, `space-between`, `space-around` | Main axis. |
@@ -46,6 +50,7 @@ These are all of them. There are no others.
 | `border` | color | Enables the border, default `single` chars. |
 | `border-style` | `single`, `double`, `rounded` | Any other value silently becomes `single`. |
 | `border-color` | color | |
+| `flex` | positive float (e.g. `1`, `2.0`) | Flex-grow factor (maps to `flex-grow: N`, `flex-shrink: 1.0`, `flex-basis: 0`). |
 | `wrap` | `word` | Anything other than `word` means no wrapping. |
 
 Colors: named (`black red green yellow blue magenta cyan white` — exactly these eight), hex `#rrggbb`, a 0–255 ANSI palette index, or `reset` / `transparent`.
@@ -56,15 +61,10 @@ No units anywhere. `10px`, `50%`, `2em` all parse to `0`.
 
 `border`, `border-color`, and `border-style` each construct the border if it is absent. Setting `border-color: #334155` purely "for the colour" switches the border on and charges you its 2 rows and 2 columns. If you do not want a frame, do not mention borders at all.
 
-### 2.2 Known errors in the shipped documentation and examples
+### 2.2 Known authoring pitfalls
 
-Do not copy these patterns even though they appear in the repository:
-
-- **`flex: 1`** — used 72 times across 34 files in `examples/`, and recommended twice in `docs/thtml-reference.md §7`. It is not a property. It does nothing. Those boxes size to their content rather than absorbing free space.
-- **`height: auto`** — recommended in `docs/thtml-reference.md §7.2`. It sets height to `0`.
-- `docs/tcss-reference.md §2` omits `wrap` from some contexts and does not flag that unknown properties are dropped silently.
-
-To make a section absorb remaining vertical space, there is no flex-grow equivalent. **Compute the height explicitly** (§3.2).
+- **`height: auto`** — recommended in some early notes, but `auto` is not an integer and parses to `0`. Omit `height` for content-sizing instead.
+- **`flex: <N>`** — expands element to fill available space along the container's main axis. If you need explicit row/column control without flexbox distribution, compute the height/width explicitly (§3.2).
 
 ---
 
@@ -120,7 +120,7 @@ Because there is no `flex: 1`, sizing a "fill the rest" region means: take the r
 
 ## 4. THTML: the complete tag set
 
-Eight tags. An unknown tag is a **parse error** (this one does fail loudly).
+Nine tags (implicit `<screen>` plus 8 authorable tags). An unknown tag is a **parse error** (this one does fail loudly).
 
 | Tag | Purpose | Notes |
 |---|---|---|
@@ -132,6 +132,7 @@ Eight tags. An unknown tag is a **parse error** (this one does fail loudly).
 | `<img>` | image / Lottie | Needs `src` **and** `width` **and** `height`. |
 | `<video>` | video | Same requirements; needs `ffmpeg` present. |
 | `<for>` | loop | Exactly one template child; `each` names a List state key; `{item}` in the child's text is substituted. |
+| `<diagram>` | diagram | Mermaid flowchart; needs `src`, `alt`, `width`, `height`. |
 
 **Any** tag may self-close — the parser's self-closing branch (`thtml.rs:225`) is not restricted by tag name, so `<text bind-state="k"/>` is valid. `docs/thtml-reference.md` claims only `<img>` and `<input>` may do this; that restriction is not in the code. A self-closed tag has no children and no text, so self-closing `<text>` is only useful with `bind-state`, and self-closing `<for>` is always a mistake.
 
@@ -139,7 +140,12 @@ Eight tags. An unknown tag is a **parse error** (this one does fail loudly).
 
 ### 4.1 Universal attributes
 
-`id`, `class`, `style`, `event-htmx`, `bind-state`, `bind-show`.
+`id`, `class`, `style`, `event-htmx`, `bind-state`, `bind-show`, `draggable`, `drag-handle`, `drag-state-x`, `drag-state-y`, `event-drag-end`.
+
+- `draggable="true"`: enables mouse pointer dragging.
+- `drag-handle="true"`: marks an element (e.g. title bar) as the drag handle.
+- `drag-state-x="key"` / `drag-state-y="key"`: binds delta or position coordinates directly into `StateManager` (Int) as dragging occurs.
+- `event-drag-end="action"`: dispatches action when dragging finishes on mouse release.
 
 `event-htmx` may hold several actions separated by `;` or `,`, executed left to right:
 
@@ -229,7 +235,7 @@ Use ASCII for anything interactive: `<` not `←`, `>` not `→`, `x` not `×`. 
 So after `check` passes, do this by hand:
 
 1. **Re-derive every explicit height.** For each container with a declared `height`, sum its children's heights plus vertical margins plus 2 if it is bordered. Compare. Fix mismatches.
-2. **Grep your own diff for phantom properties.** `grep -nE '(flex|display|gap|overflow|position|font-|text-align|border-radius|line-height)\s*:' <file>` should return nothing.
+2. **Grep your own diff for phantom properties.** `grep -nE '(display|gap|overflow|font-|text-align|border-radius|line-height)\s*:' <file>` should return nothing.
 3. **Grep for `height: auto` and `width: auto`.** Should return nothing.
 4. **Check every bordered element is at least 3 rows tall.**
 5. **Confirm every `<text>` that could be long has either `wrap: word` plus a bounded parent width, or a guarantee of being short.**

@@ -22,6 +22,7 @@ pub mod web;
 pub mod pathsafe;
 pub mod identity;
 pub mod expand;
+pub mod animation;
 
 
 pub use config::OxiTermConfig;

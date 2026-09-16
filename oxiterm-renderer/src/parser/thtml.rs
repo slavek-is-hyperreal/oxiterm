@@ -375,6 +375,11 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "type" => attrs.input_type = Some(value),
             "preview" => attrs.preview = Some(value),
             "preview-anchor" => attrs.preview_anchor = Some(value),
+            "draggable" => attrs.draggable = Some(value == "true" || value.is_empty()),
+            "drag-handle" => attrs.drag_handle = Some(value == "true" || value.is_empty()),
+            "drag-state-x" => attrs.drag_state_x = Some(value),
+            "drag-state-y" => attrs.drag_state_y = Some(value),
+            "event-drag-end" => attrs.event_drag_end = Some(value),
             _ => {}
         }
         input = rem;
@@ -395,6 +400,7 @@ fn parse_attr_kv(input: &str) -> ParseResult<'_, (String, String)> {
         "style" => sanitize_style_raw(value),
         "event-htmx" => sanitize_htmx_value(value),
         "bind-state" => sanitize_htmx_value(value),
+        "event-drag-end" => sanitize_htmx_value(value),
         _ => value.to_string(),
     };
     

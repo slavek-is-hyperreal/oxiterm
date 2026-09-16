@@ -104,24 +104,80 @@ impl Renderer {
             }
         }
         
-        // 2. Recursively draw the DOM tree, centering the root element if it has a smaller fixed size
+        // 2. Draw the DOM tree, centering the root element if it has a smaller fixed size
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
         let start_x = offset_x as i32;
         let start_y = (offset_y as i32) - (scroll_offset as i32);
 
-        Self::render_recursive(
-            doc,
-            layout,
-            buffer,
-            doc.root,
-            start_x,
-            start_y,
-            oxiterm_proto::style::AnsiColor::Color256(15),
-            oxiterm_proto::style::AnsiColor::Color256(0),
-            profile,
-            base_dir,
-            app_base_dir,
-        );
+        if !layout.paint_order.is_empty() {
+            let colors = Self::precompute_inherited_colors(doc);
+            for &node_id in &layout.paint_order {
+                if let Some(&(resolved_fg, resolved_bg)) = colors.get(&node_id) {
+                    Self::render_single_node(
+                        doc,
+                        layout,
+                        buffer,
+                        node_id,
+                        start_x,
+                        start_y,
+                        offset_x,
+                        offset_y,
+                        resolved_fg,
+                        resolved_bg,
+                        profile,
+                        base_dir,
+                        app_base_dir,
+                    );
+                }
+            }
+        } else {
+            Self::render_recursive(
+                doc,
+                layout,
+                buffer,
+                doc.root,
+                start_x,
+                start_y,
+                offset_x,
+                offset_y,
+                oxiterm_proto::style::AnsiColor::Color256(15),
+                oxiterm_proto::style::AnsiColor::Color256(0),
+                profile,
+                base_dir,
+                app_base_dir,
+            );
+        }
+    }
+
+    fn precompute_inherited_colors(doc: &THTMLDocument) -> std::collections::HashMap<NodeId, (oxiterm_proto::style::AnsiColor, oxiterm_proto::style::AnsiColor)> {
+        let mut map = std::collections::HashMap::new();
+        let root_fg = oxiterm_proto::style::AnsiColor::Color256(15);
+        let root_bg = oxiterm_proto::style::AnsiColor::Color256(0);
+        Self::resolve_colors_recursive(doc, doc.root, root_fg, root_bg, &mut map);
+        map
+    }
+
+    fn resolve_colors_recursive(
+        doc: &THTMLDocument,
+        node_id: NodeId,
+        inherited_fg: oxiterm_proto::style::AnsiColor,
+        inherited_bg: oxiterm_proto::style::AnsiColor,
+        map: &mut std::collections::HashMap<NodeId, (oxiterm_proto::style::AnsiColor, oxiterm_proto::style::AnsiColor)>,
+    ) {
+        if let Some(node) = doc.arena.get(node_id) {
+            let fg = match node.style.fg {
+                oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
+                c => c,
+            };
+            let bg = match node.style.bg {
+                oxiterm_proto::style::AnsiColor::Reset => inherited_bg,
+                c => c,
+            };
+            map.insert(node_id, (fg, bg));
+            for &child_id in &node.children {
+                Self::resolve_colors_recursive(doc, child_id, fg, bg, map);
+            }
+        }
     }
 
     fn render_recursive(
@@ -129,26 +185,88 @@ impl Renderer {
         layout: &LayoutResult,
         buffer: &mut CellBuffer,
         node_id: NodeId,
-        parent_x: i32,
-        parent_y: i32,
+        start_x: i32,
+        start_y: i32,
+        offset_x: u16,
+        offset_y: u16,
         inherited_fg: oxiterm_proto::style::AnsiColor,
         inherited_bg: oxiterm_proto::style::AnsiColor,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
         app_base_dir: Option<&Path>,
     ) {
-        if let Some(node) = doc.arena.get(node_id) {
-            let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-            let abs_x = parent_x + rect.x as i32;
-            let abs_y = parent_y + rect.y as i32;
-
-            let resolved_fg = match node.style.fg {
+        let (resolved_fg, resolved_bg) = if let Some(node) = doc.arena.get(node_id) {
+            let fg = match node.style.fg {
                 oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
                 c => c,
             };
-            let resolved_bg = match node.style.bg {
+            let bg = match node.style.bg {
                 oxiterm_proto::style::AnsiColor::Reset => inherited_bg,
                 c => c,
+            };
+            (fg, bg)
+        } else {
+            (inherited_fg, inherited_bg)
+        };
+
+        Self::render_single_node(
+            doc,
+            layout,
+            buffer,
+            node_id,
+            start_x,
+            start_y,
+            offset_x,
+            offset_y,
+            resolved_fg,
+            resolved_bg,
+            profile,
+            base_dir,
+            app_base_dir,
+        );
+
+        if let Some(node) = doc.arena.get(node_id) {
+            for &child_id in &node.children {
+                Self::render_recursive(
+                    doc,
+                    layout,
+                    buffer,
+                    child_id,
+                    start_x,
+                    start_y,
+                    offset_x,
+                    offset_y,
+                    resolved_fg,
+                    resolved_bg,
+                    profile,
+                    base_dir,
+                    app_base_dir,
+                );
+            }
+        }
+    }
+
+    fn render_single_node(
+        doc: &THTMLDocument,
+        layout: &LayoutResult,
+        buffer: &mut CellBuffer,
+        node_id: NodeId,
+        start_x: i32,
+        start_y: i32,
+        offset_x: u16,
+        offset_y: u16,
+        resolved_fg: oxiterm_proto::style::AnsiColor,
+        resolved_bg: oxiterm_proto::style::AnsiColor,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
+    ) {
+        if let Some(node) = doc.arena.get(node_id) {
+            let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
+            let (abs_x, abs_y) = if node.style.position == oxiterm_proto::style::Position::Fixed {
+                (offset_x as i32 + rect.x as i32, offset_y as i32 + rect.y as i32)
+            } else {
+                (start_x + rect.x as i32, start_y + rect.y as i32)
             };
 
             // Draw background
@@ -389,22 +507,6 @@ impl Renderer {
                     );
                 }
                 _ => {}
-            }
-
-            for &child_id in &node.children {
-                Self::render_recursive(
-                    doc,
-                    layout,
-                    buffer,
-                    child_id,
-                    parent_x,
-                    parent_y,
-                    resolved_fg,
-                    resolved_bg,
-                    profile,
-                    base_dir,
-                    app_base_dir,
-                );
             }
         }
     }

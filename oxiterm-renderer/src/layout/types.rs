@@ -29,10 +29,12 @@ impl Rect {
 }
 
 /// The aggregated layout results of a THTML document.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LayoutResult {
     /// Map of active node IDs to their computed bounding rectangles.
     pub nodes: HashMap<NodeId, Rect>,
+    /// Sorted list of node IDs determining drawing and hit-testing order (bottom-most to top-most).
+    pub paint_order: Vec<NodeId>,
     /// The total height of the scrollable content.
     pub total_height: u16,
 }
@@ -74,8 +76,19 @@ impl<'a> HitTester<'a> {
         Self { result }
     }
 
-    /// Finds the deepest child node covering the specified coordinates (col, row).
+    /// Finds the top-most visible child node covering the specified coordinates (col, row).
     pub fn find_node(&self, col: u16, row: u16) -> Option<NodeId> {
+        if !self.result.paint_order.is_empty() {
+            for &id in self.result.paint_order.iter().rev() {
+                if let Some(rect) = self.result.nodes.get(&id) {
+                    if rect.contains(col, row) {
+                        return Some(id);
+                    }
+                }
+            }
+            return None;
+        }
+
         let mut best_node = None;
         let mut best_area = u32::MAX;
 

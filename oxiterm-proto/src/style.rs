@@ -17,10 +17,24 @@ pub enum AnsiColor {
     Reset,
 }
 
+/// Positioning mode for an element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Position {
+    /// Standard flexbox flow layout (default).
+    #[default]
+    Static,
+    /// Positioned relative to its normal position in flex flow.
+    Relative,
+    /// Removed from flex flow, positioned relative to nearest positioned ancestor.
+    Absolute,
+    /// Positioned relative to viewport root.
+    Fixed,
+}
+
 /// The computed styling of a node after resolving the TCSS cascade.
 ///
 /// Maps flexbox positioning and visual attributes for DOM rendering.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ComputedStyle {
     /// Foreground text color.
     pub fg: AnsiColor,
@@ -46,6 +60,74 @@ pub struct ComputedStyle {
     pub flex: Option<f32>,
     /// Wrap mode for text content.
     pub wrap: WrapMode,
+    /// Positioning model.
+    pub position: Position,
+    /// Top offset inset in character cells.
+    pub top: Option<i16>,
+    /// Right offset inset in character cells.
+    pub right: Option<i16>,
+    /// Bottom offset inset in character cells.
+    pub bottom: Option<i16>,
+    /// Left offset inset in character cells.
+    pub left: Option<i16>,
+    /// Stacking order layer priority.
+    pub z_index: Option<i32>,
+    /// Active CSS transition declarations.
+    pub transitions: Vec<TransitionSpec>,
+    /// Optional opacity factor [0.0, 1.0].
+    pub opacity: Option<f32>,
+}
+
+/// Animatable CSS style property for transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AnimatableProperty {
+    All,
+    Left,
+    Top,
+    Right,
+    Bottom,
+    Width,
+    Height,
+    MarginLeft,
+    MarginTop,
+    MarginRight,
+    MarginBottom,
+    Opacity,
+    Fg,
+    Bg,
+}
+
+/// Transition timing and curve function.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum Easing {
+    /// Constant rate of change.
+    Linear,
+    /// Standard CSS ease: cubic-bezier(0.25, 0.1, 0.25, 1.0).
+    #[default]
+    Ease,
+    /// Slow start: cubic-bezier(0.42, 0.0, 1.0, 1.0).
+    EaseIn,
+    /// Fast start, smooth deceleration: cubic-bezier(0.0, 0.0, 0.58, 1.0).
+    EaseOut,
+    /// Slow start and slow end: cubic-bezier(0.42, 0.0, 0.58, 1.0).
+    EaseInOut,
+    /// Custom cubic Bézier curve defined by control points (x1, y1, x2, y2).
+    CubicBezier(f32, f32, f32, f32),
+    /// Damped harmonic oscillator spring physics (stiffness, damping, mass).
+    Spring { stiffness: f32, damping: f32, mass: f32 },
+}
+
+/// Specification for animating a property on state change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransitionSpec {
+    /// The style property to animate.
+    pub property: AnimatableProperty,
+    /// Duration of the transition in milliseconds.
+    pub duration_ms: u32,
+    /// Delay before transition starts in milliseconds.
+    pub delay_ms: u32,
+    /// Easing curve or physics function.
+    pub easing: Easing,
 }
 
 /// Wrap mode for text rendering.
@@ -99,7 +181,7 @@ pub enum JustifyContent {
 }
 
 /// Margin or padding spacing metrics.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Rect {
     /// Top margin/padding size.
     pub top: u16,
@@ -112,7 +194,7 @@ pub struct Rect {
 }
 
 /// Border styling definition containing colors and characters.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BorderStyle {
     /// Border color.
     pub fg: AnsiColor,
@@ -121,7 +203,7 @@ pub struct BorderStyle {
 }
 
 /// Unicode characters used to draw container borders.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BorderChars {
     /// Top-left corner character.
     pub top_left: char,

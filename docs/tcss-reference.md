@@ -42,6 +42,11 @@ Subsequent rules with the same priority overwrite previous ones (determined by t
 | `border-color` | Color | Specifies or overrides the border color. |
 | `flex` | Number > 0 (e.g. `1`, `2.5`) | Flex shorthand. Sets `flex-grow` factor, `flex-shrink: 1.0`, and `flex-basis: 0`. Expands element along container's main axis. |
 | `wrap` | `word` | Enables word-wrapping of `<text>` content to the element's width. With `wrap: word` (and a constrained width) the text flows onto multiple rows at word boundaries; without it text stays on a single row. |
+| `position` | `static` (default), `relative`, `absolute`, `fixed` | Positioning model. `absolute` removes element from normal flow, positioned relative to nearest positioned ancestor. `fixed` positions relative to viewport origin and does not expand scroll range. |
+| `top` \| `right` \| `bottom` \| `left` | Integer | Offset in character cells used with positioned elements. |
+| `z-index` | Integer | Stacking context layer order. Higher values are painted on top of lower values and take precedence in mouse hit-testing. |
+| `opacity` | Decimal `0.0` - `1.0` | Opacity factor of element. |
+| `transition` | `<prop> <duration> [easing] [delay]` | Declares smooth animated transitions on property changes (e.g. `transition: width 300ms ease-out, left 200ms spring(120, 12, 1);`). |
 
 ---
 
@@ -97,13 +102,68 @@ To draw borders, OxiTerm uses Unicode box drawing semigraphics characters:
 
 ---
 
-## 5. Media Element Constraints
+---
+
+## 5. Positioning and Stacking Contexts (`position`, `z-index`)
+
+OxiTerm supports standard CSS positioning paradigms:
+
+* **`position: static`** (default): Element participates in normal flexbox layout flow.
+* **`position: relative`**: Element participates in flex layout and acts as a positioned reference container for absolute descendants.
+* **`position: absolute`**: Element is taken completely out of document flow and positioned relative to the nearest positioned ancestor (or the screen root). Insets (`top`, `left`, `right`, `bottom`) define coordinates in character cells.
+* **`position: fixed`**: Element is positioned directly relative to the terminal viewport and is excluded from the document scroll height calculation (preventing fixed desktop bars or headers from causing scroll overflow).
+
+### Layering and Hit-Testing (`z-index`)
+* Elements with a higher `z-index` are drawn on top of elements with a lower `z-index`.
+* **Hit-Testing Invariant:** Clicks and pointer interactions are evaluated in reverse visual paint order (`paint_order.rev()`). This ensures that floating windows, popups, and dropdown menus with high `z-index` receive clicks first, even when covering elements underneath.
+
+---
+
+## 6. CSS Transitions & Timing Curves
+
+TCSS supports smooth animated transitions when animatable style properties change:
+
+```css
+.window {
+    position: absolute;
+    width: 30;
+    left: 10;
+    transition: width 300ms ease-out, left 200ms spring(120, 12, 1);
+}
+```
+
+### Syntax
+`transition: <property> <duration> [timing-function] [delay];`
+Multiple properties can be comma-separated.
+
+### Animatable Properties
+* `width`, `height`
+* `top`, `left`, `right`, `bottom`
+* `margin-left`, `margin-top`, `margin-right`, `margin-bottom`, `margin`
+* `opacity`
+* `all` (animates all supported properties)
+
+### Supported Timing Functions (Easing)
+* `linear`: Constant speed.
+* `ease` (default): Fast start, smooth deceleration.
+* `ease-in`: Slow start.
+* `ease-out`: Fast start with deceleration.
+* `ease-in-out`: Slow start and slow deceleration.
+* `cubic-bezier(x1, y1, x2, y2)`: Custom Bézier timing curve solved via Newton-Raphson iteration.
+* `spring(stiffness, damping, mass)`: Physical damped harmonic oscillator simulation.
+
+### Runtime Architecture
+When any transition is active, the OxiTerm event loop ticks at 60 FPS (16ms). When all transitions and animations settle and no pointer drag is active, the event loop returns to idle sleep (0% CPU).
+
+---
+
+## 7. Media Element Constraints
 
 * **Media Min Size Floor:** Media elements (`<img>` and `<video>`) enforce a minimum size (`min_size`) based on their declared `width` and `height` attributes. Even when placed inside a flex container or subject to flex layout, media elements will not shrink below their declared dimensions.
 
 ---
 
-## 6. What TCSS Does NOT Support & Unknown Property Handling
+## 8. What TCSS Does NOT Support & Unknown Property Handling
 
 * **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `px`, `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
 * **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser.

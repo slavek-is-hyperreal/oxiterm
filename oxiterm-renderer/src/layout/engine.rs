@@ -230,13 +230,21 @@ impl LayoutEngine {
             if node_id == doc.root {
                 continue;
             }
+            if let Some(node) = doc.arena.get(node_id) {
+                if node.style.position == oxiterm_proto::style::Position::Fixed {
+                    continue;
+                }
+            }
             let bottom = rect.y + rect.height;
             if bottom > max_bottom {
                 max_bottom = bottom;
             }
         }
 
-        let result = LayoutResult { nodes, total_height: max_bottom };
+        let mut paint_order = Vec::with_capacity(nodes.len());
+        collect_paint_order_recursive(doc, doc.root, &nodes, &mut paint_order);
+
+        let result = LayoutResult { nodes, paint_order, total_height: max_bottom };
         self.last_layout = Some(result.clone());
         Ok(result)
     }
@@ -260,13 +268,20 @@ impl LayoutEngine {
                 let layout = self.taffy.layout(taffy_id)
                     .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
                 
-                let rect_x = layout.location.x.round() as u16;
-                let rect_y = layout.location.y.round() as u16;
-                let width = layout.size.width.round() as u16;
-                let height = layout.size.height.round() as u16;
+                let rect_x = layout.location.x.round().max(0.0) as u16;
+                let rect_y = layout.location.y.round().max(0.0) as u16;
+                let width = layout.size.width.round().max(0.0) as u16;
+                let height = layout.size.height.round().max(0.0) as u16;
                 
-                let abs_x = parent_x + rect_x;
-                let abs_y = parent_y + rect_y;
+                let (abs_x, abs_y) = if let Some(node) = doc.arena.get(oxi_id) {
+                    if node.style.position == oxiterm_proto::style::Position::Fixed {
+                        (rect_x, rect_y)
+                    } else {
+                        (parent_x + rect_x, parent_y + rect_y)
+                    }
+                } else {
+                    (parent_x + rect_x, parent_y + rect_y)
+                };
                 
                 nodes.insert(oxi_id, OxiRect {
                     x: abs_x,
@@ -284,25 +299,43 @@ impl LayoutEngine {
         }
         Ok(())
     }
+}
+
+fn collect_paint_order_recursive(
+    doc: &THTMLDocument,
+    node_id: OxiNodeId,
+    nodes: &HashMap<OxiNodeId, OxiRect>,
+    paint_order: &mut Vec<OxiNodeId>,
+) {
+    if !nodes.contains_key(&node_id) {
+        return;
+    }
+
+    paint_order.push(node_id);
+
+    if let Some(node) = doc.arena.get(node_id) {
+        let mut children_sorted = node.children.clone();
+        children_sorted.sort_by(|&a_id, &b_id| {
+            let a_z = doc.arena.get(a_id).and_then(|n| n.style.z_index).unwrap_or(0);
+            let b_z = doc.arena.get(b_id).and_then(|n| n.style.z_index).unwrap_or(0);
+            a_z.cmp(&b_z)
+        });
+
+        for child_id in children_sorted {
+            collect_paint_order_recursive(doc, child_id, nodes, paint_order);
+        }
+    }
+}
+
+impl LayoutEngine {
 
     /// Queries the computed layout to find which node lies at coordinate (x, y).
     ///
-    /// Returns the smallest (deepest nested) node covering the coordinates.
+    /// Respects stacking contexts and visual paint order (`z-index`), selecting
+    /// the top-most visible element covering the coordinates.
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
         let layout = self.last_layout.as_ref()?;
-        let mut best_node = None;
-        let mut best_area = u32::MAX;
-
-        for (&id, rect) in &layout.nodes {
-            if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
-                let area = (rect.width as u32) * (rect.height as u32);
-                if area <= best_area {
-                    best_area = area;
-                    best_node = Some(id);
-                }
-            }
-        }
-        best_node
+        crate::layout::types::HitTester::new(layout).find_node(x, y)
     }
 
     fn ensure_nodes_exist_recursive(
@@ -461,6 +494,16 @@ impl LayoutEngine {
                     top: LengthPercentage::Length(0.0),
                     bottom: LengthPercentage::Length(0.0),
                 }
+            },
+            position: match style.position {
+                oxiterm_proto::style::Position::Absolute => Position::Absolute,
+                _ => Position::Relative,
+            },
+            inset: Rect {
+                left: style.left.map(|l| LengthPercentageAuto::Length(l as f32)).unwrap_or(LengthPercentageAuto::Auto),
+                right: style.right.map(|r| LengthPercentageAuto::Length(r as f32)).unwrap_or(LengthPercentageAuto::Auto),
+                top: style.top.map(|t| LengthPercentageAuto::Length(t as f32)).unwrap_or(LengthPercentageAuto::Auto),
+                bottom: style.bottom.map(|b| LengthPercentageAuto::Length(b as f32)).unwrap_or(LengthPercentageAuto::Auto),
             },
             ..Default::default()
         }

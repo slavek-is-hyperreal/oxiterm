@@ -15,6 +15,7 @@ The THTML markup language is used to declaratively describe the structure of the
 * **`<img>`**: Embeds SVG vector graphics (`.svg`), Lottie animations (`.json`), and interactive Rive controls (`.riv`). Vector graphics are rasterized in real-time to pixels using `resvg` and `tiny-skia` libraries, and then transmitted using the terminal's graphics protocol.
 * **`<video>`**: Enables smooth video playback (`.mp4` and others). Video frames are decoded and rasterized in the background using the `ffmpeg` tool.
 * **`<for>`**: A loop template. Its single child is cloned once per element of a `List` state value named by the `each` attribute; `{item}` in the template's text is substituted per iteration, and the block re-expands reactively on state change.
+* **`<diagram>`**: Renders Mermaid flowchart diagrams as character cell grids with `minimap`, `crop`, and `fit` preview modes.
 
 ---
 
@@ -105,4 +106,10 @@ OxiTerm manages connections separately from persistent interactive sessions:
 * **Session Token Hygiene:** When a session is established or reattached, the client extracts the `session` token from the URL, writes it to `sessionStorage`, and strips it from the address bar history. The visible URL displays only the page query parameter (`?page=`).
 * **Auto-Reconnection:** On accidental disconnection, the client enters an auto-reconnection loop with exponential backoff capped at 8 seconds.
 * **Reattach Navigation:** If the reattachment URL specifies a different page (e.g., `?page=other.thtml`), the server validates the path and triggers a navigation event (`NavigateTo`) to synchronize the session state to the new page.
+
+---
+
+## 9. Retro Hardware & Desktop Environment ("OxiDE")
+
+For a detailed blueprint on adapting OxiTerm as a standalone Desktop Environment (GUI/DE) for vintage and resource-constrained Linux hardware (direct `/dev/fb0`, DRM/KMS, raw TTY console, multi-window compositing, and D-Bus system integration), see [docs/retro-desktop-environment.md](retro-desktop-environment.md).
 

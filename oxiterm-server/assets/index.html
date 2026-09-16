@@ -872,6 +872,11 @@
             if (codepoint > 0) { e.preventDefault(); sendKeyPress(codepoint, shift, ctrl, alt); }
         }
 
+        let isMouseDown = false;
+        let currentMouseButton = 0;
+        let lastDragCol = -1;
+        let lastDragRow = -1;
+
         function onMouseDown(e) {
             if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const rect = canvas.getBoundingClientRect();
@@ -881,12 +886,29 @@
             if (e.button === 0) button = 0;
             if (e.button === 1) button = 1;
             if (e.button === 2) button = 2;
+            isMouseDown = true;
+            currentMouseButton = button;
+            lastDragCol = col;
+            lastDragRow = row;
             e.preventDefault();
             canvas.focus();
             sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey);
         }
 
+        function onMouseMove(e) {
+            if (!isMouseDown || !currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+            const rect = canvas.getBoundingClientRect();
+            const col = clientXToCol(e.clientX, rect.left, cellW);
+            const row = clientYToRow(e.clientY, rect.top, cellH);
+            if (col !== lastDragCol || row !== lastDragRow) {
+                lastDragCol = col;
+                lastDragRow = row;
+                sendMouseEvent(col, row, currentMouseButton, 2, e.shiftKey, e.ctrlKey, e.altKey);
+            }
+        }
+
         function onMouseUp(e) {
+            isMouseDown = false;
             if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
             const rect = canvas.getBoundingClientRect();
             const col = clientXToCol(e.clientX, rect.left, cellW);
@@ -938,7 +960,9 @@
             // canvas has tabindex="0" (attested in HTML) — required for keydown.
             canvas.addEventListener('keydown',   onKeyDown);
             canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
             canvas.addEventListener('mouseup',   onMouseUp);
+            window.addEventListener('mouseup',   () => { isMouseDown = false; });
             // passive:false so preventDefault() can stop the page from scrolling.
             canvas.addEventListener('wheel',     onWheel, { passive: false });
 

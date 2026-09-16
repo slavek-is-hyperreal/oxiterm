@@ -23,6 +23,31 @@ button { border-style: single; }
 #border-panel  { border-color: #38bdf8; }
 #state-panel   { border-color: #f59e0b; }
 #layout-panel  { border-color: #f87171; }
+
+/* OxiDESK Desktop & Windowing styles */
+.floating-window {
+    position: absolute;
+    top: 6;
+    left: 24;
+    width: 34;
+    height: 11;
+    z-index: 50;
+    bg: #1e1b4b;
+    border-style: rounded;
+    border-color: #818cf8;
+    padding: 1;
+    flex-direction: column;
+    transition: width 200ms ease-out, height 200ms ease-out;
+}
+.window-handle {
+    height: 1;
+    bg: #3730a3;
+    fg: #c7d2fe;
+    padding-left: 1;
+    padding-right: 1;
+    justify-content: space-between;
+    margin-bottom: 1;
+}
 </style>
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
@@ -129,6 +154,26 @@ button { border-style: single; }
 
         </box>
 
+    </box>
+
+    <!-- Floating Draggable Window with z-index & transitions -->
+    <box class="floating-window" draggable="true" drag-state-x="win_x" drag-state-y="win_y" event-drag-end="set:drag_status=parked">
+        <box class="window-handle" drag-handle="true">
+            <text style="fg: #e0e7ff; height: 1;">🪟 OxiDESK Window (Drag Me!)</text>
+            <text style="fg: #a5b4fc; height: 1;">::</text>
+        </box>
+        <box style="flex-direction: column; flex: 1;">
+            <text style="fg: #c7d2fe; height: 1;">z-index: 50 | absolute</text>
+            <text class="mono" style="height: 1;">drag-handle="true"</text>
+            <box style="flex-direction: row; margin-top: 1; align-items: center;">
+                <text class="muted" style="width: 14;">Pos (X/Y):</text>
+                <text style="fg: #38bdf8; height: 1; width: 4;" bind-state="win_x">24</text>
+                <text style="fg: #38bdf8; height: 1; width: 4;" bind-state="win_y">6</text>
+            </box>
+            <box style="flex-direction: row; margin-top: 1; align-items: center;">
+                <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 2;" event-htmx="toggle:docked">Toggle Dock</button>
+            </box>
+        </box>
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">

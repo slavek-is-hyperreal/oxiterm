@@ -63,6 +63,16 @@ pub struct NodeAttributes {
     pub preview: Option<String>,
     /// Anchor node ID for diagram crop preview mode.
     pub preview_anchor: Option<String>,
+    /// Whether this element can be dragged by mouse.
+    pub draggable: Option<bool>,
+    /// Whether this element acts as a drag handle for its draggable parent.
+    pub drag_handle: Option<bool>,
+    /// StateManager key to sync dragged X column coordinate.
+    pub drag_state_x: Option<String>,
+    /// StateManager key to sync dragged Y row coordinate.
+    pub drag_state_y: Option<String>,
+    /// Action triggered when dragging completes.
+    pub event_drag_end: Option<String>,
 }
 
 /// A unique identifier for a node inside the document's arena.

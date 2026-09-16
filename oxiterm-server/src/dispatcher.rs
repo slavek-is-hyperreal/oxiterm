@@ -113,6 +113,7 @@ mod tests {
             session_id,
             username: None,
             auth_method: None,
+            app_token: None,
         }
     }
 
@@ -151,6 +152,7 @@ mod tests {
             session_id: 123,
             username: Some("test_user".to_string()),
             auth_method: Some("TrustedHeader".to_string()),
+            app_token: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("\"username\":\"test_user\""));

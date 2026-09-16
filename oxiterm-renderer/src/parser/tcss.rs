@@ -73,6 +73,20 @@ pub enum Declaration {
     Wrap(oxiterm_proto::style::WrapMode),
     /// Flex shorthand value (flex-grow factor).
     Flex(f32),
+    /// Positioning model.
+    Position(oxiterm_proto::style::Position),
+    /// Top offset inset in cells.
+    Top(i16),
+    /// Right offset inset in cells.
+    Right(i16),
+    /// Bottom offset inset in cells.
+    Bottom(i16),
+    /// Left offset inset in cells.
+    Left(i16),
+    /// Stacking order layer priority.
+    ZIndex(i32),
+    /// Transition specification declarations.
+    Transition(Vec<oxiterm_proto::style::TransitionSpec>),
     /// Unrecognized property or invalid property value.
     Unknown(String),
 }
@@ -193,6 +207,13 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
             }
         }
         Declaration::Flex(val) => style.flex = Some(*val),
+        Declaration::Position(pos) => style.position = *pos,
+        Declaration::Top(v) => style.top = Some(*v),
+        Declaration::Right(v) => style.right = Some(*v),
+        Declaration::Bottom(v) => style.bottom = Some(*v),
+        Declaration::Left(v) => style.left = Some(*v),
+        Declaration::ZIndex(v) => style.z_index = Some(*v),
+        Declaration::Transition(v) => style.transitions = v.clone(),
         Declaration::Unknown(_) => {},
     }
 }
@@ -352,6 +373,55 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
         "border" => Some(Declaration::Border(parse_color(val_str))),
         "border-style" => Some(Declaration::BorderStyle(val_str.to_string())),
         "border-color" => Some(Declaration::BorderColor(parse_color(val_str))),
+        "position" => match val_str {
+            "relative" => Some(Declaration::Position(oxiterm_proto::style::Position::Relative)),
+            "absolute" => Some(Declaration::Position(oxiterm_proto::style::Position::Absolute)),
+            "fixed" => Some(Declaration::Position(oxiterm_proto::style::Position::Fixed)),
+            "static" => Some(Declaration::Position(oxiterm_proto::style::Position::Static)),
+            _ => {
+                tracing::warn!("Unknown TCSS position value: {}", val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "top" => match val_str.parse::<i16>() {
+            Ok(v) => Some(Declaration::Top(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "right" => match val_str.parse::<i16>() {
+            Ok(v) => Some(Declaration::Right(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "bottom" => match val_str.parse::<i16>() {
+            Ok(v) => Some(Declaration::Bottom(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "left" => match val_str.parse::<i16>() {
+            Ok(v) => Some(Declaration::Left(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "z-index" => match val_str.parse::<i32>() {
+            Ok(v) => Some(Declaration::ZIndex(v)),
+            Err(_) => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "transition" => {
+            let specs = parse_transitions(val_str);
+            Some(Declaration::Transition(specs))
+        },
         _ => {
             tracing::warn!("Unknown TCSS property: {}", key);
             Some(Declaration::Unknown(format!("{key}: {val_str}")))
@@ -392,6 +462,129 @@ fn parse_color(value: &str) -> AnsiColor {
     }
     AnsiColor::Reset
 }
+
+fn parse_transitions(val_str: &str) -> Vec<oxiterm_proto::style::TransitionSpec> {
+    use oxiterm_proto::style::{AnimatableProperty, Easing, TransitionSpec};
+    let mut specs = Vec::new();
+    
+    for item in val_str.split(',') {
+        let parts: Vec<&str> = item.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+        
+        let props = match parts[0].to_lowercase().as_str() {
+            "left" => vec![AnimatableProperty::Left],
+            "top" => vec![AnimatableProperty::Top],
+            "right" => vec![AnimatableProperty::Right],
+            "bottom" => vec![AnimatableProperty::Bottom],
+            "width" => vec![AnimatableProperty::Width],
+            "height" => vec![AnimatableProperty::Height],
+            "margin-left" => vec![AnimatableProperty::MarginLeft],
+            "margin-top" => vec![AnimatableProperty::MarginTop],
+            "margin-right" => vec![AnimatableProperty::MarginRight],
+            "margin-bottom" => vec![AnimatableProperty::MarginBottom],
+            "margin" => vec![
+                AnimatableProperty::MarginLeft,
+                AnimatableProperty::MarginTop,
+                AnimatableProperty::MarginRight,
+                AnimatableProperty::MarginBottom,
+            ],
+            "fg" | "color" => vec![AnimatableProperty::Fg],
+            "bg" | "background-color" => vec![AnimatableProperty::Bg],
+            "opacity" => vec![AnimatableProperty::Opacity],
+            "all" => vec![
+                AnimatableProperty::Left,
+                AnimatableProperty::Top,
+                AnimatableProperty::Right,
+                AnimatableProperty::Bottom,
+                AnimatableProperty::Width,
+                AnimatableProperty::Height,
+                AnimatableProperty::MarginLeft,
+                AnimatableProperty::MarginTop,
+                AnimatableProperty::Opacity,
+                AnimatableProperty::Fg,
+                AnimatableProperty::Bg,
+            ],
+            _ => continue,
+        };
+        
+        let duration_ms = if parts.len() > 1 {
+            parse_duration_ms(parts[1])
+        } else {
+            300
+        };
+        
+        let easing = if parts.len() > 2 {
+            parse_easing(parts[2])
+        } else {
+            Easing::Ease
+        };
+        
+        let delay_ms = if parts.len() > 3 {
+            parse_duration_ms(parts[3])
+        } else {
+            0
+        };
+        
+        for prop in props {
+            specs.push(TransitionSpec {
+                property: prop,
+                duration_ms,
+                delay_ms,
+                easing,
+            });
+        }
+    }
+    
+    specs
+}
+
+fn parse_duration_ms(s: &str) -> u32 {
+    let s = s.trim().to_lowercase();
+    if let Some(num) = s.strip_suffix("ms") {
+        num.parse::<u32>().unwrap_or(0)
+    } else if let Some(num) = s.strip_suffix('s') {
+        (num.parse::<f32>().unwrap_or(0.0) * 1000.0) as u32
+    } else {
+        s.parse::<u32>().unwrap_or(0)
+    }
+}
+
+fn parse_easing(s: &str) -> oxiterm_proto::style::Easing {
+    use oxiterm_proto::style::Easing;
+    let s = s.trim().to_lowercase();
+    match s.as_str() {
+        "linear" => Easing::Linear,
+        "ease" => Easing::Ease,
+        "ease-in" => Easing::EaseIn,
+        "ease-out" => Easing::EaseOut,
+        "ease-in-out" => Easing::EaseInOut,
+        _ if s.starts_with("spring") => {
+            let mut stiffness = 100.0;
+            let mut damping = 10.0;
+            let mut mass = 1.0;
+            if let Some(inner) = s.strip_prefix("spring(").and_then(|x| x.strip_suffix(')')) {
+                let nums: Vec<f32> = inner.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+                if !nums.is_empty() { stiffness = nums[0]; }
+                if nums.len() >= 2 { damping = nums[1]; }
+                if nums.len() >= 3 { mass = nums[2]; }
+            }
+            Easing::Spring { stiffness, damping, mass }
+        }
+        _ if s.starts_with("cubic-bezier(") => {
+            if let Some(inner) = s.strip_prefix("cubic-bezier(").and_then(|x| x.strip_suffix(')')) {
+                let nums: Vec<f32> = inner.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+                if nums.len() == 4 {
+                    return Easing::CubicBezier(nums[0], nums[1], nums[2], nums[3]);
+                }
+            }
+            Easing::Ease
+        }
+        _ => Easing::Ease,
+    }
+}
+
 
 /// Applies stylesheet rules to all DOM nodes inside the document cascadingly.
 ///

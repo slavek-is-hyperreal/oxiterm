@@ -618,6 +618,31 @@ pub struct EventLoop {
     pub for_template_cache: HashMap<NodeId, Vec<NodeId>>,
     /// Per-session DoR (denial-of-render) event throttle.
     pub throttle: crate::throttle::EventThrottle,
+    /// Active pointer drag operation state.
+    pub active_drag: Option<DragState>,
+    /// CSS transitions and animations controller.
+    pub animation_controller: crate::animation::AnimationController,
+}
+
+/// Active pointer drag operation state machine tracking element relocation.
+#[derive(Debug, Clone)]
+pub struct DragState {
+    /// NodeId being dragged.
+    pub target_node: NodeId,
+    /// Screen column where the drag started.
+    pub start_mouse_col: u16,
+    /// Screen row where the drag started.
+    pub start_mouse_row: u16,
+    /// Element initial style left offset when drag started.
+    pub initial_left: i16,
+    /// Element initial style top offset when drag started.
+    pub initial_top: i16,
+    /// Bound state variable to synchronize with X position changes.
+    pub state_x_key: Option<String>,
+    /// Bound state variable to synchronize with Y position changes.
+    pub state_y_key: Option<String>,
+    /// HTMX action to fire when pointer is released.
+    pub on_drag_end: Option<String>,
 }
 
 /// Focus-ring markers drawn immediately left/right of the focused node. They MUST be
@@ -765,6 +790,8 @@ impl EventLoop {
             app_dispatcher: None,
             for_template_cache: HashMap::new(),
             throttle: crate::throttle::EventThrottle::new(),
+            active_drag: None,
+            animation_controller: crate::animation::AnimationController::new(),
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
@@ -803,6 +830,8 @@ impl EventLoop {
     pub fn update_doc(&mut self, new_doc: THTMLDocument) {
         self.doc = new_doc;
         self.for_template_cache.clear();
+        self.active_drag = None;
+        self.animation_controller.clear();
         self.rebuild_parent_map();
         self.rebuild_focusable_nodes();
         self.buffer.force_dirty();
@@ -915,6 +944,61 @@ impl EventLoop {
             } else {
                 break;
             }
+        }
+        None
+    }
+
+    fn node_has_drag_handle_descendant(&self, root_id: NodeId) -> bool {
+        let mut stack = vec![root_id];
+        while let Some(id) = stack.pop() {
+            if let Some(node) = self.doc.get_node(id) {
+                if node.attrs.drag_handle.unwrap_or(false) {
+                    return true;
+                }
+                for &ch in &node.children {
+                    stack.push(ch);
+                }
+            }
+        }
+        false
+    }
+
+    fn is_or_descendant_of_drag_handle(&self, hit_node: NodeId, draggable_root: NodeId) -> bool {
+        let mut curr = Some(hit_node);
+        while let Some(id) = curr {
+            if let Some(node) = self.doc.get_node(id) {
+                if node.attrs.drag_handle.unwrap_or(false) {
+                    return true;
+                }
+            }
+            if id == draggable_root {
+                break;
+            }
+            curr = self.parent_map.get(&id).copied();
+        }
+        false
+    }
+
+    pub(crate) fn find_draggable_target(&self, hit_node: NodeId) -> Option<(NodeId, Option<String>, Option<String>, Option<String>)> {
+        let mut curr = Some(hit_node);
+        while let Some(id) = curr {
+            if let Some(node) = self.doc.get_node(id) {
+                if node.attrs.draggable.unwrap_or(false) {
+                    let has_explicit_handle = self.node_has_drag_handle_descendant(id);
+                    if !has_explicit_handle || self.is_or_descendant_of_drag_handle(hit_node, id) {
+                        return Some((
+                            id,
+                            node.attrs.drag_state_x.clone(),
+                            node.attrs.drag_state_y.clone(),
+                            node.attrs.event_drag_end.clone(),
+                        ));
+                    }
+                }
+            }
+            if id == self.doc.root {
+                break;
+            }
+            curr = self.parent_map.get(&id).copied();
         }
         None
     }
@@ -1242,12 +1326,71 @@ impl EventLoop {
         self.update_interactive_animations(&mouse);
         self.pending_mouse = Some(mouse.clone());
 
+        // Pointer Drag Move (pointer capture)
+        if mouse.action == oxiterm_proto::input::MouseAction::Move {
+            if let Some(ref drag) = self.active_drag {
+                let delta_x = mouse.col as i32 - drag.start_mouse_col as i32;
+                let delta_y = mouse.row as i32 - drag.start_mouse_row as i32;
+                let new_left = (drag.initial_left as i32 + delta_x).max(0) as i16;
+                let new_top = (drag.initial_top as i32 + delta_y).max(0) as i16;
+                let target_node = drag.target_node;
+                let state_x = drag.state_x_key.clone();
+                let state_y = drag.state_y_key.clone();
+
+                if let Some(node) = self.doc.arena.get_mut(target_node) {
+                    node.style.position = oxiterm_proto::style::Position::Absolute;
+                    node.style.left = Some(new_left);
+                    node.style.top = Some(new_top);
+                    self.doc.mark_dirty(target_node);
+                }
+                if let Some(kx) = state_x {
+                    self.session.state.write().set(kx, crate::state::StateValue::Str(new_left.to_string()));
+                }
+                if let Some(ky) = state_y {
+                    self.session.state.write().set(ky, crate::state::StateValue::Str(new_top.to_string()));
+                }
+                return true;
+            }
+        }
+
+        // Pointer Drag Release
+        if mouse.action == oxiterm_proto::input::MouseAction::Release {
+            if let Some(drag) = self.active_drag.take() {
+                if let Some(action) = drag.on_drag_end {
+                    self.handle_htmx_target(drag.target_node, &action);
+                }
+                return true;
+            }
+        }
+
         // Anchored by spec [SC-05]. Handle interactive navigation or state updates based on htmx event targets.
         if mouse.action == oxiterm_proto::input::MouseAction::Press {
             // Press = activation: unconditional. hit_test + handle_htmx_target always run.
             // NAV bucket inside handle_htmx_target caps the actual page-load rate.
             if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
                 tracing::trace!("Hit test found node: {:?}", node_id);
+                if let Some((drag_target, state_x, state_y, on_drag_end)) = self.find_draggable_target(node_id) {
+                    let initial_left = self.doc.get_node(drag_target)
+                        .and_then(|n| n.style.left)
+                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.x as i16)))
+                        .unwrap_or(0);
+                    let initial_top = self.doc.get_node(drag_target)
+                        .and_then(|n| n.style.top)
+                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.y as i16)))
+                        .unwrap_or(0);
+
+                    self.active_drag = Some(DragState {
+                        target_node: drag_target,
+                        start_mouse_col: mouse.col,
+                        start_mouse_row: mouse.row,
+                        initial_left,
+                        initial_top,
+                        state_x_key: state_x,
+                        state_y_key: state_y,
+                        on_drag_end,
+                    });
+                }
+
                 if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(node_id) {
                     tracing::trace!("Found HTMX target (node {:?}): {}", target_node_id, htmx_target);
                     self.handle_htmx_target(target_node_id, &htmx_target);
@@ -1307,11 +1450,21 @@ impl EventLoop {
             first_frame = false;
             pending_render = false;
 
-            let has_animations = self.has_active_animations();
-            let sleep_dur = if has_animations {
-                std::time::Duration::from_millis(66)
+            let now = std::time::Instant::now();
+            let anim_changed = self.animation_controller.tick(&mut self.doc, now);
+            if anim_changed {
+                needs_render = true;
+            }
+
+            let has_active_transitions = self.animation_controller.has_active();
+            let has_media_animations = self.has_active_animations();
+            let is_dragging = self.active_drag.is_some();
+            let is_active = has_media_animations || has_active_transitions || is_dragging;
+
+            let sleep_dur = if is_active {
+                std::time::Duration::from_millis(16)
             } else {
-                std::time::Duration::from_millis(5)
+                std::time::Duration::from_millis(1000)
             };
 
             let mut disconnected = false;
@@ -1329,7 +1482,7 @@ impl EventLoop {
                         match rx_lock.recv_timeout(sleep_dur) {
                             Ok(e) => Some(e),
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                                if has_animations {
+                                if is_active {
                                     needs_render = true;
                                 }
                                 break;
@@ -1562,6 +1715,7 @@ impl EventLoop {
             if needs_render && !self.output_paused {
                 if self.frame_limiter.should_render() {
                     Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+                    self.animation_controller.sync_transitions(&mut self.doc, std::time::Instant::now());
                     self.rebuild_focusable_nodes();
 
                     let dims = *self.session.dims.read();
@@ -1904,7 +2058,7 @@ mod tests {
         let other = el.doc.arena.alloc(oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box));
         let mut nodes = layout.nodes.clone();
         nodes.insert(other, oxiterm_renderer::layout::types::Rect { x: 0, y: 18, width: 4, height: 1 });
-        let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20 };
+        let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20, paint_order: Vec::new() };
         el.focused_node = Some(other);
         EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout2, viewport_h);
         assert_eq!(el.scroll_offset, 19 - viewport_h, "focus change reveals the newly focused node");
@@ -3060,6 +3214,7 @@ mod tests {
         el.layout_engine.last_layout = Some(oxiterm_renderer::layout::types::LayoutResult {
             nodes,
             total_height,
+            paint_order: Vec::new(),
         });
     }
 
@@ -3442,11 +3597,7 @@ mod tests {
 
         session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("secret_token_123".to_string()));
 
-        let doc = oxiterm_renderer::document::THTMLDocument {
-            arena: oxiterm_proto::dom::Arena::new(),
-            root: oxiterm_proto::dom::NodeId(0),
-            dirty_nodes: Vec::new(),
-        };
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
@@ -3466,11 +3617,7 @@ mod tests {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
 
-        let doc = oxiterm_renderer::document::THTMLDocument {
-            arena: oxiterm_proto::dom::Arena::new(),
-            root: oxiterm_proto::dom::NodeId(0),
-            dirty_nodes: Vec::new(),
-        };
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
@@ -3502,6 +3649,7 @@ mod tests {
 
     #[test]
     fn test_p41_t1_apc_new_token_dispatches_and_sets_state() {
+        let _env = crate::test_env::EnvGuard::lock_and_set(&[]);
         use std::net::TcpListener;
         use std::io::{Write, Read};
 
@@ -3511,11 +3659,7 @@ mod tests {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
 
-        let doc = oxiterm_renderer::document::THTMLDocument {
-            arena: oxiterm_proto::dom::Arena::new(),
-            root: oxiterm_proto::dom::NodeId(0),
-            dirty_nodes: Vec::new(),
-        };
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
@@ -3525,9 +3669,13 @@ mod tests {
         el.handle_set_app_token("new_app_token_123".to_string());
 
         let (mut stream, _) = listener.accept().unwrap();
+        let mut req_str = String::new();
         let mut buf = [0u8; 1024];
-        let n = stream.read(&mut buf).unwrap();
-        let req_str = String::from_utf8_lossy(&buf[..n]);
+        while !req_str.contains("\"app_token\":") {
+            let n = stream.read(&mut buf).unwrap();
+            if n == 0 { break; }
+            req_str.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
 
         assert!(req_str.contains("\"app_token\":\"new_app_token_123\""));
 
@@ -3548,11 +3696,7 @@ mod tests {
 
         session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("same_token_123".to_string()));
 
-        let doc = oxiterm_renderer::document::THTMLDocument {
-            arena: oxiterm_proto::dom::Arena::new(),
-            root: oxiterm_proto::dom::NodeId(0),
-            dirty_nodes: Vec::new(),
-        };
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
@@ -3571,11 +3715,7 @@ mod tests {
         let session = reg.create_session().unwrap();
         session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("old_token".to_string()));
 
-        let doc = oxiterm_renderer::document::THTMLDocument {
-            arena: oxiterm_proto::dom::Arena::new(),
-            root: oxiterm_proto::dom::NodeId(0),
-            dirty_nodes: Vec::new(),
-        };
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
@@ -3618,6 +3758,274 @@ mod tests {
         let frame = web_rx.try_recv().expect("Frame 0x35 must be emitted when set_app_token changes");
         assert_eq!(frame[0], 0x35);
         assert_eq!(String::from_utf8_lossy(&frame[1..]), "brand_new_token_999");
+    }
+
+    #[test]
+    fn test_pointer_drag_state_machine() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::input::{MouseInput, MouseButton, MouseAction, KeyModifiers};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 0, rows: 0 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut drag_box = Node::new(NodeTag::Box);
+        drag_box.attrs.draggable = Some(true);
+        drag_box.attrs.drag_state_x = Some("win_x".to_string());
+        drag_box.attrs.drag_state_y = Some("win_y".to_string());
+        drag_box.attrs.event_drag_end = Some("set:drag_status=dropped".to_string());
+        drag_box.style.position = oxiterm_proto::style::Position::Absolute;
+        drag_box.style.left = Some(10);
+        drag_box.style.top = Some(5);
+        drag_box.style.width = Some(20);
+        drag_box.style.height = Some(10);
+        let box_id = arena.alloc(drag_box);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![box_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        el.rebuild_parent_map();
+
+        // Synthetic layout
+        inject_layout(&mut el, vec![(box_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 10 })], 24);
+
+        // 1. Mouse Press on the draggable box (col 12, row 6)
+        // With dims=80x24 and centering offset=0,0, mouse.col saturating_sub(1) = 11.
+        // Let's send adjusted coordinates matching the rect:
+        let press_mouse = MouseInput {
+            col: 13, // 13 - 1 = 12 (inside rect x=10..30)
+            row: 7,  // 7 - 1 = 6 (inside rect y=5..15)
+            button: MouseButton::Left,
+            action: MouseAction::Press,
+            modifiers: KeyModifiers::default(),
+        };
+        let render_needed = el.handle_mouse_event(press_mouse);
+        assert!(render_needed, "Press must request render");
+        assert!(el.active_drag.is_some(), "DragState must be initialized on Press");
+        let drag = el.active_drag.as_ref().unwrap();
+        assert_eq!(drag.target_node, box_id);
+        assert_eq!(drag.initial_left, 10);
+        assert_eq!(drag.initial_top, 5);
+
+        // 2. Mouse Move with button held (delta +5, +3) -> col 18, row 10
+        let move_mouse = MouseInput {
+            col: 18,
+            row: 10,
+            button: MouseButton::Left,
+            action: MouseAction::Move,
+            modifiers: KeyModifiers::default(),
+        };
+        let move_render = el.handle_mouse_event(move_mouse);
+        assert!(move_render, "Drag move must trigger render");
+        let updated_node = el.doc.get_node(box_id).unwrap();
+        assert_eq!(updated_node.style.left, Some(15), "left should be initial(10) + delta(5) = 15");
+        assert_eq!(updated_node.style.top, Some(8), "top should be initial(5) + delta(3) = 8");
+
+        // Verify state variables synchronized
+        let state = session.state.read();
+        assert_eq!(state.get("win_x"), Some(&crate::state::StateValue::Str("15".to_string())));
+        assert_eq!(state.get("win_y"), Some(&crate::state::StateValue::Str("8".to_string())));
+        drop(state);
+
+        // 3. Mouse Release
+        let release_mouse = MouseInput {
+            col: 18,
+            row: 10,
+            button: MouseButton::Left,
+            action: MouseAction::Release,
+            modifiers: KeyModifiers::default(),
+        };
+        let release_render = el.handle_mouse_event(release_mouse);
+        assert!(release_render, "Drag release must trigger render");
+        assert!(el.active_drag.is_none(), "DragState must be cleared on Release");
+
+        // Verify event_drag_end fired
+        let state_after = session.state.read();
+        assert_eq!(state_after.get("drag_status"), Some(&crate::state::StateValue::Str("dropped".to_string())));
+    }
+
+    #[test]
+    fn test_pointer_drag_with_explicit_drag_handle() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::input::{MouseInput, MouseButton, MouseAction, KeyModifiers};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 0, rows: 0 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        // Titlebar handle (y: 5..7)
+        let mut handle = Node::new(NodeTag::Box);
+        handle.attrs.drag_handle = Some(true);
+        let handle_id = arena.alloc(handle);
+
+        // Content area non-handle (y: 7..15)
+        let content = Node::new(NodeTag::Box);
+        let content_id = arena.alloc(content);
+
+        // Parent window (draggable = true)
+        let mut window = Node::new(NodeTag::Box);
+        window.attrs.draggable = Some(true);
+        window.children = vec![handle_id, content_id];
+        let window_id = arena.alloc(window);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![window_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        el.rebuild_parent_map();
+
+        // Synthetic layout: window at (10, 5, 20, 10), handle at (10, 5, 20, 2), content at (10, 7, 20, 8)
+        inject_layout(&mut el, vec![
+            (window_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 10 }),
+            (handle_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 2 }),
+            (content_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 7, width: 20, height: 8 }),
+        ], 24);
+
+        // Click on content area (col 13, row 10 -> adjusted 12, 9)
+        let click_content = MouseInput {
+            col: 13,
+            row: 10,
+            button: MouseButton::Left,
+            action: MouseAction::Press,
+            modifiers: KeyModifiers::default(),
+        };
+        el.handle_mouse_event(click_content);
+        assert!(el.active_drag.is_none(), "Clicking non-handle content must NOT initiate drag");
+
+        // Click on titlebar handle (col 13, row 6 -> adjusted 12, 5)
+        let click_handle = MouseInput {
+            col: 13,
+            row: 6,
+            button: MouseButton::Left,
+            action: MouseAction::Press,
+            modifiers: KeyModifiers::default(),
+        };
+        el.handle_mouse_event(click_handle);
+        assert!(el.active_drag.is_some(), "Clicking explicit drag-handle MUST initiate drag");
+        assert_eq!(el.active_drag.as_ref().unwrap().target_node, window_id);
+    }
+
+    #[test]
+    fn test_z_index_hit_testing_order() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::input::{MouseInput, MouseButton, MouseAction, KeyModifiers};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 0, rows: 0 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        // Background card (z-index 1) with HTMX action "bg_clicked"
+        let mut bg_card = Node::new(NodeTag::Box);
+        bg_card.style.z_index = Some(1);
+        bg_card.attrs.event_htmx = Some("set:result=bg".to_string());
+        let bg_id = arena.alloc(bg_card);
+
+        // Foreground card (z-index 10) with HTMX action "fg_clicked" covering the same area
+        let mut fg_card = Node::new(NodeTag::Box);
+        fg_card.style.z_index = Some(10);
+        fg_card.attrs.event_htmx = Some("set:result=fg".to_string());
+        let fg_id = arena.alloc(fg_card);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![bg_id, fg_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        el.rebuild_parent_map();
+
+        // Layout with paint_order: bg_id painted first, fg_id painted second (on top)
+        let mut nodes = std::collections::HashMap::new();
+        nodes.insert(bg_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 5, width: 30, height: 10 });
+        nodes.insert(fg_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 5, width: 30, height: 10 });
+        el.layout_engine.last_layout = Some(oxiterm_renderer::layout::types::LayoutResult {
+            nodes,
+            total_height: 24,
+            paint_order: vec![bg_id, fg_id], // paint_order ascending by z-index
+        });
+
+        // Click on overlapping area (col 11, row 7 -> doc coords 10, 6)
+        let click = MouseInput {
+            col: 11,
+            row: 7,
+            button: MouseButton::Left,
+            action: MouseAction::Press,
+            modifiers: KeyModifiers::default(),
+        };
+        el.handle_mouse_event(click);
+
+        // Result must be "fg" because higher z-index fg_id wins hit-testing
+        let state = session.state.read();
+        assert_eq!(state.get("result"), Some(&crate::state::StateValue::Str("fg".to_string())));
+    }
+
+    #[test]
+    fn test_smooth_transition_in_event_loop() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::style::{AnimatableProperty, Easing, TransitionSpec};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut anim_box = Node::new(NodeTag::Box);
+        anim_box.style.width = Some(20);
+        anim_box.style.transitions.push(TransitionSpec {
+            property: AnimatableProperty::Width,
+            duration_ms: 100,
+            delay_ms: 0,
+            easing: Easing::Linear,
+        });
+        let box_id = arena.alloc(anim_box);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![box_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let start_time = std::time::Instant::now();
+
+        // Baseline establishment
+        el.animation_controller.sync_transitions(&mut el.doc, start_time);
+        assert!(!el.animation_controller.has_active());
+
+        // Target changes to width 60
+        el.doc.arena.get_mut(box_id).unwrap().style.width = Some(60);
+        el.animation_controller.sync_transitions(&mut el.doc, start_time);
+        assert!(el.animation_controller.has_active(), "Transition must be active after property target change");
+
+        // Tick at 50ms (midpoint)
+        let mid_time = start_time + std::time::Duration::from_millis(50);
+        let changed = el.animation_controller.tick(&mut el.doc, mid_time);
+        assert!(changed, "Animation tick must return true when property interpolates");
+        let mid_width = el.doc.get_node(box_id).unwrap().style.width.unwrap();
+        assert!(mid_width >= 38 && mid_width <= 42, "Midpoint width should be ~40, got {}", mid_width);
+
+        // Tick at 110ms (completion)
+        let end_time = start_time + std::time::Duration::from_millis(110);
+        let end_changed = el.animation_controller.tick(&mut el.doc, end_time);
+        assert!(end_changed);
+        let final_width = el.doc.get_node(box_id).unwrap().style.width.unwrap();
+        assert_eq!(final_width, 60, "Final width must reach target 60");
+        assert!(!el.animation_controller.has_active(), "No transitions should be active once finished");
     }
 }
 

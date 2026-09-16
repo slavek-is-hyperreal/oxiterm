@@ -27,7 +27,7 @@ Files must not contain elements specific to browser HTML, such as `<!DOCTYPE>`, 
 
 ## 2. Supported Tags
 
-OxiTerm supports exactly eight tags. Using an unknown tag will cause a document parsing error.
+OxiTerm supports nine tags (`<screen>` root plus 8 child tags). Using an unknown tag will cause a document parsing error.
 
 | Tag | Role | Children | Notes |
 |---|---|---|---|
@@ -39,9 +39,10 @@ OxiTerm supports exactly eight tags. Using an unknown tag will cause a document 
 | `<img>` | Image or animation | None | Displays SVG, PNG, JPG files and Lottie animations (`.json`). |
 | `<video>` | Video player | None | Play video files smoothly in the background. Requires `ffmpeg` in the system. |
 | `<for>` | Loop template | One template child | Repeats its child once per element of a `List` state value named by the `each` attribute (see §4). |
+| `<diagram>` | Diagram renderer | None | Renders Mermaid flowcharts as character cell grids with `minimap`, `crop`, or `fit` modes (see §12). |
 
 > [!NOTE]
-> Any tag can be self-closing (ending with `/>`, e.g. `<img />`, `<text bind-state="msg" />`). A self-closing tag contains no children or inner text content, so `<text />` is useful with `bind-state`, while `<for />` is semantically invalid because `<for>` requires a child template.
+> Any tag can be self-closing (ending with `/>`, e.g. `<img />`, `<diagram />`, `<text bind-state="msg" />`). A self-closing tag contains no children or inner text content, so `<text />` is useful with `bind-state`, while `<for />` is semantically invalid because `<for>` requires a child template.
 
 ---
 
@@ -57,6 +58,11 @@ The following attributes can be applied to any node type:
 | `event-htmx` | Action text | Action (or sequence of actions) triggered when the element is clicked or when `Enter` is pressed. |
 | `bind-state` | State key | Reactively displays the current value of the associated key from `StateManager` as text content. |
 | `bind-show` | Condition text | Conditionally hides/shows the node. Hidden nodes are completely removed from the layout. |
+| `draggable` | `"true"` / `"false"` | Enables mouse pointer dragging for the element. |
+| `drag-handle` | `"true"` / `"false"` | Designates the node as an explicit drag handle for itself or an ancestor draggable container. |
+| `drag-state-x` | State key | State key (Int) reactively updated with the horizontal position or offset during dragging. |
+| `drag-state-y` | State key | State key (Int) reactively updated with the vertical position or offset during dragging. |
+| `event-drag-end` | Action text | HTMX action(s) triggered when the pointer is released after a drag operation. |
 
 ---
 
@@ -218,6 +224,36 @@ Example binding input with reactive text:
 Standard HTML comments are completely skipped when parsing the document tree:
 ```html
 <!-- This comment will be stripped and will not end up in the DOM tree -->
+```
+
+---
+
+## 11. Pointer Drag & Floating Window Attributes
+
+OxiTerm supports interactive mouse dragging for floating windows, modals, toolbars, and splitters through declarative HTML attributes:
+
+| Attribute | Value Type | Description |
+|---|---|---|
+| `draggable` | `"true"` \| `"false"` | Declares this element as draggable. When clicked and moved, the pointer is captured until release. |
+| `drag-handle` | `"true"` \| `"false"` | Designates a sub-element (such as a window title bar or grip) as the drag handle. If an element or any child declares `drag-handle="true"`, dragging only initiates when the mouse press occurs inside a drag handle. |
+| `drag-state-x` | State key | State key in `StateManager` (`Int`) dynamically synchronized with the horizontal delta or coordinate during pointer motion. |
+| `drag-state-y` | State key | State key in `StateManager` (`Int`) dynamically synchronized with the vertical delta or coordinate during pointer motion. |
+| `event-drag-end` | Action text | HTMX action sequence executed when the mouse button is released after dragging (e.g. to persist layout state or notify the backend). |
+
+### Example: Floating Draggable Window
+
+```html
+<box class="window" draggable="true"
+     style="position: absolute; left: 10; top: 4; width: 40; height: 12; z-index: 50; border-style: rounded; border-color: #38bdf8; bg: #1e293b;">
+  <!-- Title bar acting as drag handle -->
+  <box drag-handle="true" style="height: 1; bg: #0284c7; fg: #ffffff; justify-content: space-between; padding-left: 1; padding-right: 1;">
+    <text style="fg: #ffffff;">Draggable Window</text>
+    <text event-htmx="toggle:win_open" style="fg: #fca5a5;">[x]</text>
+  </box>
+  <box style="padding: 1; flex-direction: column;">
+    <text style="fg: #e2e8f0;">Window contents inside absolute box.</text>
+  </box>
+</box>
 ```
 
 ---
