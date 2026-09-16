@@ -29,29 +29,15 @@ button { border-style: single; }
     position: absolute;
     top: 6;
     left: 24;
-    width: 34;
-    height: 14;
+    width: 36;
     z-index: 50;
     bg: #1e1b4b;
     border-style: rounded;
     border-color: #818cf8;
-    padding: 1;
-    flex-direction: column;
-    transition: width 200ms ease-out, height 200ms ease-out;
-}
-.docked-window {
-    position: absolute;
-    top: 19;
-    left: 24;
-    width: 32;
-    height: 3;
-    z-index: 50;
-    bg: #1e1b4b;
-    border-style: rounded;
-    border-color: #a855f7;
     padding-left: 1;
     padding-right: 1;
     flex-direction: column;
+    transition: height 200ms ease-out;
 }
 .window-handle {
     height: 1;
@@ -60,7 +46,6 @@ button { border-style: single; }
     padding-left: 1;
     padding-right: 1;
     justify-content: space-between;
-    margin-bottom: 1;
 }
 </style>
 
@@ -170,16 +155,17 @@ button { border-style: single; }
 
     </box>
 
-    <!-- Floating Draggable Window (expanded) -->
-    <box bind-show="docked=false" class="floating-window" draggable="true" drag-state-x="win_x" drag-state-y="win_y" event-drag-end="set:drag_status=parked">
+    <!-- Unified Floating Window with in-place collapse / shading -->
+    <box class="floating-window" draggable="true" drag-state-x="win_x" drag-state-y="win_y" event-drag-end="set:drag_status=parked">
         <box class="window-handle" drag-handle="true">
-            <text style="fg: #e0e7ff; height: 1;">🪟 OxiDESK Window (Drag Me!)</text>
-            <box style="flex-direction: row;">
-                <text event-htmx="toggle:docked" style="fg: #fde047; margin-right: 1;">[-]</text>
+            <text style="fg: #e0e7ff; height: 1;">🪟 OxiDESK Window</text>
+            <box style="flex-direction: row; align-items: center;">
+                <text bind-show="docked=false" event-htmx="toggle:docked" style="fg: #fde047; margin-right: 1;">[-]</text>
+                <text bind-show="docked=true" event-htmx="toggle:docked" style="fg: #4ade80; margin-right: 1;">[+]</text>
                 <text style="fg: #a5b4fc; height: 1;">::</text>
             </box>
         </box>
-        <box style="flex-direction: column; flex: 1;">
+        <box bind-show="docked=false" style="flex-direction: column; margin-top: 1; margin-bottom: 1;">
             <text style="fg: #c7d2fe; height: 1;">z-index: 50 | absolute</text>
             <text class="mono" style="height: 1;">drag-handle="true"</text>
             <box style="flex-direction: row; margin-top: 1; align-items: center;">
@@ -188,18 +174,7 @@ button { border-style: single; }
                 <text style="fg: #38bdf8; height: 1; width: 4;" bind-state="win_y">6</text>
             </box>
             <box style="flex-direction: row; margin-top: 1; align-items: center;">
-                <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 3;" event-htmx="toggle:docked">Collapse / Dock</button>
-            </box>
-        </box>
-    </box>
-
-    <!-- Docked Shaded Window (minimized to bar) -->
-    <box bind-show="docked=true" class="docked-window" draggable="true" drag-state-x="win_x" drag-state-y="win_y">
-        <box class="window-handle" drag-handle="true" style="margin-bottom: 0;">
-            <text style="fg: #e0e7ff; height: 1;">🪟 OxiDESK (Docked)</text>
-            <box style="flex-direction: row;">
-                <text event-htmx="toggle:docked" style="fg: #4ade80; margin-right: 1;">[+]</text>
-                <text style="fg: #a5b4fc; height: 1;">::</text>
+                <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 3;" event-htmx="toggle:docked">Collapse / Shading</button>
             </box>
         </box>
     </box>
