@@ -30,7 +30,7 @@ button { border-style: single; }
     top: 6;
     left: 24;
     width: 34;
-    height: 11;
+    height: 14;
     z-index: 50;
     bg: #1e1b4b;
     border-style: rounded;
@@ -171,7 +171,7 @@ button { border-style: single; }
                 <text style="fg: #38bdf8; height: 1; width: 4;" bind-state="win_y">6</text>
             </box>
             <box style="flex-direction: row; margin-top: 1; align-items: center;">
-                <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 2;" event-htmx="toggle:docked">Toggle Dock</button>
+                <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 3;" event-htmx="toggle:docked">Toggle Dock</button>
             </box>
         </box>
     </box>

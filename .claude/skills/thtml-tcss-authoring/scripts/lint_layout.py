@@ -40,9 +40,11 @@ INT_PROPS = {
     "width", "height",
     "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
     "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "top", "right", "bottom", "left", "z-index",
 }
 
 ENUM_PROPS = {
+    "position": {"relative", "absolute", "fixed"},
     "flex-direction": {"row", "column"},
     "align-items": {"flex-start", "flex-end", "center", "stretch"},
     "justify-content": {
@@ -54,15 +56,17 @@ ENUM_PROPS = {
 
 COLOR_PROPS = {"fg", "color", "bg", "background-color", "border", "border-color"}
 
-FLOAT_PROPS = {"flex"}
+FLOAT_PROPS = {"flex", "opacity"}
 
-KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS
+TRANSITION_PROPS = {"transition"}
+
+KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS | TRANSITION_PROPS
 
 BORDER_PROPS = {"border", "border-color", "border-style"}
 
 VALID_TAGS = {"screen", "box", "text", "input", "button", "img", "video", "for", "diagram"}
 
-CLICKABLE_ATTRS = {"event-htmx"}
+CLICKABLE_ATTRS = {"event-htmx", "event-drag-end"}
 
 
 def is_ambiguous_width(ch: str) -> bool:
@@ -156,11 +160,17 @@ def check_declarations(where: str, decls: list[tuple[str, str]]) -> list[Finding
         if prop in FLOAT_PROPS:
             try:
                 val = float(value.strip())
-                if val <= 0:
+                if prop == "flex" and val <= 0:
                     findings.append((
                         "E002", where,
                         f"'{prop}: {value}' must be greater than 0 — "
                         f"the parser discards this silently",
+                    ))
+                elif prop == "opacity" and not (0.0 <= val <= 1.0):
+                    findings.append((
+                        "E002", where,
+                        f"'{prop}: {value}' must be between 0.0 and 1.0 — "
+                        f"the parser clamps or discards this",
                     ))
             except ValueError:
                 findings.append((
@@ -175,6 +185,22 @@ def check_declarations(where: str, decls: list[tuple[str, str]]) -> list[Finding
                 f"(allowed: {', '.join(sorted(ENUM_PROPS[prop]))}) — "
                 f"silently falls back to the default",
             ))
+        if prop in TRANSITION_PROPS:
+            valid_animatable = {
+                "left", "top", "right", "bottom", "width", "height",
+                "margin-left", "margin-top", "margin-right", "margin-bottom",
+                "margin", "fg", "color", "bg", "background-color", "opacity", "all",
+            }
+            for part in value.split(","):
+                tokens = part.strip().split()
+                if not tokens:
+                    continue
+                target_p = tokens[0].lower()
+                if target_p not in valid_animatable:
+                    findings.append((
+                        "E002", where,
+                        f"'{prop}: {value}' specifies unknown animatable property '{target_p}'",
+                    ))
     return findings
 
 
