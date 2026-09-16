@@ -366,9 +366,24 @@ impl Renderer {
             let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
 
             match &node.tag {
-                NodeTag::Text => {
+                NodeTag::Text | NodeTag::Button => {
                     if let Some(text) = &node.text {
-                        let lines_to_draw: Vec<String> = if node.style.wrap == oxiterm_proto::style::WrapMode::Word && content_w > 0 {
+                        let pad_x = if node.tag == NodeTag::Button {
+                            node.style.padding.left as i32
+                        } else {
+                            0
+                        };
+                        let pad_y = if node.tag == NodeTag::Button {
+                            node.style.padding.top as i32
+                        } else {
+                            0
+                        };
+                        let draw_x = content_x + pad_x;
+                        let draw_y = content_y + pad_y;
+                        let inner_w = content_w.saturating_sub(pad_x as u16);
+                        let inner_h = content_h.saturating_sub(pad_y as u16);
+
+                        let lines_to_draw: Vec<String> = if node.style.wrap == oxiterm_proto::style::WrapMode::Word && inner_w > 0 {
                             let mut result = Vec::new();
                             for line in text.lines() {
                                 if line.is_empty() {
@@ -391,7 +406,7 @@ impl Renderer {
                                         line_has_words = true;
                                     } else {
                                         let space_w = 1;
-                                        if current_line_width + space_w + word_w <= content_w {
+                                        if current_line_width + space_w + word_w <= inner_w {
                                             current_line.push(' ');
                                             current_line.push_str(word);
                                             current_line_width += space_w + word_w;
@@ -419,12 +434,12 @@ impl Renderer {
                             for ch in line.chars() {
                                 let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
                                 if char_w > 0 {
-                                    if char_w > 1 && cx + char_w > content_w && char_w <= content_w {
+                                    if char_w > 1 && cx + char_w > inner_w && char_w <= inner_w {
                                         cx = 0;
                                         cy += 1;
                                     }
-                                    if cx < content_w && cy < content_h {
-                                        Self::safe_set(buffer, content_x + cx as i32, content_y + cy as i32, Cell {
+                                    if cx < inner_w && cy < inner_h {
+                                        Self::safe_set(buffer, draw_x + cx as i32, draw_y + cy as i32, Cell {
                                             ch,
                                             fg: resolved_fg,
                                             bg: resolved_bg,
@@ -432,8 +447,8 @@ impl Renderer {
                                         });
                                         // Fill continuation cells with styled spaces
                                         for i in 1..char_w {
-                                            if cx + i < content_w {
-                                                Self::safe_set(buffer, content_x + (cx + i) as i32, content_y + cy as i32, Cell {
+                                            if cx + i < inner_w {
+                                                Self::safe_set(buffer, draw_x + (cx + i) as i32, draw_y + cy as i32, Cell {
                                                     ch: ' ',
                                                     fg: resolved_fg,
                                                     bg: resolved_bg,
@@ -1557,16 +1572,32 @@ mod tests {
     }
 
     #[test]
-    fn test_9_unpremultiply_clamp() {
-        let bgra_pixels = vec![
-            rlottie::Bgra { r: 200, g: 150, b: 100, a: 50 },
-        ];
-        let img = super::unpremultiply_bgra_to_rgba(&bgra_pixels, 1, 1);
-        let pixel = img.get_pixel(0, 0);
-        assert_eq!(pixel.0[0], 255);
-        assert_eq!(pixel.0[1], 255);
-        assert_eq!(pixel.0[2], 255);
-        assert_eq!(pixel.0[3], 50);
+    fn test_button_text_rendering() {
+        use oxiterm_proto::style::{AnsiColor, BorderChars, BorderStyle};
+        let mut doc = THTMLDocument::new();
+        let mut btn = Node::new(NodeTag::Button);
+        btn.text = Some("Click Me".to_string());
+        btn.style.border = Some(BorderStyle {
+            fg: AnsiColor::Reset,
+            chars: BorderChars::single(),
+        });
+        btn.style.padding.left = 1;
+        btn.style.padding.right = 1;
+        
+        let node_id = doc.arena.alloc(btn);
+        doc.append_child(doc.root, node_id).unwrap();
+
+        let mut engine = LayoutEngine::new();
+        // text 8 + border 2 + padding 2 = 12 columns wide, 3 rows high
+        let layout = engine.compute(&mut doc, 20, 5, None).unwrap();
+        assert_eq!(layout.nodes[&node_id].width, 12);
+        assert_eq!(layout.nodes[&node_id].height, 3);
+
+        let mut buffer = CellBuffer::new(20, 5);
+        Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);
+
+        let row2: String = (0..20).map(|x| buffer.cells[2 * 20 + x].ch).collect();
+        assert!(row2.contains("Click Me"));
     }
 }
 

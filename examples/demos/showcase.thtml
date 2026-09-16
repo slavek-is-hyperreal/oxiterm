@@ -173,6 +173,12 @@ button { border-style: single; }
             <box style="flex-direction: row; margin-top: 1; align-items: center;">
                 <button style="border-color: #a855f7; fg: #c084fc; padding-left: 1; padding-right: 1; height: 3;" event-htmx="toggle:docked">Toggle Dock</button>
             </box>
+            <box bind-show="docked=true">
+                <text style="fg: #a855f7; height: 1;">✨ Status: Docked mode!</text>
+            </box>
+            <box bind-show="docked=false">
+                <text style="fg: #64748b; height: 1;">Status: Floating free</text>
+            </box>
         </box>
     </box>
 

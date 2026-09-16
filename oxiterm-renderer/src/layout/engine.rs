@@ -384,9 +384,9 @@ impl LayoutEngine {
         // fills in the rest and must not be overridden by cross-axis stretch.
         let mut measured_text = false;
 
-        if node.tag == oxiterm_proto::dom::NodeTag::Text {
+        if node.tag == oxiterm_proto::dom::NodeTag::Text || node.tag == oxiterm_proto::dom::NodeTag::Button {
             if node.text.is_some() {
-                if style.wrap == oxiterm_proto::style::WrapMode::Word {
+                if style.wrap == oxiterm_proto::style::WrapMode::Word && node.tag == oxiterm_proto::dom::NodeTag::Text {
                     // Height depends on the FINAL wrapped width, which is only known
                     // after flex resolution — so defer both dimensions to the measure
                     // closure (see `measure_wrap_text`). Explicit author width/height,
@@ -399,12 +399,25 @@ impl LayoutEngine {
                     // first column hit-testable/clickable (e.g. the "← Back" link).
                     let text = node.text.as_deref().unwrap_or("");
                     if width.is_none() {
-                        let calculated_width = text_intrinsic_width(text);
+                        let mut calculated_width = text_intrinsic_width(text);
+                        if node.tag == oxiterm_proto::dom::NodeTag::Button {
+                            if style.border.is_some() {
+                                calculated_width += 2;
+                            }
+                            calculated_width += style.padding.left + style.padding.right;
+                        }
                         width = Some(calculated_width);
                         min_width = Some(calculated_width);
                     }
                     if height.is_none() {
-                        height = Some((text.lines().count() as u16).max(1));
+                        let mut calculated_height = (text.lines().count() as u16).max(1);
+                        if node.tag == oxiterm_proto::dom::NodeTag::Button {
+                            if style.border.is_some() {
+                                calculated_height += 2;
+                            }
+                            calculated_height += style.padding.top + style.padding.bottom;
+                        }
+                        height = Some(calculated_height);
                     }
                 }
             }
