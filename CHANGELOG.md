@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.6.0] — 2026-09-17
+
+### 🪟 Desktop Environment Primitives & Window Management
+- **Stacking Contexts & `z-index`**: Full CSS stacking order implementation in `oxiterm-renderer` and `oxiterm-proto`. Elements with higher `z-index` render on top of lower ones, enabling multi-window desktop layering.
+- **Reverse-Order Hit Testing**: `HitTester::find_node` traverses layers in descending paint order, ensuring top-most elements (floating windows, dialogs, popups) reliably receive mouse clicks and interactions first.
+- **Positioning (`position: absolute / fixed`)**: Inset offsets `top`, `bottom`, `left`, `right` integrated with Taffy 0.5+ and character cell grid coordinates.
+- **Pointer Drag & Drop (`draggable` / `drag-handle`)**: Zero-drift pointer capture state machine in `EventLoop` supporting window movement, coordinate synchronization to `StateManager` (`drag-state-x`, `drag-state-y`), and drop completion actions (`event-drag-end`).
+- **OxiDESK Window Features**: Interactive window collapse (shading into titlebar), floating dock mode, and taskbar restore with unified drag coordinate preservation.
+
+### ⚡ Physics-Based Animations & CSS Transitions
+- **Non-Linear Timing Solvers**: Integrated numerical Newton-Raphson `CubicBezierSolver` (`ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(...)`) and second-order differential equation `SpringSolver` (`spring(mass, stiffness, damping)`).
+- **Declarative Style-State Bindings**: Added `bind-width`, `bind-height`, `bind-top`, `bind-left`, `bind-opacity`, and `bind-z-index` to THTML/TCSS, enabling reactive state actions (`event-htmx`) to trigger smooth physical animations.
+- **Target Baseline Restoration**: Implemented `AnimationController::restore_baselines` to eliminate target corruption from intermediate in-flight ticks, ensuring glitch-free interpolation.
+- **Adaptive 60 FPS EventLoop**: Dynamic 16ms ticking during active transitions with instantaneous 0.0% CPU drop on idle.
+
+### 🎨 Renderer & DOM Enhancements
+- **Button Element Support**: Native intrinsic sizing and text rendering for `<button>` tag elements.
+- **Opacity Blending**: Cell-level RGB color blending for translucent elements (`opacity: 0.0` to `1.0`).
+
+### 🛠️ Authoring Tooling & Layout Linter
+- **`lint_layout.py` Updates**: Added validation for positioning, `z-index`, opacity, and parenthesized transition arguments (`spring(...)`). Added dynamic dimension awareness for `bind-width` and `bind-height` to prevent false vertical budget (`W005`) errors. All 36 example files pass `--strict` with 0 errors.
+
+### 📖 Architecture Blueprints & Roadmaps
+- **`docs/retro-desktop-environment.md`**: Blueprint for turning OxiTerm into a standalone lightweight Desktop Environment (OxiDESK / OxiDE) for vintage Linux hardware (Pentium II/III/4, 64–512 MB RAM).
+- **`docs/embedded-iot-platform.md`**: Blueprint for OxiTerm Embedded on IoT SBCs, machine HMIs, and direct `/dev/fb0` Linux framebuffer blitting (`oxiterm-fb`).
+- **`docs/IDEAS.md`**: Central roadmap catalog including Reactive Hover States (`:hover`) and Any-Event mouse tracking (`1003h`).
+
+### 🎵 Spotify App Server Stability
+- **Decoupled Refresh**: Decoupled terminal frame rendering from Spotify API polling to eliminate lag and flicker.
+- **TTL Multi-Session Clearing**: Fixed multi-session state clearing pushes on access token expiration.
+
 ## [0.5.0] — 2026-07-24
 
 ### 🎵 Spotify Control Center Showcase Application (Plan 2.5 / 2.6)

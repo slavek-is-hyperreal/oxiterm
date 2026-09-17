@@ -12,6 +12,7 @@ This document serves as the master catalog and index of architectural ideas, con
 | **2. OxiTerm Embedded** | Embedded Linux (SBCs), Industrial HMI, IoT Gateways & OpenWrt | Architecture blueprint defined | [docs/embedded-iot-platform.md](embedded-iot-platform.md) |
 | **3. Framebuffer Engine (`oxiterm-fb`)** | Direct hardware `/dev/fb0` & DRM/KMS blitter (Zero X11 / Zero Wayland) | Conceptual design complete | [docs/embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers) |
 | **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented in core | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
+| **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Planned / Architecture defined | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
 
 ---
 
@@ -55,4 +56,16 @@ This document serves as the master catalog and index of architectural ideas, con
   - Newton-Raphson numerical cubic Bézier solver (`ease`, `ease-in`, `ease-out`, `ease-in-out`).
   - Analytic second-order differential equation solver for physical damped springs (`spring`, `spring(mass, stiffness, damping)`).
   - Adaptive event loop: active animations tick at 60 FPS (~16ms), while idle states drop immediately to zero CPU usage with a 1000ms idle timeout.
+  - Declarative style bindings (`bind-width`, `bind-height`, `bind-top`, `bind-left`, `bind-opacity`, `bind-z-index`) connecting state to motion.
 * **Read the full documentation:** 📄 [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves)
+
+---
+
+### 5. Reactive Hover States & Pseudoclasses (`:hover`, `:focus`)
+* **The Vision:** Bring web-grade cursor interactivity and smooth hover transitions to the text terminal, allowing elements to organically highlight, glow, or expand as the mouse moves across the screen.
+* **Key Innovations:**
+  - **Any-Event Terminal Tracking (`X1003h`):** Upgrade SSH mouse negotiator to stream raw cursor motion without requiring buttons to be pressed.
+  - **Dynamic Hit-Testing on Move:** Real-time evaluation of `hovered_node` in the layout engine protected by `InputThrottle` token-bucket rate limiting.
+  - **TCSS Pseudoclass Cascade:** Support for `:hover`, `:active`, and `:focus` selectors that seamlessly override base styles in `resolve_style`.
+  - **Seamless Hover Transitions:** Coupling with `AnimationController` for smooth RGB color fades (`transition: bg 200ms ease-out, fg 200ms ease-out`) and opacity changes on mouse enter/leave without visual jarring.
+
