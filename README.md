@@ -49,3 +49,10 @@ ssh localhost -p 2222
   <img src="mascot.svg" style="width: 20; height: 10;" />
 </box>
 ```
+
+### 💡 Architectural Concepts & Roadmaps
+Looking to explore where OxiTerm is heading? Check out our concept blueprints:
+- **[OxiTerm Ideas & Strategic Roadmaps](docs/IDEAS.md)** — Master index of architectural experiments and future directions.
+  - 🐧 **[OxiDESK / OxiDE](docs/retro-desktop-environment.md)**: Transforming OxiTerm into a responsive desktop environment for vintage Linux PCs (Pentium II/III/4, 64–512 MB RAM).
+  - ⚡ **[OxiTerm Embedded & IoT](docs/embedded-iot-platform.md)**: Ultra-lightweight HMI and headless dashboard for SBCs, industrial machinery, and edge routers.
+
