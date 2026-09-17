@@ -92,6 +92,9 @@ def get_user_by_session_token(session_token: str) -> Optional[Dict[str, Any]]:
                     refreshed = refresh_spotify_user_token(user["id"], user["refresh_token"])
                     if refreshed:
                         return refreshed
+                    if time.time() >= user["expires_at"]:
+                        logger.warning(f"User {user['id']} token expired and refresh failed. Returning None.")
+                        return None
                 return user
     except Exception as e:
         logger.exception(f"Error fetching user by session_token: {e}")
@@ -284,14 +287,15 @@ async def start_background_loop():
 
 async def poll_once():
     cleanup_pending_oauth_states()
-    await asyncio.to_thread(poller_manager.poll_once, active_oxiterm_sessions, get_user_by_session_token)
+    sessions_snapshot = dict(active_oxiterm_sessions)
+    await asyncio.to_thread(poller_manager.poll_once, sessions_snapshot, get_user_by_session_token)
 
 async def poll_spotify_and_push_patches():
     while True:
         try:
             if poller_manager.any_deadline_due():
                 await poll_once()
-            poller_manager.tick_once(active_oxiterm_sessions)
+            poller_manager.tick_once(dict(active_oxiterm_sessions))
             await asyncio.sleep(poller_manager.get_next_wake_delay_s())
         except Exception as e:
             logger.exception(f"Background loop error: {e}")

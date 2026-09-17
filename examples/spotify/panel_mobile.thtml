@@ -25,6 +25,7 @@
         <text bind-state="can_seek"></text>
         <text bind-state="can_volume"></text>
         <text bind-state="device_restricted"></text>
+        <text bind-state="progress_bar"></text>
     </box>
 
     <!-- Mobile Header — always visible -->
@@ -73,28 +74,40 @@
             <box bind-show="tab=false" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
-                <text class="txt-muted" bind-state="progress_bar" style="margin-top: 1;">[--------] 00:00</text>
+                <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
+                    <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+                    <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
+                        <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols_mob"></box>
+                    </box>
+                    <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
+                </box>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">&lt;&lt;</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">&gt;&gt;</text></box>
                 </box>
             </box>
 
             <box bind-show="tab=player" class="card" style="flex: 1; flex-direction: column; align-items: center; justify-content: center;">
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
-                <text class="txt-muted" bind-state="progress_bar" style="margin-top: 1;">[--------] 00:00</text>
+                <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
+                    <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+                    <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
+                        <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols_mob"></box>
+                    </box>
+                    <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
+                </box>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">&lt;&lt;</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">&gt;&gt;</text></box>
                 </box>
             </box>
 

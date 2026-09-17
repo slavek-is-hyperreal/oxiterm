@@ -11,7 +11,8 @@
 | **OAuth 2.0 Authorization Code Flow** | User initiates login from within OxiTerm; the App Server handles the redirect, token exchange, and securely binds the Spotify token to the session. |
 | **Multi-session isolation** | Each OxiTerm session (`session_id`) has its own Spotify login. Sessions do not share tokens; there is no fallback to another user's data. |
 | **Push patches from the background** | A background task polls Spotify's Now Playing API and pushes track title, artist, progress, and duration back to the active session via `POST /sessions/{id}/patch`. |
-| **Web + SSH + Mobile panels** | The same App Server drives `spotify_panel.thtml` (web/SSH) and `spotify_panel_mobile.thtml` (mobile, `<800 px`). |
+| **Web + SSH + Mobile panels** | The same App Server drives `examples/spotify/panel.thtml` (web/SSH, 80x24) and `examples/spotify/panel_mobile.thtml` (mobile, 48x30). |
+| **Animated Progress & Draggable Modal** | Uses OxiTerm 0.6+ CSS transitions (`transition: width 1s linear;`), spring physics (`spring(120, 12, 1)`), absolute positioning, and pointer drag for a floating volume mixer. |
 | **Bearer authentication on both channels** | OxiTerm sends `Authorization: Bearer` to the App Server; the App Server checks it with constant-time comparison. |
 | **Fail-closed security** | Missing or empty `OXITERM_APP_TOKEN` disables the `/patch` push endpoint entirely (404). |
 
@@ -25,8 +26,8 @@ User browser / SSH terminal
          ▼
   OxiTerm Server (Rust)
   ┌────────────────────────────────────────┐
-  │  spotify_panel.thtml                   │
-  │  spotify_panel_mobile.thtml            │
+  │  examples/spotify/panel.thtml          │
+  │  examples/spotify/panel_mobile.thtml   │
   │                                        │
   │  event-htmx → POST /events ──────────►│
   │                              Bearer    │
@@ -141,10 +142,13 @@ The test image (`Dockerfile.test`) installs `pytest`, `httpx`, and `pytest-mock`
 
 ```
 spotify-app-server/
-├── app.py                       # FastAPI App Server (OAuth, /events, /callback)
+├── app.py                       # FastAPI App Server (OAuth, /events, /callback, polling lifecycle)
+├── playback.py                  # Playback snapshot parser & deadline calculator
+├── poller.py                    # Multi-session background polling manager
+├── render.py                    # Reactive state patch generator (progress, volume, metadata)
+├── spotify_api.py               # Spotify Web API client & PKCE flow
+├── clock.py                     # Monotonic clock abstraction
 ├── test_app.py                  # pytest security contracts (tests 08–18)
-├── spotify_panel.thtml          # OxiTerm UI — web/SSH layout
-├── spotify_panel_mobile.thtml   # OxiTerm UI — mobile layout (< 800 px)
 ├── spotifycontrol.sh            # Start script
 ├── Dockerfile                   # Production image (no test deps)
 ├── Dockerfile.test              # Test image (includes pytest/httpx)
@@ -152,10 +156,30 @@ spotify-app-server/
 ├── requirements.txt             # Production Python deps
 ├── requirements-test.txt        # Production + test deps
 └── .env.example                 # Environment variable template
+
+examples/spotify/
+├── panel.thtml                  # OxiTerm UI — desktop/SSH layout (80x24)
+└── panel_mobile.thtml           # OxiTerm UI — mobile layout (48x30)
 ```
 
-> [!NOTE]
-> `examples/` contains isolated single-feature engine demos (SVG, Lottie, Rive widget, input fields). `spotify-app-server/` is a complete end-to-end application demonstrating what can be built on top of the engine.
+---
+
+## Modern UI & State Bindings (OxiTerm 0.6+)
+
+The Spotify integration utilizes modern OxiTerm capabilities:
+
+1. **Animated Progress Bar**:
+   - `bind-width="progress_cols"`: Smoothly animated with `transition: width 1s linear;` on desktop (`progress_cols` range 0–62) and `bind-width="progress_cols_mob"` on mobile (range 0–32).
+   - Dynamic track time markers via `bind-state="progress_cur"` (e.g. `01:23`) and `bind-state="progress_dur"` (e.g. `03:45`).
+   - Backward-compatible `bind-state="progress_bar"` retained for standard text fallbacks.
+
+2. **Floating Draggable Volume Mixer**:
+   - Toggled via `event-htmx="toggle:show_vol"` and closed with `event-htmx="set:show_vol=false"`.
+   - Utilizes `position: absolute; z-index: 20;` with `draggable="true"` and `drag-handle="true"`.
+   - Features spring-physics volume animation: `transition: width 250ms spring(120, 12, 1);` driven by `bind-width="vol_cols"` (range 0–26).
+
+3. **Safe Glyph Navigation**:
+   - Arrow controls use ASCII `&lt;&lt;` and `&gt;&gt;` instead of ambiguous-width unicode symbols to prevent cell misalignment and ensure 100% linter compliance (`lint_layout.py --strict`).
 
 ---
 

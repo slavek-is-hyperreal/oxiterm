@@ -27,6 +27,7 @@
         <text bind-state="can_seek"></text>
         <text bind-state="can_volume"></text>
         <text bind-state="device_restricted"></text>
+        <text bind-state="progress_bar"></text>
     </box>
 
     <!-- Top Header — always visible -->
@@ -110,9 +111,9 @@
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="height: 1; margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">&lt;&lt; Prev</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">Next ►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">Next &gt;&gt;</text></box>
                 </box>
             </box>
 
@@ -124,9 +125,9 @@
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="height: 1; margin-top: 1;"></text>
 
                 <box style="flex-direction: row; margin-top: 2;">
-                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄ Prev</text></box>
+                    <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">&lt;&lt; Prev</text></box>
                     <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">Next ►►</text></box>
+                    <box bind-show="can_next" class="btn" event-htmx="player_next"><text class="txt-green">Next &gt;&gt;</text></box>
                 </box>
             </box>
 
@@ -181,26 +182,49 @@
 
     <!-- Bottom Persistent Now Playing Bar — always visible -->
     <box style="height: 7; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
-        <!-- Row 1: Full-width Progress Bar -->
-        <box style="flex-direction: row; align-items: center; justify-content: center; height: 1;">
-            <text class="txt-muted" bind-state="progress_bar">[------------------------------------------------] 00:00 / 00:00</text>
+        <!-- Row 1: Full-width Animated Progress Bar -->
+        <box style="flex-direction: row; align-items: center; height: 1;">
+            <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+            <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
+                <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols"></box>
+            </box>
+            <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
         </box>
         <!-- Row 2: Buttons on Left, Title & Artist on Right (height: 3 per §7.2 — contains .btn) -->
         <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 3; margin-top: 1;">
             <box style="flex-direction: row; align-items: center;">
-                <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">◄◄</text></box>
+                <box bind-show="can_prev" class="btn" style="margin-right: 1;" event-htmx="player_prev"><text class="txt-green">&lt;&lt;</text></box>
                 <box class="btn" style="margin-right: 1;" event-htmx="player_toggle"><text class="txt-green" bind-state="play_icon">Play</text></box>
-                <box bind-show="can_next" class="btn" style="margin-right: 2;" event-htmx="player_next"><text class="txt-green">►►</text></box>
+                <box bind-show="can_next" class="btn" style="margin-right: 2;" event-htmx="player_next"><text class="txt-green">&gt;&gt;</text></box>
                 <box bind-show="can_volume" style="flex-direction: row; align-items: center;">
                     <box class="btn" style="margin-right: 1;" event-htmx="vol_down"><text class="txt-green">🔊 -</text></box>
                     <text class="txt-white" bind-state="volume" style="margin-right: 1;">50%</text>
-                    <box class="btn" event-htmx="vol_up"><text class="txt-green">+</text></box>
+                    <box class="btn" style="margin-right: 1;" event-htmx="vol_up"><text class="txt-green">+</text></box>
+                    <box class="btn" event-htmx="toggle:show_vol"><text class="txt-green">🔊 Vol</text></box>
                 </box>
             </box>
             <box style="flex-direction: row; align-items: center;">
                 <text class="txt-white" bind-state="track_name" style="margin-right: 1;">Tytuł</text>
                 <text class="txt-muted" bind-state="artist_name">Wykonawca</text>
             </box>
+        </box>
+    </box>
+
+    <!-- Floating Draggable Volume Modal -->
+    <box bind-show="show_vol=true" draggable="true" drag-handle="true" style="position: absolute; top: 7; left: 24; width: 32; height: 9; bg: #181818; border-style: single; border-color: #1DB954; z-index: 20; padding-left: 1; padding-right: 1; flex-direction: column;">
+        <box style="flex-direction: row; justify-content: space-between; align-items: center; height: 1;">
+            <text class="txt-green">🔊 Głośność</text>
+            <box style="height: 1; align-items: center; justify-content: center;" event-htmx="set:show_vol=false">
+                <text class="txt-err">[x]</text>
+            </box>
+        </box>
+        <box style="height: 1; bg: #282828; margin-top: 1; margin-left: 1; margin-right: 1;">
+            <box style="height: 1; bg: #1DB954; transition: width 250ms spring(120, 12, 1);" bind-width="vol_cols"></box>
+        </box>
+        <box style="flex-direction: row; justify-content: space-between; align-items: center; height: 3; margin-top: 1;">
+            <box class="btn" event-htmx="vol_down"><text class="txt-green">-10%</text></box>
+            <text class="txt-white" bind-state="volume">50%</text>
+            <box class="btn" event-htmx="vol_up"><text class="txt-green">+10%</text></box>
         </box>
     </box>
 

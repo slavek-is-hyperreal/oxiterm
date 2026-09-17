@@ -27,9 +27,12 @@
 - **`docs/embedded-iot-platform.md`**: Blueprint for OxiTerm Embedded on IoT SBCs, machine HMIs, and direct `/dev/fb0` Linux framebuffer blitting (`oxiterm-fb`).
 - **`docs/IDEAS.md`**: Central roadmap catalog including Reactive Hover States (`:hover`) and Any-Event mouse tracking (`1003h`).
 
-### 🎵 Spotify App Server Stability
-- **Decoupled Refresh**: Decoupled terminal frame rendering from Spotify API polling to eliminate lag and flicker.
-- **TTL Multi-Session Clearing**: Fixed multi-session state clearing pushes on access token expiration.
+### 🎵 Spotify App Server Modernization & Stability
+- **Animated Progress Bar**: Modernized desktop and mobile templates (`examples/spotify/panel.thtml`, `panel_mobile.thtml`) with continuous linear CSS width transitions (`transition: width 1s linear;`) driven by `bind-width="progress_cols"` and `bind-width="progress_cols_mob"` with exact track duration/position labels.
+- **Floating Draggable Volume Mixer**: Added an interactive draggable mixer modal (`position: absolute; z-index: 20; draggable="true" drag-handle="true"`) with spring-physics volume animation (`transition: width 250ms spring(120, 12, 1);`, `bind-width="vol_cols"`).
+- **Safe Navigation Glyphs**: Replaced ambiguous Unicode arrows (`◄◄`, `►►`) with ASCII equivalents (`&lt;&lt;`, `&gt;&gt;`), achieving 100% linter compliance (`lint_layout.py --strict`) without hit-box displacement.
+- **Thread-Safety & Concurrency**: Safeguarded background polling loops against `RuntimeError: dictionary changed size during iteration` by passing thread-safe `dict(active_oxiterm_sessions)` snapshots to worker threads.
+- **Graceful Token Expiry Handling**: Updated `get_user_by_session_token` to return `None` when refresh token fails on expired sessions, cleanly breaking polling cycles without 401 error loops.
 
 ## [0.5.0] — 2026-07-24
 
