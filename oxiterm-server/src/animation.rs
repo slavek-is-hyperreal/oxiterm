@@ -405,6 +405,37 @@ impl AnimationController {
         }
     }
 
+    /// Restores node styles to their target baselines before processing state changes or computing new transitions.
+    ///
+    /// This prevents intermediate in-flight animation values from `tick()` being mistaken for external style changes.
+    pub fn restore_baselines(&self, doc: &mut THTMLDocument) {
+        for (node_id, stored) in &self.baseline_styles {
+            if let Some(node) = doc.arena.get_mut(*node_id) {
+                if let Some(w) = stored.width {
+                    node.style.width = Some(w);
+                }
+                if let Some(h) = stored.height {
+                    node.style.height = Some(h);
+                }
+                if let Some(t) = stored.top {
+                    node.style.top = Some(t);
+                }
+                if let Some(l) = stored.left {
+                    node.style.left = Some(l);
+                }
+                if let Some(r) = stored.right {
+                    node.style.right = Some(r);
+                }
+                if let Some(b) = stored.bottom {
+                    node.style.bottom = Some(b);
+                }
+                if let Some(o) = stored.opacity {
+                    node.style.opacity = Some(o);
+                }
+            }
+        }
+    }
+
     /// Gets current in-flight value if the property is already transitioning.
     fn get_current_in_flight_value(&self, node_id: NodeId, prop: AnimatableProperty, now: Instant) -> Option<f32> {
         self.active_transitions
@@ -594,5 +625,43 @@ mod tests {
         let final_width = doc.arena.get(id).unwrap().style.width.unwrap();
         assert_eq!(final_width, 20);
         assert!(!controller.has_active());
+    }
+
+    #[test]
+    fn test_restore_baselines_prevents_intermediate_target_corruption() {
+        let mut doc = THTMLDocument::default();
+        let mut node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box);
+        node.style.width = Some(10);
+        node.style.transitions.push(TransitionSpec {
+            property: AnimatableProperty::Width,
+            duration_ms: 100,
+            delay_ms: 0,
+            easing: Easing::Linear,
+        });
+        let id = doc.arena.alloc(node);
+        doc.root = id;
+
+        let mut controller = AnimationController::new();
+        let now = Instant::now();
+
+        // Baseline: width 10
+        controller.sync_transitions(&mut doc, now);
+
+        // New target: width 20
+        doc.arena.get_mut(id).unwrap().style.width = Some(20);
+        controller.sync_transitions(&mut doc, now);
+        assert!(controller.has_active());
+
+        // Halfway tick: sets node.style.width to 15
+        controller.tick(&mut doc, now + Duration::from_millis(50));
+        assert_eq!(doc.arena.get(id).unwrap().style.width, Some(15));
+
+        // Restore baselines: node.style.width restored to target 20
+        controller.restore_baselines(&mut doc);
+        assert_eq!(doc.arena.get(id).unwrap().style.width, Some(20));
+
+        // Calling sync_transitions again does NOT spawn extra transitions or alter target 20
+        controller.sync_transitions(&mut doc, now + Duration::from_millis(50));
+        assert_eq!(controller.active_count(), 1);
     }
 }

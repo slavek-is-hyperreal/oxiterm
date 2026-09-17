@@ -380,6 +380,12 @@ fn parse_attributes(mut input: &str) -> ParseResult<'_, NodeAttributes> {
             "drag-state-x" => attrs.drag_state_x = Some(value),
             "drag-state-y" => attrs.drag_state_y = Some(value),
             "event-drag-end" => attrs.event_drag_end = Some(value),
+            "bind-width" => attrs.bind_width = Some(value),
+            "bind-height" => attrs.bind_height = Some(value),
+            "bind-top" => attrs.bind_top = Some(value),
+            "bind-left" => attrs.bind_left = Some(value),
+            "bind-opacity" => attrs.bind_opacity = Some(value),
+            "bind-z-index" => attrs.bind_z_index = Some(value),
             _ => {}
         }
         input = rem;
@@ -540,6 +546,20 @@ mod tests {
         let root3 = doc3.get_root();
         let box3 = doc3.get_node(root3.children[0]).unwrap();
         assert_eq!(box3.attrs.bind_show, None);
+    }
+
+    #[test]
+    fn test_bind_style_attributes_parsing() {
+        let input = r#"<box id="dyn" bind-width="w" bind-height="h" bind-top="t" bind-left="l" bind-opacity="op" bind-z-index="z"></box>"#;
+        let doc = THTMLParser::parse(input).unwrap();
+        let root = doc.get_root();
+        let node = doc.get_node(root.children[0]).unwrap();
+        assert_eq!(node.attrs.bind_width, Some("w".to_string()));
+        assert_eq!(node.attrs.bind_height, Some("h".to_string()));
+        assert_eq!(node.attrs.bind_top, Some("t".to_string()));
+        assert_eq!(node.attrs.bind_left, Some("l".to_string()));
+        assert_eq!(node.attrs.bind_opacity, Some("op".to_string()));
+        assert_eq!(node.attrs.bind_z_index, Some("z".to_string()));
     }
 
     #[test]

@@ -47,6 +47,25 @@ button { border-style: single; }
     padding-right: 1;
     justify-content: space-between;
 }
+.anim-track {
+    border-style: single;
+    border-color: #475569;
+    height: 3;
+    margin-bottom: 1;
+}
+.anim-fill {
+    bg: #a855f7;
+    height: 1;
+    transition: width 400ms spring(120, 12, 1);
+}
+.btn-anim {
+    border-style: single;
+    border-color: #a855f7;
+    fg: #c084fc;
+    height: 3;
+    padding-left: 1;
+    padding-right: 1;
+}
 </style>
 
 <box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
@@ -103,13 +122,17 @@ button { border-style: single; }
                 <text class="muted">custom border colors</text>
             </box>
 
-            <!-- Padding/margin -->
-            <box class="panel" style="border-color: #334155; height: 11;">
-                <text class="section-title">Padding &amp; margin</text>
-                <box style="border-style: single; border-color: #475569; padding-left: 2; height: 3; margin-bottom: 1;">
-                    <text class="mono">pad-left: 2</text>
+            <!-- Transitions & Springs -->
+            <box id="anim-panel" class="panel" style="border-color: #a855f7; height: 11;">
+                <text class="section-title" style="margin-bottom: 1;">Spring transitions</text>
+                <box class="anim-track" style="padding-left: 0; padding-right: 0;">
+                    <box class="anim-fill" style="width: 5;" bind-width="prog"></box>
                 </box>
-                <text class="muted">margins push nodes</text>
+                <box style="flex-direction: row; justify-content: space-between;">
+                    <button class="btn-anim" event-htmx="set:prog=5">25%</button>
+                    <button class="btn-anim" event-htmx="set:prog=10">50%</button>
+                    <button class="btn-anim" event-htmx="set:prog=19">100%</button>
+                </box>
             </box>
 
         </box>

@@ -73,6 +73,18 @@ pub struct NodeAttributes {
     pub drag_state_y: Option<String>,
     /// Action triggered when dragging completes.
     pub event_drag_end: Option<String>,
+    /// StateManager key to sync element width.
+    pub bind_width: Option<String>,
+    /// StateManager key to sync element height.
+    pub bind_height: Option<String>,
+    /// StateManager key to sync top offset.
+    pub bind_top: Option<String>,
+    /// StateManager key to sync left offset.
+    pub bind_left: Option<String>,
+    /// StateManager key to sync opacity.
+    pub bind_opacity: Option<String>,
+    /// StateManager key to sync z-index.
+    pub bind_z_index: Option<String>,
 }
 
 /// A unique identifier for a node inside the document's arena.

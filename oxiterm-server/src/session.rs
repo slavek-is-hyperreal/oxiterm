@@ -881,6 +881,24 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_value {
                 state.subscribe(key.clone(), id);
             }
+            if let Some(key) = &node.attrs.bind_width {
+                state.subscribe(key.clone(), id);
+            }
+            if let Some(key) = &node.attrs.bind_height {
+                state.subscribe(key.clone(), id);
+            }
+            if let Some(key) = &node.attrs.bind_top {
+                state.subscribe(key.clone(), id);
+            }
+            if let Some(key) = &node.attrs.bind_left {
+                state.subscribe(key.clone(), id);
+            }
+            if let Some(key) = &node.attrs.bind_opacity {
+                state.subscribe(key.clone(), id);
+            }
+            if let Some(key) = &node.attrs.bind_z_index {
+                state.subscribe(key.clone(), id);
+            }
         }
     }
 
@@ -901,6 +919,68 @@ impl EventLoop {
                         changed = true;
                     }
                 }
+                if let Some(key) = &node.attrs.bind_width {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<u16>() {
+                            if node.style.width != Some(v) {
+                                node.style.width = Some(v);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if let Some(key) = &node.attrs.bind_height {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<u16>() {
+                            if node.style.height != Some(v) {
+                                node.style.height = Some(v);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if let Some(key) = &node.attrs.bind_top {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<i16>() {
+                            if node.style.top != Some(v) {
+                                node.style.top = Some(v);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if let Some(key) = &node.attrs.bind_left {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<i16>() {
+                            if node.style.left != Some(v) {
+                                node.style.left = Some(v);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if let Some(key) = &node.attrs.bind_opacity {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<f32>() {
+                            let clamped = Some(v.clamp(0.0, 1.0));
+                            if node.style.opacity != clamped {
+                                node.style.opacity = clamped;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if let Some(key) = &node.attrs.bind_z_index {
+                    if let Some(val) = state.get(key) {
+                        if let Ok(v) = val.to_string().parse::<i16>() {
+                            let z = Some(v as i32);
+                            if node.style.z_index != z {
+                                node.style.z_index = z;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
             }
             if changed {
                 doc.mark_dirty(node_id);
@@ -911,17 +991,69 @@ impl EventLoop {
     pub fn inject_initial_state(doc: &mut THTMLDocument, state: &crate::state::StateManager) {
         let mut dirty = Vec::new();
         for (id, node) in doc.arena.iter_mut() {
+            let mut changed = false;
             if let Some(key) = &node.attrs.bind_state {
                 if let Some(val) = state.get(key) {
                     node.text = Some(val.to_string());
-                    dirty.push(id);
+                    changed = true;
                 }
             }
             if let Some(key) = &node.attrs.bind_value {
                 if let Some(val) = state.get(key) {
                     node.text = Some(val.to_string());
-                    dirty.push(id);
+                    changed = true;
                 }
+            }
+            if let Some(key) = &node.attrs.bind_width {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<u16>() {
+                        node.style.width = Some(v);
+                        changed = true;
+                    }
+                }
+            }
+            if let Some(key) = &node.attrs.bind_height {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<u16>() {
+                        node.style.height = Some(v);
+                        changed = true;
+                    }
+                }
+            }
+            if let Some(key) = &node.attrs.bind_top {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<i16>() {
+                        node.style.top = Some(v);
+                        changed = true;
+                    }
+                }
+            }
+            if let Some(key) = &node.attrs.bind_left {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<i16>() {
+                        node.style.left = Some(v);
+                        changed = true;
+                    }
+                }
+            }
+            if let Some(key) = &node.attrs.bind_opacity {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<f32>() {
+                        node.style.opacity = Some(v.clamp(0.0, 1.0));
+                        changed = true;
+                    }
+                }
+            }
+            if let Some(key) = &node.attrs.bind_z_index {
+                if let Some(val) = state.get(key) {
+                    if let Ok(v) = val.to_string().parse::<i16>() {
+                        node.style.z_index = Some(v as i32);
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                dirty.push(id);
             }
         }
         for id in dirty {
@@ -1450,13 +1582,10 @@ impl EventLoop {
             first_frame = false;
             pending_render = false;
 
-            let now = std::time::Instant::now();
-            let anim_changed = self.animation_controller.tick(&mut self.doc, now);
-            if anim_changed {
+            let has_active_transitions = self.animation_controller.has_active();
+            if has_active_transitions {
                 needs_render = true;
             }
-
-            let has_active_transitions = self.animation_controller.has_active();
             let has_media_animations = self.has_active_animations();
             let is_dragging = self.active_drag.is_some();
             let is_active = has_media_animations || has_active_transitions || is_dragging;
@@ -1714,8 +1843,11 @@ impl EventLoop {
 
             if needs_render && !self.output_paused {
                 if self.frame_limiter.should_render() {
+                    let now = std::time::Instant::now();
+                    self.animation_controller.restore_baselines(&mut self.doc);
                     Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
-                    self.animation_controller.sync_transitions(&mut self.doc, std::time::Instant::now());
+                    self.animation_controller.sync_transitions(&mut self.doc, now);
+                    self.animation_controller.tick(&mut self.doc, now);
                     self.rebuild_focusable_nodes();
 
                     let dims = *self.session.dims.read();
@@ -4026,6 +4158,79 @@ mod tests {
         let final_width = el.doc.get_node(box_id).unwrap().style.width.unwrap();
         assert_eq!(final_width, 60, "Final width must reach target 60");
         assert!(!el.animation_controller.has_active(), "No transitions should be active once finished");
+    }
+
+    #[test]
+    fn test_state_driven_animated_transition() {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::style::{AnimatableProperty, Easing, TransitionSpec};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut anim_box = Node::new(NodeTag::Box);
+        anim_box.style.width = Some(5);
+        anim_box.attrs.bind_width = Some("prog".to_string());
+        anim_box.style.transitions.push(TransitionSpec {
+            property: AnimatableProperty::Width,
+            duration_ms: 100,
+            delay_ms: 0,
+            easing: Easing::Linear,
+        });
+        let box_id = arena.alloc(anim_box);
+
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![box_id];
+        let root_id = arena.alloc(root);
+        let mut doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        // 1. Initial State Injection
+        session.state.write().set("prog".to_string(), crate::state::StateValue::Int(5));
+        EventLoop::setup_state_subscriptions(&doc, &mut *session.state.write());
+        EventLoop::inject_initial_state(&mut doc, &*session.state.read());
+        assert_eq!(doc.get_node(box_id).unwrap().style.width, Some(5));
+
+        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let start_time = std::time::Instant::now();
+
+        // Baseline establishment
+        el.animation_controller.sync_transitions(&mut el.doc, start_time);
+        assert!(!el.animation_controller.has_active());
+
+        // 2. State change via action (e.g. user clicked button event-htmx="set:prog=25")
+        session.state.write().set("prog".to_string(), crate::state::StateValue::Int(25));
+
+        // 3. Render cycle: restore baselines, sync dirty state, sync transitions, tick
+        el.animation_controller.restore_baselines(&mut el.doc);
+        EventLoop::sync_dirty_state(&mut el.doc, &mut *session.state.write());
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25), "Style width should update from state");
+
+        el.animation_controller.sync_transitions(&mut el.doc, start_time);
+        assert!(el.animation_controller.has_active(), "Active transition must launch on state update");
+
+        // Midpoint tick (50ms)
+        let mid_time = start_time + std::time::Duration::from_millis(50);
+        let changed = el.animation_controller.tick(&mut el.doc, mid_time);
+        assert!(changed);
+        let mid_w = el.doc.get_node(box_id).unwrap().style.width.unwrap();
+        assert!(mid_w >= 14 && mid_w <= 16, "Midpoint width should be ~15, got {}", mid_w);
+
+        // Next render cycle at 50ms: restore baselines must restore target 25
+        el.animation_controller.restore_baselines(&mut el.doc);
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25));
+        EventLoop::sync_dirty_state(&mut el.doc, &mut *session.state.write());
+        el.animation_controller.sync_transitions(&mut el.doc, mid_time);
+        assert_eq!(el.animation_controller.active_count(), 1, "Must not restart or cancel transition");
+
+        // Completion tick (110ms)
+        let end_time = start_time + std::time::Duration::from_millis(110);
+        el.animation_controller.tick(&mut el.doc, end_time);
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25));
+        assert!(!el.animation_controller.has_active());
     }
 }
 

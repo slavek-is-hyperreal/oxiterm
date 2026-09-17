@@ -63,6 +63,12 @@ The following attributes can be applied to any node type:
 | `drag-state-x` | State key | State key (Int) reactively updated with the horizontal position or offset during dragging. |
 | `drag-state-y` | State key | State key (Int) reactively updated with the vertical position or offset during dragging. |
 | `event-drag-end` | Action text | HTMX action(s) triggered when the pointer is released after a drag operation. |
+| `bind-width` | State key | Reactively synchronizes the element's width (in terminal columns) with the state value. Seamlessly triggers CSS/spring transitions if declared. |
+| `bind-height` | State key | Reactively synchronizes the element's height (in terminal rows) with the state value. Seamlessly triggers CSS/spring transitions if declared. |
+| `bind-top` | State key | Reactively synchronizes the top offset inset with the state value. |
+| `bind-left` | State key | Reactively synchronizes the left offset inset with the state value. |
+| `bind-opacity` | State key | Reactively synchronizes opacity (0.0 to 1.0) with the state value. |
+| `bind-z-index` | State key | Reactively synchronizes the stacking context layer (`z-index`) with the state value. |
 
 ---
 

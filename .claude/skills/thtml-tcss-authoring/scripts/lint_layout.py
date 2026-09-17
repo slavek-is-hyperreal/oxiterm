@@ -191,7 +191,25 @@ def check_declarations(where: str, decls: list[tuple[str, str]]) -> list[Finding
                 "margin-left", "margin-top", "margin-right", "margin-bottom",
                 "margin", "fg", "color", "bg", "background-color", "opacity", "all",
             }
-            for part in value.split(","):
+            parts = []
+            curr = []
+            depth = 0
+            for ch in value:
+                if ch == "(":
+                    depth += 1
+                    curr.append(ch)
+                elif ch == ")":
+                    depth = max(0, depth - 1)
+                    curr.append(ch)
+                elif ch == "," and depth == 0:
+                    parts.append("".join(curr).strip())
+                    curr = []
+                else:
+                    curr.append(ch)
+            if curr:
+                parts.append("".join(curr).strip())
+
+            for part in parts:
                 tokens = part.strip().split()
                 if not tokens:
                     continue
@@ -234,14 +252,14 @@ def check_element(
     has_border = any(p in style for p in BORDER_PROPS)
 
     if has_border:
-        h = as_int(style.get("height", ""))
+        h = as_int(style.get("height", "")) if not elem.get("bind-height") else None
         if h is not None and 0 < h < 3:
             findings.append((
                 "E003", where,
                 f"bordered element with height: {h} — the border alone needs "
                 f"2 rows, leaving {h - 2} for content; minimum is 3",
             ))
-        w = as_int(style.get("width", ""))
+        w = as_int(style.get("width", "")) if not elem.get("bind-width") else None
         if w is not None and 0 < w < 3:
             findings.append((
                 "E004", where,
@@ -251,7 +269,7 @@ def check_element(
 
     # Vertical budget: only meaningful when the parent height is rigid and
     # every child height is known.
-    parent_h = as_int(style.get("height", ""))
+    parent_h = as_int(style.get("height", "")) if not elem.get("bind-height") else None
     direction = style.get("flex-direction", "row").strip().lower()
     children = [c for c in elem if c.tag.lower() in VALID_TAGS]
     if parent_h is not None and direction == "column" and children:
@@ -266,6 +284,9 @@ def check_element(
         total = 0
         all_known = True
         for child in children:
+            if child.get("bind-height"):
+                all_known = False
+                break
             cs = computed(resolve_style(child, rules))
             ch = as_int(cs.get("height", ""))
             if ch is None:

@@ -167,7 +167,7 @@ pub fn compute_layout(graph: &Graph) -> GraphLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram::mermaid::{parse_mermaid, Graph};
+    use crate::diagram::mermaid::parse_mermaid;
 
     #[test]
     fn test_t11_linear_graph_td_three_layers() {
