@@ -1386,17 +1386,43 @@ pub mod web_impl {
         use crate::test_env::EnvGuard;
 
         async fn boot_test_server(reg: Arc<SessionRegistry>) -> std::net::SocketAddr {
+            boot_test_server_with_source(reg, None).await
+        }
+
+        /// Boots a test web server whose start page (and therefore app base dir) is
+        /// `source_path`, so tests can serve pages from an isolated directory instead
+        /// of writing into the shared working directory.
+        async fn boot_test_server_with_source(
+            reg: Arc<SessionRegistry>,
+            source_path: Option<std::path::PathBuf>,
+        ) -> std::net::SocketAddr {
             let rate_limiter = Arc::new(crate::ratelimit::RateLimiter::new(60));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let local_addr = listener.local_addr().unwrap();
             drop(listener);
-            
+
             let reg_clone = reg.clone();
             let rate_limiter_clone = rate_limiter.clone();
-            start_web_server("127.0.0.1".to_string(), local_addr.port(), reg_clone, rate_limiter_clone, None, None);
-            
+            start_web_server("127.0.0.1".to_string(), local_addr.port(), reg_clone, rate_limiter_clone, None, source_path);
+
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             local_addr
+        }
+
+        /// Polls `cond` until it holds or `timeout` elapses; returns whether it held.
+        /// Replaces fixed sleeps, which flake when the event-loop thread starts late
+        /// under CPU load.
+        async fn wait_until(timeout: std::time::Duration, mut cond: impl FnMut() -> bool) -> bool {
+            let deadline = std::time::Instant::now() + timeout;
+            loop {
+                if cond() {
+                    return true;
+                }
+                if std::time::Instant::now() >= deadline {
+                    return false;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
         }
 
         #[tokio::test]
@@ -2264,19 +2290,36 @@ pub mod web_impl {
         async fn test_t11_reattach_honors_different_page() {
             let _env = EnvGuard::lock_and_set(&[]);
 
-            // Create temporary files to satisfy canonicalization and page loading
-            std::fs::write("hello.thtml", b"<screen>Hello</screen>").unwrap();
-            std::fs::write("other.thtml", b"<screen>Other</screen>").unwrap();
+            // Serve pages from an isolated directory (not the shared cwd), with
+            // hello.thtml as the start page so the event loop itself sets
+            // current_page; writing current_page from the test races with the
+            // event-loop thread, which initialises it when it starts.
+            let dir = std::env::temp_dir().join(format!(
+                "oxiterm_t11_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("hello.thtml"), b"<screen>Hello</screen>").unwrap();
+            std::fs::write(dir.join("other.thtml"), b"<screen>Other</screen>").unwrap();
+            struct DirCleanup(std::path::PathBuf);
+            impl Drop for DirCleanup {
+                fn drop(&mut self) {
+                    let _ = std::fs::remove_dir_all(&self.0);
+                }
+            }
+            let _cleanup = DirCleanup(dir.clone());
 
             let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
-            let local_addr = boot_test_server(reg.clone()).await;
+            let local_addr = boot_test_server_with_source(reg.clone(), Some(dir.join("hello.thtml"))).await;
+            let timeout = std::time::Duration::from_secs(10);
 
             let url = format!("ws://{}/ws", local_addr);
-            
+
             // Connect 1
             let (ws_stream1, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
             let (mut ws_write1, mut ws_read1) = ws_stream1.split();
-            
+
             // Send initial resize frame for Connect 1
             ws_write1.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
 
@@ -2287,27 +2330,26 @@ pub mod web_impl {
             let token = String::from_utf8(bytes[1..].to_vec()).unwrap();
 
             let session = reg.reattach(&token).unwrap();
-            *session.current_page.write() = Some("hello.thtml".to_string());
+            assert!(
+                wait_until(timeout, || session.current_page.read().as_deref() == Some("hello.thtml")).await,
+                "start page never became current: {:?}",
+                session.current_page.read()
+            );
 
             // Connect 2 with token and a different page param
             let url2 = format!("ws://{}/ws?session={}&page=other.thtml", local_addr, token);
             let (ws_stream2, _) = tokio_tungstenite::connect_async(&url2).await.unwrap();
             let (mut ws_write2, _) = ws_stream2.split();
-            
+
             // Send initial resize frame [0x10, cols_low, cols_high, rows_low, rows_high]
             ws_write2.send(tokio_tungstenite::tungstenite::Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
-            
-            // Sleep to let events process
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-            let current = session.current_page.read().clone();
-
-            // Clean up temporary files before potential assertion panic to avoid poisoning
-            let _ = std::fs::remove_file("hello.thtml");
-            let _ = std::fs::remove_file("other.thtml");
-
-            // Wait, current_page should be Some("other.thtml")
-            assert_eq!(current, Some("other.thtml".to_string()));
+            // The reattach must navigate to the requested page.
+            assert!(
+                wait_until(timeout, || session.current_page.read().as_deref() == Some("other.thtml")).await,
+                "reattach did not honor page param, current_page = {:?}",
+                session.current_page.read()
+            );
         }
 
         #[test]
