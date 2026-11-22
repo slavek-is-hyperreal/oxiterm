@@ -42,6 +42,7 @@ fn render_frame_list_reproduces_render_node_buffer() {
         let Ok(mut doc) = THTMLParser::parse(&content) else { continue };
         for &(w, h) in SIZES {
             let mut engine = LayoutEngine::new();
+            engine.set_viewport_rows(h);
             let Ok(layout) = engine.compute(&mut doc, w, 0, None) else { continue };
             let mut profile = TerminalProfile::default();
             profile.is_web = true;

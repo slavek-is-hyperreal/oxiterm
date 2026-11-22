@@ -111,6 +111,8 @@ fn render(path: &Path, examples: &Path, width: u16, height: u16) -> Result<Strin
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut doc = THTMLParser::parse(&content).map_err(|e| format!("parse error: {e}"))?;
     let mut engine = LayoutEngine::new();
+    // Mirror the server: the viewport height is the root's minimum height.
+    engine.set_viewport_rows(height);
     let layout = engine.compute(&mut doc, width, 0, None).map_err(|e| format!("layout error: {e}"))?;
     let mut buf = CellBuffer::new(width, height);
     let mut profile = TerminalProfile::default();

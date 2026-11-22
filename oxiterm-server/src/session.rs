@@ -1888,6 +1888,8 @@ impl EventLoop {
                     if self.layout_engine.mode() != want_mode {
                         self.layout_engine = LayoutEngine::with_mode(want_mode);
                     }
+                    // The viewport is the root's minimum height; content can grow past it.
+                    self.layout_engine.set_viewport_rows(dims.rows);
                     let state_guard = self.session.state.read();
                     if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
                     self.total_height = layout.total_height;
@@ -3538,6 +3540,7 @@ mod tests {
         *el.session.dims.write() = dims;
 
         // Real layout — the same offsets rendering would use.
+        el.layout_engine.set_viewport_rows(dims.rows);
         el.layout_engine.compute(&mut el.doc, dims.cols, 0, None).unwrap();
         let layout = el.layout_engine.last_layout.clone().unwrap();
         let rect = layout.nodes.get(&btn).unwrap().cells();

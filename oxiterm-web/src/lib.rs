@@ -360,6 +360,7 @@ impl Playground {
     pub fn render(html_content: &str, width: u16, height: u16, format: Option<String>) -> Result<String, String> {
         let mut doc = oxiterm_renderer::parser::THTMLParser::parse(html_content).map_err(|e| e.to_string())?;
         let mut engine = oxiterm_renderer::layout::engine::LayoutEngine::new();
+        engine.set_viewport_rows(height);
         let layout = engine.compute(&mut doc, width, 0, None).map_err(|e| e.to_string())?;
         
         let mut back = oxiterm_renderer::CellBuffer::new(width, height);

@@ -120,6 +120,9 @@ pub struct LayoutEngine {
     pub last_layout: Option<LayoutResult>,
     /// Whether style lengths and computed rectangles are snapped to whole cells.
     mode: RenderMode,
+    /// Viewport height in rows. A root without an explicit height gets this as its
+    /// minimum height (it still grows with its content); `None` sizes it to content.
+    viewport_rows: Option<u16>,
 }
 
 impl LayoutEngine {
@@ -137,7 +140,13 @@ impl LayoutEngine {
             node_map: HashMap::new(),
             last_layout: None,
             mode,
+            viewport_rows: None,
         }
+    }
+
+    /// Sets the viewport height used as the root's minimum height (see `compute`).
+    pub fn set_viewport_rows(&mut self, rows: u16) {
+        self.viewport_rows = Some(rows);
     }
 
     /// The mode this engine lays out in.
@@ -223,7 +232,11 @@ impl LayoutEngine {
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
         
         let mut root_w = cols as f32;
-        let mut root_h = u16::MAX as f32;
+        // Without an explicit root height the available height is unbounded and the root
+        // is sized to its content, with the viewport as its minimum height. (A fixed
+        // u16::MAX-tall root used to stretch children to 65535 rows, which made the
+        // scroll extent meaningless.)
+        let mut root_h_available = AvailableSpace::MaxContent;
 
         if let Some(root_node) = doc.arena.get(doc.root) {
             let mut style = self.map_style(root_node, state_evaluator);
@@ -233,17 +246,19 @@ impl LayoutEngine {
                 style.size.width = taffy::style::Dimension::Length(cols as f32);
             }
             if let Some(h) = root_node.style.height {
-                root_h = self.snap_size(h);
+                root_h_available = AvailableSpace::Definite(self.snap_size(h));
             } else {
-                style.size.height = taffy::style::Dimension::Length(u16::MAX as f32);
-                root_h = u16::MAX as f32;
+                style.size.height = taffy::style::Dimension::Auto;
+                if let Some(rows) = self.viewport_rows {
+                    style.min_size.height = taffy::style::Dimension::Length(f32::from(rows));
+                }
             }
             self.taffy.set_style(root_taffy_id, style)?;
         }
 
         let available_space = Size {
             width: AvailableSpace::Definite(root_w),
-            height: AvailableSpace::Definite(root_h),
+            height: root_h_available,
         };
 
         // Measure closure resolves height-from-width for `wrap:word` text leaves
@@ -748,6 +763,43 @@ mod tests {
         assert!(text_rect.y + text_rect.height <= f32::from(result.total_height) - 1.0,
             "bottom border row must sit below the last text line");
         assert_eq!(result.total_height, 3, "scroll extent must include the bottom border row");
+    }
+
+    #[test]
+    fn test_root_child_without_height_fills_viewport_not_u16_max() {
+        // Regression: a root without an explicit height used to be 65535 rows tall, so a
+        // root child without a height stretched to it and the scroll extent read 65510+.
+        fn page(inner_h: f32) -> THTMLDocument {
+            let mut doc = THTMLDocument::new();
+            let outer_id = doc.arena.alloc(Node::new(NodeTag::Box)); // no height
+            doc.append_child(doc.root, outer_id).unwrap();
+            let mut inner = Node::new(NodeTag::Box);
+            inner.style.width = Some(10.0);
+            inner.style.height = Some(inner_h);
+            let inner_id = doc.arena.alloc(inner);
+            doc.append_child(outer_id, inner_id).unwrap();
+            doc
+        }
+
+        // Short content: the page fills the viewport, no further.
+        let mut engine = LayoutEngine::new();
+        engine.set_viewport_rows(24);
+        let mut doc = page(3.0);
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        assert!(result.total_height <= 24, "extent must not exceed the viewport, got {}", result.total_height);
+
+        // Tall content: the page grows with it.
+        let mut engine = LayoutEngine::new();
+        engine.set_viewport_rows(24);
+        let mut doc = page(30.0);
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(result.total_height, 30, "extent follows content taller than the viewport");
+
+        // No viewport known: sized to content.
+        let mut engine = LayoutEngine::new();
+        let mut doc = page(3.0);
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(result.total_height, 3);
     }
 
     #[test]
