@@ -88,6 +88,7 @@ const TRACES: &[&str] = &[
     "appserver-cell",
     "appserver-gui",
     "transition-cell",
+    "transition-patch-cell",
 ];
 
 // ---------------------------------------------------------------------------------------
@@ -1167,6 +1168,28 @@ fn script_transition() -> String {
         run.snap(&format!("transition frame {} (+{ms} ms)", i + 1));
     }
     run.finish()
+}
+
+/// Same bars, but `prog` arrives as a pushed state patch (App Server path) instead of a click.
+/// Regression for a bug where the StatePatched handler synced the patch into the document before
+/// the render, so `restore_baselines` reverted it and no transition ever started.
+fn script_transition_patch() -> String {
+    let mut run = Run::start_fake(Mode::Cell, &pages_dir(), "transition_bars.thtml", 1000);
+    run.watch(&["prog"]);
+    run.snap("initial frame (fake t=0)");
+    run.advance(100);
+    run.push_patch(r#"{"prog": 24}"#);
+    run.snap("pushed patch prog=24 (transitions start, t=0 of the transition)");
+    for (i, ms) in [50u64, 50, 100, 100, 100, 100, 100].into_iter().enumerate() {
+        run.step_frame(ms);
+        run.snap(&format!("transition frame {} (+{ms} ms)", i + 1));
+    }
+    run.finish()
+}
+
+#[test]
+fn trace_transition_patch_cell() {
+    check_baseline("transition-patch-cell", &script_transition_patch());
 }
 
 #[test]

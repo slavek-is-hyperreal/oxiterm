@@ -1,6 +1,7 @@
 <!-- Trace-harness fixture: two bars whose width is bound to `prog`, one with an ease-out and
-     one with a spring transition. The button sets `prog` through event-htmx (a patch would
-     consume the dirty keys before the render, so no transition would start). Used by the fake-clock trace (OxiUI Phase 4, step 1). -->
+     one with a spring transition. `prog` is set either by the button (event-htmx,
+     trace transition-cell) or by a pushed state patch (trace transition-patch-cell); both must
+     animate identically. Used by the fake-clock traces (OxiUI Phase 4, step 1). -->
 <style>
 .track {
     border-style: single;

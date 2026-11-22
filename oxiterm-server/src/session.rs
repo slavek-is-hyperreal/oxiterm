@@ -1028,6 +1028,16 @@ impl EventLoop {
         }
     }
 
+    /// Brings the document in line with the session state: restores animated properties to their
+    /// targets, applies dirty state keys, then registers transitions for any target that changed.
+    /// The order matters: syncing state without the surrounding steps lets `restore_baselines`
+    /// revert a changed target before `sync_transitions` sees it.
+    fn apply_state_to_doc(&mut self, now: crate::clock::MonoTime) {
+        self.animation_controller.restore_baselines(&mut self.doc);
+        Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+        self.animation_controller.sync_transitions(&mut self.doc, now);
+    }
+
     fn sync_dirty_state(doc: &mut THTMLDocument, state: &mut crate::state::StateManager) {
         let dirty_nodes = state.get_dirty_nodes();
         for node_id in dirty_nodes {
@@ -1782,7 +1792,10 @@ impl EventLoop {
                     };
                     match event {
                                 InputEvent::StatePatched => {
-                                    Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
+                                    // Same sequence as the render prelude: syncing the patch alone
+                                    // would consume the dirty keys, and the render's
+                                    // restore_baselines would then revert animated properties.
+                                    self.apply_state_to_doc(self.now);
                                     self.expand_all_for_nodes();
                                     needs_render = true;
                                 }
@@ -1983,9 +1996,7 @@ impl EventLoop {
             if needs_render && !self.output_paused {
                 if self.frame_limiter.should_render(self.now) {
                     let now = self.now;
-                    self.animation_controller.restore_baselines(&mut self.doc);
-                    Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
-                    self.animation_controller.sync_transitions(&mut self.doc, now);
+                    self.apply_state_to_doc(now);
                     self.animation_controller.tick(&mut self.doc, now);
                     self.rebuild_focusable_nodes();
 
