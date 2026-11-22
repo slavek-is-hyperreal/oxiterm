@@ -1,0 +1,53 @@
+size 80x24
+== glyphs
+|┌──────────────────────────────────────────────────────────────────────────────┐|
+|│  🏗 Architecture — OxiTerm SSR Pipeline                               < Back  │|
+|└──────────────────────────────────────────────────────────────────────────────┘|
+||
+|                               Performance & Accessibility:|
+||
+|                               ╭──────────────────────────────────────────────╮|
+|                               │                                              │|
+|                               │ Resilient Reactor Thread (RRT)               │|
+| SSR Pipeline:                 │                                              │|
+|                               │ Non-blocking SSH input reader.               │|
+| ╭──────────────────────────╮  │                                              │|
+| │                          │  ╰──────────────────────────────────────────────╯|
+| │ THTML File               │|
+| │ ↓                        │  ╭──────────────────────────────────────────────╮|
+| │ nom Parser → DOM Arena   │  │                                              │|
+| │ ↓                        │  │ Dynamic Ticking Loop                         │|
+| │ TCSS Style Cascade       │  │                                              │|
+| │ ↓                        │  │ Idle: 5ms poll. Animation: 66ms (15fps)      │|
+| │ Taffy Flexbox Layout     │  │                                              │|
+| │ ↓                        │  ╰──────────────────────────────────────────────╯|
+| │ CellBuffer Render        │|
+| │ ↓                        │  ╭──────────────────────────────────────────────╮|
+| │ SSH / WebSocket Client   │  │                                              │|
+== skip
+== styles
+0: 0-79 fg=#1e293b bg=#0f172a
+1: 0-0 fg=#1e293b bg=#0f172a | 1-2 fg=c15 bg=#0f172a | 3-39 fg=#fbbf24 bg=#0f172a | 40-70 fg=c15 bg=#0f172a | 71-76 fg=#475569 bg=#0f172a | 77-78 fg=c15 bg=#0f172a | 79-79 fg=#1e293b bg=#0f172a
+2: 0-79 fg=#1e293b bg=#0f172a
+3: 0-79 fg=c15 bg=#080f1a
+4: 0-30 fg=c15 bg=#080f1a | 31-58 fg=#94a3b8 bg=#080f1a | 59-79 fg=c15 bg=#080f1a
+5: 0-79 fg=c15 bg=#080f1a
+6: 0-30 fg=c15 bg=#080f1a | 31-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+7: 0-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+8: 0-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-32 fg=c15 bg=#080f1a | 33-62 fg=#38bdf8 bg=#080f1a | 63-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+9: 0-0 fg=c15 bg=#080f1a | 1-13 fg=#94a3b8 bg=#080f1a | 14-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+10: 0-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-32 fg=c15 bg=#080f1a | 33-62 fg=#475569 bg=#080f1a | 63-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+11: 0-0 fg=c15 bg=#080f1a | 1-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+12: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+13: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-12 fg=#38bdf8 bg=#080f1a | 13-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-79 fg=c15 bg=#080f1a
+14: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-3 fg=#334155 bg=#080f1a | 4-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+15: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-24 fg=#c084fc bg=#080f1a | 25-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+16: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-3 fg=#334155 bg=#080f1a | 4-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-32 fg=c15 bg=#080f1a | 33-52 fg=#fbbf24 bg=#080f1a | 53-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+17: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-20 fg=#fbbf24 bg=#080f1a | 21-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+18: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-3 fg=#334155 bg=#080f1a | 4-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-32 fg=c15 bg=#080f1a | 33-71 fg=#475569 bg=#080f1a | 72-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+19: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-22 fg=#4ade80 bg=#080f1a | 23-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+20: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-3 fg=#334155 bg=#080f1a | 4-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+21: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-19 fg=#fb923c bg=#080f1a | 20-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-79 fg=c15 bg=#080f1a
+22: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-3 fg=#334155 bg=#080f1a | 4-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+23: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-24 fg=#f472b6 bg=#080f1a | 25-27 fg=c15 bg=#080f1a | 28-28 fg=#1e293b bg=#080f1a | 29-30 fg=c15 bg=#080f1a | 31-31 fg=#1e293b bg=#080f1a | 32-77 fg=c15 bg=#080f1a | 78-78 fg=#1e293b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+== graphics 0

@@ -1,0 +1,53 @@
+size 80x24
+== glyphs
+|┌──────────────────────────────────────────────────────────────────────────────┐|
+|│  ⬡ OxiTerm|  Build TUI apps like websites ● livessh ssh.slavekm.pl -p 20236  │|
+|└──────────────────────────────────────────────────────────────────────────────┘|
+||
+| Server-side Rendered TUI Engine|
+||
+| Write declarative THTML & TCSS|
+| templates. Render identical reactive|
+| interfaces over SSH and Web.|
+||
+| ┌──────────────────────────────────────┐|
+| │                                      │|
+| │ 1. Zero Client Install               │|
+| │ Works in standard terminal emulators │|
+| │ over SSH.                            │|
+| │                                      │|
+| └──────────────────────────────────────┘      Select a section to explore:|
+||
+| ┌──────────────────────────────────────┐   ╭───────────────╮ ╭───────────────╮|
+| │                                      │   │               │ │               │|
+| │ 2. 1 Application, 3 Projections      │   │               │ │               │|
+| │ Seamless rendering across SSH, Web,  │   │ Live Demos    │ │ 3 Step Guide  │|
+| │ and Mobile TUI.                      │   ╰───────────────╯ ╰───────────────╯|
+| │                                      │|
+== skip
+== styles
+0: 0-79 fg=#1e293b bg=#0f172a
+1: 0-0 fg=#1e293b bg=#0f172a | 1-2 fg=c15 bg=#0f172a | 3-11 fg=#38bdf8 bg=#0f172a | 12-42 fg=#94a3b8 bg=#0f172a | 43-43 fg=c15 bg=#0f172a | 44-49 fg=#4ade80 bg=#0f172a | 50-76 fg=#38bdf8 bg=#0f172a | 77-78 fg=c15 bg=#0f172a | 79-79 fg=#1e293b bg=#0f172a
+2: 0-79 fg=#1e293b bg=#0f172a
+3: 0-79 fg=c15 bg=#080f1a
+4: 0-0 fg=c15 bg=#080f1a | 1-31 fg=#f8fafc bg=#080f1a | 32-79 fg=c15 bg=#080f1a
+5: 0-79 fg=c15 bg=#080f1a
+6: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#94a3b8 bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+7: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#94a3b8 bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+8: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#94a3b8 bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+9: 0-79 fg=c15 bg=#080f1a
+10: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+11: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+12: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-24 fg=#38bdf8 bg=#080f1a | 25-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+13: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-38 fg=#475569 bg=#080f1a | 39-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+14: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-38 fg=#475569 bg=#080f1a | 39-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+15: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+16: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#1e293b bg=#080f1a | 41-46 fg=c15 bg=#080f1a | 47-74 fg=#64748b bg=#080f1a | 75-79 fg=c15 bg=#080f1a
+17: 0-79 fg=c15 bg=#080f1a
+18: 0-0 fg=c15 bg=#080f1a | 1-40 fg=#1e293b bg=#080f1a | 41-43 fg=c15 bg=#080f1a | 44-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+19: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-43 fg=c15 bg=#080f1a | 44-44 fg=#38bdf8 bg=#080f1a | 45-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-62 fg=#4ade80 bg=#080f1a | 63-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+20: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-33 fg=#4ade80 bg=#080f1a | 34-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-43 fg=c15 bg=#080f1a | 44-44 fg=#38bdf8 bg=#080f1a | 45-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-62 fg=#4ade80 bg=#080f1a | 63-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+21: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-38 fg=#475569 bg=#080f1a | 39-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-43 fg=c15 bg=#080f1a | 44-44 fg=#38bdf8 bg=#080f1a | 45-45 fg=c15 bg=#080f1a | 46-55 fg=#475569 bg=#080f1a | 56-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-62 fg=#4ade80 bg=#080f1a | 63-63 fg=c15 bg=#080f1a | 64-75 fg=#475569 bg=#080f1a | 76-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+22: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-2 fg=c15 bg=#080f1a | 3-38 fg=#475569 bg=#080f1a | 39-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-43 fg=c15 bg=#080f1a | 44-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+23: 0-0 fg=c15 bg=#080f1a | 1-1 fg=#1e293b bg=#080f1a | 2-39 fg=c15 bg=#080f1a | 40-40 fg=#1e293b bg=#080f1a | 41-79 fg=c15 bg=#080f1a
+== graphics 0

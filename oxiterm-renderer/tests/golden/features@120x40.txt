@@ -1,0 +1,85 @@
+size 120x40
+== glyphs
+|                    ┌──────────────────────────────────────────────────────────────────────────────┐|
+|                    │  ✦ OxiTerm Features & Live Demos                             < Back to Home  │|
+|                    └──────────────────────────────────────────────────────────────────────────────┘|
+||
+|                                                                               ╭──────────────────╮|
+|                     1. Reactive State (Int/Bool/Str/Li                        │ > Try State Demo │|
+|                                                                               ╰──────────────────╯|
+||
+|                                                                             ╭────────────────────╮|
+|                     2. HTMX Actions (inc/dec/set/clear                      │ > Try Counter Demo │|
+|                                                                             ╰────────────────────╯|
+||
+|                                                                               ╭──────────────────╮|
+|                     3. Input Fields & Password Masking                        │ > Try Input Demo │|
+|                                                                               ╰──────────────────╯|
+||
+|                                                                              ╭───────────────────╮|
+|                     4. TCSS Styling (Classes, #ID, Cas                       │ > Try Styles Demo │|
+|                                                                              ╰───────────────────╯|
+||
+|                                                                                ╭─────────────────╮|
+|                     5. Tabs & Conditional Views (bind-                         │ > Try Tabs Demo │|
+|                                                                                ╰─────────────────╯|
+||
+|                                                                               ╭──────────────────╮|
+|                     6. Vector Media (SVG / Lottie / Ri                        │ > Try Media Demo │|
+|                                                                               ╰──────────────────╯|
+||
+|                                                                               ╭──────────────────╮|
+|                     7. MP4 Video Playback (ffmpeg)                            │ > Try Video Demo │|
+|                                                                               ╰──────────────────╯|
+||
+|                                                                                ╭─────────────────╮|
+|                     8. Dynamic List Loops (<for> tag)                          │ > Try Todo Demo │|
+|                                                                                ╰─────────────────╯|
+||
+|                                                                              ╭───────────────────╮|
+|                     9. App Server OAuth Integration                          │ > Try Spotify App │|
+|                                                                              ╰───────────────────╯|
+||
+== skip
+== styles
+0: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+1: 0-19 fg=c15 bg=c0 | 20-20 fg=#1e293b bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-53 fg=#38bdf8 bg=#0f172a | 54-82 fg=c15 bg=#0f172a | 83-96 fg=#475569 bg=#0f172a | 97-98 fg=c15 bg=#0f172a | 99-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+2: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+3: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+4: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+5: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-78 fg=c15 bg=#080f1a | 79-79 fg=#38bdf8 bg=#080f1a | 80-80 fg=c15 bg=#080f1a | 81-96 fg=#38bdf8 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+6: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+7: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+8: 0-19 fg=c15 bg=c0 | 20-76 fg=c15 bg=#080f1a | 77-98 fg=#4ade80 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+9: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-76 fg=c15 bg=#080f1a | 77-77 fg=#4ade80 bg=#080f1a | 78-78 fg=c15 bg=#080f1a | 79-96 fg=#4ade80 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#4ade80 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+10: 0-19 fg=c15 bg=c0 | 20-76 fg=c15 bg=#080f1a | 77-98 fg=#4ade80 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+11: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+12: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#f59e0b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+13: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-78 fg=c15 bg=#080f1a | 79-79 fg=#f59e0b bg=#080f1a | 80-80 fg=c15 bg=#080f1a | 81-96 fg=#f59e0b bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#f59e0b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+14: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#f59e0b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+15: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+16: 0-19 fg=c15 bg=c0 | 20-77 fg=c15 bg=#080f1a | 78-98 fg=#c084fc bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-77 fg=c15 bg=#080f1a | 78-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a | 80-96 fg=#c084fc bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#c084fc bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-77 fg=c15 bg=#080f1a | 78-98 fg=#c084fc bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+20: 0-19 fg=c15 bg=c0 | 20-79 fg=c15 bg=#080f1a | 80-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+21: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-79 fg=c15 bg=#080f1a | 80-80 fg=#38bdf8 bg=#080f1a | 81-81 fg=c15 bg=#080f1a | 82-96 fg=#38bdf8 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+22: 0-19 fg=c15 bg=c0 | 20-79 fg=c15 bg=#080f1a | 80-98 fg=#38bdf8 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+23: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+24: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#f87171 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+25: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-78 fg=c15 bg=#080f1a | 79-79 fg=#f87171 bg=#080f1a | 80-80 fg=c15 bg=#080f1a | 81-96 fg=#f87171 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#f87171 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+26: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#f87171 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+27: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+28: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#fb923c bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+29: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-78 fg=c15 bg=#080f1a | 79-79 fg=#fb923c bg=#080f1a | 80-80 fg=c15 bg=#080f1a | 81-96 fg=#fb923c bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#fb923c bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+30: 0-19 fg=c15 bg=c0 | 20-78 fg=c15 bg=#080f1a | 79-98 fg=#fb923c bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+31: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+32: 0-19 fg=c15 bg=c0 | 20-79 fg=c15 bg=#080f1a | 80-98 fg=#a3e635 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+33: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-79 fg=c15 bg=#080f1a | 80-80 fg=#a3e635 bg=#080f1a | 81-81 fg=c15 bg=#080f1a | 82-96 fg=#a3e635 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#a3e635 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+34: 0-19 fg=c15 bg=c0 | 20-79 fg=c15 bg=#080f1a | 80-98 fg=#a3e635 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+35: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+36: 0-19 fg=c15 bg=c0 | 20-77 fg=c15 bg=#080f1a | 78-98 fg=#1db954 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+37: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-54 fg=#f8fafc bg=#080f1a | 55-77 fg=c15 bg=#080f1a | 78-78 fg=#1db954 bg=#080f1a | 79-79 fg=c15 bg=#080f1a | 80-96 fg=#1db954 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#1db954 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+38: 0-19 fg=c15 bg=c0 | 20-77 fg=c15 bg=#080f1a | 78-98 fg=#1db954 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+39: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+== graphics 0

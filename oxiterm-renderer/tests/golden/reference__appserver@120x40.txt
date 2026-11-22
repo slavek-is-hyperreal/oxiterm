@@ -1,0 +1,85 @@
+size 120x40
+== glyphs
+||
+||
+||
+||
+||
+|                    ┌──────────────────────────────────────────────────────────────────────────────┐|
+|                    │  🔌  App Server Protocol — OxiTerm                                    < Back  │|
+|                    └──────────────────────────────────────────────────────────────────────────────┘|
+||
+|                     HTTP Protocol & Auth:                  Key Env Variables:|
+||
+|                     ╭────────────────────────────────────╮ ╭─────────────────────────────────────╮|
+|                     │                                    │ │                                     │|
+|                     │ 1. POST /events (OxiTerm → App)    │ │ OXITERM_PORT2222 (SSH)              │|
+|                     │                                    │ │                                     │|
+|                     │ Authorization: Bearer <TOKEN>      │ │ OXITERM_WEB_PORT8087 (HTTP/WS)      │|
+|                     │ { action, state, session_id }      │ │                                     │|
+|                     │ Response 200 OK + JSON state patch │ │ OXITERM_APP_SERVERhttp://.../events │|
+|                     │                                    │ │                                     │|
+|                     ╰────────────────────────────────────╯ │ OXITERM_APP_TOKENBearer secret      │|
+|                                                            │                                     │|
+|                     ╭────────────────────────────────────╮ │ OXITERM_NO_AUTHdev mode             │|
+|                     │                                    │ │                                     │|
+|                     │ 2. POST /sessions/{id}/patch (Push)│ │                                     │|
+|                     │                                    │ ╰─────────────────────────────────────╯|
+|                     │ Authorization: Bearer <TOKEN>      │|
+|                     │ { key: "value" }                   │|
+|                     │ App Server pushes state patch to TUI|
+|                     │                                    │|
+|                     ╰────────────────────────────────────╯|
+||
+|                     ┌────────────────────────────────────────────────────────────────────────────┐|
+|                     │  Full Spec Markdown: docs/app-server-guide.md                    GitHub >  │|
+|                     └────────────────────────────────────────────────────────────────────────────┘|
+|                      [Q] Exit  [Tab] Navigate|
+||
+||
+||
+||
+||
+== skip
+== styles
+0: 0-119 fg=c15 bg=c0
+1: 0-119 fg=c15 bg=c0
+2: 0-119 fg=c15 bg=c0
+3: 0-119 fg=c15 bg=c0
+4: 0-119 fg=c15 bg=c0
+5: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+6: 0-19 fg=c15 bg=c0 | 20-20 fg=#1e293b bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-54 fg=#4ade80 bg=#0f172a | 55-90 fg=c15 bg=#0f172a | 91-96 fg=#475569 bg=#0f172a | 97-98 fg=c15 bg=#0f172a | 99-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+7: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+8: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+9: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-41 fg=#94a3b8 bg=#080f1a | 42-59 fg=c15 bg=#080f1a | 60-77 fg=#94a3b8 bg=#080f1a | 78-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+10: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+11: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+12: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+13: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-53 fg=#38bdf8 bg=#080f1a | 54-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-73 fg=#fb923c bg=#080f1a | 74-83 fg=#475569 bg=#080f1a | 84-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+14: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+15: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-51 fg=#475569 bg=#080f1a | 52-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-77 fg=#fb923c bg=#080f1a | 78-91 fg=#475569 bg=#080f1a | 92-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+16: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-51 fg=#a3e635 bg=#080f1a | 52-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-56 fg=#475569 bg=#080f1a | 57-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-79 fg=#fb923c bg=#080f1a | 80-96 fg=#475569 bg=#080f1a | 97-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-78 fg=#fb923c bg=#080f1a | 79-91 fg=#475569 bg=#080f1a | 92-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+20: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+21: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-76 fg=#fb923c bg=#080f1a | 77-84 fg=#475569 bg=#080f1a | 85-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+22: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+23: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-57 fg=#4ade80 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-60 fg=#1e293b bg=#080f1a | 61-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+24: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-98 fg=#1e293b bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+25: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-51 fg=#475569 bg=#080f1a | 52-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+26: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-38 fg=#a3e635 bg=#080f1a | 39-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+27: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-58 fg=#475569 bg=#080f1a | 59-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+28: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-57 fg=c15 bg=#080f1a | 58-58 fg=#1e293b bg=#080f1a | 59-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+29: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-58 fg=#1e293b bg=#080f1a | 59-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+30: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+31: 0-20 fg=c15 bg=c0 | 21-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+32: 0-20 fg=c15 bg=c0 | 21-21 fg=#1e293b bg=#080f1a | 22-23 fg=c15 bg=#080f1a | 24-67 fg=#94a3b8 bg=#080f1a | 68-87 fg=c15 bg=#080f1a | 88-95 fg=#38bdf8 bg=#080f1a | 96-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+33: 0-20 fg=c15 bg=c0 | 21-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+34: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#0f172a | 22-45 fg=#475569 bg=#0f172a | 46-99 fg=c15 bg=#0f172a | 100-119 fg=c15 bg=c0
+35: 0-119 fg=c15 bg=c0
+36: 0-119 fg=c15 bg=c0
+37: 0-119 fg=c15 bg=c0
+38: 0-119 fg=c15 bg=c0
+39: 0-119 fg=c15 bg=c0
+== graphics 0

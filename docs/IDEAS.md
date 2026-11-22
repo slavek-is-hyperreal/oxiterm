@@ -13,6 +13,7 @@ This document serves as the master catalog and index of architectural ideas, con
 | **3. Framebuffer Engine (`oxiterm-fb`)** | Direct hardware `/dev/fb0` & DRM/KMS blitter (Zero X11 / Zero Wayland) | Conceptual design complete | [docs/embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers) |
 | **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented in core | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
 | **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Planned / Architecture defined | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
+| **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phased plan defined | [docs/oxi-ui.md](oxi-ui.md) |
 
 ---
 
@@ -24,6 +25,7 @@ This document serves as the master catalog and index of architectural ideas, con
   - Running directly on Linux Virtual Consoles (`/dev/tty1`), DRM dumb buffers, or minimal X11/Wayland kiosks.
   - Multi-window manager with z-index stacking contexts, window dragging, collapsing (window shading), and taskbar integration.
   - Sub-50 MB total system RAM consumption and <0.1% CPU idle overhead.
+  - Planned to sit on top of [OxiUI](oxi-ui.md) (idea #6) as a DisplayList consumer instead of a separate cell-grid fork.
 * **Read the full blueprint:** 📄 [docs/retro-desktop-environment.md](retro-desktop-environment.md)
 
 ---
@@ -69,3 +71,15 @@ This document serves as the master catalog and index of architectural ideas, con
   - **TCSS Pseudoclass Cascade:** Support for `:hover`, `:active`, and `:focus` selectors that seamlessly override base styles in `resolve_style`.
   - **Seamless Hover Transitions:** Coupling with `AnimationController` for smooth RGB color fades (`transition: bg 200ms ease-out, fg 200ms ease-out`) and opacity changes on mouse enter/leave without visual jarring.
 
+
+---
+
+### 6. [OxiUI: One Source → Terminal, Web, Desktop & Mobile](oxi-ui.md)
+* **The Vision:** Turn the terminal renderer into one backend among several. The same THTML/TCSS documents, sessions and App Server protocol drive a TUI, a web canvas, a native `winit` + `wgpu` window, and later mobile and framebuffer targets.
+* **Key Innovations:**
+  - **DisplayList** of `f32` primitives (rect, border, text run, clip, image) between layout and output; `CellBuffer` becomes just the TUI sink.
+  - **One language:** `@media (render: tui|gui)` plus silent-ignore of GUI-only properties instead of a separate "UIhtml/UIcss".
+  - **Golden cell snapshots** gate every phase so existing TUI apps never regress.
+  - **Two execution modes from the same app source:** *server-driven* (thin client paints a DisplayList received over WS, LiveView-style) and *local core* (`oxiterm-core` compiled into a desktop/Android/WASM app, offline, Flutter-style).
+  - **No font drift:** a shared font bundle in both modes, and positioned glyph runs in the DisplayList so thin clients never re-measure text.
+* **Read the full plan:** 📄 [docs/oxi-ui.md](oxi-ui.md)

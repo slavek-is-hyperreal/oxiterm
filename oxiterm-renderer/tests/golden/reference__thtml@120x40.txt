@@ -1,0 +1,85 @@
+size 120x40
+== glyphs
+||
+||
+||
+||
+|                    ┌──────────────────────────────────────────────────────────────────────────────┐|
+|                    │  📄  THTML Reference — OxiTerm                                        < Back  │|
+|                    └──────────────────────────────────────────────────────────────────────────────┘|
+||
+|                     Tags (8 total):          Attributes & Keys:          event-htmx Actions:|
+||
+|                     ╭─────────────────────╮  ╭────────────────────────╮  ╭─────────────────────────╮|
+|                     │                     │  │                        │  │                         │|
+|                     │ <box>flex div       │  │ style=inline TCSS      │  │ inc: / dec:+1/-1 Int    │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <text>text label    │  │ class= / id=TCSS selectors│ toggle:keyflip Bool     │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <input>field/pwd    │  │ event-htmx=action / nav│  │ set:k=vset Str          │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <button>clickable   │  │ type=password input    │  │ append:k=vpush to List  │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <img>SVG/Lottie/Riv │  │ bind-state=reactive text  │ clear:keyreset existing │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <video>mp4 player   │  │ _keyreserved internal  │  │ open:URLweb http/https  │|
+|                     │                     │  │                        │  │                         │|
+|                     │ <for>list loop      │  │                        │  │ action_name→ App Server │|
+|                     │                     │  ╰────────────────────────╯  │                         │|
+|                     │ <style>TCSS block   │                              │                         │|
+|                     │                     │                              ╰─────────────────────────╯|
+|                     │                     │|
+|                     ╰─────────────────────╯|
+||
+|                     ┌────────────────────────────────────────────────────────────────────────────┐|
+|                     │  Full Spec Markdown: docs/thtml-reference.md                     GitHub >  │|
+|                     └────────────────────────────────────────────────────────────────────────────┘|
+|                      [Q] Exit  [Tab] Navigate|
+||
+||
+||
+||
+||
+== skip
+== styles
+0: 0-119 fg=c15 bg=c0
+1: 0-119 fg=c15 bg=c0
+2: 0-119 fg=c15 bg=c0
+3: 0-119 fg=c15 bg=c0
+4: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+5: 0-19 fg=c15 bg=c0 | 20-20 fg=#1e293b bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-50 fg=#38bdf8 bg=#0f172a | 51-90 fg=c15 bg=#0f172a | 91-96 fg=#475569 bg=#0f172a | 97-98 fg=c15 bg=#0f172a | 99-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+6: 0-19 fg=c15 bg=c0 | 20-99 fg=#1e293b bg=#0f172a | 100-119 fg=c15 bg=c0
+7: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+8: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-35 fg=#94a3b8 bg=#080f1a | 36-45 fg=c15 bg=#080f1a | 46-63 fg=#94a3b8 bg=#080f1a | 64-73 fg=c15 bg=#080f1a | 74-92 fg=#94a3b8 bg=#080f1a | 93-100 fg=c15 bg=#080f1a | 101-119 fg=c15 bg=c0
+9: 0-19 fg=c15 bg=c0 | 20-100 fg=c15 bg=#080f1a | 101-119 fg=c15 bg=c0
+10: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+11: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+12: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-27 fg=#38bdf8 bg=#080f1a | 28-35 fg=#475569 bg=#080f1a | 36-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-53 fg=#fb923c bg=#080f1a | 54-64 fg=#475569 bg=#080f1a | 65-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-86 fg=#a3e635 bg=#080f1a | 87-95 fg=#475569 bg=#080f1a | 96-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+13: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+14: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-28 fg=#38bdf8 bg=#080f1a | 29-38 fg=#475569 bg=#080f1a | 39-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-59 fg=#fb923c bg=#080f1a | 60-73 fg=#475569 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-85 fg=#a3e635 bg=#080f1a | 86-94 fg=#475569 bg=#080f1a | 95-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+15: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+16: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-29 fg=#38bdf8 bg=#080f1a | 30-38 fg=#475569 bg=#080f1a | 39-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-58 fg=#fb923c bg=#080f1a | 59-70 fg=#475569 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-82 fg=#a3e635 bg=#080f1a | 83-89 fg=#475569 bg=#080f1a | 90-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-30 fg=#38bdf8 bg=#080f1a | 31-39 fg=#475569 bg=#080f1a | 40-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-52 fg=#fb923c bg=#080f1a | 53-66 fg=#475569 bg=#080f1a | 67-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-85 fg=#a3e635 bg=#080f1a | 86-97 fg=#475569 bg=#080f1a | 98-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+20: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-27 fg=#38bdf8 bg=#080f1a | 28-41 fg=#475569 bg=#080f1a | 42-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-58 fg=#fb923c bg=#080f1a | 59-71 fg=#475569 bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-84 fg=#a3e635 bg=#080f1a | 85-98 fg=#475569 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+21: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+22: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-29 fg=#38bdf8 bg=#080f1a | 30-39 fg=#475569 bg=#080f1a | 40-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-47 fg=c15 bg=#080f1a | 48-51 fg=#fb923c bg=#080f1a | 52-68 fg=#475569 bg=#080f1a | 69-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-83 fg=#a3e635 bg=#080f1a | 84-97 fg=#475569 bg=#080f1a | 98-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+23: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+24: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-27 fg=#38bdf8 bg=#080f1a | 28-36 fg=#475569 bg=#080f1a | 37-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-46 fg=#1e293b bg=#080f1a | 47-70 fg=c15 bg=#080f1a | 71-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-75 fg=c15 bg=#080f1a | 76-86 fg=#a3e635 bg=#080f1a | 87-98 fg=#475569 bg=#080f1a | 99-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+25: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-45 fg=c15 bg=#080f1a | 46-71 fg=#1e293b bg=#080f1a | 72-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+26: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-22 fg=c15 bg=#080f1a | 23-29 fg=#38bdf8 bg=#080f1a | 30-39 fg=#475569 bg=#080f1a | 40-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-73 fg=c15 bg=#080f1a | 74-74 fg=#1e293b bg=#080f1a | 75-99 fg=c15 bg=#080f1a | 100-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+27: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-73 fg=c15 bg=#080f1a | 74-100 fg=#1e293b bg=#080f1a | 101-119 fg=c15 bg=c0
+28: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-21 fg=#1e293b bg=#080f1a | 22-42 fg=c15 bg=#080f1a | 43-43 fg=#1e293b bg=#080f1a | 44-100 fg=c15 bg=#080f1a | 101-119 fg=c15 bg=c0
+29: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-43 fg=#1e293b bg=#080f1a | 44-100 fg=c15 bg=#080f1a | 101-119 fg=c15 bg=c0
+30: 0-19 fg=c15 bg=c0 | 20-99 fg=c15 bg=#080f1a | 100-119 fg=c15 bg=c0
+31: 0-20 fg=c15 bg=c0 | 21-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+32: 0-20 fg=c15 bg=c0 | 21-21 fg=#1e293b bg=#080f1a | 22-23 fg=c15 bg=#080f1a | 24-66 fg=#94a3b8 bg=#080f1a | 67-87 fg=c15 bg=#080f1a | 88-95 fg=#38bdf8 bg=#080f1a | 96-97 fg=c15 bg=#080f1a | 98-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+33: 0-20 fg=c15 bg=c0 | 21-98 fg=#1e293b bg=#080f1a | 99-119 fg=c15 bg=c0
+34: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#0f172a | 22-45 fg=#475569 bg=#0f172a | 46-99 fg=c15 bg=#0f172a | 100-119 fg=c15 bg=c0
+35: 0-119 fg=c15 bg=c0
+36: 0-119 fg=c15 bg=c0
+37: 0-119 fg=c15 bg=c0
+38: 0-119 fg=c15 bg=c0
+39: 0-119 fg=c15 bg=c0
+== graphics 0

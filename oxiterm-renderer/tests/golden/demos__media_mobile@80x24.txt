@@ -1,0 +1,53 @@
+size 80x24
+== glyphs
+|                    ┌──────────────────────────────────────┐|
+|                    │ 🖼 Media Showcase              < Back │|
+|                    └──────────────────────────────────────┘|
+||
+||
+||
+||
+|                                    SVG (resvg)|
+||
+||
+||
+||
+||
+|                                  Lottie JSON|
+||
+||
+||
+||
+|                                  Rive Procedural|
+||
+||
+||
+||
+|                     Mobile View|
+== skip
+== styles
+0: 0-19 fg=c15 bg=c0 | 20-59 fg=#334155 bg=#1e293b | 60-79 fg=c15 bg=c0
+1: 0-19 fg=c15 bg=c0 | 20-20 fg=#334155 bg=#1e293b | 21-21 fg=c15 bg=#1e293b | 22-37 fg=#f87171 bg=#1e293b | 38-51 fg=c15 bg=#1e293b | 52-57 fg=#475569 bg=#1e293b | 58-58 fg=c15 bg=#1e293b | 59-59 fg=#334155 bg=#1e293b | 60-79 fg=c15 bg=c0
+2: 0-19 fg=c15 bg=c0 | 20-59 fg=#334155 bg=#1e293b | 60-79 fg=c15 bg=c0
+3: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+4: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+5: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+6: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+7: 0-19 fg=c15 bg=c0 | 20-35 fg=c15 bg=#0f172a | 36-46 fg=#64748b bg=#0f172a | 47-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+8: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+9: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+10: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+11: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+12: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+13: 0-19 fg=c15 bg=c0 | 20-33 fg=c15 bg=#0f172a | 34-44 fg=#64748b bg=#0f172a | 45-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+14: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+15: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+16: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-33 fg=c15 bg=#0f172a | 34-48 fg=#64748b bg=#0f172a | 49-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+20: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+21: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+22: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+23: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#1e293b | 21-31 fg=#475569 bg=#1e293b | 32-59 fg=c15 bg=#1e293b | 60-79 fg=c15 bg=c0
+== graphics 0

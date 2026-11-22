@@ -1,0 +1,53 @@
+size 80x24
+== glyphs
+|┌──────────────────────────────────────────────────────────────────────────────┐|
+|│  🖼 Graphics and Animations — SVG · Lottie · Rive · PNG               < Back  │|
+|└──────────────────────────────────────────────────────────────────────────────┘|
+||
+| ╭──────────────────╮ ╭──────────────────╮ ╭────────────────╮ ╭────────────────╮|
+| │                  │ │                  │ │                │ │                │|
+| │    SVG (resvg)   │ │   Raster Image   │ │   Lottie JSON  │ │    Rive .riv   │|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │                │ │Procedural Widget|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| │                  │ │                  │ │  Frame ticker  │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| │  resvg+tiny_skia │ │  Auto-negotiated │ │                │ │                │|
+| │                  │ │                  │ │                │ │                │|
+| ╰──────────────────╯ ╰──────────────────╯ ╰────────────────╯ ╰────────────────╯|
+||
+| ┌────────────────────────────────────────────────────────────────────────────┐|
+| │      Kitty Graphics                Sixel                 Unicode ▀▄█       │|
+| │   Kitty WezTerm Ghostty       Konsole mlterm            All terminals      │|
+| └────────────────────────────────────────────────────────────────────────────┘|
+== skip
+== styles
+0: 0-79 fg=#334155 bg=#1e293b
+1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-55 fg=#f87171 bg=#1e293b | 56-70 fg=c15 bg=#1e293b | 71-76 fg=#475569 bg=#1e293b | 77-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+2: 0-79 fg=#334155 bg=#1e293b
+3: 0-79 fg=c15 bg=#0f172a
+4: 0-0 fg=c15 bg=#0f172a | 1-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-79 fg=#c084fc bg=#0f172a
+5: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+6: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-5 fg=c15 bg=#0f172a | 6-16 fg=#38bdf8 bg=#0f172a | 17-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-25 fg=c15 bg=#0f172a | 26-37 fg=#4ade80 bg=#0f172a | 38-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-46 fg=c15 bg=#0f172a | 47-57 fg=#fbbf24 bg=#0f172a | 58-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-66 fg=c15 bg=#0f172a | 67-75 fg=#c084fc bg=#0f172a | 76-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+8: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+9: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+10: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+11: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-79 fg=#64748b bg=#0f172a
+12: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+13: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+14: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-45 fg=c15 bg=#0f172a | 46-57 fg=#64748b bg=#0f172a | 58-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+15: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+16: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-3 fg=c15 bg=#0f172a | 4-18 fg=#64748b bg=#0f172a | 19-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-24 fg=c15 bg=#0f172a | 25-39 fg=#64748b bg=#0f172a | 40-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+17: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-19 fg=c15 bg=#0f172a | 20-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-22 fg=#4ade80 bg=#0f172a | 23-40 fg=c15 bg=#0f172a | 41-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-43 fg=#fbbf24 bg=#0f172a | 44-59 fg=c15 bg=#0f172a | 60-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-62 fg=#c084fc bg=#0f172a | 63-78 fg=c15 bg=#0f172a | 79-79 fg=#c084fc bg=#0f172a
+18: 0-0 fg=c15 bg=#0f172a | 1-20 fg=#38bdf8 bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-41 fg=#4ade80 bg=#0f172a | 42-42 fg=c15 bg=#0f172a | 43-60 fg=#fbbf24 bg=#0f172a | 61-61 fg=c15 bg=#0f172a | 62-79 fg=#c084fc bg=#0f172a
+19: 0-79 fg=c15 bg=#0f172a
+20: 0-0 fg=c15 bg=#0f172a | 1-78 fg=#1e293b bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+21: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#1e293b bg=#0f172a | 2-7 fg=c15 bg=#0f172a | 8-21 fg=#38bdf8 bg=#0f172a | 22-37 fg=c15 bg=#0f172a | 38-42 fg=#4ade80 bg=#0f172a | 43-59 fg=c15 bg=#0f172a | 60-70 fg=#94a3b8 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#1e293b bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+22: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#1e293b bg=#0f172a | 2-4 fg=c15 bg=#0f172a | 5-25 fg=#334155 bg=#0f172a | 26-32 fg=c15 bg=#0f172a | 33-46 fg=#334155 bg=#0f172a | 47-58 fg=c15 bg=#0f172a | 59-71 fg=#334155 bg=#0f172a | 72-77 fg=c15 bg=#0f172a | 78-78 fg=#1e293b bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+23: 0-0 fg=c15 bg=#0f172a | 1-78 fg=#1e293b bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+== graphics 0

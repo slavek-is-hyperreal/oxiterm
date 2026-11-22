@@ -1,0 +1,53 @@
+size 80x24
+== glyphs
+|                    ┌──────────────────────────────────────┐|
+|                    │ ⬡ OxiTerm                     v0.5.0 │|
+|                    └──────────────────────────────────────┘|
+||
+||
+||
+||
+||
+||
+||
+||
+|                          Build TUI apps like websites|
+|                     ssh ssh.slavekm.pl -p 20236|
+||
+|                      ╭──────────────────────────────────╮|
+|                      │        ✦ Features & Demos        │|
+|                      ╰──────────────────────────────────╯|
+||
+|                      ╭──────────────────────────────────╮|
+|                      │        ⚡  Quickstart Guide       │|
+|                      ╰──────────────────────────────────╯|
+||
+|                      ╭──────────────────────────────────╮|
+|                      │         📄  Specifications        │|
+== skip
+== styles
+0: 0-19 fg=c15 bg=c0 | 20-59 fg=#1e293b bg=#0f172a | 60-79 fg=c15 bg=c0
+1: 0-19 fg=c15 bg=c0 | 20-20 fg=#1e293b bg=#0f172a | 21-21 fg=c15 bg=#0f172a | 22-30 fg=#38bdf8 bg=#0f172a | 31-51 fg=c15 bg=#0f172a | 52-57 fg=#4ade80 bg=#0f172a | 58-58 fg=c15 bg=#0f172a | 59-59 fg=#1e293b bg=#0f172a | 60-79 fg=c15 bg=c0
+2: 0-19 fg=c15 bg=c0 | 20-59 fg=#1e293b bg=#0f172a | 60-79 fg=c15 bg=c0
+3: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+4: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+5: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+6: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+7: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+8: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+9: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+10: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+11: 0-19 fg=c15 bg=c0 | 20-25 fg=c15 bg=#080f1a | 26-53 fg=#f8fafc bg=#080f1a | 54-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+12: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#080f1a | 21-47 fg=#475569 bg=#080f1a | 48-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+13: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+14: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-57 fg=#38bdf8 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+15: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-22 fg=#38bdf8 bg=#080f1a | 23-30 fg=c15 bg=#080f1a | 31-48 fg=#38bdf8 bg=#080f1a | 49-56 fg=c15 bg=#080f1a | 57-57 fg=#38bdf8 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+16: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-57 fg=#38bdf8 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-57 fg=#4ade80 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-22 fg=#4ade80 bg=#080f1a | 23-30 fg=c15 bg=#080f1a | 31-49 fg=#4ade80 bg=#080f1a | 50-56 fg=c15 bg=#080f1a | 57-57 fg=#4ade80 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+20: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-57 fg=#4ade80 bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+21: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+22: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-57 fg=#c084fc bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+23: 0-19 fg=c15 bg=c0 | 20-21 fg=c15 bg=#080f1a | 22-22 fg=#c084fc bg=#080f1a | 23-31 fg=c15 bg=#080f1a | 32-48 fg=#c084fc bg=#080f1a | 49-56 fg=c15 bg=#080f1a | 57-57 fg=#c084fc bg=#080f1a | 58-59 fg=c15 bg=#080f1a | 60-79 fg=c15 bg=c0
+== graphics 0
