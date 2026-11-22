@@ -5,23 +5,44 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Security audit also runs weekly, so new advisories surface without a push.
+  schedule:
+    - cron: "0 6 * * 1"
+  # Coverage is heavy and runs only on demand (Actions tab → CI → Run workflow).
+  workflow_dispatch:
+    inputs:
+      coverage:
+        description: "Run the coverage job"
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+    # oxiterm-server embeds the web client bundle with include_bytes!, and the bundle is
+    # generated (gitignored), so it must be built before the workspace.
+    - name: Install wasm target
+      run: rustup target add wasm32-unknown-unknown
+    - name: Install wasm-pack
+      uses: taiki-e/install-action@wasm-pack
+    - name: Build web client bundle
+      run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --workspace
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --workspace
     - name: Lints
-      run: cargo clippy
+      run: cargo clippy --workspace
 
   audit:
+    if: github.event_name != 'workflow_dispatch' || !inputs.coverage
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -31,13 +52,21 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
+    if: github.event_name == 'workflow_dispatch' && inputs.coverage
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+    - name: Install wasm target
+      run: rustup target add wasm32-unknown-unknown
+    - name: Install wasm-pack
+      uses: taiki-e/install-action@wasm-pack
+    - name: Build web client bundle
+      run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
     - name: Install tarpaulin
       uses: taiki-e/install-action@cargo-tarpaulin
     - name: Run tarpaulin
-      run: cargo tarpaulin --out xml
+      run: cargo tarpaulin --workspace --out xml
 
   release:
     name: Release
@@ -46,6 +75,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@wasm-pack
+      - name: Build web client bundle
+        run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
       - name: Build
         run: cargo build --release
       - name: Create Release
