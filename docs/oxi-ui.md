@@ -238,11 +238,11 @@ The golden and display-list equivalence tests call the renderer directly. They d
 - Run: `cargo test -p oxiterm-server --lib event_loop_trace` (about 10 s). A mismatch names the baseline file, the step and the first differing line.
 - Bless: `OXI_TRACE_BLESS=1 cargo test -p oxiterm-server --lib event_loop_trace`, then review the diff of `tests/traces/` and rerun WITHOUT `OXI_TRACE_BLESS` (the stale-baseline check is skipped while blessing). **Only the lead blesses; a subagent never does.** Adding a script means adding its name to the `TRACES` list; a stale or missing baseline fails `trace_baselines_have_no_stale_files`. Blessing never deletes: a baseline whose script was removed from `TRACES` must be deleted by hand.
 - What a trace holds, per step: current page, notices since the previous step (semantic lines: `open_url`, `nav_error`, `nav_throttle`, `app_token`), actions sent to the mock App Server (action, `app_token`, bound state; no session id), watched state keys, and the final cell grid (glyphs, wide-glyph skips, style runs; "unchanged" when equal to the previous step). GUI runs add the final display list (one line per item) and the ARIA mirror (one line per node).
-- Scripts: counter (mouse clicks, Tab + Enter), todo (a fixture page, because `demos/todo.thtml` has no `<for>`: `<for>` re-expansion via `StatePatched`; plus the shipped demo), input (plain + password input, backspace; the password never reaches a frame), the shipped input demo, navigation (clicks, `NavigateTo`, missing page, traversal), NAV throttle flood, and App Server round trips (patch, reserved key refused, `open_url`, `set_app_token`, token sync, HTTP push-patch path). Cell and GUI (display list) variants where meaningful.
+- Scripts: counter (mouse clicks, Tab + Enter), todo (a fixture page, because `demos/todo.thtml` has no `<for>`: `<for>` re-expansion via `StatePatched`; plus the shipped demo), input (plain + password input, backspace; the password never reaches a frame), the shipped input demo, navigation (clicks, `NavigateTo`, missing page, traversal), NAV throttle flood, and App Server round trips (patch, reserved key refused, `open_url`, `set_app_token`, token sync, HTTP push-patch path; `appserver-token-state-cell`: bound key together with `set_app_token`; `trace_in_process_action_handler`: an in-process handler, no mock). Cell and GUI (display list) variants where meaningful.
 - Quiescence, not frame recording: events are fed only 30 ms after the last sink call (so the frame limiter never defers a frame to the loop's 1 s idle timeout), then the harness waits for a complete new frame and a 100 ms window with no sink call, notice or App Server request. Floods settle for 1.4 s.
 - Notices are recorded as semantic lines read from the `web_frame_tx` channel. When step 2 routes them through the sink, only the capture adapter changes; baselines stay valid. Likewise step 3 changes only how the mock's reply re-enters the loop.
 - Known quirks the traces record (do not "fix" them while refactoring): `<for>` blocks are re-expanded only on `StatePatched`; `current_page` is not normalised (`demos/../features.thtml`); Enter on a button pushes `'\r'` into the predictive echo (shown as `\u{d}` in the grid); the `<for>` template node itself is rendered.
-- Known race kept OUT of the traces: the dispatcher thread queues `SetAppToken` before it applies the patch, so the `app_token_sync` request may or may not see the patched state. The App Server script therefore patches no bound key together with `set_app_token`. Step 3 (responses as events) removes the race; then the script can be extended.
+- Former race (fixed in step 3): the dispatcher thread used to queue `SetAppToken` before applying the patch, so the `app_token_sync` request might not see the patched state. The `appserver` script still patches no bound key with `set_app_token`; `appserver-token-state-cell` covers that case.
 - Transitions: covered by the fake-clock trace `transition-cell` (step 1). Not covered: media animations (renderer cache clock, step 8).
 
 #### Steps: one seam per step, in place inside `oxiterm-server`, trace harness green after each
@@ -255,9 +255,13 @@ The golden and display-list equivalence tests call the renderer directly. They d
    - Design note: `ClientSession.clock` exists because resize pushes come from SSH/WS threads that must stamp the same origin the loop polls with.
 2. **Notices through the sink.** Add `FrameSink::send_notice(ClientNotice)` with `NavError`, `NavThrottle`, `OpenUrl` and `AppToken` (and any others found). The loop stops touching `web_frame_tx`.
    - **Done.** `ClientNotice { NavError, NavThrottle, OpenUrl(String), AppToken(String) }` lives in `oxiterm-renderer` (`render/emitter.rs`, re-exported) because `FrameSink::send_notice(&mut self, ClientNotice) -> Result<bool>` names it; default `Ok(false)` (SSH and a11y sinks: notices stay web-only). `NavError`/`NavThrottle` carry no text: the generic Polish strings (no-enumeration-oracle rule) exist only in `web::encode_notice`, the single place for the `0x33/0x34/0x35` wire bytes. `WsFrameSink::send_notice` checks `is_web_client`, writes the encoded frame and runs no `sync_preamble`. The loop (`send_nav_error`, `send_nav_throttle_notice`, `handle_open_url`; the http/https scheme check stays in the loop) no longer touches `web_frame_tx`.
-   - **Remaining transport-side write:** `ClientSession::send_app_token_frame` (`0x35`), called from `apply_state_patch` on the dispatcher thread / push endpoint, not from the loop. It uses `encode_notice`, so only the write is outside the sink. It moves into the sink in step 3 (responses become events) / step 5 (`ClientSession` split). The other `web_frame_tx` uses are transport (attach/takeover, `WsFrameSink::send_bytes`, `0xFF` death frames).
+   - **Remaining transport-side write (moved in step 3):** the `0x35` write is now a sink notice (`set_app_token_announce` in the loop). The other `web_frame_tx` uses are transport (attach/takeover, `WsFrameSink::send_bytes`, `0xFF` death frames).
    - Harness: `TraceSink::send_notice` encodes with `encode_notice` and queues on the same notice channel the dispatcher's `0x35` uses, so the notice stream stays one ordered list; baselines unchanged.
 3. **`ActionHandler` replaces `AppDispatcher`.** The HTTP implementation (thread + ureq) stays in the server. Responses re-enter as an event, e.g. `InputEvent::AppResponse(patch)`; they are no longer applied to `ClientSession` from a foreign thread. Add an in-process handler for tests.
+   - **Done.** `oxiterm-server/src/action.rs` (free of ureq/tokio/prometheus, moves to core): `DispatchPayload`, `trait ActionHandler: Send + Sync { fn dispatch(&self, payload, reply: ActionReply) }` (fire-and-forget) and `ActionReply` (one-shot `FnOnce(Value)` the host builds around "queue an event"; `send` never blocks, so a browser `fetch` callback can use it later), plus `FnActionHandler` (closure, replies synchronously on the loop thread; used by `trace_in_process_action_handler` and the session tests). `dispatcher.rs` is now only `HttpActionHandler` (thread + ureq, same payload, `Authorization: Bearer`, no timeouts or metrics, as before). `EventLoop.action_handler` replaces `app_dispatcher`; `try_dispatch` builds the reply from `event_tx`.
+   - **Responses are events.** `InputEvent::AppResponse(AppPatch)` (handler reply) and `InputEvent::PushPatch(AppPatch)` (HTTP `POST /sessions/{id}/patch`, now only enqueues) both go through `EventLoop::apply_app_patch(patch, PatchOrigin)`, the one patch path. `AppPatch` is a newtype so `InputEvent` stays `Eq`. Order inside the loop: take `navigate`/`open_url`/`set_app_token` out, apply the state keys (`ClientSession::apply_patch_keys`: the single place for limits and reserved keys), `open_url` notice, token (set + resync), navigate, then `apply_state_to_doc` + `<for>` expansion. `ClientSession::apply_state_patch` and `send_app_token_frame` are gone; no foreign thread mutates the session any more.
+   - **The Step 0 race is fixed:** the patch is applied before the `app_token_sync` snapshot. New trace `appserver-token-state-cell` (a response with `counter: 500` and `set_app_token` together: the sync request carries `counter=500`). Existing baselines are byte-identical.
+   - **Origin policy kept as-is (known quirk, pinned by the traces; do not "fix" silently):** an App Server response extracts `open_url` (notice) and resyncs a changed token WITHOUT a 0x35 notice; the push endpoint stores `open_url` as an ordinary state key and announces a changed token with an `AppToken` notice but does NOT resync. Behaviour change: a pushed patch AND an App Server response are now dropped if the event queue is full (capacity 128) or no loop runs (before, the state was applied directly and only the `StatePatched` nudge could be lost). `AppResponse`/`PushPatch` are `skip_deserializing`: no client byte stream can forge them (input arrives only through the byte decoder).
 4. **`PageSource`** wraps `loader` + `pathsafe`. The filesystem implementation lives in the server; an in-memory implementation is used for tests and wasm.
 5. **Split `ClientSession`.**
    - Pure `SessionState`: dims, state manager, predictive echo, debouncer, mode flags, current page, app base dir, active media, identity as data.
@@ -293,6 +297,34 @@ This will be a large share of the step 8 diff and is budgeted as its own sub-ste
 - Input mapping: pointer (incl. hover → `:hover`, IDEAS #5), wheel, keyboard/Tab focus, DPI `scale_factor` → `dp`.
 - **Accessibility:** feed the existing `oxiterm-a11y` tree (roles, labels, values, focus) into AccessKit (`accesskit_winit`). This gives AT-SPI on Linux plus Windows/macOS support and replaces the unfinished D-Bus transport in `DBusBridge` instead of completing it by hand. Check AccessKit's Android support before Phase 7.
 - **Done when:** the demo apps run in a native window in both modes, and RSS is measured and documented for each.
+
+#### Phase 5 delivery plan (incremental: ship a stage, test it, then the next)
+Based on [research/vulkan-acceleration.md](research/vulkan-acceleration.md). Decision **D3 (revised)**:
+- a custom **wgpu** pipeline using vertex and fragment shaders only, so it runs from GLES 3.0 / WebGL2 upwards:
+  - instanced SDF rounded-rect quads,
+  - instanced glyph-atlas quads,
+  - scissor clips;
+- no raw `ash` and no Vello compute renderer;
+- permissive open-source libraries for:
+  - text (cosmic-text/swash),
+  - atlas packing (etagere),
+  - paths (lyon),
+  - windowing (winit);
+- no GPL/AGPL dependencies;
+- hardware below the wgpu floor (Raspberry Pi 0–3) uses the CPU/framebuffer sink.
+
+Each stage is one delegated task with its own gate, reviewed and committed before the next starts:
+
+| Stage | Scope | Gate |
+|---|---|---|
+| 5.0 | Instrumentation: per-frame time of layout, render, display-list encode/compress, on the example pages | Baseline numbers recorded in the doc |
+| 5.1 | CPU-side wins: drop redundant per-frame work (e.g. the GUI path's parallel cell rasterization where not needed); incremental layout (Taffy `mark_dirty` + cache instead of rebuilding the tree each frame) | Trace harness + golden snapshots unchanged; before/after numbers |
+| 5.2 (M1) | Headless `GpuSink` on wgpu: Fill (radius), Border (single/double/rounded), Text (glyph atlas, bundled monospace font), CellGrid, clips. No window, no Path | Example pages rendered to PNG and compared with tolerance-based PNG goldens (`OXI_BLESS` workflow); runs in CI on lavapipe, skips without an adapter |
+| 5.3 | `winit` window in **thin-client** mode (`--connect`): paints the `0x36` stream through the GpuSink | Counter demo and oxiterm-reader usable in a native window; RSS and startup measured |
+| 5.4 | Input: pointer, wheel, keyboard/Tab, resize, HiDPI | Clicks hit the right nodes (trace-style test against a live server); two DPI scales checked |
+| 5.5 | **Local** mode: `oxiterm-core` (Phase 4) in-process with an in-process or HTTP `ActionHandler` | Same app offline; frames equal to thin-client mode for the same input |
+| 5.6 | `Path` via lyon; images as textures | New PNG goldens |
+| 5.7 | Accessibility via AccessKit; Raspberry Pi 4/5 run | AT tree visible to the OS; app runs on a Pi |
 
 ### Phase 6: Proportional text (both modes at once)
 - Ship `FontBundle` (one monospace and one proportional family) with the server, the native app and the WASM build.
