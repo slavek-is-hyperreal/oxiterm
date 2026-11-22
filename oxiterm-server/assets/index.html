@@ -549,13 +549,14 @@
                 dlActive = false;
                 lastDlPayload = null;
 
-                // Send initial resize (0x10) to satisfy handshake loop
-                resizeTerminal(true);
-
                 // GUI mode: opt in to display-list frames on EVERY (re)connect (the server
-                // resets the opt-in per connection). Must come AFTER the first 0x10: the
-                // server's handshake loop discards every message until it sees 0x10.
+                // resets the opt-in per connection). Sent BEFORE the first 0x10 so the
+                // server's handshake already knows the mode: the first frame is a display
+                // list and no cell frame is painted first.
                 if (guiMode) ws.send(new Uint8Array([0x12, 0x01]));
+
+                // Send initial resize (0x10) to complete the handshake
+                resizeTerminal(true);
 
                 // Send viewport flag (0x11)
                 const vbuf = new Uint8Array(2);

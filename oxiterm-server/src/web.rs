@@ -859,6 +859,19 @@ pub mod web_impl {
                 break;
             }
             if let Message::Binary(bytes) = msg {
+                // Capabilities may arrive before the first resize. Honour them here so the
+                // very first frame (and the first parse of the page) already uses the
+                // requested mode instead of sending a cell frame and switching later.
+                if bytes.len() >= 2 && bytes[0] == 0x12 {
+                    let on = bytes[1] & 1 != 0;
+                    let prev = client_session.display_list_client.swap(on, std::sync::atomic::Ordering::SeqCst);
+                    // A running event loop (reattach) must re-parse; a loop that is not
+                    // running yet reads the flag when it loads the page.
+                    if prev != on && client_session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst) {
+                        let _ = client_session.event_tx.try_send(InputEvent::SetDisplayList(on));
+                    }
+                    continue;
+                }
                 if !bytes.is_empty() && bytes[0] == 0x10 {
                     if bytes.len() >= 5 {
                         let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
@@ -2162,6 +2175,37 @@ pub mod web_impl {
                 }
             }
             assert!(got_second, "resize did not produce a new display list");
+        }
+
+        #[tokio::test]
+        async fn test_caps_before_resize_first_frame_is_display_list() {
+            // A GUI client sends 0x12 before its first 0x10. The handshake must honour it so
+            // the first frame is already a display list (no cell frame painted first and no
+            // delayed switch) and the page is parsed in GUI mode from the start.
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+            let url = format!("ws://{}/ws", local_addr);
+            let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write, mut ws_read) = ws_stream.split();
+            ws_write.send(Message::Binary(vec![0x12, 0x01])).await.unwrap();
+            ws_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+
+            let mut got_list = false;
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while tokio::time::Instant::now() < end && !got_list {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), ws_read.next()).await else { continue };
+                let data = m.into_data();
+                if data.is_empty() { continue; }
+                assert!(data[0] >= 0x20, "cell-diff frame (tag {:#x}) sent before the first display list", data[0]);
+                if data[0] == WS_TAG_DISPLAY_LIST {
+                    inflate_display_list(&data);
+                    got_list = true;
+                }
+            }
+            assert!(got_list, "no display-list frame received");
+            let session = reg.sessions.read().values().next().cloned().expect("session");
+            assert!(session.display_list_client.load(std::sync::atomic::Ordering::SeqCst));
         }
 
         #[tokio::test]

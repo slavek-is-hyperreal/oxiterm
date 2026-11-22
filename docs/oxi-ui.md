@@ -184,9 +184,10 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
   - TCSS `border-radius` (GUI-only) feeds `radius`; the cell sink ignores both.
   - The web client paints rounded fills and borders (ring background clipped to the rounded silhouette) and Paths (fill and/or stroke).
   - Mouse input stays cell-based; sub-cell pointer precision is a later step.
-  - Known follow-ups:
-    - transient partially-erased border edges seen once on the first GUI frame after load;
-    - a root child without a height stretches to the root's `u16::MAX` height, so the scroll indicator shows e.g. `1/65510` (also in TUI, pre-existing).
+  - Fixed after 3b:
+    - **First GUI frame:** a cell frame was painted before the delayed switch to display lists. The handshake now accepts `0x12` before the first `0x10`, and the web client sends it first.
+    - **Root height:** the root was `u16::MAX` tall, so root children stretched to 65535 rows. It is now content-sized with the viewport as its minimum height (`LayoutEngine::set_viewport_rows`).
+  - Still open: a new size is applied about 1 s late, because the idle event loop polls the resize debouncer only after its 1 s receive timeout.
 - **3c:** ARIA mirror for screen readers.
 
 ### Phase 4: Extract `oxiterm-core` (enables local mode)
