@@ -14,6 +14,7 @@ This document serves as the master catalog and index of architectural ideas, con
 | **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented in core | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
 | **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Planned / Architecture defined | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
 | **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phases 0–2 implemented | [docs/oxi-ui.md](oxi-ui.md) |
+| **7. OxiScreens** | Many dumb networked screens (tablets, ESP32 LCD, e-ink) driven by one home server; Home Assistant bridge; server-side 3D | Blueprint defined | [docs/iot-screens.md](iot-screens.md) |
 
 ---
 
@@ -84,3 +85,13 @@ This document serves as the master catalog and index of architectural ideas, con
   - **No font drift:** a shared font bundle in both modes, and positioned glyph runs in the DisplayList so thin clients never re-measure text.
 * **Read the full plan:** 📄 [docs/oxi-ui.md](oxi-ui.md)
 
+---
+
+### 7. [OxiScreens: Many Dumb Screens, One Home Server](iot-screens.md)
+* **The Vision:** Cheap displays around the home (old tablets, ESP32 boards with SPI LCDs, e-ink panels) hold no layout and no logic. One central server renders every screen, keeps shared state, and pushes updates; screens only paint and send touch input back.
+* **Key Innovations:**
+  - **Zero layout on the device:** change a page once on the server and every screen updates, with no reflashing.
+  - **Home Assistant bridge** as an ordinary App Server: entity states become state patches, screen actions become service calls.
+  - **ESP32 thin client** that decodes the existing binary cell-diff stream with a bitmap font.
+  - **Server-side 3D in three tiers:** pixels (JPEG/H.264), projected 2D vector polygons rendered as DisplayList items, or a cached mesh plus camera updates.
+* **Read the full blueprint:** 📄 [docs/iot-screens.md](iot-screens.md)

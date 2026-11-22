@@ -223,4 +223,5 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
 - **[IDEAS #1 OxiDE](retro-desktop-environment.md):** OxiDE becomes a local-mode consumer of OxiUI (phase 7), getting a real pixel renderer instead of a cell grid on a framebuffer.
 - **[IDEAS #3 Framebuffer Engine](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers):** becomes a DisplayList sink.
 - **[IDEAS #4 Transitions](tcss-reference.md#10-css-transitions--timing-curves):** gains sub-cell smoothness in GUI once phase 2 removes cell rounding from styles.
+- **[IDEAS #7 OxiScreens](iot-screens.md):** the main consumer of server-driven mode. ESP32 thin clients use the cell-diff stream that phase 3 keeps as the fallback; its tier-2 3D needs `Polygon`/`Path` DisplayList items, which phase 3 should add.
 - **[IDEAS #5 Hover states](IDEAS.md#5-reactive-hover-states--pseudoclasses-hover-focus):** native in GUI (pointer move events). Phase 5 should land `:hover` for both backends.
