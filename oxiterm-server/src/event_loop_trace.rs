@@ -1086,6 +1086,12 @@ fn script_appserver(mode: Mode) -> String {
     run.snap("token sync answered");
     run.push_patch(r#"{"set_app_token": "tok-push", "counter": 99}"#);
     run.snap("pushed patch with set_app_token");
+    // Server-initiated navigation: `navigate` is not stored as state, the rest of the patch is
+    // applied first, then the page changes (same containment + NAV throttle as event-htmx).
+    run.push_patch(r#"{"navigate": "features.thtml", "banner": "navigated"}"#);
+    run.snap("pushed patch with navigate");
+    run.push_patch(r#"{"navigate": "../outside.thtml"}"#);
+    run.snap("navigate outside the app dir is refused");
     run.finish()
 }
 

@@ -45,8 +45,12 @@ pub enum InputEvent {
     /// Web client negotiated (`true`) or dropped (`false`) display-list frames (OxiUI phase 3).
     /// The event loop reloads the current page in the matching render mode.
     SetDisplayList(bool),
-    /// Request to navigate to a relative path.
+    /// Request to navigate to a path relative to the current page's directory.
     NavigateTo(String),
+    /// Request to navigate to a path relative to the application base directory (used by
+    /// server-initiated navigation, e.g. a `navigate` key in an App Server state patch, which
+    /// cannot know which page the user is on).
+    NavigateToAppPath(String),
     /// Request to open a URL in the default web browser (web sessions only).
     ///
     /// Sent by the dispatcher when the App Server response patch contains an `open_url` key.

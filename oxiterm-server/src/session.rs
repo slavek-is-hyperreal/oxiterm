@@ -231,6 +231,47 @@ impl ClientSession {
     /// Enforces limits on key lengths, array items, and payload sizes to mitigate DoS.
     pub fn apply_state_patch(&self, patch: serde_json::Value) {
         if let serde_json::Value::Object(mut obj) = patch {
+            // `navigate`: server-initiated page change (e.g. an App Server that generated a
+            // page). Never stored as state. It is queued as a NavigateTo event AFTER the rest
+            // of the patch is applied, so the new page sees the patched state; the event loop
+            // applies the usual containment check and NAV throttle. Works for SSH and web.
+            let navigate = match obj.remove("navigate") {
+                Some(serde_json::Value::String(path)) => Self::sanitize_navigate_target(&path),
+                Some(_) => {
+                    warn!("apply_state_patch: ignoring non-string navigate value");
+                    None
+                }
+                None => None,
+            };
+            self.apply_state_patch_obj(obj);
+            if let Some(path) = navigate {
+                let _ = self.event_tx.try_send(InputEvent::NavigateToAppPath(path));
+            }
+        }
+    }
+
+    /// Accepts only a relative `.thtml` path for a `navigate` patch: no scheme, no absolute
+    /// path, no `open:` prefix, bounded length. Containment within the app base dir is still
+    /// enforced by the event loop when the page is loaded.
+    fn sanitize_navigate_target(path: &str) -> Option<String> {
+        let ok = !path.is_empty()
+            && path.len() <= 512
+            && path.ends_with(".thtml")
+            && !path.starts_with('/')
+            && !path.starts_with('\\')
+            && !path.contains("://")
+            && !path.starts_with("open:")
+            && !path.contains('\0');
+        if ok {
+            Some(path.to_string())
+        } else {
+            warn!("apply_state_patch: rejected navigate target");
+            None
+        }
+    }
+
+    fn apply_state_patch_obj(&self, mut obj: serde_json::Map<String, serde_json::Value>) {
+        {
             // Intercept set_app_token before state limits or key prefix checks
             if let Some(tok_val) = obj.remove("set_app_token") {
                 let tok_str = match tok_val {
@@ -743,6 +784,22 @@ impl EventLoop {
 
     fn resolve_and_load_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
         let non_mobile_target = self.resolve_non_mobile_path(target_filename);
+        self.load_resolved_page(non_mobile_target)
+    }
+
+    /// Like `resolve_and_load_page`, but `target_filename` is relative to the application base
+    /// directory instead of the current page's directory.
+    fn load_app_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
+        let app_base_dir = self.session.app_base_dir.read().clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut target_name = target_filename.to_string();
+        if target_name.contains("_mobile.thtml") {
+            target_name = target_name.replace("_mobile.thtml", ".thtml");
+        }
+        self.load_resolved_page(app_base_dir.join(target_name))
+    }
+
+    fn load_resolved_page(&mut self, non_mobile_target: std::path::PathBuf) -> anyhow::Result<()> {
         let is_mobile = self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst);
         let actual_path = crate::pathsafe::resolve_variant(&non_mobile_target, is_mobile);
 
@@ -1720,6 +1777,19 @@ impl EventLoop {
                                         needs_render = true;
                                     } else if self.throttle.is_first_throttle() {
                                         warn!("NavigateTo: NAV throttle active, dropping navigation");
+                                        self.send_nav_throttle_notice();
+                                    }
+                                }
+                                InputEvent::NavigateToAppPath(app_path) => {
+                                    // Same containment check and NAV throttle as NavigateTo.
+                                    if self.throttle.check_nav() {
+                                        if let Err(e) = self.load_app_page(&app_path) {
+                                            warn!("NavigateToAppPath: failed to load page: {}", e);
+                                            self.send_nav_error();
+                                        }
+                                        needs_render = true;
+                                    } else if self.throttle.is_first_throttle() {
+                                        warn!("NavigateToAppPath: NAV throttle active, dropping navigation");
                                         self.send_nav_throttle_notice();
                                     }
                                 }
@@ -3820,6 +3890,54 @@ mod tests {
             "10 keypresses with empty INPUT bucket must produce bind_value of length 10; got {:?}",
             text_val,
         );
+    }
+
+    #[test]
+    fn test_apply_state_patch_navigate_queues_navigation_after_state() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+
+        session.apply_state_patch(serde_json::json!({
+            "navigate": "cache/abc.thtml",
+            "status": "ready"
+        }));
+
+        // Not stored as state; the rest of the patch is applied.
+        {
+            let state = session.state.read();
+            assert!(state.get("navigate").is_none(), "navigate must not be stored as state");
+            assert_eq!(state.get("status"), Some(&crate::state::StateValue::Str("ready".to_string())));
+        }
+        let mut rx = session.event_rx.lock();
+        let mut navs = Vec::new();
+        while let Some(ev) = rx.try_recv() {
+            if let InputEvent::NavigateToAppPath(p) = ev {
+                navs.push(p);
+            }
+        }
+        assert_eq!(navs, vec!["cache/abc.thtml".to_string()]);
+    }
+
+    #[test]
+    fn test_apply_state_patch_navigate_rejects_unsafe_targets() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        for bad in [
+            serde_json::json!("/etc/passwd.thtml"),
+            serde_json::json!("https://evil.example/x.thtml"),
+            serde_json::json!("open:https://evil.example"),
+            serde_json::json!("page.html"),
+            serde_json::json!(""),
+            serde_json::json!(42),
+            serde_json::json!("a\u{0}b.thtml"),
+        ] {
+            session.apply_state_patch(serde_json::json!({ "navigate": bad }));
+        }
+        assert!(session.state.read().get("navigate").is_none());
+        let mut rx = session.event_rx.lock();
+        while let Some(ev) = rx.try_recv() {
+            assert!(!matches!(ev, InputEvent::NavigateToAppPath(_)), "unsafe navigate target was queued: {:?}", ev);
+        }
     }
 
     #[test]

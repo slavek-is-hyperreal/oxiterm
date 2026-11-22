@@ -82,6 +82,12 @@ OxiTerm supports redirecting Web clients and managing permanent application toke
 - **From `event-htmx`:** Setting `event-htmx="open:https://example.com"` triggers inline navigation. Web clients open the target URL, while SSH sessions log a warning.
 - **From App Server State Patch (`open_url`):** Including `{"open_url": "https://example.com"}` in a state patch instructs OxiTerm to trigger client navigation. `open_url` is reserved for navigation events and is not saved to persistent session state.
 - **From App Server State Patch (`set_app_token`):** Including `{"set_app_token": "<token>"}` in a state patch (or `/events` response) sets the internal `_app_token` session state and delivers opcode `0x35` to the web client to persist the token in browser `localStorage`. An empty string `""` clears `_app_token` and instructs the client to delete it. `set_app_token` is removed before applying key-value state patches.
+- **From App Server State Patch (`navigate`):** Including `{"navigate": "path/page.thtml"}` in a state patch (in an `/events` response or a `POST /sessions/{id}/patch` push) moves the session to that page. It works for **SSH and web** sessions alike.
+  - The path is relative to the **application base directory**, not to the page the user is on.
+  - The rest of the patch is applied first, so the new page already sees the patched state. `navigate` itself is never stored as state.
+  - Only relative `.thtml` paths are accepted (no scheme, no absolute path, no `open:`).
+  - The page must lie inside the app base directory and is subject to the same NAV throttle as `event-htmx` page links. A refused or missing page produces the generic navigation error notice.
+  - Typical use: an App Server that generates a page on demand (e.g. `oxiterm-reader`) writes it under the app directory and answers `{"navigate": "cache/<id>.thtml"}`.
 
 ---
 

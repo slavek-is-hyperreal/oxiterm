@@ -721,3 +721,195 @@ aria:
           text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
       group (0.00,25.00 80.00x1.00) id=27 label=""
         text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 7: pushed patch with navigate
+page: features.thtml
+notices: (none)
+app_server: (none)
+state: counter=Int(99) banner=Str("navigated") _hacked=- _app_token=Str("tok-push")
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  ✦ OxiTerm Features & Live Demos                            >< Back to Home< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 1. Reactive State (Int/Bool/Str/Li                        │ > Try State Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                         ╭────────────────────╮|
+  | 2. HTMX Actions (inc/dec/set/clear                      │ > Try Counter Demo │|
+  |                                                         ╰────────────────────╯|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 3. Input Fields & Password Masking                        │ > Try Input Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                          ╭───────────────────╮|
+  | 4. TCSS Styling (Classes, #ID, Cas                       │ > Try Styles Demo │|
+  |                                                          ╰───────────────────╯|
+  ||
+  |                                                            ╭─────────────────╮|
+  | 5. Tabs & Conditional Views (bind-                         │ > Try Tabs Demo │|
+  |                                                            ╰─────────────────╯|
+  |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#1e293b bg=#0f172a
+  style 1: 0-0 fg=#1e293b bg=#0f172a | 1-2 fg=c15 bg=#0f172a | 3-33 fg=#38bdf8 bg=#0f172a | 34-61 fg=c15 bg=#0f172a | 62-62 fg=c51 bg=reset bold | 63-76 fg=#475569 bg=#0f172a | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#0f172a | 79-79 fg=#1e293b bg=#0f172a
+  style 2: 0-79 fg=#1e293b bg=#0f172a
+  style 3: 0-79 fg=c15 bg=#080f1a
+  style 4: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 5: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#38bdf8 bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 6: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 7: 0-79 fg=c15 bg=#080f1a
+  style 8: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 9: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-56 fg=c15 bg=#080f1a | 57-57 fg=#4ade80 bg=#080f1a | 58-58 fg=c15 bg=#080f1a | 59-76 fg=#4ade80 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 10: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 11: 0-79 fg=c15 bg=#080f1a
+  style 12: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 13: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#f59e0b bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#f59e0b bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 14: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 15: 0-79 fg=c15 bg=#080f1a
+  style 16: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 17: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-57 fg=c15 bg=#080f1a | 58-58 fg=#c084fc bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-76 fg=#c084fc bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 18: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 19: 0-79 fg=c15 bg=#080f1a
+  style 20: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 21: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 22: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 23: 0-24 fg=c255 bg=c236 | 25-54 fg=c255 bg=c236 bold | 55-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#1e293b bg=#0f172a
+  Fill n3 (3.00,1.00 31.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 31.00x1.00) fg=#38bdf8 bg=#0f172a mods= "✦ OxiTerm Features & Live Demos"
+  Fill n4 (63.00,1.00 14.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(63.00,1.00) clip=(63.00,1.00 14.00x1.00) fg=#475569 bg=#0f172a mods= "< Back to Home"
+  Fill n5 (0.00,3.00 80.00x40.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n6 (1.00,4.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n7 (1.00,5.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n7 @(1.00,5.00) clip=(1.00,5.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "1. Reactive State (Int/Bool/Str/Li"
+  Fill n8 (59.00,4.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n8 (59.00,4.00 20.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n9 (61.00,5.00 16.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n9 @(61.00,5.00) clip=(61.00,5.00 16.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try State Demo"
+  Fill n10 (1.00,8.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n11 (1.00,9.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n11 @(1.00,9.00) clip=(1.00,9.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "2. HTMX Actions (inc/dec/set/clear"
+  Fill n12 (57.00,8.00 22.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n12 (57.00,8.00 22.00x3.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Fill n13 (59.00,9.00 18.00x1.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Text n13 @(59.00,9.00) clip=(59.00,9.00 18.00x1.00) fg=#4ade80 bg=#080f1a mods= "> Try Counter Demo"
+  Fill n14 (1.00,12.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n15 (1.00,13.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n15 @(1.00,13.00) clip=(1.00,13.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "3. Input Fields & Password Masking"
+  Fill n16 (59.00,12.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n16 (59.00,12.00 20.00x3.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Fill n17 (61.00,13.00 16.00x1.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Text n17 @(61.00,13.00) clip=(61.00,13.00 16.00x1.00) fg=#f59e0b bg=#080f1a mods= "> Try Input Demo"
+  Fill n18 (1.00,16.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n19 (1.00,17.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n19 @(1.00,17.00) clip=(1.00,17.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "4. TCSS Styling (Classes, #ID, Cas"
+  Fill n20 (58.00,16.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n20 (58.00,16.00 21.00x3.00) r=0.00 fg=#c084fc bg=#080f1a
+  Fill n21 (60.00,17.00 17.00x1.00) r=0.00 fg=#c084fc bg=#080f1a
+  Text n21 @(60.00,17.00) clip=(60.00,17.00 17.00x1.00) fg=#c084fc bg=#080f1a mods= "> Try Styles Demo"
+  Fill n22 (1.00,20.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n23 (1.00,21.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n23 @(1.00,21.00) clip=(1.00,21.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "5. Tabs & Conditional Views (bind-"
+  Fill n24 (60.00,20.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n24 (60.00,20.00 19.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n25 (62.00,21.00 15.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n25 @(62.00,21.00) clip=(62.00,21.00 15.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try Tabs Demo"
+  Fill n26 (1.00,24.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n27 (1.00,25.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n27 @(1.00,25.00) clip=(1.00,25.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "6. Vector Media (SVG / Lottie / Ri"
+  Fill n28 (59.00,24.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n28 (59.00,24.00 20.00x3.00) r=0.00 fg=#f87171 bg=#080f1a
+  Fill n29 (61.00,25.00 16.00x1.00) r=0.00 fg=#f87171 bg=#080f1a
+  Text n29 @(61.00,25.00) clip=(61.00,25.00 16.00x1.00) fg=#f87171 bg=#080f1a mods= "> Try Media Demo"
+  Fill n30 (1.00,28.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n31 (1.00,29.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n31 @(1.00,29.00) clip=(1.00,29.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "7. MP4 Video Playback (ffmpeg)"
+  Fill n32 (59.00,28.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n32 (59.00,28.00 20.00x3.00) r=0.00 fg=#fb923c bg=#080f1a
+  Fill n33 (61.00,29.00 16.00x1.00) r=0.00 fg=#fb923c bg=#080f1a
+  Text n33 @(61.00,29.00) clip=(61.00,29.00 16.00x1.00) fg=#fb923c bg=#080f1a mods= "> Try Video Demo"
+  Fill n34 (1.00,32.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n35 (1.00,33.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n35 @(1.00,33.00) clip=(1.00,33.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "8. Dynamic List Loops (<for> tag)"
+  Fill n36 (60.00,32.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n36 (60.00,32.00 19.00x3.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Fill n37 (62.00,33.00 15.00x1.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Text n37 @(62.00,33.00) clip=(62.00,33.00 15.00x1.00) fg=#a3e635 bg=#080f1a mods= "> Try Todo Demo"
+  Fill n38 (1.00,36.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n39 (1.00,37.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n39 @(1.00,37.00) clip=(1.00,37.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "9. App Server OAuth Integration"
+  Fill n40 (58.00,36.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n40 (58.00,36.00 21.00x3.00) r=0.00 fg=#1db954 bg=#080f1a
+  Fill n41 (60.00,37.00 17.00x1.00) r=0.00 fg=#1db954 bg=#080f1a
+  Text n41 @(60.00,37.00) clip=(60.00,37.00 17.00x1.00) fg=#1db954 bg=#080f1a mods= "> Try Spotify App"
+  Fill n42 (1.00,40.00 78.00x1.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n43 (1.00,40.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n43 @(1.00,40.00) clip=(1.00,40.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "10. Auto Mobile View (_mobile)"
+  Fill n44 (35.00,40.00 44.00x1.00) r=0.00 fg=#94a3b8 bg=#080f1a
+  Text n44 @(35.00,40.00) clip=(35.00,40.00 44.00x1.00) fg=#94a3b8 bg=#080f1a mods= "Resize terminal window < 800px width"
+  Fill n45 (0.00,43.00 80.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n46 (2.00,43.00 41.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n46 @(2.00,43.00) clip=(2.00,43.00 41.00x1.00) fg=#475569 bg=#0f172a mods= "[Tab] Select Demo [Enter] Open Live Demo"
+  CellGrid (62.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 31.00x1.00) id=3 label="✦ OxiTerm Features & Live Demos"
+        button (63.00,1.00 14.00x1.00) id=4 label="< Back to Home"
+      group (0.00,3.00 80.00x40.00) id=5 label=""
+        group (1.00,4.00 78.00x3.00) id=6 label=""
+          text (1.00,5.00 34.00x1.00) id=7 label="1. Reactive State (Int/Bool/Str/List)"
+          button (59.00,4.00 20.00x3.00) id=8 label="> Try State Demo"
+        group (1.00,8.00 78.00x3.00) id=10 label=""
+          text (1.00,9.00 34.00x1.00) id=11 label="2. HTMX Actions (inc/dec/set/clear)"
+          button (57.00,8.00 22.00x3.00) id=12 label="> Try Counter Demo"
+        group (1.00,12.00 78.00x3.00) id=14 label=""
+          text (1.00,13.00 34.00x1.00) id=15 label="3. Input Fields & Password Masking"
+          button (59.00,12.00 20.00x3.00) id=16 label="> Try Input Demo"
+        group (1.00,16.00 78.00x3.00) id=18 label=""
+          text (1.00,17.00 34.00x1.00) id=19 label="4. TCSS Styling (Classes, #ID, Cascade)"
+          button (58.00,16.00 21.00x3.00) id=20 label="> Try Styles Demo"
+        group (1.00,20.00 78.00x3.00) id=22 label=""
+          text (1.00,21.00 34.00x1.00) id=23 label="5. Tabs & Conditional Views (bind-show)"
+          button (60.00,20.00 19.00x3.00) id=24 label="> Try Tabs Demo"
+        group (1.00,24.00 78.00x3.00) id=26 label=""
+          text (1.00,25.00 34.00x1.00) id=27 label="6. Vector Media (SVG / Lottie / Rive)"
+          button (59.00,24.00 20.00x3.00) id=28 label="> Try Media Demo"
+        group (1.00,28.00 78.00x3.00) id=30 label=""
+          text (1.00,29.00 34.00x1.00) id=31 label="7. MP4 Video Playback (ffmpeg)"
+          button (59.00,28.00 20.00x3.00) id=32 label="> Try Video Demo"
+        group (1.00,32.00 78.00x3.00) id=34 label=""
+          text (1.00,33.00 34.00x1.00) id=35 label="8. Dynamic List Loops (<for> tag)"
+          button (60.00,32.00 19.00x3.00) id=36 label="> Try Todo Demo"
+        group (1.00,36.00 78.00x3.00) id=38 label=""
+          text (1.00,37.00 34.00x1.00) id=39 label="9. App Server OAuth Integration"
+          button (58.00,36.00 21.00x3.00) id=40 label="> Try Spotify App"
+        group (1.00,40.00 78.00x1.00) id=42 label=""
+          text (1.00,40.00 34.00x1.00) id=43 label="10. Auto Mobile View (_mobile)"
+          text (35.00,40.00 44.00x1.00) id=44 label="Resize terminal window < 800px width"
+      group (0.00,43.00 80.00x1.00) id=45 label=""
+        text (2.00,43.00 41.00x1.00) id=46 label="[Tab] Select Demo  [Enter] Open Live Demo"
+##### step 8: navigate outside the app dir is refused
+page: features.thtml
+notices:
+  nav_error
+app_server: (none)
+state: counter=Int(99) banner=Str("navigated") _hacked=- _app_token=Str("tok-push")
+grid: unchanged
+display_list: unchanged
+aria: unchanged
