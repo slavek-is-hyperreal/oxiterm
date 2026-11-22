@@ -2121,7 +2121,19 @@ impl EventLoop {
                     let _ = self.frame_sink.update_document(&self.doc);
                     let sent = if let Some((mut list, snapshot)) = gui_frame {
                         list.items.extend(oxiterm_renderer::render::cell_sink::CellSink::diff_grids(&snapshot, &self.buffer.back));
-                        self.frame_sink.send_display_list(&list)
+                        let r = self.frame_sink.send_display_list(&list);
+                        // ARIA mirror (0x37): same origin the display-list builder used
+                        // (centering offset, minus scroll for non-fixed nodes).
+                        let (ax, ay) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+                        let json = oxiterm_a11y::build_aria_json(
+                            &self.doc,
+                            &layout,
+                            self.focused_node,
+                            (ax as i32, ay as i32 - self.scroll_offset as i32),
+                            (ax, ay),
+                        );
+                        let _ = self.frame_sink.send_a11y(json.as_bytes());
+                        r
                     } else {
                         self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back)
                     };

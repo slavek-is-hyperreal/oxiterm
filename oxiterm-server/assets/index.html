@@ -223,6 +223,33 @@
 
         #media-layer > * { position: absolute; }
 
+        /* GUI mode ARIA mirror (0x37): transparent but present in the accessibility tree
+           (NOT display:none / visibility:hidden). Never intercepts the pointer. */
+        #a11y-layer {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        #a11y-layer * {
+            position: absolute;
+            margin: 0; padding: 0; border: 0;
+            background: transparent;
+            color: transparent;
+            opacity: 0;
+            pointer-events: none;
+            font: inherit;
+            line-height: 1;
+        }
+        .sr-live {
+            position: absolute;
+            width: 1px; height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
         #media-layer img, #media-layer video {
             object-fit: contain;
             image-rendering: auto;
@@ -318,6 +345,8 @@
             <div class="canvas-wrap" id="canvas-wrap">
                 <canvas id="terminal-canvas" tabindex="0"></canvas>
                 <div id="media-layer"></div>
+                <div id="a11y-layer"></div>
+                <div id="a11y-live" class="sr-live" aria-live="polite" aria-atomic="true"></div>
             </div>
         </div>
     </div>
@@ -330,6 +359,8 @@
         const canvas       = document.getElementById("terminal-canvas");
         const canvasWrap   = document.getElementById("canvas-wrap");
         const mediaLayer   = document.getElementById("media-layer");
+        const a11yLayer    = document.getElementById("a11y-layer");
+        const a11yLive     = document.getElementById("a11y-live");
         const container    = document.getElementById("terminal-container");
         const overlay      = document.getElementById("loading-overlay");
         const overlayText  = document.getElementById("overlay-text");
@@ -459,6 +490,128 @@
             activeMedia = [];
         }
 
+        // ── ARIA mirror (GUI mode, 0x37) ───────────────────────────────────────
+        // Real keyboard focus stays on the canvas; the canvas carries role="application",
+        // aria-owns (the layer root) and aria-activedescendant (the mirrored focus node).
+        let lastA11y = null;        // last parsed 0x37 document, re-laid-out on resize
+        let lastA11yFocus = null;   // focus id last announced
+
+        // The canvas is the focus owner: aria-activedescendant only works on an element with a role.
+        function initA11yCanvas() {
+            if (!guiMode) return;
+            canvas.setAttribute('role', 'application');
+            canvas.setAttribute('aria-label', document.title || 'OxiTerm');
+        }
+        initA11yCanvas();
+
+        function clearA11yLayer() {
+            a11yLayer.textContent = '';
+            lastA11y = null;
+            lastA11yFocus = null;
+            if (guiMode) {
+                canvas.removeAttribute('aria-activedescendant');
+                canvas.removeAttribute('aria-owns');
+                a11yLive.textContent = '';
+            }
+        }
+
+        // Screen readers dispatch click on the mirrored button; turn it into the same
+        // press + release a pointer click at the centre of the node would send.
+        function activateA11yNode(n) {
+            const col = Math.floor(n.x + n.w / 2), row = Math.floor(n.y + n.h / 2);
+            if (col < 0 || row < 0 || col >= currentCols || row >= currentRows) return;
+            sendMouseEvent(col, row, 0, 0, false, false, false);
+            sendMouseEvent(col, row, 0, 1, false, false, false);
+            canvas.focus();
+        }
+
+        function buildA11yElement(n, top, px, py) {
+            let el;
+            switch (n.role) {
+                case 'button':
+                    el = document.createElement('button');
+                    el.type = 'button';
+                    el.textContent = n.label;
+                    el.addEventListener('click', (ev) => { ev.preventDefault(); activateA11yNode(n); });
+                    break;
+                case 'textbox':
+                    el = document.createElement('div');
+                    el.setAttribute('role', 'textbox');
+                    el.setAttribute('aria-readonly', 'false');
+                    if (n.label) el.setAttribute('aria-label', n.label);
+                    if (n.value != null) el.textContent = n.value;
+                    break;
+                case 'img':
+                    el = document.createElement('div');
+                    el.setAttribute('role', 'img');
+                    el.setAttribute('aria-label', n.label);
+                    break;
+                case 'text':
+                    el = document.createElement('span');
+                    el.textContent = n.label;
+                    break;
+                case 'application':
+                    // Only the outermost one is the region; a nested <screen> is a plain div.
+                    el = document.createElement('div');
+                    if (top) {
+                        el.setAttribute('role', 'region');
+                        el.setAttribute('aria-label', n.label || document.title || 'OxiTerm');
+                    }
+                    break;
+                default: // group
+                    el = document.createElement('div');
+                    if (n.label) { el.setAttribute('role', 'group'); el.setAttribute('aria-label', n.label); }
+            }
+            el.id = 'oxi-a11y-' + n.id;
+            if (n.role === 'button' || n.role === 'textbox') el.tabIndex = -1; // never take DOM focus
+            // Rects are absolute canvas coordinates; elements nest, so position relative to the parent.
+            el.style.left = (n.x - px) * cellW + 'px';
+            el.style.top = (n.y - py) * cellH + 'px';
+            el.style.width = n.w * cellW + 'px';
+            el.style.height = n.h * cellH + 'px';
+            for (const c of n.children || []) el.appendChild(buildA11yElement(c, false, n.x, n.y));
+            return el;
+        }
+
+        function findA11yNode(nodes, id) {
+            for (const n of nodes) {
+                if (n.id === id) return n;
+                const f = findA11yNode(n.children || [], id);
+                if (f) return f;
+            }
+            return null;
+        }
+
+        function renderA11y(doc, announce) {
+            a11yLayer.textContent = '';
+            const roots = doc.nodes || [];
+            for (const r of roots) {
+                const el = buildA11yElement(r, true, 0, 0);
+                if (r.role === 'application') {
+                    // The root label falls back to the page title; the layer root is the
+                    // element canvas aria-owns.
+                    el.setAttribute('aria-label', r.label || document.title || 'OxiTerm');
+                }
+                a11yLayer.appendChild(el);
+            }
+            if (roots.length) canvas.setAttribute('aria-owns', 'oxi-a11y-' + roots[0].id);
+            const focus = doc.focus;
+            const fel = focus == null ? null : document.getElementById('oxi-a11y-' + focus);
+            if (fel) canvas.setAttribute('aria-activedescendant', fel.id);
+            else canvas.removeAttribute('aria-activedescendant');
+            if (announce && focus !== lastA11yFocus) {
+                const n = focus == null ? null : findA11yNode(roots, focus);
+                const text = n ? (n.label || (n.value != null ? n.value : '')) : '';
+                if (text) {
+                    // Clear first so an identical label is announced again.
+                    a11yLive.textContent = '';
+                    setTimeout(() => { a11yLive.textContent = text; }, 30);
+                }
+            }
+            lastA11yFocus = focus == null ? null : focus;
+            lastA11y = doc;
+        }
+
         function spawnMediaElement(cached, col, row, w, h) {
             const l = col * cellW, t = row * cellH;
             const pw = w * cellW, ph = h * cellH;
@@ -501,6 +654,7 @@
                 m.element.style.width  = m.width * cellW + 'px';
                 m.element.style.height = m.height * cellH + 'px';
             }
+            if (guiMode && lastA11y) renderA11y(lastA11y, false);
         }
 
         // ── connect() — sets up socket only; listeners are registered once in boot() ──
@@ -548,6 +702,7 @@
 
                 dlActive = false;
                 lastDlPayload = null;
+                clearA11yLayer();
 
                 // GUI mode: opt in to display-list frames on EVERY (re)connect (the server
                 // resets the opt-in per connection). Sent BEFORE the first 0x10 so the
@@ -751,6 +906,20 @@
                 return;
             }
 
+            // ── 0x37 ARIA mirror (UTF-8 JSON); ordered after its 0x36 via dlChain ──
+            if (bytes[0] === 0x37) {
+                if (!guiMode) return;
+                const sock = currentSocket;
+                const text = new TextDecoder().decode(bytes.subarray(1));
+                dlChain = dlChain.then(() => {
+                    if (sock !== currentSocket) return;
+                    const doc = JSON.parse(text);
+                    if (doc.v !== 1) return;
+                    renderA11y(doc, true);
+                }).catch((e) => console.warn('a11y frame dropped', e));
+                return;
+            }
+
             // ── 0x36 display-list frame (zlib-compressed wire payload) ─────────
             if (bytes[0] === 0x36) {
                 if (!guiMode) return;
@@ -843,6 +1012,8 @@
                 canvasWrap.style.height = cssH + 'px';
                 mediaLayer.style.width  = cssW + 'px';
                 mediaLayer.style.height = cssH + 'px';
+                a11yLayer.style.width  = cssW + 'px';
+                a11yLayer.style.height = cssH + 'px';
 
                 if (term) term.clear(cols, rows);
                 repositionMedia();

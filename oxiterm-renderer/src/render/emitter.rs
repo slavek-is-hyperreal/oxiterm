@@ -19,6 +19,12 @@ pub trait FrameSink: Send {
     /// Returns `Ok(true)` if a frame was actually transmitted.
     fn send_display_list(&mut self, _list: &crate::render::display_list::DisplayList) -> Result<bool> { Ok(false) }
 
+    /// Sends the ARIA-mirror JSON document (OxiUI phase 3c, wire tag `0x37`) that accompanies
+    /// a display list. Sinks without such a channel ignore it and return `Ok(false)`.
+    ///
+    /// Returns `Ok(true)` if a message was actually transmitted (it is skipped when unchanged).
+    fn send_a11y(&mut self, _json: &[u8]) -> Result<bool> { Ok(false) }
+
     /// Updates the accessibility tree or client document representation.
     fn update_document(&mut self, _doc: &crate::document::THTMLDocument) -> Result<()> { Ok(()) }
 

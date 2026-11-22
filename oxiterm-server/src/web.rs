@@ -102,6 +102,9 @@ pub mod web_impl {
     /// Server -> client tag of a display-list frame: `0x36` + zlib(wire::encode(list)).
     /// (0x30 is taken by the page announce, 0x31..0x35 by other notices.)
     pub const WS_TAG_DISPLAY_LIST: u8 = 0x36;
+    /// Server -> client tag of an ARIA-mirror frame: `0x37` + UTF-8 JSON (OxiUI phase 3c).
+    /// Sent only to display-list sessions, right after the display list of the same frame.
+    pub const WS_TAG_A11Y: u8 = 0x37;
 
     /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
@@ -115,6 +118,8 @@ pub mod web_impl {
         last_warned_epoch: usize,
         /// Wire bytes (uncompressed) of the last display list sent; cleared on epoch change.
         last_list: Option<Vec<u8>>,
+        /// Last ARIA-mirror JSON sent (0x37); reset together with `last_list`.
+        last_a11y: Option<Vec<u8>>,
     }
 
     impl WsFrameSink {
@@ -131,6 +136,7 @@ pub mod web_impl {
                 last_seen_epoch: 0,
                 last_warned_epoch: 0,
                 last_list: None,
+                last_a11y: None,
             }
         }
 
@@ -156,6 +162,7 @@ pub mod web_impl {
                 self.sent_coordinates.clear();
                 self.sent_page = None;
                 self.last_list = None;
+                self.last_a11y = None;
                 self.last_seen_epoch = current_epoch;
             }
 
@@ -317,10 +324,30 @@ pub mod web_impl {
             Ok(true)
         }
 
+        fn send_a11y(&mut self, json: &[u8]) -> anyhow::Result<bool> {
+            if !self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(false);
+            }
+            // Epoch reset (reattach) is handled by send_display_list's preamble, which runs
+            // first for the same frame; a stale epoch here only costs a redundant resend.
+            if self.last_a11y.as_deref() == Some(json) {
+                return Ok(false);
+            }
+            let mut msg = Vec::with_capacity(json.len() + 1);
+            msg.push(WS_TAG_A11Y);
+            msg.extend_from_slice(json);
+            if self.send_bytes(msg).is_err() {
+                return Ok(false);
+            }
+            self.last_a11y = Some(json.to_vec());
+            Ok(true)
+        }
+
         fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
             let (epoch_changed, coords_changed) = self.sync_preamble();
             // Switching back from display lists: the next list (if toggled again) must be sent.
             self.last_list = None;
+            self.last_a11y = None;
 
             tracing::trace!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             
@@ -2245,6 +2272,70 @@ pub mod web_impl {
                 if data[0] < 0x20 { got_diff = true; }
             }
             assert!(got_diff, "taken-over client received no cell-diff frame");
+        }
+
+        /// Collects the ARIA-mirror (0x37) JSON documents and whether any display list / cell
+        /// diff arrived for `window` after the client sent its handshake.
+        async fn collect_a11y(gui: bool) -> (Vec<serde_json::Value>, bool) {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let dir = std::env::temp_dir().join(format!(
+                "oxiterm_a11y_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("a.thtml"),
+                b"<screen style=\"width: 40; height: 8;\"><box><text>Hi</text><button>Save</button></box></screen>",
+            )
+            .unwrap();
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server_with_source(reg.clone(), Some(dir.join("a.thtml"))).await;
+            let (ws, _) = tokio_tungstenite::connect_async(&format!("ws://{}/ws", local_addr)).await.unwrap();
+            let (mut w, mut r) = ws.split();
+            if gui {
+                w.send(Message::Binary(vec![0x12, 0x01])).await.unwrap();
+            }
+            w.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            let mut docs = Vec::new();
+            let mut saw_frame = false;
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+            while tokio::time::Instant::now() < end {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), r.next()).await else { continue };
+                let data = m.into_data();
+                if data.is_empty() { continue; }
+                if data[0] == WS_TAG_A11Y {
+                    docs.push(serde_json::from_slice(&data[1..]).expect("0x37 payload is JSON"));
+                } else if data[0] == WS_TAG_DISPLAY_LIST || data[0] < 0x20 {
+                    saw_frame = true;
+                }
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+            (docs, saw_frame)
+        }
+
+        fn has_role(nodes: &serde_json::Value, role: &str) -> bool {
+            nodes.as_array().map_or(false, |a| {
+                a.iter().any(|n| n["role"] == role || has_role(&n["children"], role))
+            })
+        }
+
+        #[tokio::test]
+        async fn test_display_list_client_receives_0x37_with_button() {
+            let (docs, saw_frame) = collect_a11y(true).await;
+            assert!(saw_frame, "no frame received");
+            let doc = docs.first().expect("no 0x37 frame received");
+            assert_eq!(doc["v"], 1);
+            assert!(has_role(&doc["nodes"], "button"), "mirror lacks a button node: {}", doc);
+            // Unchanged frames are not resent: a static page yields a single document.
+            assert_eq!(docs.len(), 1, "identical 0x37 documents were resent");
+        }
+
+        #[tokio::test]
+        async fn test_cell_client_never_receives_0x37() {
+            let (docs, saw_frame) = collect_a11y(false).await;
+            assert!(saw_frame, "no cell frame received");
+            assert!(docs.is_empty(), "cell client received 0x37");
         }
 
         #[tokio::test]

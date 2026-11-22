@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phases 0–2, 3a and 3b done; 3c and 4–7 planned.
+> **Status:** Phases 0–2 and 3a–3c done; 4–7 planned.
 
 ---
 
@@ -188,7 +188,7 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
     - **First GUI frame:** a cell frame was painted before the delayed switch to display lists. The handshake now accepts `0x12` before the first `0x10`, and the web client sends it first.
     - **Root height:** the root was `u16::MAX` tall, so root children stretched to 65535 rows. It is now content-sized with the viewport as its minimum height (`LayoutEngine::set_viewport_rows`).
   - Still open: a new size is applied about 1 s late, because the idle event loop polls the resize debouncer only after its 1 s receive timeout.
-- **3c:** ARIA mirror for screen readers.
+- **3c (done):** ARIA mirror for screen readers. The server sends the accessibility tree with layout geometry as JSON (`0x37`, only when it changes); the GUI client mirrors it into transparent, accessible DOM over the canvas, keeps focus on the canvas (`aria-activedescendant` + a live region) and turns assistive-tech clicks on mirrored buttons into mouse press/release. Password values are never sent. Any node with an `event-htmx` action is announced as a button (named by its text), and containers take no name from their own text (the parser stores raw markup such as comments there).
 
 ### Phase 4: Extract `oxiterm-core` (enables local mode)
 - Move `EventLoop`, `StateManager`, focus/scroll/drag handling, `inject_initial_state` and animations from `oxiterm-server` into a new `oxiterm-core` crate with **no tokio, russh, hyper or ureq** dependencies.

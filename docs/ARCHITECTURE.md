@@ -82,6 +82,8 @@ When launching the server with the `--a11y` flag, the engine switches to the **L
 * Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
 * The `oxiterm-a11y` crate exposes an AT-SPI/D-Bus API surface (`DBusBridge`, `register_at_spi`, `update_focus`), but **the transport layer is not yet implemented** — no D-Bus connections are established at runtime. The API is a skeleton for future integration with speech synthesizers and Braille displays.
 
+**GUI web clients (`?gui=1`, display-list sessions) get an ARIA mirror.** The canvas is opaque to screen readers, so the server also sends the accessibility tree as JSON (`0x37`, see §7b) and the client renders it as transparent, non-`display:none` DOM positioned over the canvas (buttons as `<button>`, inputs as `role="textbox"`, images as `role="img"`, labelled groups as `role="group"`, the root as a labelled region). Keyboard focus stays on the canvas, which carries `role="application"`, `aria-owns` and `aria-activedescendant` pointing at the mirrored focused element; an `aria-live="polite"` region announces focus changes. A click dispatched on a mirrored button by assistive technology is translated into a mouse press + release at the centre of that node. The text of `<input type="password">` is never sent.
+
 ---
 
 ## 7. Mobile Responsive Support
@@ -105,6 +107,10 @@ Web clients may opt in to receive a `DisplayList` per frame instead of cell diff
 **Negotiation (client to server):** `0x12 <caps:u8>`. Bit 0 = "display list". The server stores `ClientSession::display_list_client`, emits `InputEvent::SetDisplayList(on)`, and the event loop reparses the current page with `RenderMode::Gui` (`@media gui` rules apply) and re-renders. All later page loads use the same mode. The capability is **per connection**: it is reset to cell diffs on every new connection, reattach or takeover (re-parsing the page in TUI mode if it was set), and the client must resend `0x12` each time. A `0x12` from a superseded connection is ignored. Clients should send `0x12` **before** their first `0x10`: the handshake then already knows the mode, so the page is parsed in GUI mode from the start and the first frame is a display list (no cell frame first). A `0x12` sent after the first `0x10` still works, but the client briefly sees a cell frame before the switch.
 
 **Frames (server to client):** `0x36` followed by a **zlib** stream (RFC 1950, i.e. browser `DecompressionStream('deflate')`) of `wire::encode(list)`. (`0x30` was already taken by the page announce, so the display list uses `0x36`.) A frame is sent only when the encoded list differs from the last one sent; after a (re)attach the next frame is always sent. No cell-diff frames (`0x01..`) are sent to such a session. `0x20`/`0x21` media messages, `0x30` page announce, `0x32`..`0x35` notices and `0xFF` are unchanged.
+
+**ARIA mirror (`0x37`, phase 3c):** server to client, `0x37` followed by UTF-8 JSON, sent only to display-list sessions, right after the display list of the same frame and only when the bytes differ from the last one sent (reset on epoch change/reattach like the list):
+`{"v":1,"focus":<node id|null>,"nodes":[{"id":u32,"role":"button|textbox|img|group|text|application","label":"…","value":"…"|null,"x":f32,"y":f32,"w":f32,"h":f32,"children":[…]}]}`.
+Geometry is in the same logical cell units and absolute coordinates as the display list (centering and scroll applied; `position: fixed` nodes use the unscrolled origin). Nodes without a layout rect (hidden by `bind-show`/`display: none`) are dropped with their subtrees, unlabeled empty containers are pruned, a button's text children are folded into its label, and `value` is always `null` for `<input type="password">`. Built by `oxiterm_a11y::build_aria_json`; sent via `FrameSink::send_a11y`.
 
 **Inflated payload** (`oxiterm-renderer/src/render/wire.rs`, all little-endian):
 
