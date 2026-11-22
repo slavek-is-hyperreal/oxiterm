@@ -1,0 +1,25 @@
+<style>
+.btn { border-style: single; border-color: #4ade80; padding-left: 1; padding-right: 1; height: 3; align-items: center; margin-bottom: 1; }
+.label { fg: #94a3b8; height: 1; }
+.field { height: 3; border-style: single; border-color: #38bdf8; padding-left: 1; width: 36; margin-bottom: 1; }
+</style>
+
+<box style="flex-direction: column; width: 40; bg: #0f172a;">
+  <box style="height: 3; bg: #1e293b; border-style: single; border-color: #334155; align-items: center; padding-left: 1;">
+    <text style="fg: #4ade80; height: 1;">oxiterm-reader</text>
+  </box>
+  <box style="flex-direction: column; padding-left: 2; padding-right: 2; padding-top: 1; padding-bottom: 1;">
+    <text bind-state="status" style="fg: #fbbf24; wrap: word; width: 36; margin-bottom: 1;"/>
+    <text class="label">Read a URL:</text>
+    <input bind-value="url" placeholder="https://..." event-htmx="fetch_url" class="field"/>
+    <box class="btn" style="width: 36;" event-htmx="fetch_url"><text style="fg: #4ade80; height: 1;">Read</text></box>
+    <box class="btn" style="width: 36; border-color: #fbbf24;" event-htmx="hn_top"><text style="fg: #fbbf24; height: 1;">Hacker News: top</text></box>
+    <text class="label">Wikipedia:</text>
+    <input bind-value="wiki_q" placeholder="search term" event-htmx="wiki_search:en" class="field" style="border-color: #a78bfa;"/>
+    <box class="btn" style="width: 36; border-color: #a78bfa;" event-htmx="wiki_search:pl"><text style="fg: #a78bfa; height: 1;">Search PL</text></box>
+    <box class="btn" style="width: 36; border-color: #a78bfa;" event-htmx="wiki_search:en"><text style="fg: #a78bfa; height: 1;">Search EN</text></box>
+    <box class="btn" style="width: 36; border-color: #94a3b8;" event-htmx="wiki_random:pl"><text style="fg: #94a3b8; height: 1;">Random PL</text></box>
+    <box class="btn" style="width: 36; border-color: #94a3b8;" event-htmx="wiki_random:en"><text style="fg: #94a3b8; height: 1;">Random EN</text></box>
+    <text class="label">RSS feeds:</text>
+{{FEEDS}}  </box>
+</box>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>Example Dev Blog</title>
+<link>https://blog.example.org/</link>
+<description>Posts</description>
+<item>
+  <title><![CDATA[Rust 2.0 <released> & more]]></title>
+  <link>https://blog.example.org/rust-2</link>
+  <description>&lt;p&gt;The big release is here. &lt;a href="x"&gt;Read&lt;/a&gt; it.&lt;/p&gt;</description>
+</item>
+<item>
+  <title>Plain &quot;title&quot;</title>
+  <link>https://blog.example.org/2</link>
+  <description><![CDATA[<p>Second <b>post</b> summary</p>]]></description>
+</item>
+<item><title>Third</title><link>
+  https://blog.example.org/3
+</link></item>
+</channel></rss>

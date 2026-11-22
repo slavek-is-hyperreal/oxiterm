@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Reading the web in a terminal - Example Blog</title>
+<meta name="author" content="Ada Lovelace">
+<style>body{background:red}</style>
+<script>var trackingSecret = "x";</script>
+</head><body>
+<nav><a href="/">Home</a> <a href="/about">About</a></nav>
+<div class="ad"><p>SUBSCRIBE NOW to our newsletter! Buy things!</p></div>
+<article>
+<h1>Reading the web in a terminal</h1>
+<p class="byline">By Ada Lovelace</p>
+<p>Modern pages are heavy. A reader mode strips them down: <a href="/posts/readability">readability</a> algorithms pick the main content, and the rest is thrown away. This paragraph is intentionally long enough so that the scoring heuristics consider it real content rather than boilerplate, which matters for the extraction quality.</p>
+<img src="/img/diagram.png" alt="A diagram of the pipeline" width="640" height="320">
+<h2>How it works</h2>
+<p>First the document is fetched with strict limits, then <b>extracted</b>, then rendered as blocks. See the <a href="https://other.example.com/spec#section">specification</a> for details, and <a href="https://blog.example.org/posts/rust-reader?utm=1">this very page</a>. Long enough text again to keep the heuristics happy: the quick brown fox jumps over the lazy dog, repeatedly, so that the paragraph has plenty of commas, words, and characters to count.</p>
+<ul><li>Fetch safely</li><li>Extract the article</li><li>Render <a href="https://third.example.net/">clean pages</a></li></ul>
+<blockquote>Simplicity is prerequisite for reliability.</blockquote>
+<pre><code>fn main() {
+    println!("hello");
+}</code></pre>
+<p>Closing thoughts: the terminal is a fine place to read, provided the content is cleaned up first. More text follows to make this section substantial enough for the extraction algorithm, with several clauses, a few commas, and some more words.</p>
+</article>
+<footer>Copyright</footer>
+</body></html>

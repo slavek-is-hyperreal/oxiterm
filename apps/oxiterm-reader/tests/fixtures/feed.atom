@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Atom Example</title>
+<link href="https://atom.example.org/" rel="self"/>
+<entry>
+  <title>First &lt;entry&gt;</title>
+  <link rel="enclosure" href="https://atom.example.org/file.mp3"/>
+  <link rel="alternate" href="https://atom.example.org/a1"/>
+  <summary>Short summary</summary>
+</entry>
+<entry>
+  <title type="html">Second</title>
+  <link href="https://atom.example.org/a2"/>
+  <content type="html">&lt;p&gt;Body&lt;/p&gt;</content>
+</entry>
+</feed>

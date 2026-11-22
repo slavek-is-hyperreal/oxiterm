@@ -1,0 +1,37 @@
+[package]
+name = "oxiterm-reader"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Reader mode over SSH: the web, Hacker News, Wikipedia and RSS as clean THTML pages for OxiTerm"
+
+[lib]
+name = "oxiterm_reader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oxiterm-reader"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+url = { workspace = true }
+unicode-width = { workspace = true }
+subtle = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ureq = "2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+scraper = "0.20"
+dom_smoothie = "0.20"
+
+[dev-dependencies]
+oxiterm-renderer = { path = "../../oxiterm-renderer" }
+oxiterm-proto = { path = "../../oxiterm-proto" }

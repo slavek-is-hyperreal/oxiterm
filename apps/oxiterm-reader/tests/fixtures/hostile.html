@@ -1,0 +1,13 @@
+<!DOCTYPE html><html><head><title>&lt;script&gt;alert(1)&lt;/script&gt; Hostile "title" &amp; more</title></head><body><article>
+<h1>Hostile <style>x</style> page</h1>
+<p>Plain text with a literal &lt;script&gt;alert(1)&lt;/script&gt; and &amp;lt; double entity and a fake comment &lt;!-- not a comment --&gt; and &lt;style&gt;p{}&lt;/style&gt; plus ESC:&#27;[31mred&#7; and RTL:&#8238;evil. Padding text so readability keeps it: lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua, ut enim ad minim veniam.</p>
+<p><a href="https://evil.example.com/x&quot; event-htmx=&quot;open:https://evil.example.com" event-htmx="open:https://evil.example.com" onclick="alert(1)">Click → me &#215; now &quot; &lt;b&gt;</a> and <a href="javascript:alert(1)">js link</a> and <a href="https://ok.example.com/a?b=1&amp;c=2">ok link</a>. More padding text, again and again, to be sure: the quick brown fox, the lazy dog, commas, commas, commas, and still more words go here.</p>
+<p>Token without spaces: https://example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and more words after it, with commas, so the paragraph is long enough.</p>
+<img src="https://img.example.com/a.png" alt='x" event-htmx="evil" <script>' width="300" height="200">
+<img src="/vector.svg" alt="svg logo">
+<ul><li>&lt;box event-htmx="x"&gt; item</li></ul>
+<pre>line1
+	tab line
+&lt;/text&gt;&lt;box event-htmx="steal"&gt;</pre>
+<p>Final padding paragraph with enough words, enough commas, enough length to count as content for the readability scoring, so nothing here is accidentally dropped.</p>
+</article></body></html>

@@ -1,0 +1,42 @@
+<style>
+.btn { border-style: single; border-color: #4ade80; padding-left: 1; padding-right: 1; height: 3; align-items: center; margin-right: 1; }
+.label { fg: #94a3b8; height: 1; }
+.field { height: 3; border-style: single; border-color: #38bdf8; padding-left: 1; }
+</style>
+
+<!-- 80x24: header 3 + body 21 = 24. Body: label 1 + inputs 3 + gap 1 + HN 3 + gap 1 + wiki label 1 + wiki 3 + gap 1 + feed label 1 + feeds 3 + gap 1 + status 1 = 20 (+1 slack) -->
+<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+
+  <box style="height: 3; bg: #1e293b; border-style: single; border-color: #334155; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2;">
+    <text style="fg: #4ade80; height: 1;">oxiterm-reader</text>
+    <text style="fg: #64748b; height: 1;">reader mode over SSH</text>
+  </box>
+
+  <box style="flex-direction: column; height: 21; padding-left: 2; padding-right: 2;">
+
+    <text class="label">Read any page (URL):</text>
+    <box style="flex-direction: row; height: 3;">
+      <input bind-value="url" placeholder="https://example.com/article" event-htmx="fetch_url" class="field" style="width: 62;"/>
+      <box class="btn" style="margin-left: 1; border-color: #4ade80;" event-htmx="fetch_url"><text style="fg: #4ade80; height: 1;">Read</text></box>
+    </box>
+
+    <box style="flex-direction: row; height: 3; margin-top: 1;">
+      <box class="btn" style="border-color: #fbbf24;" event-htmx="hn_top"><text style="fg: #fbbf24; height: 1;">Hacker News: top stories</text></box>
+    </box>
+
+    <text class="label" style="margin-top: 1;">Wikipedia (search, or a random article):</text>
+    <box style="flex-direction: row; height: 3;">
+      <input bind-value="wiki_q" placeholder="search term" event-htmx="wiki_search:en" class="field" style="width: 28; border-color: #a78bfa;"/>
+      <box class="btn" style="margin-left: 1; border-color: #a78bfa;" event-htmx="wiki_search:pl"><text style="fg: #a78bfa; height: 1;">PL</text></box>
+      <box class="btn" style="border-color: #a78bfa;" event-htmx="wiki_search:en"><text style="fg: #a78bfa; height: 1;">EN</text></box>
+      <box class="btn" style="border-color: #94a3b8;" event-htmx="wiki_random:pl"><text style="fg: #94a3b8; height: 1;">Random PL</text></box>
+      <box class="btn" style="border-color: #94a3b8;" event-htmx="wiki_random:en"><text style="fg: #94a3b8; height: 1;">Random EN</text></box>
+    </box>
+
+    <text class="label" style="margin-top: 1;">RSS feeds:</text>
+    <box style="flex-direction: row; height: 3;">
+{{FEEDS}}    </box>
+
+    <text bind-state="status" style="fg: #fbbf24; height: 1; width: 76; margin-top: 1;"/>
+  </box>
+</box>

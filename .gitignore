@@ -28,3 +28,6 @@ __pycache__/
 
 files.zip
 oxiterm-skills.zip
+
+# oxiterm-reader generated site
+/reader-site/
