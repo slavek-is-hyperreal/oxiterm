@@ -8,6 +8,7 @@ use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
 use crate::render::build::{build_display_list, precompute_inherited_colors};
 use crate::render::cell_sink::CellSink;
+use crate::render::display_list::{DisplayItem, DisplayList, GridCell, RectF};
 use oxiterm_proto::dom::{Node, NodeTag};
 use oxiterm_proto::style::TerminalProfile;
 use std::path::{Path, PathBuf};
@@ -94,43 +95,93 @@ impl Renderer {
         app_base_dir: Option<&Path>,
         scroll_offset: u16,
     ) {
-        // 1. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous frames)
-        for y in 0..buffer.height {
-            for x in 0..buffer.width {
-                buffer.set(x, y, Cell {
-                    ch: ' ',
-                    fg: oxiterm_proto::style::AnsiColor::Color256(15),
-                    bg: oxiterm_proto::style::AnsiColor::Color256(0),
-                    ..Default::default()
-                });
-            }
-        }
+        let _ = Self::render_frame(doc, layout, buffer, profile, base_dir, app_base_dir, scroll_offset);
+    }
 
-        // 2. Build the display list, centering the root element if it has a smaller fixed size
+    /// Paints exactly like [`Renderer::render_node`] and returns the [`DisplayList`] that was
+    /// painted, for display-list clients (OxiUI phase 3).
+    ///
+    /// The list is self-contained: it starts with a full-viewport `Fill` (the background that
+    /// `render_node` clears to), and every `Legacy` item is replaced by a `CellGrid` holding
+    /// the cells that item's legacy painter produced (its content rect, clamped to the buffer).
+    /// Painting the returned list with `CellSink` onto an empty buffer of the same size
+    /// reproduces `buffer`, except for `buffer.graphics`.
+    pub fn render_frame(
+        doc: &THTMLDocument,
+        layout: &LayoutResult,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
+        scroll_offset: u16,
+    ) -> DisplayList {
+        // 1. Build the display list, centering the root element if it has a smaller fixed size
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
         let start_x = offset_x as i32;
         let start_y = (offset_y as i32) - (scroll_offset as i32);
 
         let colors = precompute_inherited_colors(doc);
-        let list = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y));
+        let built = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y));
 
-        // 3. Rasterize it; tag content is still painted by the legacy per-tag cell code
-        CellSink::paint(&list, buffer, |node_id, content, buf| {
-            let Some(node) = doc.arena.get(node_id) else {
-                return;
-            };
-            Self::paint_content(
-                node,
-                content.x as i32,
-                content.y as i32,
-                content.w as u16,
-                content.h as u16,
-                buf,
-                profile,
-                base_dir,
-                app_base_dir,
-            );
+        // 2. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous
+        //    frames). Expressed as a leading Fill so the list is self-contained.
+        let mut list = DisplayList::new();
+        list.push(DisplayItem::Fill {
+            node: doc.root,
+            rect: RectF::new(0.0, 0.0, buffer.width as f32, buffer.height as f32),
+            fg: oxiterm_proto::style::AnsiColor::Color256(15),
+            bg: oxiterm_proto::style::AnsiColor::Color256(0),
         });
+        list.items.extend(built.items);
+
+        // 3. Rasterize it; tag content is still painted by the legacy per-tag cell code.
+        //    Each legacy paint is captured as a CellGrid (in list order).
+        let mut captured: Vec<DisplayItem> = Vec::new();
+        CellSink::paint(&list, buffer, |node_id, content, buf| {
+            if let Some(node) = doc.arena.get(node_id) {
+                Self::paint_content(
+                    node,
+                    content.x as i32,
+                    content.y as i32,
+                    content.w as u16,
+                    content.h as u16,
+                    buf,
+                    profile,
+                    base_dir,
+                    app_base_dir,
+                );
+            }
+            captured.push(Self::capture_grid(buf, content));
+        });
+
+        let mut captured = captured.into_iter();
+        for item in &mut list.items {
+            if matches!(item, DisplayItem::Legacy { .. }) {
+                if let Some(grid) = captured.next() {
+                    *item = grid;
+                }
+            }
+        }
+        list
+    }
+
+    /// Copies `rect` (clamped to the buffer) out of `buf` as a `CellGrid`.
+    fn capture_grid(buf: &CellBuffer, rect: RectF) -> DisplayItem {
+        let x0 = (rect.x as i32).clamp(0, buf.width as i32);
+        let y0 = (rect.y as i32).clamp(0, buf.height as i32);
+        let x1 = (rect.x as i32).saturating_add(rect.w as i32).clamp(x0, buf.width as i32);
+        let y1 = (rect.y as i32).saturating_add(rect.h as i32).clamp(y0, buf.height as i32);
+        let mut cells = Vec::with_capacity(((x1 - x0) * (y1 - y0)) as usize);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let c = &buf.cells[y as usize * buf.width as usize + x as usize];
+                cells.push(GridCell::from(*c));
+            }
+        }
+        DisplayItem::CellGrid {
+            rect: RectF::new(x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32),
+            cells,
+        }
     }
 
     /// Paints the legacy tag-specific content (img, video, diagram) of one node into

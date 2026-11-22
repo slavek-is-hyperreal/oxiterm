@@ -5,7 +5,7 @@
 //! exact. Every write is clamped to the buffer bounds.
 
 use crate::render::buffer::{Cell, CellBuffer};
-use crate::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, RectF};
+use crate::render::display_list::{DisplayItem, DisplayList, Glyph, GridCell, Modifiers, RectF};
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::style::{AnsiColor, BorderChars};
 
@@ -30,15 +30,74 @@ impl CellSink {
                     Self::text(buffer, origin.x as i32, origin.y as i32, *clip, glyphs, *fg, *bg, *mods)
                 }
                 DisplayItem::Legacy { node, content } => legacy(*node, *content, buffer),
+                DisplayItem::CellGrid { rect, cells } => Self::grid(buffer, *rect, cells),
                 DisplayItem::PushClip { .. } | DisplayItem::PopClip => {}
             }
         }
+    }
+
+    /// Returns one `CellGrid` per horizontal run of cells that differ between `base` and
+    /// `fin` (compared in full, including `skip`). Painting the result over a buffer equal to
+    /// `base` yields `fin`. Both buffers must have the same dimensions, otherwise the result
+    /// is empty.
+    pub fn diff_grids(base: &CellBuffer, fin: &CellBuffer) -> Vec<DisplayItem> {
+        let mut out = Vec::new();
+        if base.width != fin.width || base.height != fin.height {
+            return out;
+        }
+        let w = fin.width as usize;
+        for y in 0..fin.height as usize {
+            let mut x = 0;
+            while x < w {
+                if base.cells[y * w + x] == fin.cells[y * w + x] {
+                    x += 1;
+                    continue;
+                }
+                let start = x;
+                while x < w && base.cells[y * w + x] != fin.cells[y * w + x] {
+                    x += 1;
+                }
+                out.push(DisplayItem::CellGrid {
+                    rect: RectF::new(start as f32, y as f32, (x - start) as f32, 1.0),
+                    cells: fin.cells[y * w + start..y * w + x].iter().map(|c| GridCell::from(*c)).collect(),
+                });
+            }
+        }
+        out
     }
 
     #[inline]
     fn set(buffer: &mut CellBuffer, x: i32, y: i32, cell: Cell) {
         if x >= 0 && x < buffer.width as i32 && y >= 0 && y < buffer.height as i32 {
             buffer.set(x as u16, y as u16, cell);
+        }
+    }
+
+    fn grid(buffer: &mut CellBuffer, rect: RectF, cells: &[GridCell]) {
+        let (x0, y0, w, h) = (rect.x as i32, rect.y as i32, rect.w as i32, rect.h as i32);
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let Some(c) = cells.get((y as usize) * (w as usize) + x as usize) else {
+                    return;
+                };
+                Self::set(
+                    buffer,
+                    x0 + x,
+                    y0 + y,
+                    Cell {
+                        ch: c.ch,
+                        fg: c.fg,
+                        bg: c.bg,
+                        bold: c.mods.bold,
+                        underline: c.mods.underline,
+                        italic: c.mods.italic,
+                        skip: c.skip,
+                    },
+                );
+            }
         }
     }
 
@@ -128,6 +187,34 @@ impl CellSink {
 mod tests {
     use super::*;
     use crate::render::display_list::PointF;
+
+    #[test]
+    fn diff_grids_reproduces_final_buffer() {
+        let base = CellBuffer::new(10, 3);
+        let mut fin = CellBuffer::new(10, 3);
+        for (x, y, ch, skip) in [(1u16, 0u16, 'a', false), (2, 0, 'b', false), (5, 0, 'c', true), (9, 2, 'z', false)] {
+            fin.set(x, y, Cell { ch, bold: true, skip, ..Default::default() });
+        }
+        let grids = CellSink::diff_grids(&base, &fin);
+        assert_eq!(grids.len(), 3);
+        let mut out = CellBuffer::new(10, 3);
+        CellSink::paint(&DisplayList { items: grids }, &mut out, |_, _, _| {});
+        assert_eq!(out.cells, fin.cells);
+        assert!(CellSink::diff_grids(&fin, &fin).is_empty());
+    }
+
+    #[test]
+    fn cell_grid_is_clamped_and_tolerates_bad_sizes() {
+        let c = GridCell { ch: 'x', fg: AnsiColor::Reset, bg: AnsiColor::Reset, mods: Modifiers::default(), skip: false };
+        let mut buf = CellBuffer::new(4, 2);
+        let mut l = DisplayList::new();
+        l.push(DisplayItem::CellGrid { rect: RectF::new(-1.0, -1.0, 3.0, 3.0), cells: vec![c; 9] });
+        l.push(DisplayItem::CellGrid { rect: RectF::new(3.0, 1.0, 5.0, 5.0), cells: vec![c; 2] });
+        l.push(DisplayItem::CellGrid { rect: RectF::new(0.0, 0.0, 0.0, 3.0), cells: vec![] });
+        CellSink::paint(&l, &mut buf, |_, _, _| {});
+        assert_eq!(buf.cells[0].ch, 'x');
+        assert_eq!(buf.cells[3 + 4].ch, 'x');
+    }
 
     fn nid() -> NodeId {
         NodeId(0)

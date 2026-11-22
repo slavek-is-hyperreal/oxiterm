@@ -98,6 +98,35 @@ OxiTerm features a unified, client-driven responsive design system:
 
 ---
 
+## 7b. Display-List Protocol (OxiUI phase 3a)
+
+Web clients may opt in to receive a `DisplayList` per frame instead of cell diffs (see [oxi-ui.md](oxi-ui.md)). Geometry is still cell-based (TUI-snapped layout); the client paints it with vector primitives. Clients that do not opt in, and SSH, are unaffected.
+
+**Negotiation (client to server):** `0x12 <caps:u8>`. Bit 0 = "display list". The server stores `ClientSession::display_list_client`, emits `InputEvent::SetDisplayList(on)`, and the event loop reparses the current page with `RenderMode::Gui` (`@media gui` rules apply) and re-renders. All later page loads use the same mode. The capability is **per connection**: it is reset to cell diffs on every new connection, reattach or takeover (re-parsing the page in TUI mode if it was set), and the client must resend `0x12` each time. A `0x12` from a superseded connection is ignored.
+
+**Frames (server to client):** `0x36` followed by a **zlib** stream (RFC 1950, i.e. browser `DecompressionStream('deflate')`) of `wire::encode(list)`. (`0x30` was already taken by the page announce, so the display list uses `0x36`.) A frame is sent only when the encoded list differs from the last one sent; after a (re)attach the next frame is always sent. No cell-diff frames (`0x01..`) are sent to such a session. `0x20`/`0x21` media messages, `0x30` page announce, `0x32`..`0x35` notices and `0xFF` are unchanged.
+
+**Inflated payload** (`oxiterm-renderer/src/render/wire.rs`, all little-endian):
+
+| Element | Layout |
+|---|---|
+| list | `version:u8 (=1)`, `count:u32`, then `count` items; no trailing bytes |
+| colour | `0` (Reset) \| `1 r g b` (TrueColor) \| `2 idx` (Color256) |
+| rect | `x:f32 y:f32 w:f32 h:f32` |
+| char | `u32` Unicode code point |
+| mods | `u8`: `1` bold, `2` underline, `4` italic, `8` skip (grid cells only; wide-glyph trailer, do not draw) |
+| `1` Fill | `node:u32 rect fg bg` : cells in `rect` become `' '` with `fg`/`bg` |
+| `2` Border | `node:u32 rect` + 8 chars (`top_left top top_right left right bot_left bot bot_right`) + `fg bg` |
+| `3` Text | `node:u32 origin_x:f32 origin_y:f32 clip:rect fg bg mods:u8 n:u32` + `n` x (`x:f32 y:f32 ch:char advance:f32`); glyph positions are relative to `origin` |
+| `4` Legacy | `node:u32 rect` (never sent by the server; replaced by CellGrid) |
+| `5` PushClip | `rect` |
+| `6` PopClip | (empty) |
+| `7` CellGrid | `rect n:u32` + `n` x (`ch:char fg bg mods:u8`), row-major, `n = w*h`; paint verbatim |
+
+Items are painted in list order, later items overwrite earlier ones. The first item is a full-viewport `Fill` (the page background), so a client may repaint from scratch each frame. `img`/`video`/`diagram` areas and session overlays (focus ring, predictive echo, scroll indicator) arrive as `CellGrid` items. Painting the list onto an empty cell buffer reproduces the cell frame exactly.
+
+---
+
 ## 8. Session Lifecycle & Reconnection
 
 OxiTerm manages connections separately from persistent interactive sessions:

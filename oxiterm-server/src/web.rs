@@ -99,6 +99,10 @@ pub mod web_impl {
         }
     }
 
+    /// Server -> client tag of a display-list frame: `0x36` + zlib(wire::encode(list)).
+    /// (0x30 is taken by the page announce, 0x31..0x35 by other notices.)
+    pub const WS_TAG_DISPLAY_LIST: u8 = 0x36;
+
     /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
         session: Arc<ClientSession>,
@@ -109,6 +113,8 @@ pub mod web_impl {
         sent_page: Option<String>,
         last_seen_epoch: usize,
         last_warned_epoch: usize,
+        /// Wire bytes (uncompressed) of the last display list sent; cleared on epoch change.
+        last_list: Option<Vec<u8>>,
     }
 
     impl WsFrameSink {
@@ -124,6 +130,7 @@ pub mod web_impl {
                 sent_page: None,
                 last_seen_epoch: 0,
                 last_warned_epoch: 0,
+                last_list: None,
             }
         }
 
@@ -137,23 +144,18 @@ pub mod web_impl {
                 Err(())
             }
         }
-    }
 
-    impl FrameSink for WsFrameSink {
-        fn update_document(&mut self, _doc: &oxiterm_renderer::document::THTMLDocument) -> anyhow::Result<()> {
-            // R3: doc swap -> next frame is full, 0x21 emitted
-            let _ = self.send_bytes(vec![0x21]);
-            self.sent_coordinates.clear();
-            Ok(())
-        }
-
-        fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+        /// Per-frame bookkeeping shared by cell-diff and display-list frames: epoch reset,
+        /// page announce (0x30), media assets (0x20) and media coordinates (0x21).
+        /// Returns `(epoch_changed, coords_changed)`.
+        fn sync_preamble(&mut self) -> (bool, bool) {
             let current_epoch = self.session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst);
             let epoch_changed = current_epoch != self.last_seen_epoch;
             if epoch_changed {
                 self.sent_assets.clear();
                 self.sent_coordinates.clear();
                 self.sent_page = None;
+                self.last_list = None;
                 self.last_seen_epoch = current_epoch;
             }
 
@@ -275,6 +277,50 @@ pub mod web_impl {
                     self.sent_coordinates.insert(h, media.clone());
                 }
             }
+            (epoch_changed, coords_changed)
+        }
+    }
+
+    impl FrameSink for WsFrameSink {
+        fn update_document(&mut self, _doc: &oxiterm_renderer::document::THTMLDocument) -> anyhow::Result<()> {
+            // R3: doc swap -> next frame is full, 0x21 emitted
+            let _ = self.send_bytes(vec![0x21]);
+            self.sent_coordinates.clear();
+            Ok(())
+        }
+
+        fn send_display_list(&mut self, list: &oxiterm_renderer::render::display_list::DisplayList) -> anyhow::Result<bool> {
+            // Capability is per connection: if it was reset (new connection/takeover) while a GUI
+            // frame was in flight, drop it. Must precede sync_preamble so the epoch change is
+            // still seen by the next send_frame (forced full cell frame).
+            if !self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(false);
+            }
+            let (_epoch_changed, coords_changed) = self.sync_preamble();
+            let encoded = oxiterm_renderer::render::wire::encode(list);
+            // Unchanged frame (also resets on epoch change via sync_preamble): nothing to send.
+            if self.last_list.as_deref() == Some(encoded.as_slice()) {
+                return Ok(coords_changed);
+            }
+            let mut enc = flate2::write::ZlibEncoder::new(vec![WS_TAG_DISPLAY_LIST], flate2::Compression::fast());
+            std::io::Write::write_all(&mut enc, &encoded)?;
+            let msg = enc.finish()?;
+            if self.send_bytes(msg).is_err() {
+                let current_epoch = self.session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                if self.last_warned_epoch < current_epoch {
+                    warn!("WsFrameSink::send_display_list: send failed/no channel for epoch {}", current_epoch);
+                    self.last_warned_epoch = current_epoch;
+                }
+                return Ok(false);
+            }
+            self.last_list = Some(encoded);
+            Ok(true)
+        }
+
+        fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            let (epoch_changed, coords_changed) = self.sync_preamble();
+            // Switching back from display lists: the next list (if toggled again) must be sent.
+            self.last_list = None;
 
             tracing::trace!("WsFrameSink::send_frame: front dims {}x{}, back dims {}x{}", front.width, front.height, back.width, back.height);
             
@@ -735,6 +781,14 @@ pub mod web_impl {
 
         client_session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
 
+        // Capabilities are per connection: a new/reattached/taken-over client starts with cell
+        // diffs and must send 0x12 again. Reset BEFORE the new sender is installed so no
+        // display-list frame can reach it; the event is sent only if the flag was set, so the
+        // doc is re-parsed in TUI mode.
+        if client_session.display_list_client.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let _ = client_session.event_tx.try_send(InputEvent::SetDisplayList(false));
+        }
+
         let user_identity = identity.unwrap_or_else(crate::identity::UserIdentity::guest);
         client_session.attach_identity(user_identity);
 
@@ -867,7 +921,7 @@ pub mod web_impl {
             let event_bus = Arc::new(crate::events::EventBus::new());
 
             let doc = if let Some(ref path) = resolved_source_path {
-                match crate::loader::load_thtml_file(path) {
+                match crate::loader::load_thtml_file_mode(path, if client_session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) { oxiterm_proto::style::RenderMode::Gui } else { oxiterm_proto::style::RenderMode::Tui }) {
                     Ok(mut loaded) => {
                         let state = client_session.state.read();
                         EventLoop::inject_initial_state(&mut loaded, &*state);
@@ -1012,6 +1066,19 @@ pub mod web_impl {
                         if bytes.len() >= 2 {
                             let is_mobile = bytes[1] != 0;
                             let _ = client_session.event_tx.try_send(InputEvent::SwitchViewport(is_mobile));
+                        }
+                    }
+                    0x12 => {
+                        // Capabilities: bit 0 = display-list frames.
+                        // Ignore caps from a superseded connection (stale 0x12 after takeover).
+                        if bytes.len() >= 2 && client_session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst) == new_epoch {
+                            let on = bytes[1] & 1 != 0;
+                            // Only act on a change: clients resend caps on every reconnect and a
+                            // reload would reset the scroll position.
+                            let prev = client_session.display_list_client.swap(on, std::sync::atomic::Ordering::SeqCst);
+                            if prev != on {
+                                let _ = client_session.event_tx.try_send(InputEvent::SetDisplayList(on));
+                            }
                         }
                     }
                     0x31 => {
@@ -2018,6 +2085,130 @@ pub mod web_impl {
             let bytes = msg.into_data();
             assert_eq!(bytes[0], 0x32);
             assert!(bytes.len() > 1);
+        }
+
+        fn inflate_display_list(msg: &[u8]) -> oxiterm_renderer::render::display_list::DisplayList {
+            assert_eq!(msg[0], WS_TAG_DISPLAY_LIST);
+            let mut raw = Vec::new();
+            std::io::Read::read_to_end(&mut flate2::read::ZlibDecoder::new(&msg[1..]), &mut raw).unwrap();
+            assert_eq!(raw[0], 1, "wire version");
+            oxiterm_renderer::render::wire::decode(&raw).unwrap()
+        }
+
+        #[tokio::test]
+        async fn test_display_list_negotiation_sends_0x36_and_no_cell_diffs() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut ws_write, mut ws_read) = ws_stream.split();
+            ws_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            ws_write.send(Message::Binary(vec![0x12, 0x01])).await.unwrap();
+
+            // Read until the first display-list frame (cell diffs may precede the switch).
+            let mut list = None;
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while tokio::time::Instant::now() < deadline {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(500), ws_read.next()).await else { continue };
+                let data = m.into_data();
+                if !data.is_empty() && data[0] == WS_TAG_DISPLAY_LIST {
+                    list = Some(inflate_display_list(&data));
+                    break;
+                }
+            }
+            let list = list.expect("no display-list frame received");
+            assert!(matches!(list.items.first(), Some(oxiterm_renderer::render::display_list::DisplayItem::Fill { .. })));
+
+            // Force a new frame: from now on only display lists (or 0x2x/0x3x notices), never cell diffs.
+            ws_write.send(Message::Binary(vec![0x10, 100, 0, 30, 0])).await.unwrap();
+            let mut got_second = false;
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+            while tokio::time::Instant::now() < end {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), ws_read.next()).await else { continue };
+                let data = m.into_data();
+                if data.is_empty() { continue; }
+                assert!(data[0] >= 0x20, "cell-diff frame (tag {:#x}) sent to display-list client", data[0]);
+                if data[0] == WS_TAG_DISPLAY_LIST {
+                    got_second = true;
+                    inflate_display_list(&data);
+                }
+            }
+            assert!(got_second, "resize did not produce a new display list");
+        }
+
+        #[tokio::test]
+        async fn test_display_list_flag_resets_on_takeover() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+
+            let url = format!("ws://{}/ws", local_addr);
+            let (ws_a, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut a_write, mut a_read) = ws_a.split();
+            a_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            let token_msg = a_read.next().await.unwrap().unwrap().into_data();
+            assert_eq!(token_msg[0], 0x32);
+            let token = String::from_utf8(token_msg[1..].to_vec()).unwrap();
+            a_write.send(Message::Binary(vec![0x12, 0x01])).await.unwrap();
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            let mut a_got_list = false;
+            while !a_got_list && tokio::time::Instant::now() < deadline {
+                if let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(500), a_read.next()).await {
+                    a_got_list = m.into_data().first() == Some(&WS_TAG_DISPLAY_LIST);
+                }
+            }
+            assert!(a_got_list, "client A never got a display list");
+
+            // B takes over without sending 0x12.
+            let (ws_b, _) = tokio_tungstenite::connect_async(&format!("ws://{}/ws?session={}", local_addr, token)).await.unwrap();
+            let (mut b_write, mut b_read) = ws_b.split();
+            b_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            let mut got_diff = false;
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+            while tokio::time::Instant::now() < end {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), b_read.next()).await else { continue };
+                let data = m.into_data();
+                if data.is_empty() { continue; }
+                assert_ne!(data[0], WS_TAG_DISPLAY_LIST, "display list sent to a client that did not opt in");
+                if data[0] < 0x20 { got_diff = true; }
+            }
+            assert!(got_diff, "taken-over client received no cell-diff frame");
+        }
+
+        #[tokio::test]
+        async fn test_display_list_sink_skips_identical_and_resends_on_epoch() {
+            use oxiterm_renderer::render::display_list::{DisplayItem, DisplayList, RectF};
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            session.display_list_client.store(true, std::sync::atomic::Ordering::SeqCst);
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), None);
+
+            let mut list = DisplayList::new();
+            list.push(DisplayItem::Legacy { node: oxiterm_proto::dom::NodeId(1), content: RectF::new(0.0, 0.0, 1.0, 1.0) });
+            assert!(sink.send_display_list(&list).unwrap());
+            assert_eq!(rx.try_recv().unwrap()[0], WS_TAG_DISPLAY_LIST);
+            // Identical frame: nothing sent.
+            assert!(!sink.send_display_list(&list).unwrap());
+            assert!(rx.try_recv().is_err());
+            // Changed frame: sent.
+            list.push(DisplayItem::PopClip);
+            assert!(sink.send_display_list(&list).unwrap());
+            assert_eq!(rx.try_recv().unwrap()[0], WS_TAG_DISPLAY_LIST);
+            // Reattach (epoch change): identical frame is sent again.
+            let (tx2, mut rx2) = tokio::sync::mpsc::channel(10);
+            *session.web_frame_tx.write() = Some((2, tx2));
+            session.connection_epoch.store(2, std::sync::atomic::Ordering::SeqCst);
+            assert!(sink.send_display_list(&list).unwrap());
+            let mut saw = false;
+            while let Ok(m) = rx2.try_recv() {
+                saw |= m[0] == WS_TAG_DISPLAY_LIST;
+            }
+            assert!(saw);
         }
 
         #[tokio::test]

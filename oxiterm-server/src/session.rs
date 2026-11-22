@@ -162,6 +162,9 @@ pub struct ClientSession {
     pub active_media: RwLock<Vec<MediaRenderInfo>>,
     /// Indicates if the session is a mobile web session.
     pub is_mobile: std::sync::atomic::AtomicBool,
+    /// Web client negotiated display-list frames (`0x12` caps bit 0): documents are parsed in
+    /// `RenderMode::Gui` and frames go out as display lists instead of cell diffs.
+    pub display_list_client: std::sync::atomic::AtomicBool,
     /// Indicates if the session is a web (WebSocket) session with DOM media overlay.
     pub is_web_client: std::sync::atomic::AtomicBool,
     /// The current relative page path for WebSocket announce.
@@ -408,6 +411,7 @@ impl SessionRegistry {
             state: RwLock::new(crate::state::StateManager::new()),
             active_media: RwLock::new(Vec::new()),
             is_mobile: std::sync::atomic::AtomicBool::new(false),
+            display_list_client: std::sync::atomic::AtomicBool::new(false),
             is_web_client: std::sync::atomic::AtomicBool::new(false),
             current_page: RwLock::new(None),
             app_base_dir: RwLock::new(None),
@@ -708,6 +712,35 @@ impl EventLoop {
         base.join(target_name)
     }
 
+    /// Parse mode for documents of this session: GUI for display-list web clients, TUI otherwise.
+    fn render_mode(&self) -> oxiterm_proto::style::RenderMode {
+        if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+            oxiterm_proto::style::RenderMode::Gui
+        } else {
+            oxiterm_proto::style::RenderMode::Tui
+        }
+    }
+
+    /// Reparses the current source file (hot reload / render-mode switch). Returns true on success.
+    fn reload_current_source(&mut self) -> bool {
+        let Some(path) = self.source_path.clone() else { return false };
+        match crate::loader::load_thtml_file_mode(&path, self.render_mode()) {
+            Ok(mut new_doc) => {
+                let mut state = self.session.state.write();
+                Self::setup_state_subscriptions(&new_doc, &mut *state);
+                Self::inject_initial_state(&mut new_doc, &*state);
+                drop(state);
+                self.update_doc(new_doc);
+                self.reset_layout_and_scroll();
+                true
+            }
+            Err(e) => {
+                warn!("Reload failed for session {}: {}", self.session.id, e);
+                false
+            }
+        }
+    }
+
     fn resolve_and_load_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
         let non_mobile_target = self.resolve_non_mobile_path(target_filename);
         let is_mobile = self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst);
@@ -722,7 +755,7 @@ impl EventLoop {
             anyhow::bail!("blocked");
         }
 
-        let mut new_doc = crate::loader::load_thtml_file(&actual_path)?;
+        let mut new_doc = crate::loader::load_thtml_file_mode(&actual_path, self.render_mode())?;
         let mut state = self.session.state.write();
         Self::setup_state_subscriptions(&new_doc, &mut *state);
         Self::inject_initial_state(&mut new_doc, &*state);
@@ -1700,23 +1733,18 @@ impl EventLoop {
                                     self.handle_set_app_token(token);
                                 }
                                 InputEvent::Reload => {
-                                    if let Some(ref path) = self.source_path {
-                                        match crate::loader::load_thtml_file(path) {
-                                            Ok(mut new_doc) => {
-                                                info!("Hot Reload successful for session {}", self.session.id);
-                                                let mut state = self.session.state.write();
-                                                Self::setup_state_subscriptions(&new_doc, &mut *state);
-                                                Self::inject_initial_state(&mut new_doc, &*state);
-                                                drop(state);
-                                                self.update_doc(new_doc);
-                                                self.reset_layout_and_scroll();
-                                                needs_render = true;
-                                            }
-                                            Err(e) => {
-                                                warn!("Hot Reload failed for session {}: {}", self.session.id, e);
-                                            }
-                                        }
+                                    if self.reload_current_source() {
+                                        info!("Hot Reload successful for session {}", self.session.id);
+                                        needs_render = true;
                                     }
+                                }
+                                InputEvent::SetDisplayList(_) => {
+                                    // The flag is already stored by the WS handler. Not NAV-throttled:
+                                    // skipping the reparse would leave a GUI session with a TUI-parsed doc.
+                                    self.reload_current_source();
+                                    // The client's picture is no longer the front buffer's.
+                                    self.buffer.force_dirty();
+                                    needs_render = true;
                                 }
                                 // Anchored by spec [Plan-2.2/R1]: KeyPress arm runs unconditionally.
                                 // Activation paths (focus-nav, Enter) must never be dropped by the INPUT bucket.
@@ -1932,7 +1960,21 @@ impl EventLoop {
                     let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
                     let app_base_dir = self.session.app_base_dir.read().clone();
                     self.buffer.back.clear();
-                    Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
+                    // Display-list clients get the painted list plus a snapshot of the buffer
+                    // right after it, so the overlays below can be appended as CellGrids.
+                    let gui_frame = if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+                        let list = Renderer::render_frame(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
+                        let snapshot = oxiterm_renderer::CellBuffer {
+                            cells: self.buffer.back.cells.clone(),
+                            width: self.buffer.back.width,
+                            height: self.buffer.back.height,
+                            graphics: Vec::new(),
+                        };
+                        Some((list, snapshot))
+                    } else {
+                        Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
+                        None
+                    };
 
                     // Focus ring: draw markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
@@ -2068,7 +2110,13 @@ impl EventLoop {
                     }
                     
                     let _ = self.frame_sink.update_document(&self.doc);
-                    if let Ok(true) = self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back) {
+                    let sent = if let Some((mut list, snapshot)) = gui_frame {
+                        list.items.extend(oxiterm_renderer::render::cell_sink::CellSink::diff_grids(&snapshot, &self.buffer.back));
+                        self.frame_sink.send_display_list(&list)
+                    } else {
+                        self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back)
+                    };
+                    if let Ok(true) = sent {
                         self.buffer.swap();
                         self.frame_limiter.record_frame();
                     }
@@ -2489,6 +2537,62 @@ mod tests {
 
         let _ = std::fs::remove_file(app_file);
         let _ = std::fs::remove_file(mobile_file);
+    }
+
+    /// Display-list sink double: stores every list and asks the loop to quit after the first.
+    struct CapturingListSink {
+        lists: Arc<parking_lot::Mutex<Vec<oxiterm_renderer::render::display_list::DisplayList>>>,
+        session: Arc<ClientSession>,
+    }
+
+    impl oxiterm_renderer::FrameSink for CapturingListSink {
+        fn send_frame(&mut self, _f: &oxiterm_renderer::CellBuffer, _b: &oxiterm_renderer::CellBuffer) -> anyhow::Result<bool> {
+            panic!("cell diff sent to a display-list session");
+        }
+        fn send_display_list(&mut self, list: &oxiterm_renderer::render::display_list::DisplayList) -> anyhow::Result<bool> {
+            self.lists.lock().push(list.clone());
+            use oxiterm_proto::input::{KeyEvent, KeyKind, KeyModifiers};
+            let _ = self.session.event_tx.try_send(InputEvent::KeyPress(KeyEvent {
+                codepoint: 'q',
+                modifiers: KeyModifiers::default(),
+                kind: KeyKind::Press,
+            }));
+            Ok(true)
+        }
+    }
+
+    #[test]
+    fn test_display_list_replays_final_buffer_with_focus_ring() {
+        use oxiterm_renderer::render::cell_sink::CellSink;
+        use oxiterm_renderer::render::display_list::DisplayItem;
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 40, rows: 10 };
+        session.display_list_client.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let doc = crate::loader::load_thtml_str(r#"<screen style="width: 40; height: 10;"><box event-htmx="noop:x" style="margin-left: 5;"><text>Hello</text></box></screen>"#).unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        let lists = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.rebuild_focusable_nodes(); // focuses the first interactive node
+        assert!(el.focused_node.is_some());
+        el.frame_sink = Box::new(CapturingListSink { lists: lists.clone(), session: session.clone() });
+        el.run();
+
+        let lists = lists.lock();
+        assert_eq!(lists.len(), 1, "exactly one frame expected before quit");
+        let list = &lists[0];
+
+        // The button is auto-focused: the focus ring markers are overlays, so they must be
+        // carried by trailing CellGrids, not by the render_frame part of the list.
+        let overlay_has_ring = list.items.iter().any(|i| matches!(i, DisplayItem::CellGrid { cells, .. }
+            if cells.iter().any(|c| c.ch == FOCUS_RING_LEFT || c.ch == FOCUS_RING_RIGHT)));
+        assert!(overlay_has_ring, "focus ring overlay missing from display list");
+
+        // Replay onto an EMPTY buffer and compare with the real final frame (swapped to front).
+        let mut replay = oxiterm_renderer::CellBuffer::new(40, 10);
+        CellSink::paint(list, &mut replay, |_, _, _| panic!("Legacy must not reach the wire"));
+        assert_eq!(replay.cells, el.buffer.front.cells);
     }
 
     #[test]

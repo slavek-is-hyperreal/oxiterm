@@ -10,6 +10,8 @@ use oxiterm_proto::style::AnsiColor;
 use oxiterm_renderer::render::diff::AnsiCommand;
 use oxiterm_renderer::DiffEngine;
 
+pub mod paint;
+
 /// Canvas rendering WebTerminal WASM wrapper.
 #[wasm_bindgen]
 pub struct WebTerminal {
@@ -25,6 +27,8 @@ pub struct WebTerminal {
     underline: bool,
     italic: bool,
     base_font: String,
+    /// Device pixel ratio last applied via `apply_dpr_scale` (used for crisp vector lines).
+    dpr: f64,
     cols: u16,
     rows: u16,
 }
@@ -57,6 +61,7 @@ impl WebTerminal {
             underline: false,
             italic: false,
             base_font: font.to_string(),
+            dpr: 1.0,
             cols: 80,
             rows: 24,
         })
@@ -120,6 +125,61 @@ impl WebTerminal {
         Ok(())
     }
 
+    /// Paints a full display-list frame (OxiUI phase 3a) from its inflated wire payload.
+    ///
+    /// Repaints from scratch (the list starts with a full-viewport fill). The canvas is not
+    /// resized here: its size and DPR transform are owned by the JS `resizeTerminal`.
+    #[wasm_bindgen]
+    pub fn draw_display_list(&mut self, payload: &[u8]) -> Result<(), String> {
+        let list = oxiterm_renderer::render::wire::decode(payload).map_err(|e| e.to_string())?;
+        let m = paint::Metrics {
+            cw: self.char_width,
+            ch: self.char_height,
+            dpr: self.dpr,
+            base_font: self.base_font.clone(),
+        };
+        let ops = paint::plan(&list, &m);
+        self.ctx.set_text_baseline("top");
+        for op in &ops {
+            match op {
+                paint::PaintOp::Fill { x, y, w, h, color } => {
+                    self.ctx.set_fill_style_str(color);
+                    self.ctx.fill_rect(*x, *y, *w, *h);
+                }
+                paint::PaintOp::Stroke { color, width, path } => {
+                    self.ctx.begin_path();
+                    for seg in path {
+                        match seg {
+                            paint::Seg::MoveTo(x, y) => self.ctx.move_to(*x, *y),
+                            paint::Seg::LineTo(x, y) => self.ctx.line_to(*x, *y),
+                            paint::Seg::ArcTo(x1, y1, x2, y2, r) => {
+                                let _ = self.ctx.arc_to(*x1, *y1, *x2, *y2, *r);
+                            }
+                            paint::Seg::Close => self.ctx.close_path(),
+                        }
+                    }
+                    self.ctx.set_stroke_style_str(color);
+                    self.ctx.set_line_width(*width);
+                    self.ctx.stroke();
+                }
+                paint::PaintOp::Text { ch, x, y, font, color } => {
+                    self.ctx.set_font(font);
+                    self.ctx.set_fill_style_str(color);
+                    let _ = self.ctx.fill_text(&ch.to_string(), *x, *y);
+                }
+                paint::PaintOp::Save => self.ctx.save(),
+                paint::PaintOp::ClipRect { x, y, w, h } => {
+                    self.ctx.begin_path();
+                    self.ctx.rect(*x, *y, *w, *h);
+                    self.ctx.clip();
+                }
+                paint::PaintOp::Restore => self.ctx.restore(),
+            }
+        }
+        self.ctx.set_font(&self.base_font);
+        Ok(())
+    }
+
     /// Resets the canvas sizing and fills background color.
     #[wasm_bindgen]
     pub fn clear(&mut self, cols: u16, rows: u16) {
@@ -160,6 +220,7 @@ impl WebTerminal {
     /// the device-pixel backing.
     #[wasm_bindgen]
     pub fn apply_dpr_scale(&mut self, dpr: f64) {
+        self.dpr = if dpr > 0.0 { dpr } else { 1.0 };
         // Re-apply scale transform: CSS-pixel coordinates * dpr = device pixels.
         let _ = self.ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         // Re-set font (reset by canvas.width assignment).

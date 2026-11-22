@@ -13,6 +13,12 @@ pub trait FrameSink: Send {
     /// Returns `Ok(true)` if frame drawing commands were actually transmitted.
     fn send_frame(&mut self, front: &CellBuffer, back: &CellBuffer) -> Result<bool>;
 
+    /// Sends a display list instead of a cell diff (OxiUI phase 3). Sinks that do not
+    /// support display lists return `Ok(false)` and the caller keeps using `send_frame`.
+    ///
+    /// Returns `Ok(true)` if a frame was actually transmitted.
+    fn send_display_list(&mut self, _list: &crate::render::display_list::DisplayList) -> Result<bool> { Ok(false) }
+
     /// Updates the accessibility tree or client document representation.
     fn update_document(&mut self, _doc: &crate::document::THTMLDocument) -> Result<()> { Ok(()) }
 

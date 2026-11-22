@@ -14,3 +14,4 @@ pub mod renderer;
 pub mod kitty;
 pub mod sixel;
 pub mod cache;
+pub mod wire;

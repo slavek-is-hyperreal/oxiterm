@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phases 0–2 done; phases 3–7 planned.
+> **Status:** Phases 0–2 and 3a done; 3b–7 planned.
 
 ---
 
@@ -174,6 +174,12 @@ Original scope:
 - **Done when:** the Spotify demo and `examples/index.thtml` work in the browser in GUI mode with clicks hitting the right targets, and the TUI and the old web client are unaffected.
 
 Phase 3 is the first **server-driven** GUI: the browser is the thin client.
+
+**Phase 3a — ✅ done.** The browser opts in with `?gui=1`. The client then sends `0x12` (capabilities) on every connection, and the server answers with `0x36` + zlib(DisplayList) frames instead of cell diffs. The wire format is versioned (`render/wire.rs`, see ARCHITECTURE.md §7b). Img/video/diagram and session overlays (focus ring, echo, scroll bar) travel as `CellGrid` items. The browser draws borders as vector lines (rounded and double sets included). Geometry is still TUI-snapped and the opt-in is per connection.
+
+**Remaining:**
+- **3b:** GUI-mode (fractional) layout, `Polygon`/`Path` items, `border-radius`.
+- **3c:** ARIA mirror for screen readers.
 
 ### Phase 4: Extract `oxiterm-core` (enables local mode)
 - Move `EventLoop`, `StateManager`, focus/scroll/drag handling, `inject_initial_state` and animations from `oxiterm-server` into a new `oxiterm-core` crate with **no tokio, russh, hyper or ureq** dependencies.

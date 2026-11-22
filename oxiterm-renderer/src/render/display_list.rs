@@ -24,6 +24,11 @@
 //!   glyphs whose origin cell lies inside `clip`.
 //! - [`DisplayItem::Legacy`]: painted by the legacy cell code for that node (img, video,
 //!   diagram) into `content`. GUI sinks will get dedicated items for these later.
+//! - [`DisplayItem::CellGrid`]: paints `rect.w * rect.h` cells verbatim, row-major, starting
+//!   at `(rect.x, rect.y)`. Every cell is written (glyph, colours, modifiers, `skip` flag),
+//!   clamped to the surface. A grid whose `cells.len()` differs from `w * h` paints only the
+//!   cells that exist. Produced by `Renderer::render_frame` in place of `Legacy` items and
+//!   for session overlays (focus ring, predictive echo, scroll bar) in GUI sessions.
 //! - [`DisplayItem::PushClip`] / [`DisplayItem::PopClip`]: reserved. Not emitted in phase 1,
 //!   because the historical renderer does not clip children to their parents.
 
@@ -72,6 +77,31 @@ pub struct Modifiers {
     pub italic: bool,
 }
 
+/// One verbatim cell of a [`DisplayItem::CellGrid`].
+///
+/// `skip` marks the trailing half of a wide glyph (see `Cell::skip`); GUI painters should
+/// not draw it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridCell {
+    pub ch: char,
+    pub fg: AnsiColor,
+    pub bg: AnsiColor,
+    pub mods: Modifiers,
+    pub skip: bool,
+}
+
+impl From<crate::render::buffer::Cell> for GridCell {
+    fn from(c: crate::render::buffer::Cell) -> Self {
+        Self {
+            ch: c.ch,
+            fg: c.fg,
+            bg: c.bg,
+            mods: Modifiers { bold: c.bold, underline: c.underline, italic: c.italic },
+            skip: c.skip,
+        }
+    }
+}
+
 /// One paint command.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayItem {
@@ -91,6 +121,8 @@ pub enum DisplayItem {
     },
     /// Content painted by legacy cell code (img / video / diagram in phase 1).
     Legacy { node: NodeId, content: RectF },
+    /// Cells painted verbatim (see the module docs). `cells` is row-major, `rect.w * rect.h`.
+    CellGrid { rect: RectF, cells: Vec<GridCell> },
     /// Reserved: start clipping subsequent items to `rect`.
     PushClip { rect: RectF },
     /// Reserved: end the innermost clip.

@@ -363,6 +363,14 @@
         let reconnectPending = false; // 2.5/R3: single-scheduler guard
         let needsClear = false;
 
+        // ── GUI (display-list) mode: opt-in with ?gui=1 (OxiUI phase 3a) ───────
+        // Read once at load: the 0x30 page announce rewrites the URL, and reconnects must
+        // keep the mode. Cell-diff mode stays the default.
+        const guiMode = new URLSearchParams(window.location.search).get('gui') === '1';
+        let dlActive = false;                 // per socket: set when the first 0x36 arrives
+        let dlChain = Promise.resolve();      // frames are painted strictly in arrival order
+        let lastDlPayload = null;             // last inflated list, repainted after a resize
+
         // ── UI state machine ───────────────────────────────────────────────────
         // States: CONNECTING | CONNECTED | RECONNECTING | ERROR | IDLE | TAKEN_OVER
         let uiState = 'CONNECTING';
@@ -538,8 +546,16 @@
                 setUiState('CONNECTED', 'Connected');
                 canvas.focus();
 
+                dlActive = false;
+                lastDlPayload = null;
+
                 // Send initial resize (0x10) to satisfy handshake loop
                 resizeTerminal(true);
+
+                // GUI mode: opt in to display-list frames on EVERY (re)connect (the server
+                // resets the opt-in per connection). Must come AFTER the first 0x10: the
+                // server's handshake loop discards every message until it sees 0x10.
+                if (guiMode) ws.send(new Uint8Array([0x12, 0x01]));
 
                 // Send viewport flag (0x11)
                 const vbuf = new Uint8Array(2);
@@ -700,7 +716,7 @@
                 const pagePath = new TextDecoder().decode(bytes.subarray(1));
                 const url = new URL(window.location);
                 if (url.searchParams.get('page') !== pagePath) {
-                    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}`;
+                    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}${guiMode ? '&gui=1' : ''}`;
                     window.history.pushState({ page: pagePath }, '', newUrl);
                 }
                 return;
@@ -733,6 +749,37 @@
                 }
                 return;
             }
+
+            // ── 0x36 display-list frame (zlib-compressed wire payload) ─────────
+            if (bytes[0] === 0x36) {
+                if (!guiMode) return;
+                dlActive = true;
+                if (needsClear) {
+                    // Media is cleared synchronously so a 0x21 arriving while this frame is
+                    // still inflating is not wiped. The list itself repaints everything.
+                    clearMediaLayer();
+                    needsClear = false;
+                }
+                const sock = currentSocket;
+                // Start inflating now, but paint through a chain to keep arrival order.
+                const inflated = new Response(
+                    new Blob([bytes.subarray(1)]).stream().pipeThrough(new DecompressionStream('deflate'))
+                ).arrayBuffer();
+                inflated.catch(() => {}); // avoid an unhandled-rejection report; the chain logs it
+                dlChain = dlChain
+                    .then(() => inflated)
+                    .then((buf) => {
+                        if (sock !== currentSocket) return; // stale socket
+                        const payload = new Uint8Array(buf);
+                        lastDlPayload = payload;
+                        term.draw_display_list(payload);
+                    })
+                    .catch((e) => console.warn('display list frame dropped', e));
+                return;
+            }
+
+            // Once in display-list mode, cell-diff frames are ignored.
+            if (dlActive) return;
 
             // ── render commands ───────────────────────────────────────────────
             if (needsClear) {
@@ -798,6 +845,13 @@
 
                 if (term) term.clear(cols, rows);
                 repositionMedia();
+                // The server only resends a list when it changes; repaint the last one so a
+                // zoom/DPR change with an unchanged grid does not leave the canvas blank.
+                if (guiMode && term) {
+                    dlChain = dlChain
+                        .then(() => { if (lastDlPayload) term.draw_display_list(lastDlPayload); })
+                        .catch((e) => console.warn('display list repaint failed', e));
+                }
 
                 if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
                     const buf = new Uint8Array(5);

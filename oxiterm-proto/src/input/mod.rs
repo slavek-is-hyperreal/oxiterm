@@ -42,6 +42,9 @@ pub enum InputEvent {
     StatePatched,
     /// Request to switch viewport (mobile / desktop).
     SwitchViewport(bool),
+    /// Web client negotiated (`true`) or dropped (`false`) display-list frames (OxiUI phase 3).
+    /// The event loop reloads the current page in the matching render mode.
+    SetDisplayList(bool),
     /// Request to navigate to a relative path.
     NavigateTo(String),
     /// Request to open a URL in the default web browser (web sessions only).
