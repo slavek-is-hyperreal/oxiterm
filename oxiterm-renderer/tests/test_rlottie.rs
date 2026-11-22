@@ -69,8 +69,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
         let mut img_node = Node::new(NodeTag::Img);
         img_node.attrs.src = Some(bell_path.to_string_lossy().to_string());
-        img_node.style.width = Some(15);
-        img_node.style.height = Some(5);
+        img_node.style.width = Some(15.0);
+        img_node.style.height = Some(5.0);
         
         let node_id = doc.arena.alloc(img_node);
         doc.append_child(doc.root, node_id).unwrap();

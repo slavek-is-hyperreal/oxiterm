@@ -230,24 +230,24 @@ impl ActiveTransition {
 /// Cached baseline property values for change detection.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StoredPropertyValues {
-    pub width: Option<u16>,
-    pub height: Option<u16>,
-    pub top: Option<i16>,
-    pub left: Option<i16>,
-    pub right: Option<i16>,
-    pub bottom: Option<i16>,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub top: Option<f32>,
+    pub left: Option<f32>,
+    pub right: Option<f32>,
+    pub bottom: Option<f32>,
     pub opacity: Option<f32>,
 }
 
 impl StoredPropertyValues {
     pub fn get_value(&self, prop: AnimatableProperty) -> Option<f32> {
         match prop {
-            AnimatableProperty::Width => self.width.map(|v| v as f32),
-            AnimatableProperty::Height => self.height.map(|v| v as f32),
-            AnimatableProperty::Top => self.top.map(|v| v as f32),
-            AnimatableProperty::Left => self.left.map(|v| v as f32),
-            AnimatableProperty::Right => self.right.map(|v| v as f32),
-            AnimatableProperty::Bottom => self.bottom.map(|v| v as f32),
+            AnimatableProperty::Width => self.width,
+            AnimatableProperty::Height => self.height,
+            AnimatableProperty::Top => self.top,
+            AnimatableProperty::Left => self.left,
+            AnimatableProperty::Right => self.right,
+            AnimatableProperty::Bottom => self.bottom,
             AnimatableProperty::Opacity => self.opacity,
             _ => None,
         }
@@ -255,12 +255,12 @@ impl StoredPropertyValues {
 
     pub fn set_value(&mut self, prop: AnimatableProperty, val: Option<f32>) {
         match prop {
-            AnimatableProperty::Width => self.width = val.map(|v| v.round().max(0.0) as u16),
-            AnimatableProperty::Height => self.height = val.map(|v| v.round().max(0.0) as u16),
-            AnimatableProperty::Top => self.top = val.map(|v| v.round() as i16),
-            AnimatableProperty::Left => self.left = val.map(|v| v.round() as i16),
-            AnimatableProperty::Right => self.right = val.map(|v| v.round() as i16),
-            AnimatableProperty::Bottom => self.bottom = val.map(|v| v.round() as i16),
+            AnimatableProperty::Width => self.width = val.map(|v| v.max(0.0)),
+            AnimatableProperty::Height => self.height = val.map(|v| v.max(0.0)),
+            AnimatableProperty::Top => self.top = val,
+            AnimatableProperty::Left => self.left = val,
+            AnimatableProperty::Right => self.right = val,
+            AnimatableProperty::Bottom => self.bottom = val,
             AnimatableProperty::Opacity => self.opacity = val.map(|v| v.clamp(0.0, 1.0)),
             _ => {}
         }
@@ -357,12 +357,12 @@ impl AnimationController {
 
                 for prop in props_to_check {
                     let target_val = match prop {
-                        AnimatableProperty::Width => node.style.width.map(|v| v as f32),
-                        AnimatableProperty::Height => node.style.height.map(|v| v as f32),
-                        AnimatableProperty::Top => node.style.top.map(|v| v as f32),
-                        AnimatableProperty::Left => node.style.left.map(|v| v as f32),
-                        AnimatableProperty::Right => node.style.right.map(|v| v as f32),
-                        AnimatableProperty::Bottom => node.style.bottom.map(|v| v as f32),
+                        AnimatableProperty::Width => node.style.width,
+                        AnimatableProperty::Height => node.style.height,
+                        AnimatableProperty::Top => node.style.top,
+                        AnimatableProperty::Left => node.style.left,
+                        AnimatableProperty::Right => node.style.right,
+                        AnimatableProperty::Bottom => node.style.bottom,
                         AnimatableProperty::Opacity => node.style.opacity,
                         _ => None,
                     };
@@ -463,7 +463,7 @@ impl AnimationController {
             if let Some(node) = doc.arena.get_mut(node_id) {
                 let style_modified = match prop {
                     AnimatableProperty::Width => {
-                        let new_val = Some(val.round().max(0.0) as u16);
+                        let new_val = Some(val.max(0.0));
                         if node.style.width != new_val {
                             node.style.width = new_val;
                             true
@@ -472,7 +472,7 @@ impl AnimationController {
                         }
                     }
                     AnimatableProperty::Height => {
-                        let new_val = Some(val.round().max(0.0) as u16);
+                        let new_val = Some(val.max(0.0));
                         if node.style.height != new_val {
                             node.style.height = new_val;
                             true
@@ -481,7 +481,7 @@ impl AnimationController {
                         }
                     }
                     AnimatableProperty::Top => {
-                        let new_val = Some(val.round() as i16);
+                        let new_val = Some(val);
                         if node.style.top != new_val {
                             node.style.top = new_val;
                             true
@@ -490,7 +490,7 @@ impl AnimationController {
                         }
                     }
                     AnimatableProperty::Left => {
-                        let new_val = Some(val.round() as i16);
+                        let new_val = Some(val);
                         if node.style.left != new_val {
                             node.style.left = new_val;
                             true
@@ -499,7 +499,7 @@ impl AnimationController {
                         }
                     }
                     AnimatableProperty::Right => {
-                        let new_val = Some(val.round() as i16);
+                        let new_val = Some(val);
                         if node.style.right != new_val {
                             node.style.right = new_val;
                             true
@@ -508,7 +508,7 @@ impl AnimationController {
                         }
                     }
                     AnimatableProperty::Bottom => {
-                        let new_val = Some(val.round() as i16);
+                        let new_val = Some(val);
                         if node.style.bottom != new_val {
                             node.style.bottom = new_val;
                             true
@@ -588,7 +588,7 @@ mod tests {
     fn test_animation_controller_tick() {
         let mut doc = THTMLDocument::default();
         let mut node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box);
-        node.style.width = Some(10);
+        node.style.width = Some(10.0);
         node.style.transitions.push(TransitionSpec {
             property: AnimatableProperty::Width,
             duration_ms: 100,
@@ -606,7 +606,7 @@ mod tests {
         assert!(!controller.has_active());
 
         // Change width to 20
-        doc.arena.get_mut(id).unwrap().style.width = Some(20);
+        doc.arena.get_mut(id).unwrap().style.width = Some(20.0);
         controller.sync_transitions(&mut doc, now);
         assert!(controller.has_active());
         assert_eq!(controller.active_count(), 1);
@@ -616,14 +616,14 @@ mod tests {
         let changed = controller.tick(&mut doc, mid_time);
         assert!(changed);
         let current_width = doc.arena.get(id).unwrap().style.width.unwrap();
-        assert!(current_width >= 14 && current_width <= 16, "Width should be ~15, got {}", current_width);
+        assert!(current_width >= 14.0 && current_width <= 16.0, "Width should be ~15, got {}", current_width);
 
         // Tick at 110ms (finished)
         let end_time = now + Duration::from_millis(110);
         let changed_end = controller.tick(&mut doc, end_time);
         assert!(changed_end);
         let final_width = doc.arena.get(id).unwrap().style.width.unwrap();
-        assert_eq!(final_width, 20);
+        assert_eq!(final_width, 20.0);
         assert!(!controller.has_active());
     }
 
@@ -631,7 +631,7 @@ mod tests {
     fn test_restore_baselines_prevents_intermediate_target_corruption() {
         let mut doc = THTMLDocument::default();
         let mut node = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box);
-        node.style.width = Some(10);
+        node.style.width = Some(10.0);
         node.style.transitions.push(TransitionSpec {
             property: AnimatableProperty::Width,
             duration_ms: 100,
@@ -648,17 +648,20 @@ mod tests {
         controller.sync_transitions(&mut doc, now);
 
         // New target: width 20
-        doc.arena.get_mut(id).unwrap().style.width = Some(20);
+        doc.arena.get_mut(id).unwrap().style.width = Some(20.0);
         controller.sync_transitions(&mut doc, now);
         assert!(controller.has_active());
 
         // Halfway tick: sets node.style.width to 15
         controller.tick(&mut doc, now + Duration::from_millis(50));
-        assert_eq!(doc.arena.get(id).unwrap().style.width, Some(15));
+        // Interpolated lengths are no longer rounded (the TUI layout does that), and the
+        // transition's start_time is Instant::now(), so allow a little timing jitter.
+        let mid = doc.arena.get(id).unwrap().style.width.unwrap();
+        assert!((mid - 15.0).abs() < 0.5, "got {mid}");
 
         // Restore baselines: node.style.width restored to target 20
         controller.restore_baselines(&mut doc);
-        assert_eq!(doc.arena.get(id).unwrap().style.width, Some(20));
+        assert_eq!(doc.arena.get(id).unwrap().style.width, Some(20.0));
 
         // Calling sync_transitions again does NOT spawn extra transitions or alter target 20
         controller.sync_transitions(&mut doc, now + Duration::from_millis(50));

@@ -6,6 +6,7 @@
 use taffy::prelude::*;
 use crate::document::THTMLDocument;
 use crate::layout::types::{LayoutResult, Rect as OxiRect};
+use oxiterm_proto::style::RenderMode;
 use oxiterm_proto::dom::NodeId as OxiNodeId;
 use std::collections::HashMap;
 use anyhow::anyhow;
@@ -117,23 +118,55 @@ pub struct LayoutEngine {
     node_map: HashMap<OxiNodeId, taffy::NodeId>,
     /// The cached result of the last layout calculation run.
     pub last_layout: Option<LayoutResult>,
+    /// Whether style lengths and computed rectangles are snapped to whole cells.
+    mode: RenderMode,
 }
 
 impl LayoutEngine {
     /// Creates a new layout engine with an empty Taffy tree.
     pub fn new() -> Self {
+        Self::with_mode(RenderMode::Tui)
+    }
+
+    /// Creates a layout engine for the given render mode.
+    ///
+    /// `Tui` snaps lengths and rectangles to whole cells; `Gui` keeps them fractional.
+    pub fn with_mode(mode: RenderMode) -> Self {
         Self {
-            taffy: TaffyTree::new(),
+            taffy: Self::new_tree(mode),
             node_map: HashMap::new(),
             last_layout: None,
+            mode,
         }
+    }
+
+    /// Builds a Taffy tree for `mode`. Taffy's own pixel rounding stays on for TUI (it
+    /// rounds by absolute position, which the cell snapshots rely on) and is disabled
+    /// for GUI so fractional sizes survive.
+    fn new_tree(mode: RenderMode) -> TaffyTree<MeasureContext> {
+        let mut tree = TaffyTree::new();
+        if mode == RenderMode::Gui {
+            tree.disable_rounding();
+        }
+        tree
+    }
+
+    /// The one place style lengths are snapped: in TUI mode a style length becomes a whole
+    /// number of cells (`f32::round`); in GUI mode it is passed through unchanged.
+    fn snap(&self, v: f32) -> f32 {
+        if self.mode == RenderMode::Tui { v.round() } else { v }
+    }
+
+    /// [`Self::snap`] for lengths that cannot be negative (sizes, padding, margin).
+    fn snap_size(&self, v: f32) -> f32 {
+        self.snap(v).max(0.0)
     }
 
     /// Resets the engine, discarding the current Taffy tree and node mappings.
     ///
     /// Required after document defragmentation (compaction) to prevent stale ID lookups.
     pub fn reset_nodes(&mut self) {
-        self.taffy = TaffyTree::new();
+        self.taffy = Self::new_tree(self.mode);
         self.node_map.clear();
         self.last_layout = None;
     }
@@ -184,28 +217,28 @@ impl LayoutEngine {
 
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
         
-        let mut root_w = cols;
-        let mut root_h = u16::MAX;
+        let mut root_w = cols as f32;
+        let mut root_h = u16::MAX as f32;
 
         if let Some(root_node) = doc.arena.get(doc.root) {
             let mut style = self.map_style(root_node, state_evaluator);
             if let Some(w) = root_node.style.width {
-                root_w = w;
+                root_w = self.snap_size(w);
             } else {
                 style.size.width = taffy::style::Dimension::Length(cols as f32);
             }
             if let Some(h) = root_node.style.height {
-                root_h = h;
+                root_h = self.snap_size(h);
             } else {
                 style.size.height = taffy::style::Dimension::Length(u16::MAX as f32);
-                root_h = u16::MAX;
+                root_h = u16::MAX as f32;
             }
             self.taffy.set_style(root_taffy_id, style)?;
         }
 
         let available_space = Size {
-            width: AvailableSpace::Definite(root_w as f32),
-            height: AvailableSpace::Definite(root_h as f32),
+            width: AvailableSpace::Definite(root_w),
+            height: AvailableSpace::Definite(root_h),
         };
 
         // Measure closure resolves height-from-width for `wrap:word` text leaves
@@ -221,11 +254,11 @@ impl LayoutEngine {
         )?;
 
         let mut nodes = HashMap::new();
-        self.flatten_layout_recursive(doc, doc.root, 0, 0, &mut nodes)?;
+        self.flatten_layout_recursive(doc, doc.root, 0.0, 0.0, &mut nodes)?;
 
         doc.clear_dirty();
 
-        let mut max_bottom = 0;
+        let mut max_bottom = 0.0f32;
         for (&node_id, rect) in &nodes {
             if node_id == doc.root {
                 continue;
@@ -244,7 +277,8 @@ impl LayoutEngine {
         let mut paint_order = Vec::with_capacity(nodes.len());
         collect_paint_order_recursive(doc, doc.root, &nodes, &mut paint_order);
 
-        let result = LayoutResult { nodes, paint_order, total_height: max_bottom };
+        let result = LayoutResult { nodes, paint_order, // Scroll is still cell-based, so the extent stays whole cells.
+            total_height: max_bottom.ceil() as u16 };
         self.last_layout = Some(result.clone());
         Ok(result)
     }
@@ -253,8 +287,8 @@ impl LayoutEngine {
         &self,
         doc: &THTMLDocument,
         oxi_id: OxiNodeId,
-        parent_x: u16,
-        parent_y: u16,
+        parent_x: f32,
+        parent_y: f32,
         nodes: &mut HashMap<OxiNodeId, OxiRect>,
     ) -> anyhow::Result<()> {
         if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
@@ -268,10 +302,18 @@ impl LayoutEngine {
                 let layout = self.taffy.layout(taffy_id)
                     .map_err(|e| anyhow!("Taffy layout missing for node {oxi_id:?}: {e:?}"))?;
                 
-                let rect_x = layout.location.x.round().max(0.0) as u16;
-                let rect_y = layout.location.y.round().max(0.0) as u16;
-                let width = layout.size.width.round().max(0.0) as u16;
-                let height = layout.size.height.round().max(0.0) as u16;
+                // TUI snaps to whole cells here exactly as before; GUI keeps fractions
+                // (sizes are still clamped to be non-negative).
+                let (rect_x, rect_y) = if self.mode == RenderMode::Tui {
+                    (layout.location.x.round().max(0.0), layout.location.y.round().max(0.0))
+                } else {
+                    (layout.location.x, layout.location.y)
+                };
+                let (width, height) = if self.mode == RenderMode::Tui {
+                    (layout.size.width.round().max(0.0), layout.size.height.round().max(0.0))
+                } else {
+                    (layout.size.width.max(0.0), layout.size.height.max(0.0))
+                };
                 
                 let (abs_x, abs_y) = if let Some(node) = doc.arena.get(oxi_id) {
                     if node.style.position == oxiterm_proto::style::Position::Fixed {
@@ -335,7 +377,8 @@ impl LayoutEngine {
     /// the top-most visible element covering the coordinates.
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
         let layout = self.last_layout.as_ref()?;
-        crate::layout::types::HitTester::new(layout).find_node(x, y)
+        // Cell (col, row) is probed at its centre.
+        crate::layout::types::HitTester::new(layout).find_node(x as f32 + 0.5, y as f32 + 0.5)
     }
 
     fn ensure_nodes_exist_recursive(
@@ -374,11 +417,11 @@ impl LayoutEngine {
 
     fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
         let style = &node.style;
-        let mut width = style.width;
-        let mut height = style.height;
+        let mut width = style.width.map(|w| self.snap_size(w));
+        let mut height = style.height.map(|h| self.snap_size(h));
         // Intrinsic glyph width used as a shrink floor for non-wrapping text, set ONLY
         // when the width was auto-derived from text (not when the author gave a width).
-        let mut min_width: Option<u16> = None;
+        let mut min_width: Option<f32> = None;
         // Whether this node's size is resolved by the Taffy measure closure (wrap:word
         // text). Such nodes keep only their explicit style dimensions here; the closure
         // fills in the rest and must not be overridden by cross-axis stretch.
@@ -399,23 +442,23 @@ impl LayoutEngine {
                     // first column hit-testable/clickable (e.g. the "← Back" link).
                     let text = node.text.as_deref().unwrap_or("");
                     if width.is_none() {
-                        let mut calculated_width = text_intrinsic_width(text);
+                        let mut calculated_width = text_intrinsic_width(text) as f32;
                         if node.tag == oxiterm_proto::dom::NodeTag::Button {
                             if style.border.is_some() {
-                                calculated_width += 2;
+                                calculated_width += 2.0;
                             }
-                            calculated_width += style.padding.left + style.padding.right;
+                            calculated_width += self.snap_size(style.padding.left) + self.snap_size(style.padding.right);
                         }
                         width = Some(calculated_width);
                         min_width = Some(calculated_width);
                     }
                     if height.is_none() {
-                        let mut calculated_height = (text.lines().count() as u16).max(1);
+                        let mut calculated_height = (text.lines().count() as f32).max(1.0);
                         if node.tag == oxiterm_proto::dom::NodeTag::Button {
                             if style.border.is_some() {
-                                calculated_height += 2;
+                                calculated_height += 2.0;
                             }
-                            calculated_height += style.padding.top + style.padding.bottom;
+                            calculated_height += self.snap_size(style.padding.top) + self.snap_size(style.padding.bottom);
                         }
                         height = Some(calculated_height);
                     }
@@ -439,15 +482,15 @@ impl LayoutEngine {
         };
 
         let min_height: Dimension = if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
-            height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto)
+            height.map(|h| Dimension::Length(h)).unwrap_or(Dimension::Auto)
         } else {
             Dimension::Auto
         };
 
         let final_min_width: Dimension = if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
-            width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto)
+            width.map(|w| Dimension::Length(w)).unwrap_or(Dimension::Auto)
         } else {
-            min_width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto)
+            min_width.map(|w| Dimension::Length(w)).unwrap_or(Dimension::Auto)
         };
 
         Style {
@@ -474,24 +517,24 @@ impl LayoutEngine {
             }),
             align_self: if measured_text { Some(AlignItems::Start) } else { None },
             size: Size {
-                width: width.map(|w| Dimension::Length(w as f32)).unwrap_or(Dimension::Auto),
-                height: height.map(|h| Dimension::Length(h as f32)).unwrap_or(Dimension::Auto),
+                width: width.map(|w| Dimension::Length(w)).unwrap_or(Dimension::Auto),
+                height: height.map(|h| Dimension::Length(h)).unwrap_or(Dimension::Auto),
             },
             min_size: Size {
                 width: final_min_width,
                 height: min_height,
             },
             padding: Rect {
-                left: LengthPercentage::Length(style.padding.left as f32),
-                right: LengthPercentage::Length(style.padding.right as f32),
-                top: LengthPercentage::Length(style.padding.top as f32),
-                bottom: LengthPercentage::Length(style.padding.bottom as f32),
+                left: LengthPercentage::Length(self.snap_size(style.padding.left)),
+                right: LengthPercentage::Length(self.snap_size(style.padding.right)),
+                top: LengthPercentage::Length(self.snap_size(style.padding.top)),
+                bottom: LengthPercentage::Length(self.snap_size(style.padding.bottom)),
             },
             margin: Rect {
-                left: LengthPercentage::Length(style.margin.left as f32).into(),
-                right: LengthPercentage::Length(style.margin.right as f32).into(),
-                top: LengthPercentage::Length(style.margin.top as f32).into(),
-                bottom: LengthPercentage::Length(style.margin.bottom as f32).into(),
+                left: LengthPercentage::Length(self.snap_size(style.margin.left)).into(),
+                right: LengthPercentage::Length(self.snap_size(style.margin.right)).into(),
+                top: LengthPercentage::Length(self.snap_size(style.margin.top)).into(),
+                bottom: LengthPercentage::Length(self.snap_size(style.margin.bottom)).into(),
             },
             border: if style.border.is_some() {
                 Rect {
@@ -513,10 +556,10 @@ impl LayoutEngine {
                 _ => Position::Relative,
             },
             inset: Rect {
-                left: style.left.map(|l| LengthPercentageAuto::Length(l as f32)).unwrap_or(LengthPercentageAuto::Auto),
-                right: style.right.map(|r| LengthPercentageAuto::Length(r as f32)).unwrap_or(LengthPercentageAuto::Auto),
-                top: style.top.map(|t| LengthPercentageAuto::Length(t as f32)).unwrap_or(LengthPercentageAuto::Auto),
-                bottom: style.bottom.map(|b| LengthPercentageAuto::Length(b as f32)).unwrap_or(LengthPercentageAuto::Auto),
+                left: style.left.map(|l| LengthPercentageAuto::Length(self.snap(l))).unwrap_or(LengthPercentageAuto::Auto),
+                right: style.right.map(|r| LengthPercentageAuto::Length(self.snap(r))).unwrap_or(LengthPercentageAuto::Auto),
+                top: style.top.map(|t| LengthPercentageAuto::Length(self.snap(t))).unwrap_or(LengthPercentageAuto::Auto),
+                bottom: style.bottom.map(|b| LengthPercentageAuto::Length(self.snap(b))).unwrap_or(LengthPercentageAuto::Auto),
             },
             ..Default::default()
         }
@@ -535,15 +578,15 @@ mod tests {
         let mut doc = THTMLDocument::new();
         
         let mut child = Node::new(NodeTag::Box);
-        child.style.width = Some(20);
-        child.style.height = Some(10);
+        child.style.width = Some(20.0);
+        child.style.height = Some(10.0);
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&child_id).unwrap();
-        assert_eq!(rect.width, 20);
-        assert_eq!(rect.height, 10);
+        assert_eq!(rect.width, 20.0);
+        assert_eq!(rect.height, 10.0);
     }
 
     #[test]
@@ -552,9 +595,9 @@ mod tests {
         let mut doc = THTMLDocument::new();
         
         let mut child = Node::new(NodeTag::Box);
-        child.style.width = Some(10);
-        child.style.height = Some(10);
-        child.style.margin.left = 5;
+        child.style.width = Some(10.0);
+        child.style.height = Some(10.0);
+        child.style.margin.left = 5.0;
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
         
@@ -573,37 +616,38 @@ mod tests {
         let mut doc = THTMLDocument::new();
 
         let mut parent = Node::new(NodeTag::Box);
-        parent.style.width = Some(30);
-        parent.style.height = Some(10);
-        parent.style.margin.left = 5;
-        parent.style.margin.top = 2;
+        parent.style.width = Some(30.0);
+        parent.style.height = Some(10.0);
+        parent.style.margin.left = 5.0;
+        parent.style.margin.top = 2.0;
         let parent_id = doc.arena.alloc(parent);
         doc.append_child(doc.root, parent_id).unwrap();
 
         let mut child = Node::new(NodeTag::Box);
-        child.style.width = Some(8);
-        child.style.height = Some(3);
-        child.style.margin.left = 4;
-        child.style.margin.top = 2;
+        child.style.width = Some(8.0);
+        child.style.height = Some(3.0);
+        child.style.margin.left = 4.0;
+        child.style.margin.top = 2.0;
         let child_id = doc.arena.alloc(child);
         doc.append_child(parent_id, child_id).unwrap();
 
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let pr = *result.nodes.get(&parent_id).unwrap();
         let cr = *result.nodes.get(&child_id).unwrap();
-        assert!(cr.width > 0 && cr.height > 0 && pr.width > 0);
+        let (pc, cc) = (pr.cells(), cr.cells());
+        assert!(cr.width > 0.0 && cr.height > 0.0 && pr.width > 0.0);
 
         // Every cell of the (deepest) child maps back to the child.
-        for y in cr.y..cr.y + cr.height {
-            for x in cr.x..cr.x + cr.width {
+        for y in cc.y..cc.y + cc.height {
+            for x in cc.x..cc.x + cc.width {
                 assert_eq!(engine.hit_test(x, y), Some(child_id),
                     "cell ({x},{y}) inside the child must hit-test back to it");
             }
         }
         // Every cell of the parent maps to the child where they overlap, else the parent.
-        for y in pr.y..pr.y + pr.height {
-            for x in pr.x..pr.x + pr.width {
-                let expected = if cr.contains(x, y) { child_id } else { parent_id };
+        for y in pc.y..pc.y + pc.height {
+            for x in pc.x..pc.x + pc.width {
+                let expected = if cr.contains(x as f32 + 0.5, y as f32 + 0.5) { child_id } else { parent_id };
                 assert_eq!(engine.hit_test(x, y), Some(expected),
                     "cell ({x},{y}) must hit-test to the deepest covering node");
             }
@@ -618,16 +662,16 @@ mod tests {
         let mut doc = THTMLDocument::new();
         
         let mut parent = Node::new(NodeTag::Box);
-        parent.style.width = Some(20);
-        parent.style.height = Some(20);
-        parent.style.margin.left = 10;
+        parent.style.width = Some(20.0);
+        parent.style.height = Some(20.0);
+        parent.style.margin.left = 10.0;
         let parent_id = doc.arena.alloc(parent);
         doc.append_child(doc.root, parent_id).unwrap();
 
         let mut child = Node::new(NodeTag::Box);
-        child.style.width = Some(5);
-        child.style.height = Some(5);
-        child.style.margin.left = 5;
+        child.style.width = Some(5.0);
+        child.style.height = Some(5.0);
+        child.style.margin.left = 5.0;
         let child_id = doc.arena.alloc(child);
         doc.append_child(parent_id, child_id).unwrap();
         
@@ -649,8 +693,8 @@ mod tests {
         
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
-        assert_eq!(rect.width, 6);
-        assert_eq!(rect.height, 2);
+        assert_eq!(rect.width, 6.0);
+        assert_eq!(rect.height, 2.0);
     }
 
     struct MockEvaluator {
@@ -674,8 +718,8 @@ mod tests {
         // so the box's bottom border — not the parent — is the document's lowest row.
         let mut parent = Node::new(NodeTag::Box);
         parent.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
-        parent.style.width = Some(40);
-        parent.style.height = Some(2);
+        parent.style.width = Some(40.0);
+        parent.style.height = Some(2.0);
         let parent_id = doc.arena.alloc(parent);
         doc.append_child(doc.root, parent_id).unwrap();
 
@@ -696,7 +740,7 @@ mod tests {
         let text_rect = result.nodes.get(&text_id).unwrap();
         // Box = top border (1) + text (1) + bottom border (1) = 3 rows, overflowing the
         // height-2 parent. The bottom border row sits strictly below the last text line.
-        assert!(text_rect.y + text_rect.height <= result.total_height - 1,
+        assert!(text_rect.y + text_rect.height <= f32::from(result.total_height) - 1.0,
             "bottom border row must sit below the last text line");
         assert_eq!(result.total_height, 3, "scroll extent must include the bottom border row");
     }
@@ -711,14 +755,14 @@ mod tests {
 
         // First child is only 5 tall, but holds a 20-tall child that overflows it.
         let mut outer = Node::new(NodeTag::Box);
-        outer.style.width = Some(40);
-        outer.style.height = Some(5);
+        outer.style.width = Some(40.0);
+        outer.style.height = Some(5.0);
         let outer_id = doc.arena.alloc(outer);
         doc.append_child(doc.root, outer_id).unwrap();
 
         let mut inner = Node::new(NodeTag::Box);
-        inner.style.width = Some(40);
-        inner.style.height = Some(20);
+        inner.style.width = Some(40.0);
+        inner.style.height = Some(20.0);
         let inner_id = doc.arena.alloc(inner);
         doc.append_child(outer_id, inner_id).unwrap();
 
@@ -741,8 +785,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
         
         let mut child = Node::new(NodeTag::Box);
-        child.style.width = Some(10);
-        child.style.height = Some(10);
+        child.style.width = Some(10.0);
+        child.style.height = Some(10.0);
         child.attrs.bind_show = Some("some_cond".to_string());
         let child_id = doc.arena.alloc(child);
         doc.append_child(doc.root, child_id).unwrap();
@@ -764,14 +808,14 @@ mod tests {
         let mut text_node = Node::new(NodeTag::Text);
         text_node.text = Some("aa bb cc".to_string());
         text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
-        text_node.style.width = Some(5);
+        text_node.style.width = Some(5.0);
         
         let node_id = doc.arena.alloc(text_node);
         doc.append_child(doc.root, node_id).unwrap();
         
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
-        assert_eq!(rect.height, 2);
+        assert_eq!(rect.height, 2.0);
     }
 
     // Builds a flex Row (width 8) holding a shrinkable spacer Box followed by the
@@ -784,20 +828,20 @@ mod tests {
 
         let mut row = Node::new(NodeTag::Box);
         row.style.flex_direction = oxiterm_proto::style::FlexDirection::Row;
-        row.style.width = Some(8); // narrower than spacer(6) + label(6), forces shrink
-        row.style.height = Some(1);
+        row.style.width = Some(8.0); // narrower than spacer(6) + label(6), forces shrink
+        row.style.height = Some(1.0);
         let row_id = doc.arena.alloc(row);
         doc.append_child(doc.root, row_id).unwrap();
 
         let mut spacer = Node::new(NodeTag::Box);
-        spacer.style.width = Some(6);
-        spacer.style.height = Some(1);
+        spacer.style.width = Some(6.0);
+        spacer.style.height = Some(1.0);
         let spacer_id = doc.arena.alloc(spacer);
         doc.append_child(row_id, spacer_id).unwrap();
 
         let mut text_node = Node::new(NodeTag::Text);
         text_node.text = Some("← Back".to_string());
-        text_node.style.height = Some(1);
+        text_node.style.height = Some(1.0);
         if interactive {
             text_node.attrs.event_htmx = Some("/back".to_string());
         }
@@ -814,7 +858,7 @@ mod tests {
         // keep its 6-wide glyph span, not be shrunk by Taffy's default flex_shrink=1.
         let (engine, text_id) = narrow_row_with_back_label(false);
         let rect = engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
-        assert_eq!(rect.width, 6, "text node must not shrink below its glyph span");
+        assert_eq!(rect.width, 6.0, "text node must not shrink below its glyph span");
     }
 
     #[test]
@@ -822,10 +866,10 @@ mod tests {
         // t2: every column across the glyph span resolves to the text node.
         let (engine, text_id) = narrow_row_with_back_label(false);
         let rect = *engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
-        assert_eq!(rect.width, 6);
-        for x in rect.x..rect.x + rect.width {
+        assert_eq!(rect.width, 6.0);
+        for x in rect.cells().x..rect.cells().x + rect.cells().width {
             assert_eq!(
-                engine.hit_test(x, rect.y),
+                engine.hit_test(x, rect.cells().y),
                 Some(text_id),
                 "column {x} should hit the text node"
             );
@@ -838,9 +882,9 @@ mod tests {
         // to that node, so a click on the last letter reaches the activation wiring.
         let (engine, text_id) = narrow_row_with_back_label(true);
         let rect = *engine.last_layout.as_ref().unwrap().nodes.get(&text_id).unwrap();
-        assert_eq!(rect.width, 6);
+        assert_eq!(rect.width, 6.0);
         assert_eq!(
-            engine.hit_test(rect.x + rect.width - 1, rect.y),
+            engine.hit_test(rect.cells().x + rect.cells().width - 1, rect.cells().y),
             Some(text_id),
             "last column of the link must resolve to the interactive node"
         );
@@ -855,8 +899,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
 
         let mut container = Node::new(NodeTag::Box);
-        container.style.width = Some(container_width);
-        container.style.height = Some(container_height);
+        container.style.width = Some(f32::from(container_width));
+        container.style.height = Some(f32::from(container_height));
         let container_id = doc.arena.alloc(container);
         doc.append_child(doc.root, container_id).unwrap();
 
@@ -877,8 +921,8 @@ mod tests {
         // the container and grow to the wrapped line count.
         // "alpha beta gamma delta" at width 10 wraps to: "alpha beta" / "gamma" / "delta".
         let rect = wrapped_paragraph_rect(10, 4, "alpha beta gamma delta");
-        assert_eq!(rect.width, 10, "must narrow to the container width, not stay at 22");
-        assert_eq!(rect.height, 3, "height must follow the wrapped line count, not be 1");
+        assert_eq!(rect.width, 10.0, "must narrow to the container width, not stay at 22");
+        assert_eq!(rect.height, 3.0, "height must follow the wrapped line count, not be 1");
     }
 
     #[test]
@@ -887,8 +931,8 @@ mod tests {
         // "alpha" / "beta" / "gamma" / "delta" => 4 lines (no two 5/4-wide words fit in 6
         // together since 5+1+4=10 > 6).
         let rect = wrapped_paragraph_rect(6, 6, "alpha beta gamma delta");
-        assert_eq!(rect.width, 6);
-        assert_eq!(rect.height, 4, "height must recompute from the narrower final width");
+        assert_eq!(rect.width, 6.0);
+        assert_eq!(rect.height, 4.0, "height must recompute from the narrower final width");
     }
 
     #[test]
@@ -899,14 +943,14 @@ mod tests {
         let mut text_node = Node::new(NodeTag::Text);
         text_node.text = Some("abcdefg".to_string());
         text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
-        text_node.style.width = Some(5);
+        text_node.style.width = Some(5.0);
         
         let node_id = doc.arena.alloc(text_node);
         doc.append_child(doc.root, node_id).unwrap();
         
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect = result.nodes.get(&node_id).unwrap();
-        assert_eq!(rect.height, 1);
+        assert_eq!(rect.height, 1.0);
     }
 
     #[test]
@@ -927,12 +971,12 @@ mod tests {
         
         let mut col = Node::new(NodeTag::Box);
         col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
-        col.style.height = Some(10);
+        col.style.height = Some(10.0);
         let col_id = doc.arena.alloc(col);
         doc.append_child(doc.root, col_id).unwrap();
 
         let mut child1 = Node::new(NodeTag::Box);
-        child1.style.height = Some(3);
+        child1.style.height = Some(3.0);
         let c1_id = doc.arena.alloc(child1);
         doc.append_child(col_id, c1_id).unwrap();
 
@@ -944,8 +988,8 @@ mod tests {
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
         let rect1 = result.nodes.get(&c1_id).unwrap();
         let rect2 = result.nodes.get(&c2_id).unwrap();
-        assert_eq!(rect1.height, 3);
-        assert_eq!(rect2.height, 7);
+        assert_eq!(rect1.height, 3.0);
+        assert_eq!(rect2.height, 7.0);
     }
 
     #[test]
@@ -956,7 +1000,7 @@ mod tests {
 
         let mut col = Node::new(NodeTag::Box);
         col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
-        col.style.height = Some(10);
+        col.style.height = Some(10.0);
         let col_id = doc.arena.alloc(col.clone());
         doc.append_child(doc.root, col_id).unwrap();
 
@@ -973,8 +1017,8 @@ mod tests {
         doc.append_child(col_id, c2_id).unwrap();
 
         let result = engine.compute(&mut doc, 80, 0, None).unwrap();
-        assert_eq!(result.nodes.get(&c1_id).unwrap().height, 5);
-        assert_eq!(result.nodes.get(&c2_id).unwrap().height, 5);
+        assert_eq!(result.nodes.get(&c1_id).unwrap().height, 5.0);
+        assert_eq!(result.nodes.get(&c2_id).unwrap().height, 5.0);
 
         // T-10b: column h=10, 2 children flex: 1, 1st with 1 line content, 2nd with 3 lines -> 5 rows each
         let mut doc2 = THTMLDocument::new();
@@ -994,8 +1038,8 @@ mod tests {
         doc2.append_child(col2_id, c2_b_id).unwrap();
 
         let result2 = engine.compute(&mut doc2, 80, 0, None).unwrap();
-        assert_eq!(result2.nodes.get(&c1_b_id).unwrap().height, 5);
-        assert_eq!(result2.nodes.get(&c2_b_id).unwrap().height, 5);
+        assert_eq!(result2.nodes.get(&c1_b_id).unwrap().height, 5.0);
+        assert_eq!(result2.nodes.get(&c2_b_id).unwrap().height, 5.0);
     }
 
     #[test]
@@ -1006,12 +1050,12 @@ mod tests {
 
         let mut col = Node::new(NodeTag::Box);
         col.style.flex_direction = oxiterm_proto::style::FlexDirection::Column;
-        col.style.height = Some(10);
+        col.style.height = Some(10.0);
         let col_id = doc.arena.alloc(col);
         doc.append_child(doc.root, col_id).unwrap();
 
         let mut rigid = Node::new(NodeTag::Box);
-        rigid.style.height = Some(12);
+        rigid.style.height = Some(12.0);
         let rigid_id = doc.arena.alloc(rigid);
         doc.append_child(col_id, rigid_id).unwrap();
 
@@ -1021,8 +1065,8 @@ mod tests {
         doc.append_child(col_id, flex_id).unwrap();
 
         let mut img = Node::new(NodeTag::Img);
-        img.style.width = Some(16);
-        img.style.height = Some(8);
+        img.style.width = Some(16.0);
+        img.style.height = Some(8.0);
         let img_id = doc.arena.alloc(img);
         doc.append_child(flex_id, img_id).unwrap();
 
@@ -1031,10 +1075,10 @@ mod tests {
         let img_rect = result.nodes.get(&img_id).unwrap();
 
         // T-18: container rect has height >= 8
-        assert!(flex_rect.height >= 8, "flex container height must be >= 8, got {}", flex_rect.height);
+        assert!(flex_rect.height >= 8.0, "flex container height must be >= 8, got {}", flex_rect.height);
         // T-18b: img rect has 16x8
-        assert_eq!(img_rect.width, 16);
-        assert_eq!(img_rect.height, 8);
+        assert_eq!(img_rect.width, 16.0);
+        assert_eq!(img_rect.height, 8.0);
     }
 
     #[test]
@@ -1063,8 +1107,8 @@ mod tests {
             }
         }
         let video_rect = found_video.expect("video node must be in layout");
-        assert_eq!(video_rect.width, 38);
-        assert_eq!(video_rect.height, 9);
+        assert_eq!(video_rect.width, 38.0);
+        assert_eq!(video_rect.height, 9.0);
     }
 
     #[test]
@@ -1093,8 +1137,81 @@ mod tests {
             }
         }
         let img_rect = found_img.expect("img node must be in layout");
-        assert_eq!(img_rect.width, 16);
-        assert_eq!(img_rect.height, 8);
+        assert_eq!(img_rect.width, 16.0);
+        assert_eq!(img_rect.height, 8.0);
+    }
+
+    // Two flex:1 children in a 5-wide row: 2.5 each exactly.
+    fn two_flex_children(engine: &mut LayoutEngine) -> (LayoutResult, OxiNodeId, OxiNodeId) {
+        let mut doc = THTMLDocument::new();
+        let mut row = Node::new(NodeTag::Box);
+        row.style.width = Some(5.0);
+        row.style.height = Some(1.0);
+        let row_id = doc.arena.alloc(row);
+        doc.append_child(doc.root, row_id).unwrap();
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            let mut c = Node::new(NodeTag::Box);
+            c.style.flex = Some(1.0);
+            let id = doc.arena.alloc(c);
+            doc.append_child(row_id, id).unwrap();
+            ids.push(id);
+        }
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        (result, ids[0], ids[1])
+    }
+
+    #[test]
+    fn test_gui_mode_keeps_fractional_sizes() {
+        let mut engine = LayoutEngine::with_mode(RenderMode::Gui);
+        let (result, a, b) = two_flex_children(&mut engine);
+        assert_eq!(result.nodes[&a].width, 2.5);
+        assert_eq!(result.nodes[&b].width, 2.5);
+        assert_eq!(result.nodes[&b].x, 2.5);
+    }
+
+    #[test]
+    fn test_tui_mode_snaps_to_whole_cells() {
+        let mut engine = LayoutEngine::new();
+        let (result, a, b) = two_flex_children(&mut engine);
+        let (wa, wb) = (result.nodes[&a].width, result.nodes[&b].width);
+        assert_eq!(wa.fract(), 0.0);
+        assert_eq!(wb.fract(), 0.0);
+        assert_eq!(wa + wb, 5.0);
+        assert_eq!(result.nodes[&b].x.fract(), 0.0);
+    }
+
+    #[test]
+    fn test_tui_rounds_fractional_style_lengths() {
+        let mut doc = THTMLDocument::new();
+        let mut n = Node::new(NodeTag::Box);
+        n.style.width = Some(10.4);
+        n.style.height = Some(3.6);
+        let id = doc.arena.alloc(n);
+        doc.append_child(doc.root, id).unwrap();
+        let tui = LayoutEngine::new().compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!((tui.nodes[&id].width, tui.nodes[&id].height), (10.0, 4.0));
+        doc.mark_dirty(id);
+        let gui = LayoutEngine::with_mode(RenderMode::Gui).compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!((gui.nodes[&id].width, gui.nodes[&id].height), (10.4, 3.6));
+    }
+
+    #[test]
+    fn test_hit_test_cell_centre() {
+        let mut engine = LayoutEngine::new();
+        let mut doc = THTMLDocument::new();
+        let mut n = Node::new(NodeTag::Box);
+        n.style.width = Some(4.0);
+        n.style.height = Some(2.0);
+        n.style.margin.left = 3.0;
+        let id = doc.arena.alloc(n);
+        doc.append_child(doc.root, id).unwrap();
+        let result = engine.compute(&mut doc, 80, 0, None).unwrap();
+        let tester = crate::layout::types::HitTester::new(&result);
+        assert_eq!(tester.find_node(3.5, 0.5), Some(id));
+        assert_eq!(tester.find_node(6.5, 1.5), Some(id));
+        assert_ne!(tester.find_node(2.5, 0.5), Some(id));
+        assert_ne!(tester.find_node(7.5, 0.5), Some(id));
+        assert_eq!(engine.hit_test(3, 0), Some(id));
     }
 }
-

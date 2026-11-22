@@ -978,8 +978,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
         
         let mut parent = Node::new(NodeTag::Box);
-        parent.style.width = Some(5);
-        parent.style.height = Some(3);
+        parent.style.width = Some(5.0);
+        parent.style.height = Some(3.0);
         parent.style.bg = AnsiColor::TrueColor(10, 20, 30);
         parent.style.border = Some(BorderStyle {
             fg: AnsiColor::TrueColor(100, 100, 100),
@@ -989,8 +989,8 @@ mod tests {
         let mut child = Node::new(NodeTag::Text);
         child.text = Some("A".to_string());
         child.style.fg = AnsiColor::Reset;
-        child.style.width = Some(1);
-        child.style.height = Some(1);
+        child.style.width = Some(1.0);
+        child.style.height = Some(1.0);
         
         let parent_id = doc.arena.alloc(parent);
         let child_id = doc.arena.alloc(child);
@@ -1023,8 +1023,8 @@ mod tests {
         
         let mut text_node = Node::new(NodeTag::Text);
         text_node.text = Some("🚀A".to_string()); // Rocket (width 2) + A (width 1)
-        text_node.style.width = Some(5);
-        text_node.style.height = Some(1);
+        text_node.style.width = Some(5.0);
+        text_node.style.height = Some(1.0);
         text_node.style.bg = AnsiColor::TrueColor(5, 5, 5);
         
         let node_id = doc.arena.alloc(text_node);
@@ -1055,8 +1055,8 @@ mod tests {
         
         let mut img_node = Node::new(NodeTag::Img);
         img_node.attrs.src = Some("nonexistent_test_image.png".to_string());
-        img_node.style.width = Some(6);
-        img_node.style.height = Some(4);
+        img_node.style.width = Some(6.0);
+        img_node.style.height = Some(4.0);
         
         let node_id = doc.arena.alloc(img_node);
         doc.append_child(doc.root, node_id).unwrap();
@@ -1079,8 +1079,8 @@ mod tests {
         
         let mut vid_node = Node::new(NodeTag::Video);
         vid_node.attrs.src = Some("nonexistent_video.mp4".to_string());
-        vid_node.style.width = Some(15);
-        vid_node.style.height = Some(5);
+        vid_node.style.width = Some(15.0);
+        vid_node.style.height = Some(5.0);
         
         let node_id = doc.arena.alloc(vid_node);
         doc.append_child(doc.root, node_id).unwrap();
@@ -1137,8 +1137,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
         let mut img_node = Node::new(NodeTag::Img);
         img_node.attrs.src = Some("missing_web_image.png".to_string());
-        img_node.style.width = Some(40);
-        img_node.style.height = Some(5);
+        img_node.style.width = Some(40.0);
+        img_node.style.height = Some(5.0);
         let node_id = doc.arena.alloc(img_node);
         doc.append_child(doc.root, node_id).unwrap();
 
@@ -1164,8 +1164,8 @@ mod tests {
         let mut doc = THTMLDocument::new();
         let mut img_node = Node::new(NodeTag::Img);
         img_node.attrs.src = Some("test_web_existing.png".to_string());
-        img_node.style.width = Some(30);
-        img_node.style.height = Some(5);
+        img_node.style.width = Some(30.0);
+        img_node.style.height = Some(5.0);
         let node_id = doc.arena.alloc(img_node);
         doc.append_child(doc.root, node_id).unwrap();
 
@@ -1188,7 +1188,7 @@ mod tests {
         let mut text_node = Node::new(NodeTag::Text);
         text_node.text = Some("aa bb cc".to_string());
         text_node.style.wrap = oxiterm_proto::style::WrapMode::Word;
-        text_node.style.width = Some(5);
+        text_node.style.width = Some(5.0);
         
         let node_id = doc.arena.alloc(text_node);
         doc.append_child(doc.root, node_id).unwrap();
@@ -1215,8 +1215,8 @@ mod tests {
         let mut input_node = Node::new(NodeTag::Input);
         input_node.attrs.input_type = Some("password".to_string());
         input_node.text = Some("secret".to_string());
-        input_node.style.width = Some(10);
-        input_node.style.height = Some(1);
+        input_node.style.width = Some(10.0);
+        input_node.style.height = Some(1.0);
         
         let node_id = doc.arena.alloc(input_node);
         doc.append_child(doc.root, node_id).unwrap();
@@ -1245,8 +1245,8 @@ mod tests {
             fg: AnsiColor::Reset,
             chars: BorderChars::single(),
         });
-        btn.style.padding.left = 1;
-        btn.style.padding.right = 1;
+        btn.style.padding.left = 1.0;
+        btn.style.padding.right = 1.0;
         
         let node_id = doc.arena.alloc(btn);
         doc.append_child(doc.root, node_id).unwrap();
@@ -1254,8 +1254,8 @@ mod tests {
         let mut engine = LayoutEngine::new();
         // text 8 + border 2 + padding 2 = 12 columns wide, 3 rows high
         let layout = engine.compute(&mut doc, 20, 5, None).unwrap();
-        assert_eq!(layout.nodes[&node_id].width, 12);
-        assert_eq!(layout.nodes[&node_id].height, 3);
+        assert_eq!(layout.nodes[&node_id].width, 12.0);
+        assert_eq!(layout.nodes[&node_id].height, 3.0);
 
         let mut buffer = CellBuffer::new(20, 5);
         Renderer::render_node(&doc, &layout, &mut buffer, &TerminalProfile::default(), None, None, 0);

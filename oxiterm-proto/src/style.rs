@@ -31,6 +31,16 @@ pub enum Position {
     Fixed,
 }
 
+/// How the layout result is consumed: snapped to terminal cells or kept fractional.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RenderMode {
+    /// Terminal cells: every length is rounded to whole cells (the only place snapping happens).
+    #[default]
+    Tui,
+    /// Graphical output: lengths and rectangles stay fractional.
+    Gui,
+}
+
 /// The computed styling of a node after resolving the TCSS cascade.
 ///
 /// Maps flexbox positioning and visual attributes for DOM rendering.
@@ -40,10 +50,10 @@ pub struct ComputedStyle {
     pub fg: AnsiColor,
     /// Background color.
     pub bg: AnsiColor,
-    /// Element width in terminal cell columns.
-    pub width: Option<u16>,
-    /// Element height in terminal cell rows.
-    pub height: Option<u16>,
+    /// Element width in cell units (fractional in GUI mode).
+    pub width: Option<f32>,
+    /// Element height in cell units (fractional in GUI mode).
+    pub height: Option<f32>,
     /// Flexbox layout direction (row or column).
     pub flex_direction: FlexDirection,
     /// Align items along the cross axis of the flex container.
@@ -63,13 +73,13 @@ pub struct ComputedStyle {
     /// Positioning model.
     pub position: Position,
     /// Top offset inset in character cells.
-    pub top: Option<i16>,
+    pub top: Option<f32>,
     /// Right offset inset in character cells.
-    pub right: Option<i16>,
+    pub right: Option<f32>,
     /// Bottom offset inset in character cells.
-    pub bottom: Option<i16>,
+    pub bottom: Option<f32>,
     /// Left offset inset in character cells.
-    pub left: Option<i16>,
+    pub left: Option<f32>,
     /// Stacking order layer priority.
     pub z_index: Option<i32>,
     /// Active CSS transition declarations.
@@ -181,16 +191,16 @@ pub enum JustifyContent {
 }
 
 /// Margin or padding spacing metrics.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
 pub struct Rect {
-    /// Top margin/padding size.
-    pub top: u16,
-    /// Right margin/padding size.
-    pub right: u16,
-    /// Bottom margin/padding size.
-    pub bottom: u16,
-    /// Left margin/padding size.
-    pub left: u16,
+    /// Top margin/padding size (cell units).
+    pub top: f32,
+    /// Right margin/padding size (cell units).
+    pub right: f32,
+    /// Bottom margin/padding size (cell units).
+    pub bottom: f32,
+    /// Left margin/padding size (cell units).
+    pub left: f32,
 }
 
 /// Border styling definition containing colors and characters.

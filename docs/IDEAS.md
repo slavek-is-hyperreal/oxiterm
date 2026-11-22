@@ -13,7 +13,7 @@ This document serves as the master catalog and index of architectural ideas, con
 | **3. Framebuffer Engine (`oxiterm-fb`)** | Direct hardware `/dev/fb0` & DRM/KMS blitter (Zero X11 / Zero Wayland) | Conceptual design complete | [docs/embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers) |
 | **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented in core | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
 | **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Planned / Architecture defined | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
-| **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phased plan defined | [docs/oxi-ui.md](oxi-ui.md) |
+| **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phases 0–2 implemented | [docs/oxi-ui.md](oxi-ui.md) |
 
 ---
 
@@ -83,3 +83,4 @@ This document serves as the master catalog and index of architectural ideas, con
   - **Two execution modes from the same app source:** *server-driven* (thin client paints a DisplayList received over WS, LiveView-style) and *local core* (`oxiterm-core` compiled into a desktop/Android/WASM app, offline, Flutter-style).
   - **No font drift:** a shared font bundle in both modes, and positioned glyph runs in the DisplayList so thin clients never re-measure text.
 * **Read the full plan:** 📄 [docs/oxi-ui.md](oxi-ui.md)
+

@@ -4,7 +4,7 @@
 //! and applies computed style rules cascadingly to the DOM document tree.
 
 use anyhow::Result;
-use oxiterm_proto::style::{AnsiColor, FlexDirection, AlignItems, JustifyContent};
+use oxiterm_proto::style::{RenderMode, AnsiColor, FlexDirection, AlignItems, JustifyContent};
 use nom::{
     bytes::complete::take_while1,
     character::complete::{multispace0, char as nom_char},
@@ -34,35 +34,35 @@ pub enum Declaration {
     /// Background color.
     Bg(AnsiColor),
     /// Width in columns.
-    Width(u16),
+    Width(f32),
     /// Height in rows.
-    Height(u16),
+    Height(f32),
     /// Flex direction.
     FlexDirection(FlexDirection),
     /// Cross-axis alignment.
     AlignItems(AlignItems),
     /// Main-axis content justification.
     JustifyContent(JustifyContent),
-    /// Padding for all sides.
-    Padding(u16),
+    /// Padding for all sides as (vertical, horizontal) cells; px/dp convert per axis.
+    Padding(f32, f32),
     /// Top padding.
-    PaddingTop(u16),
+    PaddingTop(f32),
     /// Right padding.
-    PaddingRight(u16),
+    PaddingRight(f32),
     /// Bottom padding.
-    PaddingBottom(u16),
+    PaddingBottom(f32),
     /// Left padding.
-    PaddingLeft(u16),
-    /// Margin for all sides.
-    Margin(u16),
+    PaddingLeft(f32),
+    /// Margin for all sides as (vertical, horizontal) cells; px/dp convert per axis.
+    Margin(f32, f32),
     /// Top margin.
-    MarginTop(u16),
+    MarginTop(f32),
     /// Right margin.
-    MarginRight(u16),
+    MarginRight(f32),
     /// Bottom margin.
-    MarginBottom(u16),
+    MarginBottom(f32),
     /// Left margin.
-    MarginLeft(u16),
+    MarginLeft(f32),
     /// Border color (enables standard single border).
     Border(AnsiColor),
     /// Border style character preset name (e.g., `rounded`, `double`).
@@ -76,19 +76,96 @@ pub enum Declaration {
     /// Positioning model.
     Position(oxiterm_proto::style::Position),
     /// Top offset inset in cells.
-    Top(i16),
+    Top(f32),
     /// Right offset inset in cells.
-    Right(i16),
+    Right(f32),
     /// Bottom offset inset in cells.
-    Bottom(i16),
+    Bottom(f32),
     /// Left offset inset in cells.
-    Left(i16),
+    Left(f32),
     /// Stacking order layer priority.
     ZIndex(i32),
     /// Transition specification declarations.
     Transition(Vec<oxiterm_proto::style::TransitionSpec>),
     /// Unrecognized property or invalid property value.
     Unknown(String),
+}
+
+/// Axis a length is measured along; selects the `ch`/`lh` meaning and the px/dp conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    /// Widths, left/right insets, horizontal padding and margin.
+    Horizontal,
+    /// Heights, top/bottom insets, vertical padding and margin.
+    Vertical,
+}
+
+/// Provisional reference cell width in px (1 cell = 8 px wide).
+///
+/// PROVISIONAL until phase 6 of docs/oxi-ui.md supplies real font metrics.
+const REF_CELL_W_PX: f32 = 8.0;
+/// Provisional reference cell height in px (1 cell = 16 px tall). See [`REF_CELL_W_PX`].
+const REF_CELL_H_PX: f32 = 16.0;
+
+/// Parses a TCSS length into cell units (f32).
+///
+/// Accepted forms (units are case-insensitive): a bare number (cells), `ch` (one cell
+/// horizontally), `lh` (one cell vertically), and `px` / `dp` (converted with the
+/// provisional 8x16 px reference cell, per `axis`). `ch` and `lh` are converted through
+/// the same reference cell, so on the "wrong" axis they scale by the cell aspect ratio
+/// (`2ch` vertically = 1 cell, `2lh` horizontally = 4 cells). Negative values are allowed
+/// here; see [`parse_length_unsigned`]. Returns `None` for anything malformed
+/// (including `nan`, `inf` and exponent forms).
+pub fn parse_length(s: &str, axis: Axis) -> Option<f32> {
+    let lower = s.trim().to_ascii_lowercase();
+    let (num, unit) = match lower.find(|c: char| c.is_ascii_alphabetic()) {
+        Some(i) => lower.split_at(i),
+        None => (lower.as_str(), ""),
+    };
+    // Plain decimal only: optional sign, digits, at most one dot (rejects nan/inf/1e3).
+    let digits = num.strip_prefix(['-', '+']).unwrap_or(num);
+    if digits.is_empty()
+        || digits.matches('.').count() > 1
+        || !digits.chars().all(|c| c.is_ascii_digit() || c == '.')
+        || !digits.chars().any(|c| c.is_ascii_digit())
+    {
+        return None;
+    }
+    let v: f32 = num.parse().ok()?;
+    let (w, h) = (REF_CELL_W_PX, REF_CELL_H_PX);
+    let cells = match (unit, axis) {
+        ("", _) => v,
+        ("ch", Axis::Horizontal) | ("lh", Axis::Vertical) => v,
+        ("ch", Axis::Vertical) => v * w / h,
+        ("lh", Axis::Horizontal) => v * h / w,
+        ("px" | "dp", Axis::Horizontal) => v / w,
+        ("px" | "dp", Axis::Vertical) => v / h,
+        _ => return None,
+    };
+    if cells.is_finite() { Some(cells) } else { None }
+}
+
+/// Like [`parse_length`] but rejects any value with a leading `-` (including `-0`),
+/// matching the former `u16` parsing of width/height/padding/margin.
+pub fn parse_length_unsigned(s: &str, axis: Axis) -> Option<f32> {
+    if s.trim().starts_with('-') {
+        return None;
+    }
+    // The old `u16` parse rejected out-of-range values; keep that.
+    parse_length(s, axis).filter(|v| *v <= f32::from(u16::MAX))
+}
+
+/// Like [`parse_length`] but also rejects values outside `i16` (the old inset range).
+pub fn parse_length_inset(s: &str, axis: Axis) -> Option<f32> {
+    parse_length(s, axis).filter(|v| (f32::from(i16::MIN)..=f32::from(i16::MAX)).contains(v))
+}
+
+/// Parses a padding/margin shorthand value into `(vertical, horizontal)` cells.
+fn parse_length_pair(s: &str) -> Option<(f32, f32)> {
+    Some((
+        parse_length_unsigned(s, Axis::Vertical)?,
+        parse_length_unsigned(s, Axis::Horizontal)?,
+    ))
 }
 
 /// Strips block comments (`/* ... */`) from the TCSS input string.
@@ -114,8 +191,12 @@ pub fn strip_comments(input: &str) -> String {
 /// A parsed stylesheet containing rule pairings of selectors and style declarations.
 #[derive(Debug, Clone, Default)]
 pub struct StyleSheet {
-    /// Rules defined in the stylesheet.
+    /// Rules defined in the stylesheet, in source order.
     pub rules: Vec<(Selector, Vec<Declaration>)>,
+    /// Render condition of each rule in `rules` (same length, same order).
+    /// `None` means the rule always applies; `Some(mode)` means it comes from an
+    /// `@media (render: <mode>)` block and applies only in that mode.
+    pub rule_modes: Vec<Option<RenderMode>>,
 }
 
 /// Parses a raw TCSS string into a [`StyleSheet`].
@@ -125,8 +206,14 @@ pub struct StyleSheet {
 /// Returns an error if the input string contains invalid TCSS rule syntax.
 pub fn parse_tcss(input: &str) -> Result<StyleSheet> {
     let stripped = strip_comments(input);
-    let (_, rules) = parse_rules(&stripped).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
-    Ok(StyleSheet { rules })
+    let (_, parsed) = parse_rules_with_media(&stripped).map_err(|e| anyhow::anyhow!("TCSS Parse Error: {:?}", e))?;
+    let mut rules = Vec::with_capacity(parsed.len());
+    let mut rule_modes = Vec::with_capacity(parsed.len());
+    for (selector, decls, mode) in parsed {
+        rules.push((selector, decls));
+        rule_modes.push(mode);
+    }
+    Ok(StyleSheet { rules, rule_modes })
 }
 
 /// Parses an inline style string (e.g., `fg: red; padding: 1`) into a list of style declarations.
@@ -151,21 +238,21 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
         Declaration::FlexDirection(d) => style.flex_direction = *d,
         Declaration::AlignItems(a) => style.align_items = *a,
         Declaration::JustifyContent(j) => style.justify_content = *j,
-        Declaration::Padding(p) => {
-            style.padding.top = *p;
-            style.padding.right = *p;
-            style.padding.bottom = *p;
-            style.padding.left = *p;
+        Declaration::Padding(v, h) => {
+            style.padding.top = *v;
+            style.padding.right = *h;
+            style.padding.bottom = *v;
+            style.padding.left = *h;
         }
         Declaration::PaddingTop(p) => style.padding.top = *p,
         Declaration::PaddingRight(p) => style.padding.right = *p,
         Declaration::PaddingBottom(p) => style.padding.bottom = *p,
         Declaration::PaddingLeft(p) => style.padding.left = *p,
-        Declaration::Margin(m) => {
-            style.margin.top = *m;
-            style.margin.right = *m;
-            style.margin.bottom = *m;
-            style.margin.left = *m;
+        Declaration::Margin(v, h) => {
+            style.margin.top = *v;
+            style.margin.right = *h;
+            style.margin.bottom = *v;
+            style.margin.left = *h;
         }
         Declaration::MarginTop(m) => style.margin.top = *m,
         Declaration::MarginRight(m) => style.margin.right = *m,
@@ -228,6 +315,121 @@ fn parse_rules(input: &str) -> IResult<&str, Vec<(Selector, Vec<Declaration>)>> 
     )))(input).map(|(i, v)| (i, v.into_iter().map(|(_, s, _, d, _)| (s, d)).collect()))
 }
 
+type ConditionalRule = (Selector, Vec<Declaration>, Option<RenderMode>);
+
+/// Parses top-level rules and `@media (render: ...)` blocks, keeping source order.
+///
+/// Rules inside a media block carry `Some(mode)`; all others carry `None`. A media block whose
+/// query is not exactly `(render: tui)` / `(render: gui)` is skipped as a whole (like CSS does
+/// with queries it does not match) and parsing continues after its matching `}`.
+fn parse_rules_with_media(input: &str) -> IResult<&str, Vec<ConditionalRule>> {
+    let mut out: Vec<ConditionalRule> = Vec::new();
+    let mut rest = input;
+    loop {
+        let (r, _) = multispace0(rest)?;
+        rest = r;
+        if rest.starts_with('@') {
+            let Some((query, body, after)) = split_media_block(rest) else { break };
+            if let Some(mode) = parse_render_query(query) {
+                // One level only: a nested @media stops the inner parse, dropping the remainder.
+                if let Ok((_, inner)) = parse_rules(body) {
+                    out.extend(inner.into_iter().map(|(s, d)| (s, d, Some(mode))));
+                }
+            }
+            rest = after;
+            continue;
+        }
+        match tuple((
+            parse_selector,
+            multispace0,
+            delimited(nom_char('{'), parse_declarations, nom_char('}')),
+        ))(rest) {
+            Ok((r, (s, _, d))) => {
+                out.push((s, d, None));
+                rest = r;
+            }
+            Err(_) => break,
+        }
+    }
+    Ok((rest, out))
+}
+
+/// Splits `@media <query> { <body> } <after>` into `(query, body, after)`.
+/// Returns `None` when the input is not an `@media` rule with a `{`. An unterminated body
+/// extends to the end of the input.
+fn split_media_block(input: &str) -> Option<(&str, &str, &str)> {
+    let head = input.get(..6)?;
+    if !head.eq_ignore_ascii_case("@media") {
+        return None;
+    }
+    let after_kw = &input[6..];
+    let open = after_kw.find('{')?;
+    let query = &after_kw[..open];
+    let body_start = &after_kw[open + 1..];
+    let mut depth = 1usize;
+    let mut quote: Option<char> = None;
+    for (i, c) in body_start.char_indices() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '"' | '\'' => quote = Some(c),
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some((query, &body_start[..i], &body_start[i + 1..]));
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    Some((query, body_start, ""))
+}
+
+/// Parses a media query of the exact form `(render: tui|gui)` (case- and whitespace-insensitive).
+fn parse_render_query(query: &str) -> Option<RenderMode> {
+    let q = query.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let (feature, value) = q.split_once(':')?;
+    if !feature.trim().eq_ignore_ascii_case("render") {
+        return None;
+    }
+    match value.trim().to_ascii_lowercase().as_str() {
+        "tui" => Some(RenderMode::Tui),
+        "gui" => Some(RenderMode::Gui),
+        _ => None,
+    }
+}
+
+/// Finds the end of a declaration value: the first `;` or `}` outside quotes and parentheses.
+fn declaration_end(input: &str) -> usize {
+    let mut quote: Option<char> = None;
+    let mut parens = 0usize;
+    for (i, c) in input.char_indices() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '"' | '\'' => quote = Some(c),
+                '(' => parens += 1,
+                ')' => parens = parens.saturating_sub(1),
+                ';' | '}' if parens == 0 => return i,
+                _ => {}
+            },
+        }
+    }
+    // Unbalanced quote/paren: fall back to the plain splitter so one malformed declaration
+    // cannot swallow the rest of the rule and the rules after it.
+    input.find(|c| c == ';' || c == '}').unwrap_or(input.len())
+}
+
 fn parse_selector(input: &str) -> IResult<&str, Selector> {
     alt((
         map(preceded(nom_char('.'), take_while1(|c: char| c.is_alphanumeric() || c == '-' || c == '_')), |s: &str| Selector::Class(s.to_string())),
@@ -251,23 +453,23 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     let (input, _) = nom_char(':')(input)?;
     let (input, _) = multispace0(input)?;
     
-    let end_idx = input.find(|c| c == ';' || c == '}').unwrap_or(input.len());
+    let end_idx = declaration_end(input);
     let (value, input) = input.split_at(end_idx);
 
     let val_str = value.trim();
     let decl = match key {
         "fg" | "color" => Some(Declaration::Fg(parse_color(val_str))),
         "bg" | "background-color" => Some(Declaration::Bg(parse_color(val_str))),
-        "width" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::Width(v)),
-            Err(_) => {
+        "width" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::Width(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "height" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::Height(v)),
-            Err(_) => {
+        "height" => match parse_length_unsigned(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::Height(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
@@ -300,72 +502,72 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
             "space-around" => Some(Declaration::JustifyContent(JustifyContent::SpaceAround)),
             _ => Some(Declaration::JustifyContent(JustifyContent::FlexStart)),
         },
-        "padding" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::Padding(v)),
-            Err(_) => {
+        "padding" => match parse_length_pair(val_str) {
+            Some((v, h)) => Some(Declaration::Padding(v, h)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "padding-top" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::PaddingTop(v)),
-            Err(_) => {
+        "padding-top" => match parse_length_unsigned(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::PaddingTop(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "padding-right" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::PaddingRight(v)),
-            Err(_) => {
+        "padding-right" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::PaddingRight(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "padding-bottom" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::PaddingBottom(v)),
-            Err(_) => {
+        "padding-bottom" => match parse_length_unsigned(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::PaddingBottom(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "padding-left" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::PaddingLeft(v)),
-            Err(_) => {
+        "padding-left" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::PaddingLeft(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "margin" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::Margin(v)),
-            Err(_) => {
+        "margin" => match parse_length_pair(val_str) {
+            Some((v, h)) => Some(Declaration::Margin(v, h)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "margin-top" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::MarginTop(v)),
-            Err(_) => {
+        "margin-top" => match parse_length_unsigned(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::MarginTop(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "margin-right" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::MarginRight(v)),
-            Err(_) => {
+        "margin-right" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::MarginRight(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "margin-bottom" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::MarginBottom(v)),
-            Err(_) => {
+        "margin-bottom" => match parse_length_unsigned(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::MarginBottom(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "margin-left" => match val_str.parse::<u16>() {
-            Ok(v) => Some(Declaration::MarginLeft(v)),
-            Err(_) => {
+        "margin-left" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::MarginLeft(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
@@ -383,30 +585,30 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "top" => match val_str.parse::<i16>() {
-            Ok(v) => Some(Declaration::Top(v)),
-            Err(_) => {
+        "top" => match parse_length_inset(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::Top(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "right" => match val_str.parse::<i16>() {
-            Ok(v) => Some(Declaration::Right(v)),
-            Err(_) => {
+        "right" => match parse_length_inset(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::Right(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "bottom" => match val_str.parse::<i16>() {
-            Ok(v) => Some(Declaration::Bottom(v)),
-            Err(_) => {
+        "bottom" => match parse_length_inset(val_str, Axis::Vertical) {
+            Some(v) => Some(Declaration::Bottom(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "left" => match val_str.parse::<i16>() {
-            Ok(v) => Some(Declaration::Left(v)),
-            Err(_) => {
+        "left" => match parse_length_inset(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::Left(v)),
+            None => {
                 tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
@@ -422,6 +624,10 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
             let specs = parse_transitions(val_str);
             Some(Declaration::Transition(specs))
         },
+        // GUI-only properties: accepted and ignored without a warning (TUI has no equivalent).
+        "border-radius" | "box-shadow" | "font-family" | "font-size" => {
+            Some(Declaration::Unknown(format!("{key}: {val_str}")))
+        }
         _ => {
             tracing::warn!("Unknown TCSS property: {}", key);
             Some(Declaration::Unknown(format!("{key}: {val_str}")))
@@ -594,6 +800,22 @@ fn parse_easing(s: &str) -> oxiterm_proto::style::Easing {
 /// 3. ID selector rules.
 /// 4. Inline element styles (highest priority).
 pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &StyleSheet) {
+    apply_styles_for_mode(doc, stylesheet, RenderMode::Tui);
+}
+
+/// Like [`apply_styles`], but only applies rules that are unconditional or whose
+/// `@media (render: ...)` condition equals `mode`.
+pub fn apply_styles_for_mode(doc: &mut crate::document::THTMLDocument, stylesheet: &StyleSheet, mode: RenderMode) {
+    let active: Vec<&(Selector, Vec<Declaration>)> = stylesheet
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| match stylesheet.rule_modes.get(*i).copied().flatten() {
+            None => true,
+            Some(m) => m == mode,
+        })
+        .map(|(_, r)| r)
+        .collect();
     for (_id, node) in doc.arena.iter_mut() {
         let tag_name = match node.tag {
             oxiterm_proto::dom::NodeTag::Screen => "screen",
@@ -610,7 +832,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
         let mut new_style = oxiterm_proto::style::ComputedStyle::default();
 
         // 1. Tag rules
-        for (selector, decls) in &stylesheet.rules {
+        for (selector, decls) in active.iter().map(|r| (&r.0, &r.1)) {
             if let Selector::Tag(ref t) = selector {
                 if t.to_lowercase() == tag_name {
                     for decl in decls {
@@ -621,7 +843,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
         }
 
         // 2. Class rules
-        for (selector, decls) in &stylesheet.rules {
+        for (selector, decls) in active.iter().map(|r| (&r.0, &r.1)) {
             if let Selector::Class(ref c) = selector {
                 if node.attrs.class.contains(c) {
                     for decl in decls {
@@ -632,7 +854,7 @@ pub fn apply_styles(doc: &mut crate::document::THTMLDocument, stylesheet: &Style
         }
 
         // 3. Id rules
-        for (selector, decls) in &stylesheet.rules {
+        for (selector, decls) in active.iter().map(|r| (&r.0, &r.1)) {
             if let Selector::Id(ref id) = selector {
                 if node.attrs.id.as_deref() == Some(id) {
                     for decl in decls {
@@ -694,14 +916,14 @@ mod tests {
             apply_declaration(&mut style, decl);
         }
         
-        assert_eq!(style.padding.left, 2);
-        assert_eq!(style.padding.top, 1);
-        assert_eq!(style.padding.right, 0);
-        assert_eq!(style.padding.bottom, 0);
-        assert_eq!(style.margin.bottom, 3);
-        assert_eq!(style.margin.right, 4);
-        assert_eq!(style.margin.left, 0);
-        assert_eq!(style.margin.top, 0);
+        assert_eq!(style.padding.left, 2.0);
+        assert_eq!(style.padding.top, 1.0);
+        assert_eq!(style.padding.right, 0.0);
+        assert_eq!(style.padding.bottom, 0.0);
+        assert_eq!(style.margin.bottom, 3.0);
+        assert_eq!(style.margin.right, 4.0);
+        assert_eq!(style.margin.left, 0.0);
+        assert_eq!(style.margin.top, 0.0);
     }
 
     #[test]
@@ -725,7 +947,7 @@ mod tests {
         apply_styles(&mut doc, &stylesheet);
 
         let final_btn = doc.arena.get(btn_id).unwrap();
-        assert_eq!(final_btn.style.width, Some(20));
+        assert_eq!(final_btn.style.width, Some(20.0));
         assert_eq!(final_btn.style.bg, AnsiColor::TrueColor(255, 0, 255));
         assert_eq!(final_btn.style.fg, AnsiColor::TrueColor(255, 0, 0));
     }
@@ -787,5 +1009,49 @@ mod tests {
         // T-22: flex: -1 -> Declaration::Unknown("flex: -1")
         let decls = parse_inline_tcss("flex: -1").unwrap();
         assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "flex: -1"));
+    }
+
+    #[test]
+    fn test_parse_length_units() {
+        use Axis::{Horizontal as H, Vertical as V};
+        // Bare numbers are cells.
+        assert_eq!(parse_length("10", H), Some(10.0));
+        assert_eq!(parse_length("-2", H), Some(-2.0));
+        assert_eq!(parse_length("0.5", V), Some(0.5));
+        assert_eq!(parse_length(".5", V), Some(0.5));
+        // ch / lh on their own axes are cells; case-insensitive.
+        assert_eq!(parse_length("4ch", H), Some(4.0));
+        assert_eq!(parse_length("3LH", V), Some(3.0));
+        // Provisional 8x16 px reference cell.
+        assert_eq!(parse_length("16px", H), Some(2.0));
+        assert_eq!(parse_length("16px", V), Some(1.0));
+        assert_eq!(parse_length("24dp", H), Some(3.0));
+        assert_eq!(parse_length("24DP", V), Some(1.5));
+        // Cross-axis ch/lh go through the reference cell.
+        assert_eq!(parse_length("2ch", V), Some(1.0));
+        assert_eq!(parse_length("2lh", H), Some(4.0));
+        // Garbage.
+        for bad in ["", "abc", "10em", "nan", "inf", "1e3", "1.2.3", "--1", "px", "10 px", "%"] {
+            assert_eq!(parse_length(bad, H), None, "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn test_length_declarations() {
+        let decls = parse_inline_tcss("width: 10ch; height: 32px; padding: 16px; top: -2; margin-left: 1.5").unwrap();
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for d in &decls { apply_declaration(&mut style, d); }
+        assert_eq!(style.width, Some(10.0));
+        assert_eq!(style.height, Some(2.0));
+        assert_eq!((style.padding.top, style.padding.left), (1.0, 2.0));
+        assert_eq!((style.padding.bottom, style.padding.right), (1.0, 2.0));
+        assert_eq!(style.top, Some(-2.0));
+        assert_eq!(style.margin.left, 1.5);
+
+        // Negative width/padding/margin, and unparseable values, stay ignored (Unknown).
+        for src in ["width: -1", "height: -0", "padding: -3", "margin-top: -1", "width: abc", "left: nope", "width: 70000", "padding: 65536", "top: 40000", "left: -40000"] {
+            let d = parse_inline_tcss(src).unwrap();
+            assert!(matches!(d.first(), Some(Declaration::Unknown(_))), "{src}");
+        }
     }
 }

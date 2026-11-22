@@ -6,7 +6,7 @@
 //! [`DisplayItem::Legacy`] for Img/Video/Diagram.
 
 use crate::document::THTMLDocument;
-use crate::layout::types::LayoutResult;
+use crate::layout::types::{to_cells, LayoutResult};
 use crate::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, PointF, RectF};
 use crate::render::unicode::UnicodeWidthCache;
 use oxiterm_proto::dom::{Node, NodeId, NodeTag};
@@ -101,13 +101,15 @@ fn emit_node(
 ) {
     let Some(node) = doc.arena.get(node_id) else { return };
     let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
+    // TUI path: layout rects are whole cells here; snap with the shared rule.
+    let (rx, ry, rw, rh) = (to_cells(rect.x), to_cells(rect.y), to_cells(rect.width), to_cells(rect.height));
     let (abs_x, abs_y) = if node.style.position == Position::Fixed {
-        (offset.0 as i32 + rect.x as i32, offset.1 as i32 + rect.y as i32)
+        (offset.0 as i32 + rx as i32, offset.1 as i32 + ry as i32)
     } else {
-        (start.0 + rect.x as i32, start.1 + rect.y as i32)
+        (start.0 + rx as i32, start.1 + ry as i32)
     };
 
-    let border_box = RectF::new(abs_x as f32, abs_y as f32, rect.width as f32, rect.height as f32);
+    let border_box = RectF::new(abs_x as f32, abs_y as f32, rw as f32, rh as f32);
     list.push(DisplayItem::Fill { node: node_id, rect: border_box, fg, bg });
 
     let has_border = node.style.border.is_some();
@@ -127,9 +129,9 @@ fn emit_node(
 
     let (cx, cy) = if has_border { (abs_x + 1, abs_y + 1) } else { (abs_x, abs_y) };
     let (cw, ch) = if has_border {
-        (rect.width.saturating_sub(2), rect.height.saturating_sub(2))
+        (rw.saturating_sub(2), rh.saturating_sub(2))
     } else {
-        (rect.width, rect.height)
+        (rw, rh)
     };
     match node.tag {
         NodeTag::Text | NodeTag::Button => {
@@ -162,8 +164,8 @@ fn text_item(
     bg: AnsiColor,
 ) -> Option<DisplayItem> {
     let text = node.text.as_ref()?;
-    let pad_x = if node.tag == NodeTag::Button { node.style.padding.left as i32 } else { 0 };
-    let pad_y = if node.tag == NodeTag::Button { node.style.padding.top as i32 } else { 0 };
+    let pad_x = if node.tag == NodeTag::Button { to_cells(node.style.padding.left) as i32 } else { 0 };
+    let pad_y = if node.tag == NodeTag::Button { to_cells(node.style.padding.top) as i32 } else { 0 };
     let draw_x = content_x + pad_x;
     let draw_y = content_y + pad_y;
     let inner_w = content_w.saturating_sub(pad_x as u16);
@@ -333,8 +335,8 @@ mod tests {
     #[test]
     fn button_padding_offsets_origin_and_clip() {
         let mut n = text_node(NodeTag::Button, "ok");
-        n.style.padding.left = 2;
-        n.style.padding.top = 1;
+        n.style.padding.left = 2.0;
+        n.style.padding.top = 1.0;
         let item = text_item(&n, NodeId(0), 3, 4, 10, 5, AnsiColor::Reset, AnsiColor::Reset).unwrap();
         let DisplayItem::Text { origin, clip, .. } = &item else { unreachable!() };
         assert_eq!((origin.x, origin.y), (5.0, 5.0));

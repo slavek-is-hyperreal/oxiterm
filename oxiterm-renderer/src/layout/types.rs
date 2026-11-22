@@ -7,22 +7,54 @@ use std::collections::HashMap;
 use oxiterm_proto::dom::NodeId;
 use serde::{Deserialize, Serialize};
 
+/// Converts a style length or layout coordinate in cell units to whole cells.
+///
+/// The single TUI rounding rule for consumers that work in cells: `round()` then clamp
+/// at zero. (A bare `as u16` would truncate, disagreeing with layout's rounding.)
+pub fn to_cells(v: f32) -> u16 {
+    v.round().max(0.0) as u16
+}
+
 /// Bounding rectangle of an element on the screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub struct Rect {
     /// The X coordinate of the top-left corner.
-    pub x: u16,
+    pub x: f32,
     /// The Y coordinate of the top-left corner.
-    pub y: u16,
+    pub y: f32,
     /// The width of the rectangle.
-    pub width: u16,
+    pub width: f32,
     /// The height of the rectangle.
+    pub height: f32,
+}
+
+/// A [`Rect`] snapped to whole terminal cells (see [`to_cells`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CellRect {
+    /// Left column.
+    pub x: u16,
+    /// Top row.
+    pub y: u16,
+    /// Width in columns.
+    pub width: u16,
+    /// Height in rows.
     pub height: u16,
 }
 
 impl Rect {
-    /// Checks if a given (x, y) coordinate is within the boundaries of the rectangle.
-    pub fn contains(&self, x: u16, y: u16) -> bool {
+    /// Snaps this rectangle to whole cells for cell-based consumers (cursor, scroll, etc.).
+    pub fn cells(&self) -> CellRect {
+        CellRect {
+            x: to_cells(self.x),
+            y: to_cells(self.y),
+            width: to_cells(self.width),
+            height: to_cells(self.height),
+        }
+    }
+
+    /// Checks if a given (x, y) point (cell units; a cell centre is `col + 0.5`) is within
+    /// the boundaries of the rectangle.
+    pub fn contains(&self, x: f32, y: f32) -> bool {
         x >= self.x && x < self.x + self.width &&
         y >= self.y && y < self.y + self.height
     }
@@ -35,7 +67,7 @@ pub struct LayoutResult {
     pub nodes: HashMap<NodeId, Rect>,
     /// Sorted list of node IDs determining drawing and hit-testing order (bottom-most to top-most).
     pub paint_order: Vec<NodeId>,
-    /// The total height of the scrollable content.
+    /// The total height of the scrollable content, in whole cells (scroll is still cell-based).
     pub total_height: u16,
 }
 
@@ -55,7 +87,7 @@ impl LayoutResult {
         };
 
         let ox = if let Some(rect) = self.nodes.get(&target_node_id) {
-            if view_w > rect.width { (view_w - rect.width) / 2 } else { 0 }
+            if f32::from(view_w) > rect.width { ((f32::from(view_w) - rect.width) / 2.0) as u16 } else { 0 }
         } else {
             0
         };
@@ -76,8 +108,8 @@ impl<'a> HitTester<'a> {
         Self { result }
     }
 
-    /// Finds the top-most visible child node covering the specified coordinates (col, row).
-    pub fn find_node(&self, col: u16, row: u16) -> Option<NodeId> {
+    /// Finds the top-most visible child node covering the specified point (cell units).
+    pub fn find_node(&self, col: f32, row: f32) -> Option<NodeId> {
         if !self.result.paint_order.is_empty() {
             for &id in self.result.paint_order.iter().rev() {
                 if let Some(rect) = self.result.nodes.get(&id) {
@@ -90,11 +122,11 @@ impl<'a> HitTester<'a> {
         }
 
         let mut best_node = None;
-        let mut best_area = u32::MAX;
+        let mut best_area = f32::MAX;
 
         for (id, rect) in &self.result.nodes {
             if rect.contains(col, row) {
-                let area = u32::from(rect.width) * u32::from(rect.height);
+                let area = rect.width * rect.height;
                 if area <= best_area {
                     best_area = area;
                     best_node = Some(*id);

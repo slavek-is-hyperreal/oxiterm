@@ -922,8 +922,8 @@ impl EventLoop {
                 if let Some(key) = &node.attrs.bind_width {
                     if let Some(val) = state.get(key) {
                         if let Ok(v) = val.to_string().parse::<u16>() {
-                            if node.style.width != Some(v) {
-                                node.style.width = Some(v);
+                            if node.style.width != Some(f32::from(v)) {
+                                node.style.width = Some(f32::from(v));
                                 changed = true;
                             }
                         }
@@ -932,8 +932,8 @@ impl EventLoop {
                 if let Some(key) = &node.attrs.bind_height {
                     if let Some(val) = state.get(key) {
                         if let Ok(v) = val.to_string().parse::<u16>() {
-                            if node.style.height != Some(v) {
-                                node.style.height = Some(v);
+                            if node.style.height != Some(f32::from(v)) {
+                                node.style.height = Some(f32::from(v));
                                 changed = true;
                             }
                         }
@@ -942,8 +942,8 @@ impl EventLoop {
                 if let Some(key) = &node.attrs.bind_top {
                     if let Some(val) = state.get(key) {
                         if let Ok(v) = val.to_string().parse::<i16>() {
-                            if node.style.top != Some(v) {
-                                node.style.top = Some(v);
+                            if node.style.top != Some(f32::from(v)) {
+                                node.style.top = Some(f32::from(v));
                                 changed = true;
                             }
                         }
@@ -952,8 +952,8 @@ impl EventLoop {
                 if let Some(key) = &node.attrs.bind_left {
                     if let Some(val) = state.get(key) {
                         if let Ok(v) = val.to_string().parse::<i16>() {
-                            if node.style.left != Some(v) {
-                                node.style.left = Some(v);
+                            if node.style.left != Some(f32::from(v)) {
+                                node.style.left = Some(f32::from(v));
                                 changed = true;
                             }
                         }
@@ -1007,7 +1007,7 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_width {
                 if let Some(val) = state.get(key) {
                     if let Ok(v) = val.to_string().parse::<u16>() {
-                        node.style.width = Some(v);
+                        node.style.width = Some(f32::from(v));
                         changed = true;
                     }
                 }
@@ -1015,7 +1015,7 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_height {
                 if let Some(val) = state.get(key) {
                     if let Ok(v) = val.to_string().parse::<u16>() {
-                        node.style.height = Some(v);
+                        node.style.height = Some(f32::from(v));
                         changed = true;
                     }
                 }
@@ -1023,7 +1023,7 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_top {
                 if let Some(val) = state.get(key) {
                     if let Ok(v) = val.to_string().parse::<i16>() {
-                        node.style.top = Some(v);
+                        node.style.top = Some(f32::from(v));
                         changed = true;
                     }
                 }
@@ -1031,7 +1031,7 @@ impl EventLoop {
             if let Some(key) = &node.attrs.bind_left {
                 if let Some(val) = state.get(key) {
                     if let Ok(v) = val.to_string().parse::<i16>() {
-                        node.style.left = Some(v);
+                        node.style.left = Some(f32::from(v));
                         changed = true;
                     }
                 }
@@ -1379,10 +1379,12 @@ impl EventLoop {
         }
         if let Some(focused_id) = focused_node {
             if let Some(rect) = layout.nodes.get(&focused_id) {
-                if rect.y < *scroll_offset {
-                    *scroll_offset = rect.y;
-                } else if rect.y + rect.height > *scroll_offset + viewport_h {
-                    *scroll_offset = (rect.y + rect.height).saturating_sub(viewport_h);
+                use oxiterm_renderer::layout::types::to_cells;
+                let (ry, rh) = (to_cells(rect.y), to_cells(rect.height));
+                if ry < *scroll_offset {
+                    *scroll_offset = ry;
+                } else if ry + rh > *scroll_offset + viewport_h {
+                    *scroll_offset = (ry + rh).saturating_sub(viewport_h);
                 }
             }
         }
@@ -1471,8 +1473,8 @@ impl EventLoop {
 
                 if let Some(node) = self.doc.arena.get_mut(target_node) {
                     node.style.position = oxiterm_proto::style::Position::Absolute;
-                    node.style.left = Some(new_left);
-                    node.style.top = Some(new_top);
+                    node.style.left = Some(f32::from(new_left));
+                    node.style.top = Some(f32::from(new_top));
                     self.doc.mark_dirty(target_node);
                 }
                 if let Some(kx) = state_x {
@@ -1503,12 +1505,12 @@ impl EventLoop {
                 tracing::trace!("Hit test found node: {:?}", node_id);
                 if let Some((drag_target, state_x, state_y, on_drag_end)) = self.find_draggable_target(node_id) {
                     let initial_left = self.doc.get_node(drag_target)
-                        .and_then(|n| n.style.left)
-                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.x as i16)))
+                        .and_then(|n| n.style.left.map(|v| v.round() as i16))
+                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.x.round() as i16)))
                         .unwrap_or(0);
                     let initial_top = self.doc.get_node(drag_target)
-                        .and_then(|n| n.style.top)
-                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.y as i16)))
+                        .and_then(|n| n.style.top.map(|v| v.round() as i16))
+                        .or_else(|| self.layout_engine.last_layout.as_ref().and_then(|l| l.nodes.get(&drag_target).map(|r| r.y.round() as i16)))
                         .unwrap_or(0);
 
                     self.active_drag = Some(DragState {
@@ -1882,7 +1884,7 @@ impl EventLoop {
                         let mut stack = vec![(self.doc.root, start_x, start_y)];
                         while let Some((node_id, parent_x, parent_y)) = stack.pop() {
                             if let Some(node) = self.doc.arena.get(node_id) {
-                                let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
+                                let rect = layout.nodes.get(&node_id).copied().unwrap_or_default().cells();
                                 let abs_x = parent_x + rect.x as i32;
                                 let abs_y = parent_y + rect.y as i32;
                                 
@@ -1935,7 +1937,7 @@ impl EventLoop {
                     // Focus ring: draw markers on left/right edge of focused node
                     if let Some(focused_id) = self.focused_node {
                         let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-                        if let Some(rect) = layout.nodes.get(&focused_id) {
+                        if let Some(rect) = layout.nodes.get(&focused_id).map(|r| r.cells()) {
                             let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
                             if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
                                 let mid_row = mid_row_offset as u16;
@@ -1984,7 +1986,7 @@ impl EventLoop {
 
                         let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
                         if let Some(node_id) = echo.active_node {
-                            if let Some(rect) = layout.nodes.get(&node_id) {
+                            if let Some(rect) = layout.nodes.get(&node_id).map(|r| r.cells()) {
                                 cursor_x = rect.x + offset_x;
                                 cursor_y = (rect.y + offset_y).saturating_sub(self.scroll_offset);
                             }
@@ -2104,7 +2106,7 @@ impl EventLoop {
 
     fn update_interactive_animations(&self, mouse: &oxiterm_proto::input::MouseInput) {
         if let Some(ref layout) = self.layout_engine.last_layout {
-            for (node_id, rect) in &layout.nodes {
+            for (node_id, rect) in layout.nodes.iter().map(|(id, r)| (id, r.cells())) {
                 if let Some(node) = self.doc.get_node(*node_id) {
                     if node.tag == oxiterm_proto::dom::NodeTag::Img {
                         if let Some(ref src) = node.attrs.src {
@@ -2169,7 +2171,7 @@ mod tests {
         el.focused_node = Some(btn);
         inject_layout(
             &mut el,
-            vec![(btn, oxiterm_renderer::layout::types::Rect { x: 0, y: 1, width: 6, height: 1 })],
+            vec![(btn, oxiterm_renderer::layout::types::Rect { x: 0.0, y: 1.0, width: 6.0, height: 1.0 })],
             20,
         );
         let layout = el.layout_engine.last_layout.clone().unwrap();
@@ -2189,7 +2191,7 @@ mod tests {
         // When focus actually changes to an off-screen node, it is revealed once.
         let other = el.doc.arena.alloc(oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box));
         let mut nodes = layout.nodes.clone();
-        nodes.insert(other, oxiterm_renderer::layout::types::Rect { x: 0, y: 18, width: 4, height: 1 });
+        nodes.insert(other, oxiterm_renderer::layout::types::Rect { x: 0.0, y: 18.0, width: 4.0, height: 1.0 });
         let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20, paint_order: Vec::new() };
         el.focused_node = Some(other);
         EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout2, viewport_h);
@@ -3363,7 +3365,7 @@ mod tests {
         // "clicks" state would change.
         inject_layout(
             &mut el,
-            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0, y: 0, width: 20, height: 20 })],
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0.0, y: 0.0, width: 20.0, height: 20.0 })],
             20,
         );
 
@@ -3415,10 +3417,10 @@ mod tests {
         el.rebuild_parent_map();
         {
             let n = el.doc.arena.get_mut(btn).unwrap();
-            n.style.width = Some(10);
-            n.style.height = Some(2);
-            n.style.margin.left = 4;
-            n.style.margin.top = 3;
+            n.style.width = Some(10.0);
+            n.style.height = Some(2.0);
+            n.style.margin.left = 4.0;
+            n.style.margin.top = 3.0;
         }
         let dims = PtyDimensions { cols: 80, rows: 24 };
         *el.session.dims.write() = dims;
@@ -3426,7 +3428,7 @@ mod tests {
         // Real layout — the same offsets rendering would use.
         el.layout_engine.compute(&mut el.doc, dims.cols, 0, None).unwrap();
         let layout = el.layout_engine.last_layout.clone().unwrap();
-        let rect = *layout.nodes.get(&btn).unwrap();
+        let rect = layout.nodes.get(&btn).unwrap().cells();
         let (ox, oy) = layout.get_centering_offset(&el.doc, dims.cols, dims.rows);
         assert!(rect.width > 0 && rect.height > 0);
 
@@ -3477,7 +3479,7 @@ mod tests {
         // Button occupies col=5..15, row=2..4.
         inject_layout(
             &mut el,
-            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 2, width: 10, height: 2 })],
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 5.0, y: 2.0, width: 10.0, height: 2.0 })],
             10,
         );
 
@@ -3553,8 +3555,8 @@ mod tests {
         inject_layout(
             &mut el,
             vec![
-                (box_id,  oxiterm_renderer::layout::types::Rect { x: 4, y: 1, width: 10, height: 3 }),
-                (text_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 2, width:  8, height: 1 }),
+                (box_id,  oxiterm_renderer::layout::types::Rect { x: 4.0, y: 1.0, width: 10.0, height: 3.0 }),
+                (text_id, oxiterm_renderer::layout::types::Rect { x: 5.0, y: 2.0, width:  8.0, height: 1.0 }),
             ],
             10,
         );
@@ -3596,7 +3598,7 @@ mod tests {
         el.rebuild_parent_map();
         inject_layout(
             &mut el,
-            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0, y: 0, width: 10, height: 1 })],
+            vec![(btn_id, oxiterm_renderer::layout::types::Rect { x: 0.0, y: 0.0, width: 10.0, height: 1.0 })],
             5,
         );
 
@@ -3910,10 +3912,10 @@ mod tests {
         drag_box.attrs.drag_state_y = Some("win_y".to_string());
         drag_box.attrs.event_drag_end = Some("set:drag_status=dropped".to_string());
         drag_box.style.position = oxiterm_proto::style::Position::Absolute;
-        drag_box.style.left = Some(10);
-        drag_box.style.top = Some(5);
-        drag_box.style.width = Some(20);
-        drag_box.style.height = Some(10);
+        drag_box.style.left = Some(10.0);
+        drag_box.style.top = Some(5.0);
+        drag_box.style.width = Some(20.0);
+        drag_box.style.height = Some(10.0);
         let box_id = arena.alloc(drag_box);
 
         let mut root = Node::new(NodeTag::Screen);
@@ -3925,7 +3927,7 @@ mod tests {
         el.rebuild_parent_map();
 
         // Synthetic layout
-        inject_layout(&mut el, vec![(box_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 10 })], 24);
+        inject_layout(&mut el, vec![(box_id, oxiterm_renderer::layout::types::Rect { x: 10.0, y: 5.0, width: 20.0, height: 10.0 })], 24);
 
         // 1. Mouse Press on the draggable box (col 12, row 6)
         // With dims=80x24 and centering offset=0,0, mouse.col saturating_sub(1) = 11.
@@ -3956,8 +3958,8 @@ mod tests {
         let move_render = el.handle_mouse_event(move_mouse);
         assert!(move_render, "Drag move must trigger render");
         let updated_node = el.doc.get_node(box_id).unwrap();
-        assert_eq!(updated_node.style.left, Some(15), "left should be initial(10) + delta(5) = 15");
-        assert_eq!(updated_node.style.top, Some(8), "top should be initial(5) + delta(3) = 8");
+        assert_eq!(updated_node.style.left, Some(15.0), "left should be initial(10) + delta(5) = 15");
+        assert_eq!(updated_node.style.top, Some(8.0), "top should be initial(5) + delta(3) = 8");
 
         // Verify state variables synchronized
         let state = session.state.read();
@@ -4019,9 +4021,9 @@ mod tests {
 
         // Synthetic layout: window at (10, 5, 20, 10), handle at (10, 5, 20, 2), content at (10, 7, 20, 8)
         inject_layout(&mut el, vec![
-            (window_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 10 }),
-            (handle_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 5, width: 20, height: 2 }),
-            (content_id, oxiterm_renderer::layout::types::Rect { x: 10, y: 7, width: 20, height: 8 }),
+            (window_id, oxiterm_renderer::layout::types::Rect { x: 10.0, y: 5.0, width: 20.0, height: 10.0 }),
+            (handle_id, oxiterm_renderer::layout::types::Rect { x: 10.0, y: 5.0, width: 20.0, height: 2.0 }),
+            (content_id, oxiterm_renderer::layout::types::Rect { x: 10.0, y: 7.0, width: 20.0, height: 8.0 }),
         ], 24);
 
         // Click on content area (col 13, row 10 -> adjusted 12, 9)
@@ -4082,8 +4084,8 @@ mod tests {
 
         // Layout with paint_order: bg_id painted first, fg_id painted second (on top)
         let mut nodes = std::collections::HashMap::new();
-        nodes.insert(bg_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 5, width: 30, height: 10 });
-        nodes.insert(fg_id, oxiterm_renderer::layout::types::Rect { x: 5, y: 5, width: 30, height: 10 });
+        nodes.insert(bg_id, oxiterm_renderer::layout::types::Rect { x: 5.0, y: 5.0, width: 30.0, height: 10.0 });
+        nodes.insert(fg_id, oxiterm_renderer::layout::types::Rect { x: 5.0, y: 5.0, width: 30.0, height: 10.0 });
         el.layout_engine.last_layout = Some(oxiterm_renderer::layout::types::LayoutResult {
             nodes,
             total_height: 24,
@@ -4118,7 +4120,7 @@ mod tests {
 
         let mut arena = oxiterm_renderer::arena::NodeArena::new();
         let mut anim_box = Node::new(NodeTag::Box);
-        anim_box.style.width = Some(20);
+        anim_box.style.width = Some(20.0);
         anim_box.style.transitions.push(TransitionSpec {
             property: AnimatableProperty::Width,
             duration_ms: 100,
@@ -4140,7 +4142,7 @@ mod tests {
         assert!(!el.animation_controller.has_active());
 
         // Target changes to width 60
-        el.doc.arena.get_mut(box_id).unwrap().style.width = Some(60);
+        el.doc.arena.get_mut(box_id).unwrap().style.width = Some(60.0);
         el.animation_controller.sync_transitions(&mut el.doc, start_time);
         assert!(el.animation_controller.has_active(), "Transition must be active after property target change");
 
@@ -4149,14 +4151,14 @@ mod tests {
         let changed = el.animation_controller.tick(&mut el.doc, mid_time);
         assert!(changed, "Animation tick must return true when property interpolates");
         let mid_width = el.doc.get_node(box_id).unwrap().style.width.unwrap();
-        assert!(mid_width >= 38 && mid_width <= 42, "Midpoint width should be ~40, got {}", mid_width);
+        assert!(mid_width >= 38.0 && mid_width <= 42.0, "Midpoint width should be ~40, got {}", mid_width);
 
         // Tick at 110ms (completion)
         let end_time = start_time + std::time::Duration::from_millis(110);
         let end_changed = el.animation_controller.tick(&mut el.doc, end_time);
         assert!(end_changed);
         let final_width = el.doc.get_node(box_id).unwrap().style.width.unwrap();
-        assert_eq!(final_width, 60, "Final width must reach target 60");
+        assert_eq!(final_width, 60.0, "Final width must reach target 60");
         assert!(!el.animation_controller.has_active(), "No transitions should be active once finished");
     }
 
@@ -4173,7 +4175,7 @@ mod tests {
 
         let mut arena = oxiterm_renderer::arena::NodeArena::new();
         let mut anim_box = Node::new(NodeTag::Box);
-        anim_box.style.width = Some(5);
+        anim_box.style.width = Some(5.0);
         anim_box.attrs.bind_width = Some("prog".to_string());
         anim_box.style.transitions.push(TransitionSpec {
             property: AnimatableProperty::Width,
@@ -4192,7 +4194,7 @@ mod tests {
         session.state.write().set("prog".to_string(), crate::state::StateValue::Int(5));
         EventLoop::setup_state_subscriptions(&doc, &mut *session.state.write());
         EventLoop::inject_initial_state(&mut doc, &*session.state.read());
-        assert_eq!(doc.get_node(box_id).unwrap().style.width, Some(5));
+        assert_eq!(doc.get_node(box_id).unwrap().style.width, Some(5.0));
 
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
         let start_time = std::time::Instant::now();
@@ -4207,7 +4209,7 @@ mod tests {
         // 3. Render cycle: restore baselines, sync dirty state, sync transitions, tick
         el.animation_controller.restore_baselines(&mut el.doc);
         EventLoop::sync_dirty_state(&mut el.doc, &mut *session.state.write());
-        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25), "Style width should update from state");
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25.0), "Style width should update from state");
 
         el.animation_controller.sync_transitions(&mut el.doc, start_time);
         assert!(el.animation_controller.has_active(), "Active transition must launch on state update");
@@ -4217,11 +4219,11 @@ mod tests {
         let changed = el.animation_controller.tick(&mut el.doc, mid_time);
         assert!(changed);
         let mid_w = el.doc.get_node(box_id).unwrap().style.width.unwrap();
-        assert!(mid_w >= 14 && mid_w <= 16, "Midpoint width should be ~15, got {}", mid_w);
+        assert!(mid_w >= 14.0 && mid_w <= 16.0, "Midpoint width should be ~15, got {}", mid_w);
 
         // Next render cycle at 50ms: restore baselines must restore target 25
         el.animation_controller.restore_baselines(&mut el.doc);
-        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25));
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25.0));
         EventLoop::sync_dirty_state(&mut el.doc, &mut *session.state.write());
         el.animation_controller.sync_transitions(&mut el.doc, mid_time);
         assert_eq!(el.animation_controller.active_count(), 1, "Must not restart or cancel transition");
@@ -4229,7 +4231,7 @@ mod tests {
         // Completion tick (110ms)
         let end_time = start_time + std::time::Duration::from_millis(110);
         el.animation_controller.tick(&mut el.doc, end_time);
-        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25));
+        assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25.0));
         assert!(!el.animation_controller.has_active());
     }
 }

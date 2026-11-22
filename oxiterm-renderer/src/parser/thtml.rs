@@ -84,6 +84,15 @@ impl THTMLParser {
     ///
     /// Returns a verbose error if the template contains unmatched tags or invalid grammar.
     pub fn parse(input: &str) -> Result<THTMLDocument> {
+        Self::parse_with_mode(input, oxiterm_proto::style::RenderMode::Tui)
+    }
+
+    /// Parses a THTML template, applying only the `@media (render: ...)` rules that match `mode`.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`THTMLParser::parse`].
+    pub fn parse_with_mode(input: &str, mode: oxiterm_proto::style::RenderMode) -> Result<THTMLDocument> {
         let (cleaned_html, style_content) = extract_style_block(input);
         let mut doc = THTMLDocument::new();
         
@@ -108,7 +117,7 @@ impl THTMLParser {
         // Inline styles are deferred to the cascade processor apply_styles to ensure
         // correct specificity resolution and styling hierarchy.
         let stylesheet = crate::parser::tcss::parse_tcss(&style_content).unwrap_or_default();
-        crate::parser::tcss::apply_styles(&mut doc, &stylesheet);
+        crate::parser::tcss::apply_styles_for_mode(&mut doc, &stylesheet, mode);
         
         Self::validate_media_nodes(&doc)?;
 
@@ -135,8 +144,8 @@ impl THTMLParser {
             if node.tag == NodeTag::Diagram {
                 let src_opt = node.attrs.src.as_deref().filter(|s| !s.trim().is_empty());
                 let alt_opt = node.attrs.alt.as_deref().filter(|s| !s.trim().is_empty());
-                let has_width = node.style.width.map_or(false, |w| w > 0);
-                let has_height = node.style.height.map_or(false, |h| h > 0);
+                let has_width = node.style.width.map_or(false, |w| w > 0.0);
+                let has_height = node.style.height.map_or(false, |h| h > 0.0);
 
                 if src_opt.is_none() || alt_opt.is_none() || !has_width || !has_height {
                     let mut missing_list = Vec::new();
@@ -173,8 +182,8 @@ impl THTMLParser {
                 let tag_str = if node.tag == NodeTag::Img { "img" } else { "video" };
                 
                 let src_opt = node.attrs.src.as_deref().filter(|s| !s.trim().is_empty());
-                let has_width = node.style.width.map_or(false, |w| w > 0);
-                let has_height = node.style.height.map_or(false, |h| h > 0);
+                let has_width = node.style.width.map_or(false, |w| w > 0.0);
+                let has_height = node.style.height.map_or(false, |h| h > 0.0);
 
                 if src_opt.is_none() || !has_width || !has_height {
                     let src_str = src_opt.unwrap_or("");
@@ -446,8 +455,8 @@ mod tests {
         let img_node = doc.get_node(img_id).unwrap();
         assert_eq!(img_node.tag, NodeTag::Img);
         assert_eq!(img_node.attrs.src, Some("logo.png".to_string()));
-        assert_eq!(img_node.style.width, Some(32));
-        assert_eq!(img_node.style.height, Some(16));
+        assert_eq!(img_node.style.width, Some(32.0));
+        assert_eq!(img_node.style.height, Some(16.0));
     }
 
     #[test]
@@ -460,8 +469,8 @@ mod tests {
         let vid_node = doc.get_node(vid_id).unwrap();
         assert_eq!(vid_node.tag, NodeTag::Video);
         assert_eq!(vid_node.attrs.src, Some("clip.mp4".to_string()));
-        assert_eq!(vid_node.style.width, Some(40));
-        assert_eq!(vid_node.style.height, Some(20));
+        assert_eq!(vid_node.style.width, Some(40.0));
+        assert_eq!(vid_node.style.height, Some(20.0));
     }
 
     #[test]
@@ -569,7 +578,7 @@ mod tests {
         let root = doc.get_root();
         let box_node = doc.get_node(root.children[0]).unwrap();
         
-        assert_eq!(box_node.style.width, Some(50));
+        assert_eq!(box_node.style.width, Some(50.0));
         assert_eq!(box_node.style.flex_direction, oxiterm_proto::style::FlexDirection::Column);
         assert_eq!(box_node.style.fg, oxiterm_proto::style::AnsiColor::TrueColor(255, 0, 0));
         assert_eq!(box_node.style.bg, oxiterm_proto::style::AnsiColor::TrueColor(0, 0, 255));
@@ -588,6 +597,109 @@ mod tests {
         assert_eq!(stylesheet.rules.len(), 1);
         let (_selector, decls) = &stylesheet.rules[0];
         assert_eq!(decls.len(), 1);
+    }
+
+    fn fg_of(doc: &THTMLDocument, class_idx: usize) -> oxiterm_proto::style::AnsiColor {
+        let root = doc.get_root();
+        doc.get_node(root.children[class_idx]).unwrap().style.fg.clone()
+    }
+
+    const MEDIA_DOC: &str = r#"<style>
+        .a { fg: red; }
+        @media (render: gui) { .a { fg: blue; } }
+        @media (render: tui) { .a { fg: green; } }
+    </style><box class="a">x</box>"#;
+
+    #[test]
+    fn test_media_render_gui_only_applies_in_gui() {
+        use oxiterm_proto::style::{AnsiColor, RenderMode};
+        let tui = THTMLParser::parse(MEDIA_DOC).unwrap();
+        assert_eq!(fg_of(&tui, 0), AnsiColor::TrueColor(0, 255, 0));
+        let gui = THTMLParser::parse_with_mode(MEDIA_DOC, RenderMode::Gui).unwrap();
+        assert_eq!(fg_of(&gui, 0), AnsiColor::TrueColor(0, 0, 255));
+        let tui2 = THTMLParser::parse_with_mode(MEDIA_DOC, RenderMode::Tui).unwrap();
+        assert_eq!(fg_of(&tui2, 0), fg_of(&tui, 0));
+    }
+
+    #[test]
+    fn test_media_gui_ignored_by_parse() {
+        use oxiterm_proto::style::{AnsiColor, RenderMode};
+        let src = r#"<style>@media (render: gui) { .a { fg: blue; } }</style><box class="a">x</box>"#;
+        let tui = THTMLParser::parse(src).unwrap();
+        assert_ne!(fg_of(&tui, 0), AnsiColor::TrueColor(0, 0, 255));
+        let gui = THTMLParser::parse_with_mode(src, RenderMode::Gui).unwrap();
+        assert_eq!(fg_of(&gui, 0), AnsiColor::TrueColor(0, 0, 255));
+    }
+
+    #[test]
+    fn test_media_whitespace_and_case_insensitive() {
+        use oxiterm_proto::style::{AnsiColor, RenderMode};
+        let src = "<style>@MEDIA(  RENDER :GUI  ){.a{fg:blue}}</style><box class=\"a\">x</box>";
+        let gui = THTMLParser::parse_with_mode(src, RenderMode::Gui).unwrap();
+        assert_eq!(fg_of(&gui, 0), AnsiColor::TrueColor(0, 0, 255));
+    }
+
+    #[test]
+    fn test_media_unknown_query_skipped_rest_applies() {
+        use oxiterm_proto::style::{AnsiColor, RenderMode};
+        let src = r#"<style>
+            .a { fg: red; }
+            @media screen { .a { fg: blue; } }
+            @media (render: tui) and (min-width: 3) { .a { fg: blue; } }
+            @media (render: hologram) { .a { fg: blue; } }
+            @media (color) { .a { fg: blue; } .b { fg: blue; } }
+            .a { bg: yellow; }
+        </style><box class="a">x</box>"#;
+        for mode in [RenderMode::Tui, RenderMode::Gui] {
+            let doc = THTMLParser::parse_with_mode(src, mode).unwrap();
+            let n = doc.get_node(doc.get_root().children[0]).unwrap();
+            assert_eq!(n.style.fg, AnsiColor::TrueColor(255, 0, 0), "{mode:?}");
+            assert_eq!(n.style.bg, AnsiColor::TrueColor(255, 255, 0), "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn test_unbalanced_paren_does_not_swallow_following_rules() {
+        use oxiterm_proto::style::AnsiColor;
+        let src = r#"<style>.a { fg: rgb(1,2,3; } .b { fg: red; }</style><box class="b">x</box>"#;
+        let doc = THTMLParser::parse(src).unwrap();
+        assert_eq!(fg_of(&doc, 0), AnsiColor::TrueColor(255, 0, 0));
+    }
+
+    #[test]
+    fn test_media_cascade_order_preserved() {
+        use oxiterm_proto::style::{AnsiColor, RenderMode};
+        // Unconditional before and after the media block: later source wins.
+        let after = r#"<style>.a { fg: red; } @media (render: gui) { .a { fg: blue; } } .a { fg: yellow; }</style><box class="a">x</box>"#;
+        let gui = THTMLParser::parse_with_mode(after, RenderMode::Gui).unwrap();
+        assert_eq!(fg_of(&gui, 0), AnsiColor::TrueColor(255, 255, 0));
+        // Media block last: it overrides the earlier unconditional rule only in its mode.
+        let last = r#"<style>.a { fg: red; } .a { bg: black; } @media (render: gui) { .a { fg: blue; } }</style><box class="a">x</box>"#;
+        let gui = THTMLParser::parse_with_mode(last, RenderMode::Gui).unwrap();
+        assert_eq!(fg_of(&gui, 0), AnsiColor::TrueColor(0, 0, 255));
+        let tui = THTMLParser::parse(last).unwrap();
+        assert_eq!(fg_of(&tui, 0), AnsiColor::TrueColor(255, 0, 0));
+    }
+
+    #[test]
+    fn test_gui_only_properties_do_not_break_rule() {
+        use oxiterm_proto::style::AnsiColor;
+        let src = r#"<style>.a {
+            fg: red;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.1);
+            font-family: "Inter", 'Helvetica; Neue', sans-serif;
+            font-size: 14px
+        }
+        .a { bg: blue; }</style><box class="a">x</box>"#;
+        let doc = THTMLParser::parse(src).unwrap();
+        let n = doc.get_node(doc.get_root().children[0]).unwrap();
+        assert_eq!(n.style.fg, AnsiColor::TrueColor(255, 0, 0));
+        assert_eq!(n.style.bg, AnsiColor::TrueColor(0, 0, 255));
+        // Last declaration without a semicolon, directly before `}`, also survives.
+        let src2 = r#"<style>.a { font-family: "Inter"; fg: red }</style><box class="a">x</box>"#;
+        let doc = THTMLParser::parse(src2).unwrap();
+        assert_eq!(fg_of(&doc, 0), AnsiColor::TrueColor(255, 0, 0));
     }
 
     #[test]

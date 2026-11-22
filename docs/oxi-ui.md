@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phases 0–1 done; phases 2–7 planned.
+> **Status:** Phases 0–2 done; phases 3–7 planned.
 
 ---
 
@@ -40,7 +40,7 @@ This document is the implementation plan for evolving **OxiTerm** into **OxiUI**
 | `oxiterm-server/src/session.rs:481,582,775,1836,1933` | Owns `DoubleBuffer`, calls `render_node`, sends diffs | 3 |
 | `oxiterm-server/src/web.rs:150,283–300` | Encodes cell diffs for WS | 3 |
 | `oxiterm-web/src/lib.rs` (`draw_commands`, `draw_cell`) | Canvas client paints cells | 3 |
-| `oxiterm-a11y/src/lib.rs` | Reads layout/buffer | 2 (check only) |
+| `oxiterm-a11y/src/lib.rs` | Builds an a11y tree from the DOM; `--a11y` linear text mode works; AT-SPI D-Bus transport is a skeleton | 3 (web ARIA mirror), 5 (AccessKit) |
 
 Already backend-agnostic: `oxiterm-proto` DOM and input decoder, THTML/TCSS parsers, the cascade, session state, bindings, the dispatcher, and App Server integration.
 
@@ -146,7 +146,17 @@ Original scope:
 - Migrate only background, border and text (incl. wrap, wide chars, password masking, button text). `img`, `video` and `diagram` stay on the old code via `DisplayItem::Legacy`.
 - **Done when:** the golden snapshots and all existing tests pass with zero diffs.
 
-### Phase 2: Units and float geometry
+### Phase 2: Units and float geometry — ✅ done
+
+Implemented with these deviations from the original scope:
+- Lengths are `f32` in cell units, not a `Length { value, unit }` type. `ch`/`lh` mean cells; `px`/`dp` convert through a provisional 8×16 px reference cell until phase 6.
+- `RenderMode { Tui, Gui }` lives in `oxiterm-proto`; `LayoutEngine::with_mode` selects it.
+- TUI snapping happens only in the layout engine (`snap`/`snap_size` and rect flattening); Taffy's own rounding is disabled in GUI mode.
+- `@media (render: tui|gui)` is applied at parse time via `THTMLParser::parse_with_mode`; `parse` = TUI. GUI-only properties (`border-radius`, `box-shadow`, `font-family`, `font-size`) are ignored silently.
+- `LayoutResult.total_height` stays `u16`, because scrolling is still cell-based.
+- During transitions, layout now reruns every animation tick because values change below one cell; empty diffs are still not sent.
+
+Original scope:
 - TCSS lengths become `Length { value: f32, unit: Ch | Lh | Px | Dp | Percent }`. A bare integer stays `ch` horizontally and `lh` vertically, so existing TCSS is unchanged.
 - `Rect` becomes `f32` (or a parallel `RectF`). The TUI sink snaps to cells with one documented rounding rule.
 - `HitTester` takes `f32` points. TUI passes `(col + 0.5, row + 0.5)`.
@@ -160,6 +170,7 @@ Original scope:
 - `oxiterm-web`: add `WebCanvas::draw_display_list` (Canvas2D fill rects, rounded borders, `fillText` with the monospace font, images as positioned DOM/`drawImage` from asset paths).
 - Images in GUI are asset references, as in today's web mode, never Kitty/Sixel pixels.
 - Damage tracking (rect diffing between lists) is deferred. Measure first.
+- **Accessibility:** a `<canvas>` is invisible to screen readers. Mirror `oxiterm_a11y::build_a11y_tree` into hidden, positioned DOM elements with ARIA roles and labels over the canvas, the same way media overlays are positioned. Every DisplayList item carries its `node`, so items map directly to a11y nodes.
 - **Done when:** the Spotify demo and `examples/index.thtml` work in the browser in GUI mode with clicks hitting the right targets, and the TUI and the old web client are unaffected.
 
 Phase 3 is the first **server-driven** GUI: the browser is the thin client.
@@ -176,6 +187,7 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
 - **Local mode:** `oxiterm-core` runs in-process and paints to `GpuSink`. It works offline, and actions go to an in-process or HTTP `ActionHandler`.
 - **Thin-client mode:** the same binary started with `--connect wss://…` paints the phase 3 DisplayList and forwards input. No core session runs locally.
 - Input mapping: pointer (incl. hover → `:hover`, IDEAS #5), wheel, keyboard/Tab focus, DPI `scale_factor` → `dp`.
+- **Accessibility:** feed the existing `oxiterm-a11y` tree (roles, labels, values, focus) into AccessKit (`accesskit_winit`). This gives AT-SPI on Linux plus Windows/macOS support and replaces the unfinished D-Bus transport in `DBusBridge` instead of completing it by hand. Check AccessKit's Android support before Phase 7.
 - **Done when:** the demo apps run in a native window in both modes, and RSS is measured and documented for each.
 
 ### Phase 6: Proportional text (both modes at once)

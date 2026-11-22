@@ -62,7 +62,7 @@ impl EventBus {
             HtmxEvent::Mouse(m) => {
                 if let Some(layout) = layout {
                     let tester = oxiterm_renderer::HitTester::new(layout);
-                    tester.find_node(m.col, m.row)
+                    tester.find_node(m.col as f32 + 0.5, m.row as f32 + 0.5)
                 } else {
                     None
                 }

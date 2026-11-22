@@ -20,6 +20,27 @@ Styles are applied in a single unified phase according to the following ascendin
 
 Subsequent rules with the same priority overwrite previous ones (determined by the order of appearance in the file).
 
+### Render-Mode Conditions (`@media (render: ...)`)
+
+Rules can be restricted to one render backend with a media block in the `<style>` section:
+
+```css
+.card { border-style: rounded; padding: 1; }
+
+@media (render: gui) {
+  .card { border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+}
+@media (render: tui) {
+  .card { bg: #1a1b26; }
+}
+```
+
+* **Modes:** `tui` (terminal cells, the default for `THTMLParser::parse`) and `gui` (`THTMLParser::parse_with_mode(.., RenderMode::Gui)`). Whitespace and case around `render`, `:` and the value are ignored.
+* **Cascade:** rules inside a block keep their source position, so an unconditional rule before or after the block wins or loses by the usual order-of-appearance rule.
+* **Unknown queries are skipped:** any other query (`screen`, `(render: hologram)`, `(render: tui) and ...`) skips the whole block silently and parsing continues after its closing `}`.
+* **No nesting:** `@media` inside `@media` is not supported.
+* **GUI-only properties** such as `border-radius`, `box-shadow`, `font-family` and `font-size` are ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
+
 ---
 
 ## 2. Supported Properties
@@ -166,7 +187,7 @@ When any transition is active, the OxiTerm event loop ticks at 60 FPS (16ms). Wh
 ## 8. What TCSS Does NOT Support & Unknown Property Handling
 
 * **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `px`, `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
-* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser.
+* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. The GUI-only properties `border-radius`, `box-shadow`, `font-family` and `font-size` are ignored without a warning.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
 * **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported because the terminal enforces a fixed-width monospace font.
 * **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.
