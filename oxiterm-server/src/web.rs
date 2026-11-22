@@ -1043,6 +1043,7 @@ pub mod web_impl {
             event_loop.frame_sink = frame_sink;
             event_loop.source_path = resolved_source_path;
             event_loop.base_source_path = base_source_path;
+            event_loop.page_source = Arc::new(crate::page_source::FsPageSource::new(app_base_dir.clone()));
             if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
                 info!("Web EventLoop initializing HttpActionHandler targeting {}", url);
                 event_loop.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new(url)));

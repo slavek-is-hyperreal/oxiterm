@@ -59,3 +59,12 @@ pub fn load_thtml_str(content: &str) -> Result<THTMLDocument> {
     warn_ambiguous_clickables(&doc, "<inline>");
     Ok(doc)
 }
+
+/// Parses `content` with `mode` (like [`load_thtml_file_mode`] but from memory). `label`
+/// identifies the source in warnings.
+pub fn load_thtml_str_mode(content: &str, mode: RenderMode, label: &str) -> Result<THTMLDocument> {
+    let doc = THTMLParser::parse_with_mode(content, mode)
+        .map_err(|e| anyhow::anyhow!("THTML Parsing Error in {}: {}", label, e))?;
+    warn_ambiguous_clickables(&doc, label);
+    Ok(doc)
+}

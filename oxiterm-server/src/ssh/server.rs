@@ -179,10 +179,12 @@ impl Handler for OxiServer {
                 // Same app base dir as web sessions: the start page's directory. It scopes page
                 // containment checks and app-relative navigation (`navigate` patches); without it
                 // SSH sessions fell back to the process working directory.
+                let mut app_base_dir: Option<std::path::PathBuf> = None;
                 if let Some(ref path) = self.source_path {
                     if let Some(dir) = path.parent() {
                         let dir = if dir.as_os_str().is_empty() { std::path::Path::new(".") } else { dir };
                         *client_session.app_base_dir.write() = Some(dir.to_path_buf());
+                        app_base_dir = Some(dir.to_path_buf());
                     }
                 }
 
@@ -211,6 +213,9 @@ impl Handler for OxiServer {
 
                 let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
                 event_loop.source_path = self.source_path.clone();
+                if let Some(dir) = app_base_dir {
+                    event_loop.page_source = std::sync::Arc::new(crate::page_source::FsPageSource::new(dir));
+                }
                 if let Some(ref url) = self.config.server.app_server_url {
                     event_loop.action_handler = Some(std::sync::Arc::new(crate::dispatcher::HttpActionHandler::new(url.clone())));
                 }

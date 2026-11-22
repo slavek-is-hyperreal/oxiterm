@@ -21,6 +21,7 @@ pub mod url_validator;
 pub mod state;
 pub mod web;
 pub mod pathsafe;
+pub mod page_source;
 pub mod identity;
 pub mod expand;
 pub mod animation;

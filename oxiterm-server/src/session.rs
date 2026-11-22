@@ -621,6 +621,9 @@ pub struct EventLoop {
     pub source_path: Option<std::path::PathBuf>,
     /// The non-mobile variant of the template path.
     pub base_source_path: Option<std::path::PathBuf>,
+    /// Where pages come from (navigation, variant selection, reload). The loop never touches
+    /// the filesystem for pages itself.
+    pub page_source: Arc<dyn crate::page_source::PageSource>,
     /// dbus a11y coordination bridge.
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
     /// Correlation table maps child nodes to parent IDs.
@@ -729,18 +732,11 @@ impl Drop for EventLoopGuard {
 }
 
 impl EventLoop {
-    fn resolve_non_mobile_path(&self, filename: &str) -> std::path::PathBuf {
-        let base = self.base_source_path.as_ref().or(self.source_path.as_ref()).and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .or_else(|| self.session.app_base_dir.read().clone())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-        let mut target_name = filename.to_string();
-        if !target_name.ends_with(".thtml") {
-            target_name.push_str(".thtml");
-        }
-        if target_name.contains("_mobile.thtml") {
-            target_name = target_name.replace("_mobile.thtml", ".thtml");
-        }
-        base.join(target_name)
+    /// The current page as a `PageRef` (pure path arithmetic on `base_source_path` /
+    /// `source_path`), the base for current-page-relative navigation.
+    fn current_page_ref(&self) -> Option<crate::page_source::PageRef> {
+        let p = self.base_source_path.as_ref().or(self.source_path.as_ref())?;
+        Some(self.page_source.page_at(p))
     }
 
     /// Parse mode for documents of this session: GUI for display-list web clients, TUI otherwise.
@@ -752,10 +748,11 @@ impl EventLoop {
         }
     }
 
-    /// Reparses the current source file (hot reload / render-mode switch). Returns true on success.
+    /// Reparses the current source page (hot reload / render-mode switch). Returns true on success.
     fn reload_current_source(&mut self) -> bool {
         let Some(path) = self.source_path.clone() else { return false };
-        match crate::loader::load_thtml_file_mode(&path, self.render_mode()) {
+        let page = self.page_source.page_at(&path);
+        match self.page_source.load(&page, self.render_mode()) {
             Ok(mut new_doc) => {
                 let mut state = self.session.state.write();
                 Self::setup_state_subscriptions(&new_doc, &mut *state);
@@ -772,37 +769,24 @@ impl EventLoop {
         }
     }
 
+    /// Navigates to `target_filename`, relative to the current page's directory (`.thtml` is
+    /// appended when missing).
     fn resolve_and_load_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
-        let non_mobile_target = self.resolve_non_mobile_path(target_filename);
-        self.load_resolved_page(non_mobile_target)
+        let base = self.current_page_ref();
+        self.load_page(base.as_ref(), &crate::page_source::with_thtml_ext(target_filename))
     }
 
     /// Like `resolve_and_load_page`, but `target_filename` is relative to the application base
     /// directory instead of the current page's directory.
     fn load_app_page(&mut self, target_filename: &str) -> anyhow::Result<()> {
-        let app_base_dir = self.session.app_base_dir.read().clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-        let mut target_name = target_filename.to_string();
-        if target_name.contains("_mobile.thtml") {
-            target_name = target_name.replace("_mobile.thtml", ".thtml");
-        }
-        self.load_resolved_page(app_base_dir.join(target_name))
+        self.load_page(None, target_filename)
     }
 
-    fn load_resolved_page(&mut self, non_mobile_target: std::path::PathBuf) -> anyhow::Result<()> {
+    fn load_page(&mut self, base: Option<&crate::page_source::PageRef>, target: &str) -> anyhow::Result<()> {
         let is_mobile = self.session.is_mobile.load(std::sync::atomic::Ordering::SeqCst);
-        let actual_path = crate::pathsafe::resolve_variant(&non_mobile_target, is_mobile);
-
-        // Containment gate: reject path traversals and non-existent targets.
-        // Q2: single generic error message — do not distinguish traversal from missing file.
-        let app_base_dir = self.session.app_base_dir.read().clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-        if !crate::pathsafe::is_within_base(&app_base_dir, &actual_path) {
-            warn!("resolve_and_load_page: blocked path traversal or missing file for {:?}", actual_path);
-            anyhow::bail!("blocked");
-        }
-
-        let mut new_doc = crate::loader::load_thtml_file_mode(&actual_path, self.render_mode())?;
+        // Containment and variant selection live in the page source (one generic error).
+        let page = self.page_source.resolve(base, target, is_mobile)?;
+        let mut new_doc = self.page_source.load(&page, self.render_mode())?;
         let mut state = self.session.state.write();
         Self::setup_state_subscriptions(&new_doc, &mut *state);
         Self::inject_initial_state(&mut new_doc, &*state);
@@ -812,15 +796,10 @@ impl EventLoop {
         self.update_doc(new_doc);
         self.reset_layout_and_scroll();
 
-        self.source_path = Some(actual_path);
-        self.base_source_path = Some(non_mobile_target.clone());
-
-        let rel_path = if let Ok(rel) = non_mobile_target.strip_prefix(&app_base_dir) {
-            rel.to_string_lossy().into_owned()
-        } else {
-            non_mobile_target.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
-        };
-        *self.session.current_page.write() = Some(rel_path);
+        // The renderer still reads media relative to these paths.
+        self.source_path = Some(page.actual);
+        self.base_source_path = Some(page.base);
+        *self.session.current_page.write() = Some(page.page);
         Ok(())
     }
 
@@ -835,6 +814,10 @@ impl EventLoop {
         let dims = *session.dims.read();
         let clock = session.clock.clone();
         let now = clock.now();
+        let root_session = session.clone();
+        let page_source: Arc<dyn crate::page_source::PageSource> = Arc::new(
+            crate::page_source::FsPageSource::with_dynamic_root(move || root_session.app_base_dir.read().clone()),
+        );
         
         let mut dbus_bridge = None;
         let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if a11y_mode {
@@ -864,6 +847,7 @@ impl EventLoop {
             pending_mouse: None,
             source_path: None,
             base_source_path: None,
+            page_source,
             dbus_bridge,
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
@@ -1638,14 +1622,7 @@ impl EventLoop {
         self.expand_all_for_nodes();
 
         if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            let app_base_dir = self.session.app_base_dir.read().clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-            let rel_path = self.base_source_path.as_ref().map(|bp| {
-                if let Ok(rel) = bp.strip_prefix(&app_base_dir) {
-                    rel.to_string_lossy().into_owned()
-                } else {
-                    bp.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
-                }
-            });
+            let rel_path = self.base_source_path.as_ref().map(|bp| self.page_source.page_at(bp).page);
             *self.session.current_page.write() = rel_path;
         }
 
@@ -2855,9 +2832,15 @@ mod tests {
         event_loop.base_source_path = Some(temp_dir.join("subdir").join("index.thtml"));
         *client_session.app_base_dir.write() = Some(temp_dir.clone());
 
-        let resolved = event_loop.resolve_non_mobile_path("about");
-        assert_eq!(resolved, temp_dir.join("subdir").join("about.thtml"));
+        let about = temp_dir.join("subdir").join("about.thtml");
+        std::fs::write(&about, b"<screen></screen>").unwrap();
+        let base = event_loop.current_page_ref().unwrap();
+        let resolved = event_loop.page_source
+            .resolve(Some(&base), &crate::page_source::with_thtml_ext("about"), false)
+            .unwrap();
+        assert_eq!(resolved.base, about);
 
+        let _ = std::fs::remove_file(about);
         let _ = std::fs::remove_file(app_file);
     }
 
@@ -3241,6 +3224,64 @@ mod tests {
 
         let _ = std::fs::remove_file(page_path);
         let _ = std::fs::remove_dir(base_dir);
+    }
+
+    fn doc_texts(el: &EventLoop) -> Vec<String> {
+        el.doc.arena.iter().filter_map(|(_, n)| n.text.clone()).collect()
+    }
+
+    /// The loop navigates, switches variants and reloads purely through a `MemPageSource`: no
+    /// page file exists on disk.
+    #[test]
+    fn test_page_source_mem_drives_navigation() {
+        use crate::page_source::{MemPageSource, PageSource};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let mem = MemPageSource::new([
+            ("index.thtml", "<screen><text>INDEX</text></screen>"),
+            ("demos/a.thtml", "<screen><text>PAGE-A</text></screen>"),
+            ("features.thtml", "<screen><text>FEATURES</text></screen>"),
+            ("features_mobile.thtml", "<screen><text>FEATURES-M</text></screen>"),
+        ]);
+        let index = mem.page_at(std::path::Path::new("index.thtml"));
+        let doc = mem.load(&index, oxiterm_proto::style::RenderMode::Tui).unwrap();
+        let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        el.page_source = Arc::new(mem);
+        el.source_path = Some(index.actual.clone());
+        el.base_source_path = Some(index.base.clone());
+        assert_eq!(doc_texts(&el), vec!["INDEX".to_string()]);
+
+        // htmx-style link: current-page-relative, `.thtml` target.
+        el.handle_htmx_target(oxiterm_proto::dom::NodeId(0), "demos/a.thtml");
+        assert_eq!(doc_texts(&el), vec!["PAGE-A".to_string()]);
+        assert_eq!(session.current_page.read().as_deref(), Some("demos/a.thtml"));
+
+        // Relative to the new current page; page id keeps today's un-normalised form.
+        el.now = el.now + std::time::Duration::from_secs(10);
+        el.handle_htmx_target(oxiterm_proto::dom::NodeId(0), "../features.thtml");
+        assert_eq!(doc_texts(&el), vec!["FEATURES".to_string()]);
+        assert_eq!(session.current_page.read().as_deref(), Some("demos/../features.thtml"));
+
+        // Hot reload goes through the source too.
+        assert!(el.reload_current_source());
+        assert_eq!(doc_texts(&el), vec!["FEATURES".to_string()]);
+
+        // With is_mobile set, the _mobile variant is picked (direct call, no SwitchViewport event).
+        el.now = el.now + std::time::Duration::from_secs(10);
+        session.is_mobile.store(true, std::sync::atomic::Ordering::SeqCst);
+        el.resolve_and_load_page("features").unwrap();
+        assert_eq!(doc_texts(&el), vec!["FEATURES-M".to_string()]);
+
+        // Server-initiated navigation is app-root relative; escapes and missing pages fail the
+        // same generic way and leave the current page untouched.
+        el.now = el.now + std::time::Duration::from_secs(10);
+        assert!(el.load_app_page("index.thtml").is_ok());
+        assert_eq!(session.current_page.read().as_deref(), Some("index.thtml"));
+        let e1 = el.resolve_and_load_page("../secret").unwrap_err().to_string();
+        let e2 = el.resolve_and_load_page("missing").unwrap_err().to_string();
+        assert_eq!(e1, e2);
+        assert_eq!(session.current_page.read().as_deref(), Some("index.thtml"));
     }
 
     #[test]
