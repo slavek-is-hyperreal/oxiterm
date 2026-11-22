@@ -10,9 +10,9 @@ use parking_lot::RwLock;
 use std::time::Duration;
 use tracing::{info, warn, debug};
 
+pub use crate::loop_io::{EventPush, EventSource, LoopHandles, LoopHost, WaitResult};
 pub use crate::session_state::{
-    EventPush, EventSource, LoopHandles, LoopHost, MediaRenderInfo, PredictiveEcho, PtyDimensions,
-    ResizeDebouncer, SessionId, SessionState,
+    MediaRenderInfo, PredictiveEcho, PtyDimensions, ResizeDebouncer, SessionId, SessionState,
 };
 
 pub use oxiterm_renderer::document::THTMLDocument;
@@ -84,21 +84,6 @@ impl LoopHost for ClientSession {
     }
     fn loop_exited(&self) {
         self.event_loop_running.store(false, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
-impl EventSource for crate::backpressure::Receiver<InputEvent> {
-    fn wait_event(&mut self, timeout: Duration) -> Result<InputEvent, mpsc::RecvTimeoutError> {
-        crate::backpressure::Receiver::recv_timeout(self, timeout)
-    }
-    fn try_recv(&mut self) -> Option<InputEvent> {
-        crate::backpressure::Receiver::try_recv(self)
-    }
-}
-
-impl EventPush for crate::backpressure::BoundedFrameChannel<InputEvent> {
-    fn push(&self, event: InputEvent) {
-        let _ = self.try_send(event);
     }
 }
 
@@ -1467,14 +1452,14 @@ impl EventLoop {
                         // The one clock read of this iteration, after the blocking wait.
                         self.now = self.clock.now();
                         match received {
-                            Ok(e) => Some(e),
-                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            WaitResult::Event(e) => Some(e),
+                            WaitResult::Timeout => {
                                 if is_active {
                                     needs_render = true;
                                 }
                                 break;
                             }
-                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                            WaitResult::Disconnected => {
                                 info!("Event loop receiver disconnected. Exiting run loop.");
                                 disconnected = true;
                                 break;
@@ -2353,6 +2338,48 @@ mod tests {
         assert!(seq_pos3.is_some(), "delete_all_placements not found in clear_screen");
         assert!(clear_pos.is_some(), "ESC[2J not found in clear_screen");
         assert!(seq_pos3.unwrap() < clear_pos.unwrap(), "delete_all_placements must be before ESC[2J");
+    }
+
+    #[test]
+    fn test_run_drains_memory_queue_then_exits_on_disconnect() {
+        use crate::loop_io::MemoryQueue;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct StubHost(AtomicBool);
+        impl LoopHost for StubHost {
+            fn touch_activity(&self) {}
+            fn idle_for(&self) -> Duration { Duration::ZERO }
+            fn loop_exited(&self) { self.0.store(true, Ordering::SeqCst); }
+        }
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root_id = arena.alloc(oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen));
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+
+        let queue = MemoryQueue::new(128);
+        let host = Arc::new(StubHost(AtomicBool::new(false)));
+        let handles = LoopHandles {
+            state: client_session.state_half.clone(),
+            events_in: Arc::new(parking_lot::Mutex::new(queue.clone())),
+            events_out: Arc::new(queue.clone()),
+            host: host.clone(),
+        };
+        queue.push(InputEvent::AppResponse(oxiterm_proto::input::AppPatch(
+            serde_json::json!({"k": "v"}),
+        )));
+        queue.close();
+
+        let mut event_loop = EventLoop::new(handles, event_bus, output_tx, doc, false);
+        event_loop.run();
+
+        assert!(host.0.load(Ordering::SeqCst), "loop_exited must fire");
+        assert!(queue.is_empty());
+        let state = client_session.state.read();
+        assert!(state.get("k").is_some(), "patch from the queue must be applied");
     }
 
     #[test]

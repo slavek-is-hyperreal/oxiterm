@@ -30,6 +30,8 @@ pub mod animation;
 pub mod clock;
 pub mod host_clock;
 pub mod session_state;
+pub mod loop_io;
+pub mod host_queue;
 #[cfg(test)]
 mod core_boundary;
 

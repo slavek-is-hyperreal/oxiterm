@@ -5,7 +5,7 @@
 //! written to move into `oxiterm-core`: no tokio, prometheus, russh, byte channels, tokens or
 //! connection bookkeeping, and no wall-clock reads (time comes from [`Clock`](crate::clock::Clock)).
 //! The transport half (`ClientSession` in `session.rs`) owns an `Arc<SessionState>` and the
-//! connection plumbing, and reaches the loop only through the narrow traits below.
+//! connection plumbing, and reaches the loop only through the narrow traits in `loop_io.rs`.
 //!
 //! Locking: each field keeps its own lock (as before the split); there is deliberately no outer
 //! lock around the whole struct.
@@ -14,7 +14,6 @@ use std::time::Duration;
 use parking_lot::RwLock;
 use tracing::warn;
 use oxiterm_proto::dom::NodeId;
-use oxiterm_proto::input::InputEvent;
 use oxiterm_proto::style::TerminalProfile;
 
 /// Unique identifier type for a client session.
@@ -314,45 +313,4 @@ impl SessionState {
             }
         }
     }
-}
-
-/// What the event loop needs from the transport side of a session, besides the pure state.
-///
-/// The idle reaper's wall-clock state and the "loop is running" flag stay in the server; the loop
-/// only reports through this trait.
-pub trait LoopHost: Send + Sync {
-    /// Records input activity now (feeds the transport's idle reaper).
-    fn touch_activity(&self);
-    /// Time since the last recorded activity.
-    fn idle_for(&self) -> Duration;
-    /// Called exactly once when `EventLoop::run` returns, however it exits.
-    fn loop_exited(&self);
-}
-
-/// Where the loop takes its input events from (blocking, single consumer).
-///
-/// Phase 4 step 6 moves queue ownership to the host; the loop already sees only this interface.
-pub trait EventSource: Send {
-    /// Blocks up to `timeout` for the next event.
-    fn wait_event(&mut self, timeout: Duration) -> Result<InputEvent, std::sync::mpsc::RecvTimeoutError>;
-    /// Non-blocking attempt to take the next event.
-    fn try_recv(&mut self) -> Option<InputEvent>;
-}
-
-/// Where the loop (and replies of the action handler) put events back into the queue.
-pub trait EventPush: Send + Sync {
-    /// Enqueues `event`; never blocks, may drop it when the queue is full or closed.
-    fn push(&self, event: InputEvent);
-}
-
-/// The loop's handles on the transport half of its session.
-pub struct LoopHandles {
-    /// The pure session state.
-    pub state: std::sync::Arc<SessionState>,
-    /// Input event source. Locked for the duration of a receive batch, as before the split.
-    pub events_in: std::sync::Arc<parking_lot::Mutex<dyn EventSource>>,
-    /// Event enqueueing for action replies.
-    pub events_out: std::sync::Arc<dyn EventPush>,
-    /// Activity and lifecycle reporting.
-    pub host: std::sync::Arc<dyn LoopHost>,
 }

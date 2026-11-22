@@ -18,6 +18,9 @@ const FORBIDDEN: &[&str] = &[
     "std::thread",
     "thread::spawn",
     "recv_timeout",
+    "mpsc",
+    "backpressure",
+    "RecvTimeoutError",
     "Instant::now",
     "std::time::Instant",
     "SystemTime",
@@ -39,6 +42,7 @@ const MODULES: &[(&str, &str)] = &[
     ("action.rs", include_str!("action.rs")),
     ("page_source.rs", include_str!("page_source.rs")),
     ("session_state.rs", include_str!("session_state.rs")),
+    ("loop_io.rs", include_str!("loop_io.rs")),
     ("animation.rs", include_str!("animation.rs")),
     ("throttle.rs", include_str!("throttle.rs")),
     ("frame_limiter.rs", include_str!("frame_limiter.rs")),
@@ -90,10 +94,11 @@ fn core_bound_modules_have_no_transport_or_clock_dependencies() {
 
 #[test]
 fn scanner_detects_forbidden_tokens_and_ignores_tests_and_comments() {
-    let bad = "use tokio::sync::Notify;\nfn f() { let _ = std::time::Instant::now(); }\n";
+    let bad = "use std::sync::mpsc::RecvTimeoutError;\nuse tokio::sync::Notify;\nfn f() { let _ = std::time::Instant::now(); }\n";
     let hits = violations("bad.rs", bad);
     assert!(hits.iter().any(|h| h.contains("`tokio`")), "{hits:?}");
     assert!(hits.iter().any(|h| h.contains("`Instant::now`")), "{hits:?}");
+    assert!(hits.iter().any(|h| h.contains("`mpsc`")), "{hits:?}");
 
     let ok = "// uses tokio and Instant::now in a comment\nfn f() {}\n#[cfg(test)]\nmod t { use std::fs; }\n";
     assert!(violations("ok.rs", ok).is_empty());
