@@ -191,11 +191,81 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
 - **3c (done):** ARIA mirror for screen readers. The server sends the accessibility tree with layout geometry as JSON (`0x37`, only when it changes); the GUI client mirrors it into transparent, accessible DOM over the canvas, keeps focus on the canvas (`aria-activedescendant` + a live region) and turns assistive-tech clicks on mirrored buttons into mouse press/release. Password values are never sent. Any node with an `event-htmx` action is announced as a button (named by its text), and containers take no name from their own text (the parser stores raw markup such as comments there).
 
 ### Phase 4: Extract `oxiterm-core` (enables local mode)
-- Move `EventLoop`, `StateManager`, focus/scroll/drag handling, `inject_initial_state` and animations from `oxiterm-server` into a new `oxiterm-core` crate with **no tokio, russh, hyper or ureq** dependencies.
-- Introduce the `ActionHandler` trait in place of the direct `ureq::post` in `dispatcher.rs`. `oxiterm-server` provides `HttpActionHandler` (current behaviour). Local apps can provide in-process Rust handlers.
-- Frames leave the core only through `FrameSink`. `ClientSession.web_frame_tx` and the SSH reactor stay in `oxiterm-server` as sink implementations.
-- `oxiterm-core` must build for `wasm32-unknown-unknown` and `aarch64-linux-android`. Add both to CI as build-only checks.
-- **Done when:** `oxiterm-server` is a thin host around `oxiterm-core`, all existing server tests and golden snapshots pass, and a small example runs the core with an in-process `ActionHandler` in a unit test.
+
+**Goal.** Move the session logic (event loop, state, focus/scroll/drag, animations, `<for>` expansion) out of `oxiterm-server` into an `oxiterm-core` crate. The core must **run**, not just compile, in a desktop app, on Android and in `wasm32-unknown-unknown`. `oxiterm-server` becomes a thin host: SSH, WebSocket, HTTP App Server client, metrics.
+
+#### What the code looks like today (surveyed before planning)
+
+| Area | Finding | Consequence |
+|---|---|---|
+| `session.rs` (4365 lines; ~2225 production, ~2140 tests) | `EventLoop::run()` is one ~570-line blocking loop (`recv_timeout` on the event channel, then render) | Must be turned inside out into a step API |
+| Clock | `Instant::now()` in session.rs (resize debouncer, `last_activity`, render), `animation.rs`, `ratelimit.rs`, `throttle.rs`, and the renderer's media `cache.rs` | `Instant::now()` panics on wasm32 at runtime; the core takes time from the host |
+| Threads | `dispatcher.rs` spawns a thread per App Server call (ureq); renderer `cache.rs` spawns decode threads | No threads in the core; async work goes through host traits |
+| `ClientSession` | Mixes pure session state with transport (`web_frame_tx` tokio sender, `raw_input_tx`/`ReactorMessage`, prometheus `metrics`, token, epoch, connection count) | Split into a pure half (core) and a transport half (server) |
+| Direct transport writes in the loop | Nav error (0x34/0x35), throttle notice and `open_url` (0x33) write `web_frame_tx` directly | Route through the sink like display lists and the ARIA mirror |
+| Event channel | `backpressure.rs` uses `tokio::sync::Notify` | The host owns the channel and pushes events into the core |
+| Page loading | `loader.rs` + `pathsafe.rs` read the filesystem | A `PageSource` trait: filesystem on the server, embedded or virtual FS on wasm |
+| Already pure | `state.rs`, `events.rs`, `expand.rs`, `placeholder.rs`, `pathsafe.rs` logic | Move as-is |
+| Installed targets | `wasm32-unknown-unknown` and `aarch64-unknown-linux-gnu` are installed; `aarch64-linux-android` is **not** | The Android check needs `rustup target add aarch64-linux-android` (an rlib build needs no NDK linker) |
+
+#### Target API (step-based, host-driven)
+
+```rust
+// In oxiterm-core. `now` is a monotonic time supplied by the host; the core never reads a clock.
+impl Session {
+    fn handle_event(&mut self, ev: InputEvent, now: Millis);   // input, resize, patches, navigation
+    fn tick(&mut self, now: Millis);                            // animations, debounces; emits frames via sinks
+    fn next_deadline(&self) -> Option<Millis>;                  // when tick() must run again (None = idle)
+}
+trait FrameSink    { /* cells, display list, a11y (exists) */ fn send_notice(&mut self, n: ClientNotice) -> Result<bool>; }
+trait ActionHandler { fn dispatch(&self, payload: DispatchPayload); } // fire-and-forget; the patch comes back as an InputEvent
+trait PageSource   { fn load(&self, rel_path: &str, mode: RenderMode) -> Result<THTMLDocument>; }
+```
+
+- **Server driver:** a thread that does `recv_timeout(next_deadline - now)` → `handle_event`/`tick`. That is today's loop, outside the core.
+- **Wasm and native drivers:** call the same three methods from their own event loop (`requestAnimationFrame`, winit).
+- **Side effect:** the debounced resize becomes a deadline instead of waiting for the 1 s idle receive timeout. This fixes the open ~1 s resize lag.
+
+#### Step 0: event-loop trace harness (safety net first)
+
+The golden and display-list equivalence tests call the renderer directly. They do **not** cover the event loop. Before any refactor:
+- Drive the real `EventLoop` through scripted input on a few example pages: counter (clicks), todo (`<for>` lists), input (typing, password), navigation (page changes), plus one App Server action with a mocked server.
+- Record everything that leaves the loop: cell frames, display-list bytes, ARIA JSON, notices and dispatched actions. Use a capturing sink and a capturing handler.
+- Store the traces as committed baselines, and assert them unchanged after every step. Bless only by the lead, never by a subagent.
+- Pages with timing-dependent output (transitions) join the harness right after step 1, once the clock is injectable.
+
+#### Steps: one seam per step, in place inside `oxiterm-server`, trace harness green after each
+
+1. **Clock injection.** Replace every `Instant::now()` in the loop, animation, rate limiter, throttle and debouncer with a `now` passed in. The server passes the real clock; tests pass a fake one.
+2. **Notices through the sink.** Add `FrameSink::send_notice(ClientNotice)` with `NavError`, `NavThrottle`, `OpenUrl` and `AppToken` (and any others found). The loop stops touching `web_frame_tx`.
+3. **`ActionHandler` replaces `AppDispatcher`.** The HTTP implementation (thread + ureq) stays in the server. Responses re-enter as an event, e.g. `InputEvent::AppResponse(patch)`; they are no longer applied to `ClientSession` from a foreign thread. Add an in-process handler for tests.
+4. **`PageSource`** wraps `loader` + `pathsafe`. The filesystem implementation lives in the server; an in-memory implementation is used for tests and wasm.
+5. **Split `ClientSession`.**
+   - Pure `SessionState`: dims, state manager, predictive echo, debouncer, mode flags, current page, app base dir, active media, identity as data.
+   - Transport `ClientSession`: the rest, holding an `Arc<RwLock<SessionState>>` or similar.
+   - `EventLoop` sees only the pure half.
+6. **Event queue ownership.** The host owns the channel (tokio `Notify` stays in the server). The core receives events only through `handle_event`.
+7. **Invert `run()`** into `handle_event` / `tick` / `next_deadline`. Split the ~570-line loop into named functions first, then move the blocking wait into a server-side driver. This is the riskiest step, so it is done last and in the smallest commits possible.
+8. **Move into `oxiterm-core`.** Use `git mv` of the now-pure modules into a new crate. `oxiterm-server` depends on it. Renderer media-cache threads/clock get the same treatment (decode work via a host hook) or are feature-gated out of wasm builds.
+
+#### Tests move with the code
+About 2100 lines of `session.rs` tests use `EventLoop` fields and `pub(crate)` methods directly.
+- **Logic tests** (keys, mouse, focus, scroll, state, `<for>`) move to `oxiterm-core`, rewritten against the step API where needed.
+- **Transport tests** (WS/SSH handshakes, takeover, frames on the wire) stay in `oxiterm-server`.
+
+This will be a large share of the step 8 diff and is budgeted as its own sub-step.
+
+#### Done when
+- A test in `oxiterm-core` scans its own `src/` and fails on `Instant::now`, `std::thread`, `recv_timeout`, `std::fs`, `tokio`, `ureq`, `prometheus` or `russh`.
+- `oxiterm-core` builds for `wasm32-unknown-unknown` and `aarch64-linux-android` (after installing the target).
+- An in-process test drives the step API on `examples/demos/counter.thtml` with an injected clock and an in-process `ActionHandler`. Clicking `+` sets the state to 1 and emits a new frame.
+- The trace harness, golden snapshots, display-list equivalence and all server tests are unchanged.
+
+#### Delegation
+- Each step is a separate Sonnet task with a mandatory advisor call before the first edit and before reporting.
+- The lead reviews and runs the gates between steps.
+- Subagents may run **no git commands at all**, read-only ones included.
+- Steps 0, 5 and 7 get extra lead review. Step 7 may be split further.
 
 ### Phase 5: Native window, both modes (`oxiterm-gui` crate)
 - `winit` window + `wgpu` (or Vello, per D3), with a glyph atlas built only from the glyphs in use (`swash`/`fontdue`).
