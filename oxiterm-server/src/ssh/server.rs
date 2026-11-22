@@ -212,7 +212,7 @@ impl Handler for OxiServer {
                 let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
                 event_loop.source_path = self.source_path.clone();
                 if let Some(ref url) = self.config.server.app_server_url {
-                    event_loop.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(url.clone()));
+                    event_loop.action_handler = Some(std::sync::Arc::new(crate::dispatcher::HttpActionHandler::new(url.clone())));
                 }
 
                 std::thread::spawn(move || {

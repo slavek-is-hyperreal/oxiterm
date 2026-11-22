@@ -6,6 +6,7 @@
 #![allow(clippy::all, clippy::pedantic)]
 
 pub mod config;
+pub mod action;
 pub mod dispatcher;
 pub mod metrics;
 pub mod ratelimit;

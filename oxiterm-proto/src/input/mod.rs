@@ -6,6 +6,16 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A JSON state patch coming from outside the loop (App Server response, push endpoint).
+///
+/// Newtype so [`InputEvent`] can stay `Eq`: `serde_json::Value` is only `PartialEq` because of
+/// floats, but JSON numbers can never be NaN, so equality is in fact reflexive.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AppPatch(pub serde_json::Value);
+
+impl Eq for AppPatch {}
+
 /// High-level input events captured and processed by the OxiTerm engine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InputEvent {
@@ -59,6 +69,14 @@ pub enum InputEvent {
     OpenUrl(String),
     /// Application token set or updated via APC escape sequence or App Server state patch.
     SetAppToken(String),
+    /// An `ActionHandler` answered an action dispatch (OxiUI Phase 4, step 3). The loop applies
+    /// `open_url`, `set_app_token`, `navigate` and the state keys, then resyncs the app token.
+    #[serde(skip_deserializing)]
+    AppResponse(AppPatch),
+    /// A state patch pushed from outside (HTTP `POST /sessions/{id}/patch`). Same patch path
+    /// as `AppResponse` with transport-specific policy (see the event loop).
+    #[serde(skip_deserializing)]
+    PushPatch(AppPatch),
     /// An unparsed or unrecognized escape sequence.
     Unknown(Vec<u8>),
 }
@@ -66,6 +84,13 @@ pub enum InputEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_patch_variants_cannot_be_deserialized() {
+        // Defence in depth: no client byte stream may forge an App Server response.
+        assert!(serde_json::from_str::<InputEvent>(r#"{"PushPatch":{"k":"v"}}"#).is_err());
+        assert!(serde_json::from_str::<InputEvent>(r#"{"AppResponse":{"k":"v"}}"#).is_err());
+    }
 
     #[test]
     fn test_state_patched_serialization() {

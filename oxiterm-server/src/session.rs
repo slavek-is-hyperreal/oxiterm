@@ -239,49 +239,10 @@ impl ClientSession {
         self.event_rx.lock().reopen();
     }
 
-    /// Sends a permanent app token frame (0x35) to web clients.
-    ///
-    /// Transport-side write kept on purpose (OxiUI Phase 4 step 2): it is called from
-    /// `apply_state_patch`, i.e. from the dispatcher thread / push endpoint, not from the event
-    /// loop, so it cannot go through the loop's `FrameSink`. Step 3 (responses re-enter as
-    /// events) / step 5 (`ClientSession` split) move it into the sink. Bytes come from
-    /// `web::encode_notice`.
-    pub fn send_app_token_frame(&self, token: &str) {
-        if self.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Some((_, ref tx)) = *self.web_frame_tx.read() {
-                let _ = tx.try_send(crate::web::encode_notice(&oxiterm_renderer::ClientNotice::AppToken(token.to_string())));
-            }
-        }
-    }
-
-    /// Evaluates dynamic client state change patches.
-    ///
-    /// Enforces limits on key lengths, array items, and payload sizes to mitigate DoS.
-    pub fn apply_state_patch(&self, patch: serde_json::Value) {
-        if let serde_json::Value::Object(mut obj) = patch {
-            // `navigate`: server-initiated page change (e.g. an App Server that generated a
-            // page). Never stored as state. It is queued as a NavigateTo event AFTER the rest
-            // of the patch is applied, so the new page sees the patched state; the event loop
-            // applies the usual containment check and NAV throttle. Works for SSH and web.
-            let navigate = match obj.remove("navigate") {
-                Some(serde_json::Value::String(path)) => Self::sanitize_navigate_target(&path),
-                Some(_) => {
-                    warn!("apply_state_patch: ignoring non-string navigate value");
-                    None
-                }
-                None => None,
-            };
-            self.apply_state_patch_obj(obj);
-            if let Some(path) = navigate {
-                let _ = self.event_tx.try_send(InputEvent::NavigateToAppPath(path));
-            }
-        }
-    }
-
     /// Accepts only a relative `.thtml` path for a `navigate` patch: no scheme, no absolute
     /// path, no `open:` prefix, bounded length. Containment within the app base dir is still
     /// enforced by the event loop when the page is loaded.
-    fn sanitize_navigate_target(path: &str) -> Option<String> {
+    pub(crate) fn sanitize_navigate_target(path: &str) -> Option<String> {
         let ok = !path.is_empty()
             && path.len() <= 512
             && path.ends_with(".thtml")
@@ -293,36 +254,19 @@ impl ClientSession {
         if ok {
             Some(path.to_string())
         } else {
-            warn!("apply_state_patch: rejected navigate target");
+            warn!("app patch: rejected navigate target");
             None
         }
     }
 
-    fn apply_state_patch_obj(&self, mut obj: serde_json::Map<String, serde_json::Value>) {
+    /// Applies the plain state keys of a patch to the session state.
+    ///
+    /// The single key-application path for every patch (App Server response, push endpoint):
+    /// the event loop has already taken `navigate`, `open_url` and `set_app_token` out. Enforces
+    /// limits on key lengths, array items, and payload sizes to mitigate DoS, and refuses
+    /// reserved (`_`-prefixed) keys.
+    pub(crate) fn apply_patch_keys(&self, obj: serde_json::Map<String, serde_json::Value>) {
         {
-            // Intercept set_app_token before state limits or key prefix checks
-            if let Some(tok_val) = obj.remove("set_app_token") {
-                let tok_str = match tok_val {
-                    serde_json::Value::String(s) => s,
-                    serde_json::Value::Null => String::new(),
-                    other => other.to_string(),
-                };
-                let current_token = match self.state.read().get("_app_token") {
-                    Some(crate::state::StateValue::Str(s)) => s.clone(),
-                    _ => String::new(),
-                };
-                if tok_str != current_token {
-                    let mut state = self.state.write();
-                    if tok_str.is_empty() {
-                        state.remove("_app_token");
-                    } else {
-                        state.set("_app_token".to_string(), crate::state::StateValue::Str(tok_str.clone()));
-                    }
-                    drop(state);
-                    self.send_app_token_frame(&tok_str);
-                }
-            }
-
             // Anchored by spec [SEC-11a]: limit 100 keys per patch
             if obj.len() > 100 {
                 warn!("Ignoring state patch with too many keys: {}", obj.len());
@@ -332,7 +276,7 @@ impl ClientSession {
             for (key, val) in obj {
                 // Reserved keys (prefixed `_`) are written only by identity.rs at session start.
                 if key.starts_with('_') {
-                    warn!("apply_state_patch: skipping reserved key '{}'", key);
+                    warn!("app patch: skipping reserved key '{}'", key);
                     continue;
                 }
                 // Anchored by spec [SEC-11b]: limit 256 characters per key
@@ -642,6 +586,15 @@ impl std::io::Write for ChannelWriter {
     }
 }
 
+/// Where a state patch came from; selects the transport policy in `EventLoop::apply_app_patch`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PatchOrigin {
+    /// The response to a dispatched action (`InputEvent::AppResponse`).
+    ActionResponse,
+    /// The HTTP push endpoint (`InputEvent::PushPatch`).
+    Push,
+}
+
 /// Standard processing loop coordination.
 pub struct EventLoop {
     /// Session model reference.
@@ -684,8 +637,9 @@ pub struct EventLoop {
     pub scroll_offset: u16,
     /// Computed document height.
     pub total_height: u16,
-    /// Optional dispatcher for external app server notifications.
-    pub app_dispatcher: Option<crate::dispatcher::AppDispatcher>,
+    /// Optional handler for actions (the App Server). Fire-and-forget; responses re-enter the
+    /// loop as `InputEvent::AppResponse`.
+    pub action_handler: Option<Arc<dyn crate::action::ActionHandler>>,
     /// Template cache for For-node expansion. Maps For node id → original template child ids.
     /// MUST be cleared in update_doc, resolve_and_load_page, and Reload handlers because
     /// NodeIds are arena-local and become invalid after a document swap.
@@ -917,7 +871,7 @@ impl EventLoop {
             autoscroll_anchor: None,
             scroll_offset: 0,
             total_height: 0,
-            app_dispatcher: None,
+            action_handler: None,
             for_template_cache: HashMap::new(),
             throttle: crate::throttle::EventThrottle::new(now),
             active_drag: None,
@@ -1393,7 +1347,7 @@ impl EventLoop {
     }
 
     fn try_dispatch(&self, action: &str) {
-        if let Some(ref dispatcher) = self.app_dispatcher {
+        if let Some(ref handler) = self.action_handler {
             let state_guard = self.session.state.read();
             let mut state_snapshot = std::collections::HashMap::new();
             for (_id, node) in self.doc.arena.iter() {
@@ -1429,7 +1383,7 @@ impl EventLoop {
                     _ => None,
                 }
             };
-            let payload = crate::dispatcher::DispatchPayload {
+            let payload = crate::action::DispatchPayload {
                 action: action.to_string(),
                 state: state_snapshot,
                 session_id: self.session.id,
@@ -1437,7 +1391,12 @@ impl EventLoop {
                 auth_method,
                 app_token,
             };
-            dispatcher.dispatch(payload, self.session.clone());
+            // The reply only queues an event: the loop applies the response on its own thread.
+            let event_tx = self.session.event_tx.clone();
+            let reply = crate::action::ActionReply::new(move |patch| {
+                let _ = event_tx.try_send(InputEvent::AppResponse(oxiterm_proto::input::AppPatch(patch)));
+            });
+            handler.dispatch(payload, reply);
         }
     }
 
@@ -1821,17 +1780,17 @@ impl EventLoop {
                                     }
                                 }
                                 InputEvent::NavigateToAppPath(app_path) => {
-                                    // Same containment check and NAV throttle as NavigateTo.
-                                    if self.throttle.check_nav(self.now) {
-                                        if let Err(e) = self.load_app_page(&app_path) {
-                                            warn!("NavigateToAppPath: failed to load page: {}", e);
-                                            self.send_nav_error();
-                                        }
+                                    if self.navigate_app_path(&app_path) {
                                         needs_render = true;
-                                    } else if self.throttle.is_first_throttle() {
-                                        warn!("NavigateToAppPath: NAV throttle active, dropping navigation");
-                                        self.send_nav_throttle_notice();
                                     }
+                                }
+                                InputEvent::AppResponse(patch) => {
+                                    self.apply_app_patch(patch.0, PatchOrigin::ActionResponse);
+                                    needs_render = true;
+                                }
+                                InputEvent::PushPatch(patch) => {
+                                    self.apply_app_patch(patch.0, PatchOrigin::Push);
+                                    needs_render = true;
                                 }
                                 InputEvent::OpenUrl(url) => {
                                     // Sent by dispatcher when App Server patch contains open_url.
@@ -2324,6 +2283,104 @@ impl EventLoop {
         }
     }
 
+    /// Server-initiated navigation (`navigate` in a patch): same containment check and NAV
+    /// throttle as `NavigateTo`. Returns whether a render is needed.
+    fn navigate_app_path(&mut self, app_path: &str) -> bool {
+        if self.throttle.check_nav(self.now) {
+            if let Err(e) = self.load_app_page(app_path) {
+                warn!("NavigateToAppPath: failed to load page: {}", e);
+                self.send_nav_error();
+            }
+            true
+        } else {
+            if self.throttle.is_first_throttle() {
+                warn!("NavigateToAppPath: NAV throttle active, dropping navigation");
+                self.send_nav_throttle_notice();
+            }
+            false
+        }
+    }
+
+    /// The one patch path: applies a JSON state patch that arrived as an event.
+    ///
+    /// Order (deterministic, all on the loop thread): take `navigate`, `open_url`,
+    /// `set_app_token` out of the patch, apply the remaining state keys (so any token resync
+    /// snapshots the patched state), then the `open_url` notice, the token, the navigation, and
+    /// finally the same document sync + `<for>` expansion as `StatePatched`.
+    ///
+    /// Origin policy, kept exactly as the two transports behaved before step 3 (traces pin it):
+    /// - `ActionResponse`: `open_url` is extracted and sent as a notice; a changed token is set
+    ///   and resynced to the App Server (`app_token_sync`) but NOT announced with a 0x35 notice.
+    /// - `Push`: `open_url` is NOT extracted (stored as an ordinary key); a changed token is set
+    ///   and announced with an `AppToken` notice, with no resync.
+    pub(crate) fn apply_app_patch(&mut self, patch: serde_json::Value, origin: PatchOrigin) {
+        if let serde_json::Value::Object(mut obj) = patch {
+            // `navigate` is never stored as state; it is applied AFTER the rest of the patch so
+            // the new page sees the patched state.
+            let navigate = match obj.remove("navigate") {
+                Some(serde_json::Value::String(path)) => ClientSession::sanitize_navigate_target(&path),
+                Some(_) => {
+                    warn!("app patch: ignoring non-string navigate value");
+                    None
+                }
+                None => None,
+            };
+            let open_url = if origin == PatchOrigin::ActionResponse {
+                match obj.remove("open_url") {
+                    Some(serde_json::Value::String(u)) => Some(u),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let token = obj.remove("set_app_token").map(|v| match v {
+                serde_json::Value::String(s) => s,
+                serde_json::Value::Null => String::new(),
+                other => other.to_string(),
+            });
+
+            self.session.apply_patch_keys(obj);
+
+            if let Some(url) = open_url {
+                self.handle_open_url(url, NodeId(0));
+            }
+            if let Some(tok) = token {
+                match origin {
+                    PatchOrigin::ActionResponse => self.handle_set_app_token(tok),
+                    PatchOrigin::Push => self.set_app_token_announce(tok),
+                }
+            }
+            if let Some(path) = navigate {
+                self.navigate_app_path(&path);
+            }
+        }
+        // Same sequence as the render prelude: syncing the patch alone would consume the dirty
+        // keys, and the render's restore_baselines would then revert animated properties.
+        let now = self.now;
+        self.apply_state_to_doc(now);
+        self.expand_all_for_nodes();
+    }
+
+    /// Push-endpoint token update: set/remove `_app_token` and announce a change to the web
+    /// client (0x35, also for removal). No resync dispatch.
+    fn set_app_token_announce(&mut self, token: String) {
+        let current_token = match self.session.state.read().get("_app_token") {
+            Some(crate::state::StateValue::Str(s)) => s.clone(),
+            _ => String::new(),
+        };
+        if token != current_token {
+            {
+                let mut state = self.session.state.write();
+                if token.is_empty() {
+                    state.remove("_app_token");
+                } else {
+                    state.set("_app_token".to_string(), crate::state::StateValue::Str(token.clone()));
+                }
+            }
+            let _ = self.frame_sink.send_notice(oxiterm_renderer::ClientNotice::AppToken(token));
+        }
+    }
+
     pub(crate) fn handle_set_app_token(&mut self, token: String) {
         let current_token = match self.session.state.read().get("_app_token") {
             Some(crate::state::StateValue::Str(s)) => s.clone(),
@@ -2343,6 +2400,21 @@ impl EventLoop {
 
 #[cfg(test)]
 mod tests {
+    /// Applies a patch the way the loop's key step does (limits, reserved keys), without a loop.
+    fn patch_keys(session: &ClientSession, patch: serde_json::Value) {
+        if let serde_json::Value::Object(obj) = patch {
+            session.apply_patch_keys(obj);
+        }
+    }
+
+    /// A bare loop over an empty document, for patch-handling tests.
+    fn bare_loop(session: Arc<ClientSession>) -> EventLoop {
+        let doc = oxiterm_renderer::document::THTMLDocument::default();
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        EventLoop::new(session, event_bus, output_tx, doc, false)
+    }
+
     use super::*;
     use oxiterm_renderer::render::buffer::CellBuffer;
     use oxiterm_renderer::FrameSink;
@@ -2590,7 +2662,7 @@ mod tests {
             "empty": null
         });
         
-        client_session.apply_state_patch(patch);
+        patch_keys(&client_session, patch);
         
         let state = client_session.state.read();
         assert_eq!(state.get("count"), Some(&crate::state::StateValue::Int(42)));
@@ -2609,28 +2681,28 @@ mod tests {
         for i in 0..105 {
             huge_patch.insert(format!("key{}", i), serde_json::json!(i));
         }
-        client_session.apply_state_patch(serde_json::Value::Object(huge_patch));
+        patch_keys(&client_session, serde_json::Value::Object(huge_patch));
         assert!(client_session.state.read().get("key0").is_none());
 
         let long_key = "a".repeat(257);
         let patch_key_too_long = serde_json::json!({
             long_key.clone(): 42
         });
-        client_session.apply_state_patch(patch_key_too_long);
+        patch_keys(&client_session, patch_key_too_long);
         assert!(client_session.state.read().get(&long_key).is_none());
 
         let long_val = "x".repeat(65537);
         let patch_val_too_long = serde_json::json!({
             "valid_key": long_val
         });
-        client_session.apply_state_patch(patch_val_too_long);
+        patch_keys(&client_session, patch_val_too_long);
         assert!(client_session.state.read().get("valid_key").is_none());
 
         let huge_arr: Vec<i32> = (0..1005).collect();
         let patch_arr_too_long = serde_json::json!({
             "arr_key": huge_arr
         });
-        client_session.apply_state_patch(patch_arr_too_long);
+        patch_keys(&client_session, patch_arr_too_long);
         assert!(client_session.state.read().get("arr_key").is_none());
     }
 
@@ -2641,7 +2713,7 @@ mod tests {
         let client_session = reg.create_session().unwrap();
 
         let patch = serde_json::json!({ "_is_web": "true" });
-        client_session.apply_state_patch(patch);
+        patch_keys(&client_session, patch);
 
         // _is_web was never written by engine, so it must remain absent
         assert!(client_session.state.read().get("_is_web").is_none());
@@ -2985,7 +3057,7 @@ mod tests {
         session.state.write().set("_username".to_string(), crate::state::StateValue::Str("real".to_string()));
         // Patch: contains _username (reserved) and a normal key
         let patch = serde_json::json!({"_username": "hacked", "tab": "home"});
-        session.apply_state_patch(patch);
+        patch_keys(&session, patch);
         let state = session.state.read();
         assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("real".to_string())));
         assert_eq!(state.get("tab"), Some(&crate::state::StateValue::Str("home".to_string())));
@@ -3949,35 +4021,30 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_state_patch_navigate_queues_navigation_after_state() {
+    fn test_app_patch_navigate_is_not_stored_and_rest_is_applied() {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
+        let mut el = bare_loop(session.clone());
+        let seen = capture_notices(&mut el);
 
-        session.apply_state_patch(serde_json::json!({
+        el.apply_app_patch(serde_json::json!({
             "navigate": "cache/abc.thtml",
             "status": "ready"
-        }));
+        }), PatchOrigin::ActionResponse);
 
-        // Not stored as state; the rest of the patch is applied.
-        {
-            let state = session.state.read();
-            assert!(state.get("navigate").is_none(), "navigate must not be stored as state");
-            assert_eq!(state.get("status"), Some(&crate::state::StateValue::Str("ready".to_string())));
-        }
-        let mut rx = session.event_rx.lock();
-        let mut navs = Vec::new();
-        while let Some(ev) = rx.try_recv() {
-            if let InputEvent::NavigateToAppPath(p) = ev {
-                navs.push(p);
-            }
-        }
-        assert_eq!(navs, vec!["cache/abc.thtml".to_string()]);
+        let state = session.state.read();
+        assert!(state.get("navigate").is_none(), "navigate must not be stored as state");
+        assert_eq!(state.get("status"), Some(&crate::state::StateValue::Str("ready".to_string())));
+        // The navigation was attempted (no app dir in this bare loop, so it fails visibly).
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::NavError]);
     }
 
     #[test]
-    fn test_apply_state_patch_navigate_rejects_unsafe_targets() {
+    fn test_app_patch_navigate_rejects_unsafe_targets() {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
+        let mut el = bare_loop(session.clone());
+        let seen = capture_notices(&mut el);
         for bad in [
             serde_json::json!("/etc/passwd.thtml"),
             serde_json::json!("https://evil.example/x.thtml"),
@@ -3987,39 +4054,40 @@ mod tests {
             serde_json::json!(42),
             serde_json::json!("a\u{0}b.thtml"),
         ] {
-            session.apply_state_patch(serde_json::json!({ "navigate": bad }));
+            el.apply_app_patch(serde_json::json!({ "navigate": bad }), PatchOrigin::Push);
         }
         assert!(session.state.read().get("navigate").is_none());
-        let mut rx = session.event_rx.lock();
-        while let Some(ev) = rx.try_recv() {
-            assert!(!matches!(ev, InputEvent::NavigateToAppPath(_)), "unsafe navigate target was queued: {:?}", ev);
-        }
+        // No navigation was even attempted (an attempt would report a nav error here).
+        assert!(seen.lock().is_empty());
     }
 
     #[test]
-    fn test_t7_apply_state_patch_handles_set_app_token() {
-        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
+    fn test_t7_app_patch_handles_set_app_token() {
+        for origin in [PatchOrigin::ActionResponse, PatchOrigin::Push] {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            let mut el = bare_loop(session.clone());
+            el.apply_app_patch(serde_json::json!({
+                "set_app_token": "token_xyz_123",
+                "foo": "bar"
+            }), origin);
 
-        session.apply_state_patch(serde_json::json!({
-            "set_app_token": "token_xyz_123",
-            "foo": "bar"
-        }));
-
-        let state = session.state.read();
-        assert!(state.get("set_app_token").is_none(), "set_app_token must not be saved as regular key");
-        assert_eq!(state.get("_app_token"), Some(&crate::state::StateValue::Str("token_xyz_123".to_string())));
-        assert_eq!(state.get("foo"), Some(&crate::state::StateValue::Str("bar".to_string())));
+            let state = session.state.read();
+            assert!(state.get("set_app_token").is_none(), "set_app_token must not be saved as regular key");
+            assert_eq!(state.get("_app_token"), Some(&crate::state::StateValue::Str("token_xyz_123".to_string())));
+            assert_eq!(state.get("foo"), Some(&crate::state::StateValue::Str("bar".to_string())));
+        }
     }
 
     #[test]
     fn test_t8_patch_targeting_app_token_directly_rejected() {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
+        let mut el = bare_loop(session.clone());
 
-        session.apply_state_patch(serde_json::json!({
+        el.apply_app_patch(serde_json::json!({
             "_app_token": "malicious_token"
-        }));
+        }), PatchOrigin::ActionResponse);
 
         let state = session.state.read();
         assert!(state.get("_app_token").is_none(), "direct patch to _app_token must be rejected");
@@ -4069,17 +4137,19 @@ mod tests {
 
     #[test]
     fn test_t12_empty_set_app_token_removes_app_token_from_state() {
-        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
+        for origin in [PatchOrigin::ActionResponse, PatchOrigin::Push] {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("existing_token".to_string()));
+            let mut el = bare_loop(session.clone());
 
-        session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("existing_token".to_string()));
+            el.apply_app_patch(serde_json::json!({
+                "set_app_token": ""
+            }), origin);
 
-        session.apply_state_patch(serde_json::json!({
-            "set_app_token": ""
-        }));
-
-        let state = session.state.read();
-        assert!(state.get("_app_token").is_none(), "_app_token must be removed when set_app_token is empty");
+            let state = session.state.read();
+            assert!(state.get("_app_token").is_none(), "_app_token must be removed when set_app_token is empty");
+        }
     }
 
     #[test]
@@ -4098,7 +4168,7 @@ mod tests {
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
-        el.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(format!("http://127.0.0.1:{}/events", port)));
+        el.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port))));
 
         // Receive APC SetAppToken with a new non-empty token
         el.handle_set_app_token("new_app_token_123".to_string());
@@ -4135,7 +4205,7 @@ mod tests {
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
-        el.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new("http://127.0.0.1:1/events".to_string()));
+        el.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new("http://127.0.0.1:1/events".to_string())));
 
         // Receive APC SetAppToken with the same token
         el.handle_set_app_token("same_token_123".to_string());
@@ -4163,36 +4233,75 @@ mod tests {
 
     #[test]
     fn test_p41_t4_patch_same_set_app_token_no_frame() {
-        let (web_tx, mut web_rx) = tokio::sync::mpsc::channel(10);
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
-        session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
-        *session.web_frame_tx.write() = Some((0, web_tx));
-
         session.state.write().set("_app_token".to_string(), crate::state::StateValue::Str("existing_token".to_string()));
+        let mut el = bare_loop(session);
+        let seen = capture_notices(&mut el);
 
-        session.apply_state_patch(serde_json::json!({
+        el.apply_app_patch(serde_json::json!({
             "set_app_token": "existing_token"
-        }));
+        }), PatchOrigin::Push);
 
-        assert!(web_rx.try_recv().is_err(), "Frame 0x35 must NOT be emitted when set_app_token equals current _app_token");
+        assert!(seen.lock().is_empty(), "AppToken notice must NOT be emitted when set_app_token equals current _app_token");
     }
 
     #[test]
     fn test_p41_t5_patch_new_set_app_token_emits_frame() {
-        let (web_tx, mut web_rx) = tokio::sync::mpsc::channel(10);
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let mut el = bare_loop(session);
+        let seen = capture_notices(&mut el);
+
+        el.apply_app_patch(serde_json::json!({
+            "set_app_token": "brand_new_token_999"
+        }), PatchOrigin::Push);
+
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::AppToken("brand_new_token_999".to_string())]);
+    }
+
+    #[test]
+    fn test_action_response_token_resyncs_without_notice_and_open_url_is_extracted() {
+        // Response origin: open_url becomes a notice (and is not stored), the token is set, no
+        // AppToken notice. Push origin: open_url is just a state key.
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
         let session = reg.create_session().unwrap();
         session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
-        *session.web_frame_tx.write() = Some((0, web_tx));
+        let mut el = bare_loop(session.clone());
+        let seen = capture_notices(&mut el);
+        el.apply_app_patch(serde_json::json!({
+            "open_url": "https://example.com/a", "set_app_token": "t1", "k": "v"
+        }), PatchOrigin::ActionResponse);
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::OpenUrl("https://example.com/a".to_string())]);
+        assert!(session.state.read().get("open_url").is_none());
+        assert!(session.state.read().get("_app_token").is_some());
 
-        session.apply_state_patch(serde_json::json!({
-            "set_app_token": "brand_new_token_999"
-        }));
+        let session2 = reg.create_session().unwrap();
+        let mut el2 = bare_loop(session2.clone());
+        let seen2 = capture_notices(&mut el2);
+        el2.apply_app_patch(serde_json::json!({"open_url": "https://example.com/a"}), PatchOrigin::Push);
+        assert!(seen2.lock().is_empty());
+        assert!(session2.state.read().get("open_url").is_some());
+    }
 
-        let frame = web_rx.try_recv().expect("Frame 0x35 must be emitted when set_app_token changes");
-        assert_eq!(frame[0], 0x35);
-        assert_eq!(String::from_utf8_lossy(&frame[1..]), "brand_new_token_999");
+    #[test]
+    fn test_fn_action_handler_round_trip_through_the_queue() {
+        // In-process handler: replies synchronously from dispatch; the reply is only queued,
+        // the state changes when the loop applies the event.
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let mut el = bare_loop(session.clone());
+        el.action_handler = Some(Arc::new(crate::action::FnActionHandler(|p: &crate::action::DispatchPayload| {
+            Some(serde_json::json!({ "echo": p.action.clone() }))
+        })));
+        el.try_dispatch("ping");
+        assert!(session.state.read().get("echo").is_none(), "reply must not touch state directly");
+        let ev = session.event_rx.lock().try_recv().expect("reply queued as an event");
+        match ev {
+            InputEvent::AppResponse(p) => el.apply_app_patch(p.0, PatchOrigin::ActionResponse),
+            other => panic!("unexpected event {:?}", other),
+        }
+        assert_eq!(session.state.read().get("echo"), Some(&crate::state::StateValue::Str("ping".to_string())));
     }
 
     #[test]

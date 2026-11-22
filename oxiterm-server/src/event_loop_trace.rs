@@ -4,7 +4,7 @@
 //! hosts do) with scripted [`InputEvent`]s and records everything observable that leaves it:
 //! the final cell picture, the final display list and ARIA JSON (GUI sessions), the notices
 //! raised through `FrameSink::send_notice` (0x33 / 0x34; captured by `TraceSink`, encoded with
-//! the real WS encoding) or still written by the dispatcher thread (0x35), the actions sent to a mocked App
+//! the real WS encoding; 0x35 too since step 3), the actions sent to a mocked App
 //! Server and the bound state. The result is compared with a committed baseline in
 //! `tests/traces/`; an identical refactor yields an identical trace.
 //!
@@ -54,7 +54,7 @@ use oxiterm_renderer::render::cell_sink::CellSink;
 use oxiterm_renderer::render::display_list::{DisplayItem, DisplayList};
 use oxiterm_renderer::{CellBuffer, FrameSink, LayoutEngine};
 
-use crate::dispatcher::AppDispatcher;
+use crate::dispatcher::HttpActionHandler;
 use crate::session::{ClientSession, EventLoop, PtyDimensions, SessionRegistry};
 
 /// A fresh sink call must be at least this old before an event is fed (see module docs).
@@ -76,6 +76,7 @@ const ROWS: u16 = 24;
 /// the directory against this list.
 const TRACES: &[&str] = &[
     "counter-cell",
+    "appserver-token-state-cell",
     "counter-gui",
     "todo-cell",
     "todo-gui",
@@ -118,8 +119,8 @@ struct Shared {
 /// Frame sink double: records the latest picture, never swaps its decision (always "sent").
 struct TraceSink {
     shared: Arc<Shared>,
-    /// Same channel the session's transport writes to (the dispatcher thread's 0x35 still goes
-    /// there), so all notices stay one ordered stream for `drain_notices`.
+    /// Same channel the session's transport writes to (kept for the wire-format check of
+    /// every notice, 0x35 included), so all notices stay one ordered stream for `drain_notices`.
     notice_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
 }
 
@@ -320,17 +321,22 @@ fn mouse(col: u16, row: u16, action: MouseAction) -> InputEvent {
 impl Run {
     /// Starts a session on `page` (path relative to `app_base`) and waits for the first frame.
     fn start(mode: Mode, app_base: &Path, page: &str, with_mock: bool) -> Run {
-        Self::start_inner(mode, app_base, page, with_mock, None)
+        Self::start_inner(mode, app_base, page, with_mock, None, None)
+    }
+
+    /// Like `start`, but actions go to an in-process handler instead of the HTTP mock.
+    fn start_with_handler(mode: Mode, app_base: &Path, page: &str, handler: Arc<dyn crate::action::ActionHandler>) -> Run {
+        Self::start_inner(mode, app_base, page, false, None, Some(handler))
     }
 
     /// Like `start`, but the loop runs on a fake clock set to `t0_ms`.
     fn start_fake(mode: Mode, app_base: &Path, page: &str, t0_ms: u64) -> Run {
         let clock = FakeClock::new();
         clock.set(MonoTime::from_millis(t0_ms));
-        Self::start_inner(mode, app_base, page, false, Some(clock))
+        Self::start_inner(mode, app_base, page, false, Some(clock), None)
     }
 
-    fn start_inner(mode: Mode, app_base: &Path, page: &str, with_mock: bool, clock: Option<FakeClock>) -> Run {
+    fn start_inner(mode: Mode, app_base: &Path, page: &str, with_mock: bool, clock: Option<FakeClock>, handler: Option<Arc<dyn crate::action::ActionHandler>>) -> Run {
         let registry = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 4);
         let session = registry.create_session().unwrap();
         *session.dims.write() = PtyDimensions { cols: COLS, rows: ROWS };
@@ -359,11 +365,14 @@ impl Run {
         }
         let mock = if with_mock {
             let m = Mock::start();
-            el.app_dispatcher = Some(AppDispatcher::new(m.url.clone()));
+            el.action_handler = Some(Arc::new(HttpActionHandler::new(m.url.clone())));
             Some(m)
         } else {
             None
         };
+        if handler.is_some() {
+            el.action_handler = handler;
+        }
         let thread = std::thread::spawn(move || el.run());
 
         let mut run = Run {
@@ -519,13 +528,13 @@ impl Run {
         self.wait_quiet(QUIET);
     }
 
-    /// What `POST /sessions/{id}/patch` does (web.rs): apply the patch on the caller's thread,
-    /// then queue `StatePatched`.
+    /// What `POST /sessions/{id}/patch` does (web.rs): queue the patch as `PushPatch`; the loop
+    /// applies it.
     fn push_patch(&mut self, patch: &str) {
         self.wait_gap();
         let mark = self.frames();
-        self.session.apply_state_patch(serde_json::from_str(patch).unwrap());
-        let _ = self.session.event_tx.try_send(InputEvent::StatePatched);
+        let patch = oxiterm_proto::input::AppPatch(serde_json::from_str(patch).unwrap());
+        let _ = self.session.event_tx.try_send(InputEvent::PushPatch(patch));
         self.wait_render(mark);
         self.wait_quiet(QUIET);
     }
@@ -1132,9 +1141,8 @@ fn script_appserver(mode: Mode) -> String {
     run.snap("patch applied");
     run.click("inc:counter");
     run.await_requests(2);
-    // No bound key in this patch on purpose: the dispatcher thread queues SetAppToken BEFORE it
-    // applies the patch, so the token-sync request would snapshot the state with or without the
-    // patch depending on thread timing (a real race that Phase 4 step 3 removes).
+    // No bound key in this patch (historic: before Phase 4 step 3 the token sync raced the patch;
+    // `appserver-token-state-cell` now covers a bound key together with `set_app_token`).
     run.answer(r#"{"open_url": "https://example.com/auth?x=1", "set_app_token": "tok-abc", "banner": "second"}"#);
     run.await_requests(3);
     run.snap("patch with open_url + set_app_token (token sync dispatched)");
@@ -1159,6 +1167,49 @@ fn trace_appserver_cell() {
 #[test]
 fn trace_appserver_gui() {
     check_baseline("appserver-gui", &script_appserver(Mode::Gui));
+}
+
+/// Regression for the pre-step-3 race: a response that sets a bound key AND `set_app_token`.
+/// The loop applies the patch first, so the `app_token_sync` request deterministically carries
+/// the patched value (500, not the local increment 1).
+#[test]
+fn trace_appserver_token_state_cell() {
+    let mut run = Run::start(Mode::Cell, &examples_dir(), "demos/counter.thtml", true);
+    run.watch(&["counter", "_app_token"]);
+    run.snap("initial frame");
+    run.click("inc:counter");
+    run.await_requests(1);
+    run.snap("click + (request pending)");
+    run.answer(r#"{"set_app_token": "tok-x", "counter": 500}"#);
+    run.await_requests(2);
+    run.snap("patch sets counter and token together (token sync carries counter=500)");
+    run.answer("{}");
+    run.snap("token sync answered");
+    check_baseline("appserver-token-state-cell", &run.finish());
+}
+
+/// The Phase 4 "no HTTP in the core" criterion in miniature: an in-process `ActionHandler`
+/// answers `inc:counter` on the shipped counter demo with a patch; the loop applies it and
+/// renders the new value. No server, no thread, no ureq.
+#[test]
+fn trace_in_process_action_handler() {
+    let handler = Arc::new(crate::action::FnActionHandler(|p: &crate::action::DispatchPayload| {
+        assert_eq!(p.action, "inc:counter");
+        Some(serde_json::json!({ "counter": 77 }))
+    }));
+    let mut run = Run::start_with_handler(Mode::Cell, &examples_dir(), "demos/counter.thtml", handler);
+    run.watch(&["counter"]);
+    run.snap("initial frame");
+    run.click("inc:counter");
+    run.snap("click + answered in-process");
+    let trace = run.finish();
+    assert!(trace.contains("state: counter=Int(77)"), "handler patch not applied:\n{trace}");
+    // The new value must be in the final frame of step 2 (not just the `state:` line).
+    let step2 = trace.split("##### step 2").nth(1).expect("step 2");
+    assert!(
+        step2.lines().filter(|l| !l.starts_with("state:")).any(|l| l.contains("77")),
+        "new value not rendered:\n{step2}"
+    );
 }
 
 /// Two bars with an ease-out and a spring width transition, driven by a button press on a fake

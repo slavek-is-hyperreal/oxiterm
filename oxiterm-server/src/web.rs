@@ -5,7 +5,7 @@
 
 /// WebSocket wire encoding of a [`oxiterm_renderer::ClientNotice`]: the ONLY place the notice
 /// tags and texts are defined. `0x33` + URL, `0x34` + fixed generic text, `0x35` + token.
-/// (Ungated: also used by `ClientSession::send_app_token_frame`.)
+/// (Ungated: the single place for the notice wire bytes.)
 pub fn encode_notice(notice: &oxiterm_renderer::ClientNotice) -> Vec<u8> {
     use oxiterm_renderer::ClientNotice as N;
     let (tag, text): (u8, &str) = match notice {
@@ -621,8 +621,33 @@ pub mod web_impl {
                 }
             };
 
-            session.apply_state_patch(patch);
-            let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
+            // One patch path: the event loop applies it (a full queue drops the OLDEST event, not
+            // this one). While the client is disconnected the session closes its event channel
+            // until it reattaches; then the patch cannot be queued, so its state keys are stored
+            // directly (as before the ActionHandler refactor) and the reattached client sees them.
+            // Client-side effects (navigate, open_url) are meaningless without a client and dropped.
+            if let crate::backpressure::SendResult::Closed =
+                session.event_tx.try_send(oxiterm_proto::input::InputEvent::PushPatch(oxiterm_proto::input::AppPatch(patch.clone())))
+            {
+                if let serde_json::Value::Object(mut obj) = patch {
+                    obj.remove("navigate");
+                    obj.remove("open_url");
+                    if let Some(tok) = obj.remove("set_app_token") {
+                        let tok = match tok {
+                            serde_json::Value::String(s) => s,
+                            serde_json::Value::Null => String::new(),
+                            other => other.to_string(),
+                        };
+                        let mut state = session.state.write();
+                        if tok.is_empty() {
+                            state.remove("_app_token");
+                        } else {
+                            state.set("_app_token".to_string(), crate::state::StateValue::Str(tok));
+                        }
+                    }
+                    session.apply_patch_keys(obj);
+                }
+            }
 
             let page_val = session.current_page.read().clone();
             {
@@ -1019,8 +1044,8 @@ pub mod web_impl {
             event_loop.source_path = resolved_source_path;
             event_loop.base_source_path = base_source_path;
             if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
-                info!("Web EventLoop initializing AppDispatcher targeting {}", url);
-                event_loop.app_dispatcher = Some(crate::dispatcher::AppDispatcher::new(url));
+                info!("Web EventLoop initializing HttpActionHandler targeting {}", url);
+                event_loop.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new(url)));
             } else {
                 warn!("Web EventLoop: OXITERM_APP_SERVER env var not set");
             }
@@ -1563,6 +1588,39 @@ pub mod web_impl {
         }
 
         #[tokio::test]
+        async fn test_patch_endpoint_stores_state_while_client_disconnected() {
+            // A disconnected client's session closes its event channel until it reattaches; a push
+            // in that window must still land in the session state (and drop client-only effects).
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_TOKEN", Some("valid_token_123")),
+            ]);
+
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let session = reg.create_session().unwrap();
+            session.close();
+            let sid = session.id;
+            let local_addr = boot_test_server(reg).await;
+
+            use tokio::io::{AsyncWriteExt, AsyncReadExt};
+            let mut stream = tokio::net::TcpStream::connect(local_addr).await.unwrap();
+            let body = r#"{"progress": 42, "navigate": "x.thtml", "open_url": "https://example.com", "set_app_token": "tok-off"}"#;
+            let request = format!(
+                "POST /sessions/{}/patch HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer valid_token_123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                sid, body.len(), body
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            assert!(response.contains("200 OK"), "{response}");
+
+            let state = session.state.read();
+            assert_eq!(state.get("progress"), Some(&crate::state::StateValue::Int(42)));
+            assert_eq!(state.get("_app_token"), Some(&crate::state::StateValue::Str("tok-off".to_string())));
+            assert!(state.get("navigate").is_none());
+            assert!(state.get("open_url").is_none());
+        }
+
+        #[tokio::test]
         async fn test_19_patch_endpoint_200() {
             let _env = EnvGuard::lock_and_set(&[
                 ("OXITERM_APP_TOKEN", Some("valid_token_123")),
@@ -1584,7 +1642,9 @@ pub mod web_impl {
             let mut response = String::new();
             stream.read_to_string(&mut response).await.unwrap();
             assert!(response.contains("200 OK"));
-            assert_eq!(session.state.read().get("valid_key"), Some(&crate::state::StateValue::Str("applied".to_string())));
+            // No event loop runs in this test: the endpoint only queues the patch for the loop.
+            let ev = session.event_rx.lock().try_recv().expect("PushPatch queued");
+            assert_eq!(ev, oxiterm_proto::input::InputEvent::PushPatch(oxiterm_proto::input::AppPatch(serde_json::json!({"valid_key": "applied"}))));
         }
 
         #[tokio::test]
@@ -1813,9 +1873,17 @@ pub mod web_impl {
             stream.read_to_string(&mut response).await.unwrap();
             assert!(response.contains("200 OK"));
 
-            let state = session.state.read();
-            assert_eq!(state.get("valid_key_22"), Some(&crate::state::StateValue::Str("applied".to_string())));
-            assert!(state.get(&long_key).is_none());
+            // The endpoint queues the raw patch; the loop enforces the limits (session.rs tests
+            // `test_sec_state_patch_limits`).
+            let ev = session.event_rx.lock().try_recv().expect("PushPatch queued");
+            match ev {
+                oxiterm_proto::input::InputEvent::PushPatch(p) => {
+                    assert_eq!(p.0["valid_key_22"], "applied");
+                    assert!(p.0.get(&long_key).is_some());
+                }
+                other => panic!("unexpected event {:?}", other),
+            }
+            assert!(session.state.read().get("valid_key_22").is_none());
         }
 
         #[tokio::test]

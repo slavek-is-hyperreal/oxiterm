@@ -1,51 +1,34 @@
-//! State dispatcher to external app servers.
+//! HTTP implementation of the [`ActionHandler`] seam: POSTs actions to the App Server.
 //!
-//! Sends state snapshots and action payloads to configured application backends
-//! in a fire-and-forget thread, receiving and applying JSON state patches to client sessions.
+//! Sends state snapshots and action payloads to the configured application backend in a
+//! fire-and-forget thread. The JSON response goes back through the [`ActionReply`], i.e. into the
+//! session's event queue; it is never applied from this thread.
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::{info, warn};
 
-/// The JSON payload dispatched to the application backend on events.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DispatchPayload {
-    /// The action event string trigger (e.g. `"set:tab=info"`).
-    pub action: String,
-    /// Currently resolved session state keys and values.
-    pub state: HashMap<String, String>,
-    /// Unique identifier of the connection session.
-    pub session_id: usize,
-    /// Username of the authenticated user.
-    #[serde(default)]
-    pub username: Option<String>,
-    /// Authentication method used.
-    #[serde(default)]
-    pub auth_method: Option<String>,
-    /// Permanent app token associated with the session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub app_token: Option<String>,
-}
+pub use crate::action::DispatchPayload;
+use crate::action::{ActionHandler, ActionReply};
 
-/// Dispatcher responsible for sending session state updates to the app server.
-pub struct AppDispatcher {
+/// Sends session state updates to the app server over HTTP (thread + ureq per call).
+pub struct HttpActionHandler {
     /// Destination endpoint URL of the application server events channel.
     app_server_url: String,
 }
 
-impl AppDispatcher {
-    /// Creates a new dispatcher targeting the given URL.
+impl HttpActionHandler {
+    /// Creates a new handler targeting the given URL.
     pub fn new(app_server_url: String) -> Self {
         Self { app_server_url }
     }
+}
 
-    /// Dispatches the payload in a spawned thread to avoid blocking the event loop.
-    ///
-    /// Parses responses returning a state patch JSON and applies them to the session.
-    pub fn dispatch(&self, payload: DispatchPayload, session: std::sync::Arc<crate::session::ClientSession>) {
+impl ActionHandler for HttpActionHandler {
+    /// Dispatches the payload in a spawned thread to avoid blocking the event loop. A 200
+    /// response with a JSON body is handed to `reply`.
+    fn dispatch(&self, payload: DispatchPayload, reply: ActionReply) {
         let url = self.app_server_url.clone();
         std::thread::spawn(move || {
-            info!("AppDispatcher: POST {} action={}", url, payload.action);
+            info!("HttpActionHandler: POST {} action={}", url, payload.action);
             let mut req = ureq::post(&url);
             if let Ok(token) = std::env::var("OXITERM_APP_TOKEN") {
                 if !token.is_empty() {
@@ -54,42 +37,21 @@ impl AppDispatcher {
             }
             match req.send_json(&payload) {
                 Ok(resp) => {
-                    info!("AppDispatcher: response {}", resp.status());
+                    info!("HttpActionHandler: response {}", resp.status());
                     if resp.status() == 200 {
                         match resp.into_json::<serde_json::Value>() {
-                            Ok(mut json) => {
-                                info!("AppDispatcher: successfully parsed state patch JSON");
-                                // Extract open_url and set_app_token before applying the patch to state.
-                                if let Some(obj) = json.as_object_mut() {
-                                    if let Some(url_val) = obj.remove("open_url") {
-                                        if let Some(url_str) = url_val.as_str() {
-                                            let _ = session.event_tx.try_send(
-                                                oxiterm_proto::input::InputEvent::OpenUrl(url_str.to_string())
-                                            );
-                                        }
-                                    }
-                                    if let Some(tok_val) = obj.remove("set_app_token") {
-                                        let tok_str = match tok_val {
-                                            serde_json::Value::String(s) => s,
-                                            serde_json::Value::Null => String::new(),
-                                            other => other.to_string(),
-                                        };
-                                        let _ = session.event_tx.try_send(
-                                            oxiterm_proto::input::InputEvent::SetAppToken(tok_str)
-                                        );
-                                    }
-                                }
-                                session.apply_state_patch(json);
-                                let _ = session.event_tx.try_send(oxiterm_proto::input::InputEvent::StatePatched);
+                            Ok(json) => {
+                                info!("HttpActionHandler: successfully parsed state patch JSON");
+                                reply.send(json);
                             }
                             Err(e) => {
-                                warn!("AppDispatcher: failed to parse response JSON: {}", e);
+                                warn!("HttpActionHandler: failed to parse response JSON: {}", e);
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    warn!("AppDispatcher: POST failed: {}", e);
+                    warn!("HttpActionHandler: POST failed: {}", e);
                 }
             }
         });
@@ -99,7 +61,10 @@ impl AppDispatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
     // Use the single shared ENV_LOCK from crate::test_env to avoid races with web.rs tests.
     use crate::test_env::EnvGuard;
 
@@ -115,6 +80,29 @@ mod tests {
             auth_method: None,
             app_token: None,
         }
+    }
+
+    /// A reply that hands the response to the test instead of a session queue.
+    fn capture_reply() -> (ActionReply, mpsc::Receiver<serde_json::Value>) {
+        let (tx, rx) = mpsc::channel();
+        (ActionReply::new(move |v| { let _ = tx.send(v); }), rx)
+    }
+
+    /// Accepts one request, returns its raw text and the stream to answer on.
+    fn accept_request(listener: &TcpListener) -> (std::net::TcpStream, String) {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 2048];
+        let n = stream.read(&mut buf).unwrap();
+        (stream, String::from_utf8_lossy(&buf[..n]).into_owned())
+    }
+
+    fn respond_json(mut stream: std::net::TcpStream, body: &str) {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).unwrap();
     }
 
     #[test]
@@ -139,8 +127,8 @@ mod tests {
     }
 
     #[test]
-    fn test_dispatcher_new() {
-        let d = AppDispatcher::new("http://localhost:3000/events".to_string());
+    fn test_handler_new() {
+        let d = HttpActionHandler::new("http://localhost:3000/events".to_string());
         assert_eq!(d.app_server_url, "http://localhost:3000/events");
     }
 
@@ -161,187 +149,81 @@ mod tests {
 
     #[test]
     fn test_dispatch_unreachable_does_not_panic() {
-        // Ensures that dispatching to an unreachable server is a no-op and never panics.
-        let d = AppDispatcher::new("http://127.0.0.1:1/events".to_string());
-        let payload = make_payload("click", 42);
-
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
-        d.dispatch(payload, session);
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Dispatching to an unreachable server is a no-op: never panics, never replies.
+        let d = HttpActionHandler::new("http://127.0.0.1:1/events".to_string());
+        let (reply, rx) = capture_reply();
+        d.dispatch(make_payload("click", 42), reply);
+        // The thread drops the reply without sending: the channel disconnects.
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(3)).is_err());
     }
 
     #[test]
-    fn test_dispatch_app_server_response_patch() {
-        use std::net::TcpListener;
-        use std::io::{Write, Read};
-
+    fn test_dispatch_app_server_response_goes_to_reply() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let d = HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port));
+        let (reply, rx) = capture_reply();
+        d.dispatch(make_payload("click", 123), reply);
 
-        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
-        let payload = make_payload("click", 123);
+        let (stream, _req) = accept_request(&listener);
+        respond_json(stream, "{\"new_key\":\"patched_val\"}");
 
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
-
-        d.dispatch(payload, session.clone());
-
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf).unwrap();
-
-        let body = "{\"new_key\":\"patched_val\"}";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream.write_all(response.as_bytes()).unwrap();
-        drop(stream);
-
-        // Poll up to 2 s at 50 ms intervals instead of a fixed sleep.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        loop {
-            {
-                let state = session.state.read();
-                if state.get("new_key") == Some(&crate::state::StateValue::Str("patched_val".to_string())) {
-                    break;
-                }
-            }
-            if std::time::Instant::now() >= deadline {
-                panic!("state patch was not applied within 2 s");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
+        let patch = rx.recv_timeout(std::time::Duration::from_secs(2)).expect("response patch delivered");
+        assert_eq!(patch, serde_json::json!({"new_key": "patched_val"}));
     }
 
     #[test]
     fn test_22_dispatcher_sends_bearer_auth() {
-        use std::net::TcpListener;
-        use std::io::{Write, Read};
-
         // Uses the shared ENV_LOCK so this test cannot race with web.rs tests
         // that also mutate OXITERM_APP_TOKEN.
         let _env = EnvGuard::lock_and_set(&[("OXITERM_APP_TOKEN", Some("test_app_token_123"))]);
-
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let d = HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port));
+        let (reply, _rx) = capture_reply();
+        d.dispatch(make_payload("click", 123), reply);
 
-        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
-        let payload = make_payload("click", 123);
-
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
-
-        d.dispatch(payload, session);
-
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let n = stream.read(&mut buf).unwrap();
-        let request_str = String::from_utf8_lossy(&buf[..n]);
-
+        let (mut stream, request_str) = accept_request(&listener);
         assert!(request_str.contains("Authorization: Bearer test_app_token_123"));
-
         let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
         stream.write_all(response.as_bytes()).unwrap();
     }
 
     #[test]
-    fn test_39_open_url_in_patch_triggers_open_url_event_not_state() {
-        use std::net::TcpListener;
-        use std::io::{Write, Read};
-
+    fn test_response_is_delivered_verbatim_including_control_keys() {
+        // The handler no longer interprets the response: `open_url` and `set_app_token` reach the
+        // reply untouched; the event loop extracts them (see session.rs tests).
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let d = HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port));
+        let (reply, rx) = capture_reply();
+        d.dispatch(make_payload("login_action", 1), reply);
 
-        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
-        let payload = make_payload("trigger_open", 1);
+        let (stream, _req) = accept_request(&listener);
+        let body = r#"{"open_url":"https://accounts.example.com/authorize?state=abc","set_app_token":"tok_12345","normal_key":"val_123"}"#;
+        respond_json(stream, body);
 
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
-
-        d.dispatch(payload, session.clone());
-
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf).unwrap();
-
-        // App Server responds with both open_url (action) and a normal state key
-        let body = r#"{"open_url":"https://accounts.spotify.com/authorize?state=abc","auth_url":"https://accounts.spotify.com/authorize?state=abc"}"#;
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(), body
-        );
-        stream.write_all(response.as_bytes()).unwrap();
-        drop(stream);
-
-        // Wait for dispatcher thread to process
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        loop {
-            {
-                let state = session.state.read();
-                // auth_url must be applied to state
-                if state.get("auth_url").is_some() {
-                    // open_url must NOT be in state (consumed as event, not stored)
-                    assert!(state.get("open_url").is_none(), "open_url must not persist in state");
-                    break;
-                }
-            }
-            if std::time::Instant::now() >= deadline {
-                panic!("auth_url patch was not applied within 2 s");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-
-        // OpenUrl event must have been enqueued in event_tx
-        // Drain channel to verify it was sent (event_rx is not accessible from test; check via event_tx.len)
-        // We verify indirectly: the state was patched, meaning dispatcher completed, meaning OpenUrl was sent first.
-        // Direct assertion of the event would require exposing event_rx — acceptable as integration evidence.
+        let patch = rx.recv_timeout(std::time::Duration::from_secs(2)).expect("response patch delivered");
+        assert_eq!(patch, serde_json::from_str::<serde_json::Value>(body).unwrap());
     }
 
     #[test]
-    fn test_t5_t6_set_app_token_in_events_response_removed_from_state() {
-        use std::net::TcpListener;
-        use std::io::{Write, Read};
-
+    fn test_non_200_and_bad_json_deliver_nothing() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let d = HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port));
+        let (reply, rx) = capture_reply();
+        d.dispatch(make_payload("click", 1), reply);
+        let (stream, _req) = accept_request(&listener);
+        respond_json(stream, "not json");
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(2)).is_err());
+    }
 
-        let d = AppDispatcher::new(format!("http://127.0.0.1:{}/events", port));
-        let payload = make_payload("login_action", 1);
-
-        let reg = crate::session::SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
-        let session = reg.create_session().unwrap();
-
-        d.dispatch(payload, session.clone());
-
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf).unwrap();
-
-        let body = r#"{"set_app_token":"tok_12345","normal_key":"val_123"}"#;
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(), body
-        );
-        stream.write_all(response.as_bytes()).unwrap();
-        drop(stream);
-
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        loop {
-            {
-                let state = session.state.read();
-                if state.get("normal_key").is_some() {
-                    // T-5: set_app_token key absent from state
-                    assert!(state.get("set_app_token").is_none(), "set_app_token must be removed from state patch");
-                    break;
-                }
-            }
-            if std::time::Instant::now() >= deadline {
-                panic!("state patch was not applied within 2 s");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
+    #[test]
+    fn test_fn_action_handler_replies_synchronously() {
+        let h = crate::action::FnActionHandler(|p: &DispatchPayload| Some(serde_json::json!({ "seen": p.action.clone() })));
+        let (reply, rx) = capture_reply();
+        h.dispatch(make_payload("x", 1), reply);
+        assert_eq!(rx.try_recv().unwrap(), serde_json::json!({"seen": "x"}));
     }
 }
