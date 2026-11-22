@@ -5,7 +5,9 @@
 //! `WebTerminal::draw_display_list` executor only maps ops 1:1 to Canvas2D calls.
 
 use oxiterm_proto::style::{AnsiColor, BorderChars};
-use oxiterm_renderer::render::display_list::{DisplayItem, DisplayList, GridCell, Modifiers, RectF};
+use oxiterm_renderer::render::display_list::{
+    DisplayItem, DisplayList, GridCell, Modifiers, PathCmd, PointF, RectF,
+};
 use oxiterm_renderer::render::unicode::UnicodeWidthCache;
 
 use crate::get_color_str;
@@ -30,6 +32,10 @@ pub enum Seg {
     LineTo(f64, f64),
     /// `arc_to(x1, y1, x2, y2, radius)`
     ArcTo(f64, f64, f64, f64, f64),
+    /// `quadratic_curve_to(cx, cy, x, y)`
+    QuadTo(f64, f64, f64, f64),
+    /// `bezier_curve_to(c1x, c1y, c2x, c2y, x, y)`
+    CubicTo(f64, f64, f64, f64, f64, f64),
     Close,
 }
 
@@ -38,6 +44,10 @@ pub enum Seg {
 pub enum PaintOp {
     Fill { x: f64, y: f64, w: f64, h: f64, color: String },
     Stroke { color: String, width: f64, path: Vec<Seg> },
+    /// Fills a (possibly curved) path with the non-zero rule.
+    FillPath { color: String, path: Vec<Seg> },
+    /// Intersects the clip with a path (must be inside a `Save`/`Restore` pair).
+    ClipPath { path: Vec<Seg> },
     /// Glyph drawn with baseline `top` at (x, y).
     Text { ch: char, x: f64, y: f64, font: String, color: String },
     Save,
@@ -89,7 +99,86 @@ fn push_fill(ops: &mut Vec<PaintOp>, m: &Metrics, r: RectF, color: &AnsiColor) {
         return;
     }
     let (x, y, w, h) = cell_rect(m, r.x, r.y, r.w, r.h);
-    ops.push(PaintOp::Fill { x, y, w, h, color: get_color_str(color, false) });
+    // Fractional (GUI) rects: round each edge to a device pixel (never the size itself) so
+    // adjacent fills share edges without seams or blurry half-covered pixels.
+    let sx = |v: f64| (v * m.dpr).round() / m.dpr;
+    let (x0, y0, x1, y1) = (sx(x), sx(y), sx(x + w), sx(y + h));
+    ops.push(PaintOp::Fill { x: x0, y: y0, w: x1 - x0, h: y1 - y0, color: get_color_str(color, false) });
+}
+
+/// Pixel rect of a cell-unit rect plus its corner radius (cells along x -> px), clamped to
+/// half of the smaller side so the arcs always fit.
+fn rounded_px(m: &Metrics, r: RectF, radius: f32) -> (f64, f64, f64, f64, f64) {
+    let (x, y, w, h) = cell_rect(m, r.x, r.y, r.w, r.h);
+    let rad = (radius as f64 * m.cw).max(0.0).min(w / 2.0).min(h / 2.0);
+    (x, y, w, h, rad)
+}
+
+fn push_rounded_fill(ops: &mut Vec<PaintOp>, m: &Metrics, r: RectF, radius: f32, color: &AnsiColor) {
+    if r.w <= 0.0 || r.h <= 0.0 {
+        return;
+    }
+    let (x, y, w, h, rad) = rounded_px(m, r, radius);
+    ops.push(PaintOp::FillPath {
+        color: get_color_str(color, false),
+        path: rect_path(x, y, x + w, y + h, rad),
+    });
+}
+
+fn pt(m: &Metrics, p: &PointF) -> (f64, f64) {
+    (p.x as f64 * m.cw, p.y as f64 * m.ch)
+}
+
+fn path_segs(m: &Metrics, cmds: &[PathCmd]) -> Vec<Seg> {
+    cmds.iter()
+        .map(|c| match c {
+            PathCmd::MoveTo(p) => {
+                let (x, y) = pt(m, p);
+                Seg::MoveTo(x, y)
+            }
+            PathCmd::LineTo(p) => {
+                let (x, y) = pt(m, p);
+                Seg::LineTo(x, y)
+            }
+            PathCmd::QuadTo(c, p) => {
+                let (cx, cy) = pt(m, c);
+                let (x, y) = pt(m, p);
+                Seg::QuadTo(cx, cy, x, y)
+            }
+            PathCmd::CubicTo(c1, c2, p) => {
+                let (c1x, c1y) = pt(m, c1);
+                let (c2x, c2y) = pt(m, c2);
+                let (x, y) = pt(m, p);
+                Seg::CubicTo(c1x, c1y, c2x, c2y, x, y)
+            }
+            PathCmd::Close => Seg::Close,
+        })
+        .collect()
+}
+
+fn plan_path(
+    ops: &mut Vec<PaintOp>,
+    m: &Metrics,
+    cmds: &[PathCmd],
+    fill: &Option<AnsiColor>,
+    stroke: &Option<(AnsiColor, f32)>,
+) {
+    if cmds.is_empty() {
+        return;
+    }
+    let path = path_segs(m, cmds);
+    if let Some(c) = fill {
+        // Background colour mode (Reset = page bg), like every other filled area.
+        ops.push(PaintOp::FillPath { color: get_color_str(c, false), path: path.clone() });
+    }
+    if let Some((c, w)) = stroke {
+        // Width is in cells along x. lineWidth is CSS px (the canvas carries the DPR scale).
+        let width = *w as f64 * m.cw;
+        if width > 0.0 {
+            // Foreground colour mode (Reset = default text colour) for lines.
+            ops.push(PaintOp::Stroke { color: get_color_str(c, true), width, path });
+        }
+    }
 }
 
 /// Paints one glyph cell: bg box (`advance` cells wide), glyph, optional underline.
@@ -150,6 +239,7 @@ fn plan_border(
     ops: &mut Vec<PaintOp>,
     m: &Metrics,
     rect: RectF,
+    radius: f32,
     chars: &BorderChars,
     fg: &AnsiColor,
     bg: &AnsiColor,
@@ -158,7 +248,20 @@ fn plan_border(
         return;
     }
     let (x, y, w, h) = (rect.x, rect.y, rect.w, rect.h);
-    // Background under the frame ring only, so interior content is never covered.
+    // Rounded frames (radius > 0, big enough and not a blank-sided set) are drawn as one
+    // vector stroke; otherwise the radius-0 logic below applies unchanged.
+    let vector_round = radius > 0.0
+        && w >= 2.0
+        && h >= 2.0
+        && ![chars.top, chars.bot, chars.left, chars.right].contains(&' ');
+    // Background under the frame ring only, so interior content is never covered. For a
+    // rounded frame the ring is clipped to the rounded outer silhouette (the same shape a
+    // rounded Fill uses), so no square corners are painted outside the stroke.
+    if vector_round {
+        let (px, py, pw, ph, rad) = rounded_px(m, rect, radius);
+        ops.push(PaintOp::Save);
+        ops.push(PaintOp::ClipPath { path: rect_path(px, py, px + pw, py + ph, rad) });
+    }
     push_fill(ops, m, RectF::new(x, y, w, 1.0), bg);
     if h > 1.0 {
         push_fill(ops, m, RectF::new(x, y + h - 1.0, w, 1.0), bg);
@@ -170,7 +273,10 @@ fn plan_border(
         }
     }
 
-    let style = border_style(chars, w, h);
+    if vector_round {
+        ops.push(PaintOp::Restore);
+    }
+    let style = if vector_round { BorderStyle::Rounded } else { border_style(chars, w, h) };
     if style == BorderStyle::Glyphs {
         // Same cell order as the cell sink; each frame cell drawn once.
         let g = |ops: &mut Vec<PaintOp>, cx: f32, cy: f32, ch: char| {
@@ -226,7 +332,8 @@ fn plan_border(
     match style {
         BorderStyle::Single => stroke(cx0, cy0, cx1, cy1, 0.0),
         BorderStyle::Rounded => {
-            let r = (m.cw.min(m.ch) / 2.0).min((cx1 - cx0) / 2.0).min((cy1 - cy0) / 2.0);
+            let want = if vector_round { radius as f64 * m.cw } else { m.cw.min(m.ch) / 2.0 };
+            let r = want.min((cx1 - cx0) / 2.0).min((cy1 - cy0) / 2.0);
             stroke(cx0, cy0, cx1, cy1, r);
         }
         BorderStyle::Double => {
@@ -262,9 +369,15 @@ pub fn plan(list: &DisplayList, m: &Metrics) -> Vec<PaintOp> {
     let mut clip_depth = 0usize;
     for item in &list.items {
         match item {
-            DisplayItem::Fill { rect, bg, .. } => push_fill(&mut ops, m, *rect, bg),
-            DisplayItem::Border { rect, chars, fg, bg, .. } => {
-                plan_border(&mut ops, m, *rect, chars, fg, bg)
+            DisplayItem::Fill { rect, radius, bg, .. } => {
+                if *radius > 0.0 {
+                    push_rounded_fill(&mut ops, m, *rect, *radius, bg)
+                } else {
+                    push_fill(&mut ops, m, *rect, bg)
+                }
+            }
+            DisplayItem::Border { rect, radius, chars, fg, bg, .. } => {
+                plan_border(&mut ops, m, *rect, *radius, chars, fg, bg)
             }
             DisplayItem::Text { origin, clip, glyphs, fg, bg, mods, .. } => {
                 let (cx, cy, cw, ch) = cell_rect(m, clip.x, clip.y, clip.w, clip.h);
@@ -285,6 +398,9 @@ pub fn plan(list: &DisplayList, m: &Metrics) -> Vec<PaintOp> {
                 ops.push(PaintOp::Save);
                 ops.push(PaintOp::ClipRect { x, y, w, h });
                 clip_depth += 1;
+            }
+            DisplayItem::Path { cmds, fill, stroke, .. } => {
+                plan_path(&mut ops, m, cmds, fill, stroke)
             }
             DisplayItem::PopClip => {
                 if clip_depth > 0 {
@@ -316,6 +432,7 @@ mod tests {
             items: vec![DisplayItem::Border {
                 node: NodeId(1),
                 rect: RectF::new(2.0, 1.0, w, h),
+                radius: 0.0,
                 chars,
                 fg: AnsiColor::TrueColor(1, 2, 3),
                 bg: AnsiColor::Reset,
@@ -333,6 +450,7 @@ mod tests {
             items: vec![DisplayItem::Fill {
                 node: NodeId(0),
                 rect: RectF::new(0.0, 0.0, 4.0, 2.0),
+                radius: 0.0,
                 fg: AnsiColor::Reset,
                 bg: AnsiColor::Reset,
             }],
@@ -453,5 +571,189 @@ mod tests {
         let restores = ops.iter().filter(|o| **o == PaintOp::Restore).count();
         assert_eq!(saves, restores);
         assert_eq!(saves, 1);
+    }
+
+    fn fill_item(rect: RectF, radius: f32) -> DisplayList {
+        DisplayList {
+            items: vec![DisplayItem::Fill {
+                node: NodeId(0),
+                rect,
+                radius,
+                fg: AnsiColor::Reset,
+                bg: AnsiColor::TrueColor(9, 8, 7),
+            }],
+        }
+    }
+
+    fn arcs(p: &[Seg]) -> usize {
+        p.iter().filter(|g| matches!(g, Seg::ArcTo(..))).count()
+    }
+
+    #[test]
+    fn rounded_fill_is_a_filled_path_with_scaled_radius() {
+        // radius 0.5 cells = 5px; rect 2x1 cells = 20x20 px.
+        let ops = plan(&fill_item(RectF::new(1.0, 1.0, 2.0, 1.0), 0.5), &m());
+        assert_eq!(ops.len(), 1);
+        let PaintOp::FillPath { color, path } = &ops[0] else { panic!("{ops:?}") };
+        assert_eq!(color, "rgb(9,8,7)");
+        assert_eq!(path[0], Seg::MoveTo(15.0, 20.0));
+        assert_eq!(arcs(path), 4);
+        assert!(matches!(path[2], Seg::ArcTo(_, _, _, _, r) if r == 5.0));
+    }
+
+    #[test]
+    fn square_fill_keeps_plain_fill_op() {
+        let ops = plan(&fill_item(RectF::new(1.0, 1.0, 2.0, 1.0), 0.0), &m());
+        assert_eq!(
+            ops,
+            vec![PaintOp::Fill { x: 10.0, y: 20.0, w: 20.0, h: 20.0, color: "rgb(9,8,7)".into() }]
+        );
+    }
+
+    #[test]
+    fn radius_is_clamped_to_half_the_smaller_side() {
+        // 4x2 cells = 40x40 px at (0,0); radius 10 cells = 100px -> clamped to 20.
+        let ops = plan(&fill_item(RectF::new(0.0, 0.0, 4.0, 2.0), 10.0), &m());
+        let PaintOp::FillPath { path, .. } = &ops[0] else { panic!() };
+        assert!(path.iter().all(|g| !matches!(g, Seg::ArcTo(_, _, _, _, r) if *r != 20.0)));
+        assert_eq!(arcs(path), 4);
+        // Wide rect: 8x1 cells = 80x20 px -> clamp is h/2 = 10.
+        let ops = plan(&fill_item(RectF::new(0.0, 0.0, 8.0, 1.0), 10.0), &m());
+        let PaintOp::FillPath { path, .. } = &ops[0] else { panic!() };
+        assert_eq!(path[0], Seg::MoveTo(10.0, 0.0));
+    }
+
+    fn rborder(chars: BorderChars, w: f32, h: f32, radius: f32) -> DisplayList {
+        let mut l = border(chars, w, h);
+        if let DisplayItem::Border { radius: r, .. } = &mut l.items[0] {
+            *r = radius;
+        }
+        l
+    }
+
+    #[test]
+    fn rounded_border_strokes_with_radius_and_clips_ring_to_silhouette() {
+        // Single set but radius 1 cell (10px): rounded vector frame, ring clipped.
+        let ops = plan(&rborder(BorderChars::single(), 6.0, 4.0, 1.0), &m());
+        assert_eq!(ops[0], PaintOp::Save);
+        let PaintOp::ClipPath { path } = &ops[1] else { panic!("{ops:?}") };
+        assert_eq!(arcs(path), 4);
+        assert!(matches!(ops[2], PaintOp::Fill { .. }));
+        let restore = ops.iter().position(|o| *o == PaintOp::Restore).unwrap();
+        assert!(ops[2..restore].iter().all(|o| matches!(o, PaintOp::Fill { .. })));
+        let s = strokes(&ops);
+        assert_eq!(s.len(), 1);
+        assert_eq!(arcs(s[0]), 4);
+        assert!(matches!(s[0][2], Seg::ArcTo(_, _, _, _, r) if r == 10.0));
+        // Same ring area as the square frame: 6*4 - 4*2 = 16 cells.
+        let area: f64 = ops
+            .iter()
+            .filter_map(|o| if let PaintOp::Fill { w, h, .. } = o { Some(w * h) } else { None })
+            .sum();
+        assert_eq!(area, 16.0 * 200.0);
+    }
+
+    #[test]
+    fn rounded_border_radius_clamps_and_small_frames_fall_back() {
+        let ops = plan(&rborder(BorderChars::single(), 4.0, 2.0, 50.0), &m());
+        let s = strokes(&ops);
+        // Stroke rect is 30x20 px (centres) -> radius <= 10.
+        assert!(matches!(s[0][2], Seg::ArcTo(_, _, _, _, r) if r == 10.0));
+        let one = plan(&rborder(BorderChars::single(), 1.0, 3.0, 1.0), &m());
+        assert!(strokes(&one).is_empty());
+        assert!(!one.iter().any(|o| matches!(o, PaintOp::ClipPath { .. })));
+    }
+
+    #[test]
+    fn zero_radius_border_is_unchanged() {
+        let ops = plan(&rborder(BorderChars::single(), 5.0, 3.0, 0.0), &m());
+        assert!(!ops.iter().any(|o| matches!(o, PaintOp::ClipPath { .. } | PaintOp::Save)));
+    }
+
+    fn p(x: f32, y: f32) -> PointF {
+        PointF { x, y }
+    }
+
+    fn path_item(fill: Option<AnsiColor>, stroke: Option<(AnsiColor, f32)>) -> DisplayList {
+        DisplayList {
+            items: vec![DisplayItem::Path {
+                node: NodeId(3),
+                cmds: vec![
+                    PathCmd::MoveTo(p(1.0, 1.0)),
+                    PathCmd::LineTo(p(2.5, 1.0)),
+                    PathCmd::QuadTo(p(3.0, 1.5), p(2.5, 2.0)),
+                    PathCmd::CubicTo(p(2.0, 2.5), p(1.5, 2.5), p(1.0, 2.0)),
+                    PathCmd::Close,
+                ],
+                fill,
+                stroke,
+            }],
+        }
+    }
+
+    fn expected_segs() -> Vec<Seg> {
+        vec![
+            Seg::MoveTo(10.0, 20.0),
+            Seg::LineTo(25.0, 20.0),
+            Seg::QuadTo(30.0, 30.0, 25.0, 40.0),
+            Seg::CubicTo(20.0, 50.0, 15.0, 50.0, 10.0, 40.0),
+            Seg::Close,
+        ]
+    }
+
+    #[test]
+    fn path_fill_only() {
+        let ops = plan(&path_item(Some(AnsiColor::TrueColor(1, 2, 3)), None), &m());
+        assert_eq!(ops, vec![PaintOp::FillPath { color: "rgb(1,2,3)".into(), path: expected_segs() }]);
+    }
+
+    #[test]
+    fn path_stroke_only_width_is_cells_times_cell_width() {
+        let ops = plan(&path_item(None, Some((AnsiColor::TrueColor(4, 5, 6), 0.25))), &m());
+        assert_eq!(
+            ops,
+            vec![PaintOp::Stroke { color: "rgb(4,5,6)".into(), width: 2.5, path: expected_segs() }]
+        );
+    }
+
+    #[test]
+    fn path_fill_then_stroke_and_empty_paths() {
+        let both = path_item(
+            Some(AnsiColor::TrueColor(1, 2, 3)),
+            Some((AnsiColor::TrueColor(4, 5, 6), 1.0)),
+        );
+        let ops = plan(&both, &m());
+        assert_eq!(ops.len(), 2);
+        assert!(matches!(ops[0], PaintOp::FillPath { .. }));
+        assert!(matches!(&ops[1], PaintOp::Stroke { width, .. } if *width == 10.0));
+        // Neither fill nor stroke: nothing to paint.
+        assert!(plan(&path_item(None, None), &m()).is_empty());
+        let empty = DisplayList {
+            items: vec![DisplayItem::Path {
+                node: NodeId(1),
+                cmds: vec![],
+                fill: Some(AnsiColor::Reset),
+                stroke: None,
+            }],
+        };
+        assert!(plan(&empty, &m()).is_empty());
+    }
+
+    #[test]
+    fn fractional_rect_maps_to_pixels() {
+        let ops = plan(&fill_item(RectF::new(0.5, 0.25, 1.5, 1.5), 0.0), &m());
+        assert_eq!(
+            ops,
+            vec![PaintOp::Fill { x: 5.0, y: 5.0, w: 15.0, h: 30.0, color: "rgb(9,8,7)".into() }]
+        );
+        // Adjacent fractional fills share an exact device-pixel edge (no seam).
+        let mut mm = m();
+        mm.dpr = 2.0;
+        let a = plan(&fill_item(RectF::new(0.0, 0.0, 1.55, 1.0), 0.0), &mm);
+        let b = plan(&fill_item(RectF::new(1.55, 0.0, 1.0, 1.0), 0.0), &mm);
+        let (PaintOp::Fill { x: ax, w: aw, .. }, PaintOp::Fill { x: bx, .. }) = (&a[0], &b[0]) else {
+            panic!()
+        };
+        assert_eq!(ax + aw, *bx);
     }
 }

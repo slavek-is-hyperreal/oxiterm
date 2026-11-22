@@ -140,6 +140,11 @@ impl LayoutEngine {
         }
     }
 
+    /// The mode this engine lays out in.
+    pub fn mode(&self) -> RenderMode {
+        self.mode
+    }
+
     /// Builds a Taffy tree for `mode`. Taffy's own pixel rounding stays on for TUI (it
     /// rounds by absolute position, which the cell snapshots rely on) and is disabled
     /// for GUI so fractional sizes survive.

@@ -31,7 +31,8 @@ impl CellSink {
                 }
                 DisplayItem::Legacy { node, content } => legacy(*node, *content, buffer),
                 DisplayItem::CellGrid { rect, cells } => Self::grid(buffer, *rect, cells),
-                DisplayItem::PushClip { .. } | DisplayItem::PopClip => {}
+                // Vector paths are GUI-only; a terminal cannot draw them.
+                DisplayItem::Path { .. } | DisplayItem::PushClip { .. } | DisplayItem::PopClip => {}
             }
         }
     }
@@ -229,6 +230,7 @@ mod tests {
         l.push(DisplayItem::Border {
             node: nid(),
             rect,
+            radius: 0.0,
             chars: chars(),
             fg: AnsiColor::Color256(1),
             bg: AnsiColor::Color256(2),
@@ -324,6 +326,7 @@ mod tests {
         l.push(DisplayItem::Fill {
             node: nid(),
             rect: RectF::new(0.0, 0.0, 2.0, 1.0),
+            radius: 0.0,
             fg: AnsiColor::Reset,
             bg: AnsiColor::Reset,
         });

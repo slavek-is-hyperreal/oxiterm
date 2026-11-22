@@ -39,7 +39,7 @@ Rules can be restricted to one render backend with a media block in the `<style>
 * **Cascade:** rules inside a block keep their source position, so an unconditional rule before or after the block wins or loses by the usual order-of-appearance rule.
 * **Unknown queries are skipped:** any other query (`screen`, `(render: hologram)`, `(render: tui) and ...`) skips the whole block silently and parsing continues after its closing `}`.
 * **No nesting:** `@media` inside `@media` is not supported.
-* **GUI-only properties** such as `border-radius`, `box-shadow`, `font-family` and `font-size` are ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
+* **GUI-only properties:** `border-radius` is parsed (see below) but only display-list (GUI) clients draw it; `box-shadow`, `font-family` and `font-size` are ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
 
 ---
 
@@ -61,6 +61,7 @@ Rules can be restricted to one render backend with a media block in the `<style>
 | `border` | Color | Enables a border around the element with the specified color and default style (`single`). |
 | `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
 | `border-color` | Color | Specifies or overrides the border color. |
+| `border-radius` | Length >= 0 (cells, `px`, `dp`) | GUI only: corner radius of the fill and border (see the `@media` section). Ignored in the terminal. |
 | `flex` | Number > 0 (e.g. `1`, `2.5`) | Flex shorthand. Sets `flex-grow` factor, `flex-shrink: 1.0`, and `flex-basis: 0`. Expands element along container's main axis. |
 | `wrap` | `word` | Enables word-wrapping of `<text>` content to the element's width. With `wrap: word` (and a constrained width) the text flows onto multiple rows at word boundaries; without it text stays on a single row. |
 | `position` | `static` (default), `relative`, `absolute`, `fixed` | Positioning model. `absolute` removes element from normal flow, positioned relative to nearest positioned ancestor. `fixed` positions relative to viewport origin and does not expand scroll range. |
@@ -186,8 +187,9 @@ When any transition is active, the OxiTerm event loop ticks at 60 FPS (16ms). Wh
 
 ## 8. What TCSS Does NOT Support & Unknown Property Handling
 
-* **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `px`, `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
-* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. The GUI-only properties `border-radius`, `box-shadow`, `font-family` and `font-size` are ignored without a warning.
+* **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
+* **`border-radius` (GUI only):** one non-negative length (cells, or `px`/`dp` through the provisional 8x16 cell, so `16px` = 2 cells; measured along the horizontal axis). It is carried to the display list as the `radius` of that node's fill and border. Terminals ignore it completely; the rule `.card { border-radius: 8px; }` inside `@media (render: gui)` is the intended use. Multi-value forms (`4px 8px`) and negative values are rejected with a warning.
+* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. The GUI-only properties `box-shadow`, `font-family` and `font-size` are ignored without a warning.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
 * **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported because the terminal enforces a fixed-width monospace font.
-* **No Background Corner Rounding:** The `border-radius` property is not supported. The only way to get rounded corners is to use `border-style: rounded;`.
+* **No Corner Rounding in TUI:** `border-radius` has no effect in the terminal; the only way to get rounded corners there is `border-style: rounded;`.

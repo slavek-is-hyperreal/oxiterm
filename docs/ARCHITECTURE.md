@@ -98,9 +98,9 @@ OxiTerm features a unified, client-driven responsive design system:
 
 ---
 
-## 7b. Display-List Protocol (OxiUI phase 3a)
+## 7b. Display-List Protocol (OxiUI phase 3a/3b)
 
-Web clients may opt in to receive a `DisplayList` per frame instead of cell diffs (see [oxi-ui.md](oxi-ui.md)). Geometry is still cell-based (TUI-snapped layout); the client paints it with vector primitives. Clients that do not opt in, and SSH, are unaffected.
+Web clients may opt in to receive a `DisplayList` per frame instead of cell diffs (see [oxi-ui.md](oxi-ui.md)). Since phase 3b the session's layout engine runs in `RenderMode::Gui` for such clients (fractional rects, origins and sizes; it switches back to Tui when the flag is reset), and the builder keeps that geometry instead of snapping it. The client paints with vector primitives. Wire version is now 2. Clients that do not opt in, and SSH, are unaffected.
 
 **Negotiation (client to server):** `0x12 <caps:u8>`. Bit 0 = "display list". The server stores `ClientSession::display_list_client`, emits `InputEvent::SetDisplayList(on)`, and the event loop reparses the current page with `RenderMode::Gui` (`@media gui` rules apply) and re-renders. All later page loads use the same mode. The capability is **per connection**: it is reset to cell diffs on every new connection, reattach or takeover (re-parsing the page in TUI mode if it was set), and the client must resend `0x12` each time. A `0x12` from a superseded connection is ignored.
 
@@ -110,18 +110,25 @@ Web clients may opt in to receive a `DisplayList` per frame instead of cell diff
 
 | Element | Layout |
 |---|---|
-| list | `version:u8 (=1)`, `count:u32`, then `count` items; no trailing bytes |
+| list | `version:u8 (=2)`; the decoder accepts only 2, `count:u32`, then `count` items; no trailing bytes |
 | colour | `0` (Reset) \| `1 r g b` (TrueColor) \| `2 idx` (Color256) |
 | rect | `x:f32 y:f32 w:f32 h:f32` |
+| f32 | little-endian IEEE-754; NaN and infinities are rejected by the decoder |
 | char | `u32` Unicode code point |
 | mods | `u8`: `1` bold, `2` underline, `4` italic, `8` skip (grid cells only; wide-glyph trailer, do not draw) |
-| `1` Fill | `node:u32 rect fg bg` : cells in `rect` become `' '` with `fg`/`bg` |
-| `2` Border | `node:u32 rect` + 8 chars (`top_left top top_right left right bot_left bot bot_right`) + `fg bg` |
+| `1` Fill | `node:u32 rect radius:f32 fg bg` : cells in `rect` become `' '` with `fg`/`bg` |
+| `2` Border | `node:u32 rect radius:f32` + 8 chars (`top_left top top_right left right bot_left bot bot_right`) + `fg bg` |
 | `3` Text | `node:u32 origin_x:f32 origin_y:f32 clip:rect fg bg mods:u8 n:u32` + `n` x (`x:f32 y:f32 ch:char advance:f32`); glyph positions are relative to `origin` |
 | `4` Legacy | `node:u32 rect` (never sent by the server; replaced by CellGrid) |
 | `5` PushClip | `rect` |
 | `6` PopClip | (empty) |
 | `7` CellGrid | `rect n:u32` + `n` x (`ch:char fg bg mods:u8`), row-major, `n = w*h`; paint verbatim |
+| `8` Path | `node:u32 n:u32` + `n` commands + `fill_flag:u8` (`0` none, `1` + colour) + `stroke_flag:u8` (`0` none, `1` + colour + `width:f32`) |
+| path command | `op:u8` + f32 operands: `0` MoveTo `x y`; `1` LineTo `x y`; `2` QuadTo `cx cy x y`; `3` CubicTo `c1x c1y c2x c2y x y`; `4` Close (no operands). Any other op is an error. Flags other than 0/1 are errors. |
+
+**Units (v2).** Everything is in logical cell units. `Fill`/`Border` `radius` (0 = square) and the Path stroke `width` are measured along the horizontal axis: a GUI painter multiplies them by the cell width in pixels. Path x/y coordinates are absolute and scale by cell width and cell height respectively. `rect`s and text `origin`/`clip` may be fractional; glyph `x`/`y` offsets inside a text run remain whole cells (text wraps against `floor(inner width)` columns). The cell sink (and so the TUI) ignores `radius` and `Path` completely; they are GUI-only. `radius` comes from the TCSS `border-radius` property.
+
+**Input.** Mouse input is still cell-based (`0x02 col,row`, hit-tested at the cell centre). Sub-cell pointer precision is a later step.
 
 Items are painted in list order, later items overwrite earlier ones. The first item is a full-viewport `Fill` (the page background), so a client may repaint from scratch each frame. `img`/`video`/`diagram` areas and session overlays (focus ring, predictive echo, scroll indicator) arrive as `CellGrid` items. Painting the list onto an empty cell buffer reproduces the cell frame exactly.
 

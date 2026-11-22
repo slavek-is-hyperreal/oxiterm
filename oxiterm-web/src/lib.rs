@@ -147,20 +147,19 @@ impl WebTerminal {
                     self.ctx.fill_rect(*x, *y, *w, *h);
                 }
                 paint::PaintOp::Stroke { color, width, path } => {
-                    self.ctx.begin_path();
-                    for seg in path {
-                        match seg {
-                            paint::Seg::MoveTo(x, y) => self.ctx.move_to(*x, *y),
-                            paint::Seg::LineTo(x, y) => self.ctx.line_to(*x, *y),
-                            paint::Seg::ArcTo(x1, y1, x2, y2, r) => {
-                                let _ = self.ctx.arc_to(*x1, *y1, *x2, *y2, *r);
-                            }
-                            paint::Seg::Close => self.ctx.close_path(),
-                        }
-                    }
+                    trace_path(&self.ctx, path);
                     self.ctx.set_stroke_style_str(color);
                     self.ctx.set_line_width(*width);
                     self.ctx.stroke();
+                }
+                paint::PaintOp::FillPath { color, path } => {
+                    trace_path(&self.ctx, path);
+                    self.ctx.set_fill_style_str(color);
+                    self.ctx.fill();
+                }
+                paint::PaintOp::ClipPath { path } => {
+                    trace_path(&self.ctx, path);
+                    self.ctx.clip();
                 }
                 paint::PaintOp::Text { ch, x, y, font, color } => {
                     self.ctx.set_font(font);
@@ -225,6 +224,23 @@ impl WebTerminal {
         let _ = self.ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
         // Re-set font (reset by canvas.width assignment).
         self.ctx.set_font(&self.base_font);
+    }
+}
+
+/// Replays planner segments onto a fresh canvas path.
+fn trace_path(ctx: &web_sys::CanvasRenderingContext2d, path: &[paint::Seg]) {
+    ctx.begin_path();
+    for seg in path {
+        match seg {
+            paint::Seg::MoveTo(x, y) => ctx.move_to(*x, *y),
+            paint::Seg::LineTo(x, y) => ctx.line_to(*x, *y),
+            paint::Seg::ArcTo(x1, y1, x2, y2, r) => {
+                let _ = ctx.arc_to(*x1, *y1, *x2, *y2, *r);
+            }
+            paint::Seg::QuadTo(cx, cy, x, y) => ctx.quadratic_curve_to(*cx, *cy, *x, *y),
+            paint::Seg::CubicTo(a, b, c, d, x, y) => ctx.bezier_curve_to(*a, *b, *c, *d, *x, *y),
+            paint::Seg::Close => ctx.close_path(),
+        }
     }
 }
 

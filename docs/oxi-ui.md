@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phases 0–2 and 3a done; 3b–7 planned.
+> **Status:** Phases 0–2, 3a and 3b done; 3c and 4–7 planned.
 
 ---
 
@@ -152,7 +152,7 @@ Implemented with these deviations from the original scope:
 - Lengths are `f32` in cell units, not a `Length { value, unit }` type. `ch`/`lh` mean cells; `px`/`dp` convert through a provisional 8×16 px reference cell until phase 6.
 - `RenderMode { Tui, Gui }` lives in `oxiterm-proto`; `LayoutEngine::with_mode` selects it.
 - TUI snapping happens only in the layout engine (`snap`/`snap_size` and rect flattening); Taffy's own rounding is disabled in GUI mode.
-- `@media (render: tui|gui)` is applied at parse time via `THTMLParser::parse_with_mode`; `parse` = TUI. GUI-only properties (`border-radius`, `box-shadow`, `font-family`, `font-size`) are ignored silently.
+- `@media (render: tui|gui)` is applied at parse time via `THTMLParser::parse_with_mode`; `parse` = TUI. `border-radius` is parsed into `ComputedStyle.border_radius` (cells; TUI ignores it); `box-shadow`, `font-family`, `font-size` are ignored silently.
 - `LayoutResult.total_height` stays `u16`, because scrolling is still cell-based.
 - During transitions, layout now reruns every animation tick because values change below one cell; empty diffs are still not sent.
 
@@ -178,7 +178,15 @@ Phase 3 is the first **server-driven** GUI: the browser is the thin client.
 **Phase 3a — ✅ done.** The browser opts in with `?gui=1`. The client then sends `0x12` (capabilities) on every connection, and the server answers with `0x36` + zlib(DisplayList) frames instead of cell diffs. The wire format is versioned (`render/wire.rs`, see ARCHITECTURE.md §7b). Img/video/diagram and session overlays (focus ring, echo, scroll bar) travel as `CellGrid` items. The browser draws borders as vector lines (rounded and double sets included). Geometry is still TUI-snapped and the opt-in is per connection.
 
 **Remaining:**
-- **3b:** GUI-mode (fractional) layout, `Polygon`/`Path` items, `border-radius`.
+- **3b (done):**
+  - Display-list sessions run layout in GUI mode (fractional geometry).
+  - Wire v2 adds `radius` to Fill/Border and a general `Path` item.
+  - TCSS `border-radius` (GUI-only) feeds `radius`; the cell sink ignores both.
+  - The web client paints rounded fills and borders (ring background clipped to the rounded silhouette) and Paths (fill and/or stroke).
+  - Mouse input stays cell-based; sub-cell pointer precision is a later step.
+  - Known follow-ups:
+    - transient partially-erased border edges seen once on the first GUI frame after load;
+    - a root child without a height stretches to the root's `u16::MAX` height, so the scroll indicator shows e.g. `1/65510` (also in TUI, pre-existing).
 - **3c:** ARIA mirror for screen readers.
 
 ### Phase 4: Extract `oxiterm-core` (enables local mode)

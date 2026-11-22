@@ -10,7 +10,7 @@ use crate::render::build::{build_display_list, precompute_inherited_colors};
 use crate::render::cell_sink::CellSink;
 use crate::render::display_list::{DisplayItem, DisplayList, GridCell, RectF};
 use oxiterm_proto::dom::{Node, NodeTag};
-use oxiterm_proto::style::TerminalProfile;
+use oxiterm_proto::style::{RenderMode, TerminalProfile};
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
@@ -115,13 +115,30 @@ impl Renderer {
         app_base_dir: Option<&Path>,
         scroll_offset: u16,
     ) -> DisplayList {
+        Self::render_frame_mode(doc, layout, buffer, profile, base_dir, app_base_dir, scroll_offset, RenderMode::Tui)
+    }
+
+    /// [`Renderer::render_frame`] with an explicit builder mode. `RenderMode::Gui` keeps the
+    /// layout's fractional geometry in the display list (the cell buffer is still painted by
+    /// the cell sink, which truncates); `Tui` is the historical whole-cell behaviour.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_frame_mode(
+        doc: &THTMLDocument,
+        layout: &LayoutResult,
+        buffer: &mut CellBuffer,
+        profile: &TerminalProfile,
+        base_dir: Option<&Path>,
+        app_base_dir: Option<&Path>,
+        scroll_offset: u16,
+        mode: RenderMode,
+    ) -> DisplayList {
         // 1. Build the display list, centering the root element if it has a smaller fixed size
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
         let start_x = offset_x as i32;
         let start_y = (offset_y as i32) - (scroll_offset as i32);
 
         let colors = precompute_inherited_colors(doc);
-        let built = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y));
+        let built = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y), mode);
 
         // 2. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous
         //    frames). Expressed as a leading Fill so the list is self-contained.
@@ -129,6 +146,7 @@ impl Renderer {
         list.push(DisplayItem::Fill {
             node: doc.root,
             rect: RectF::new(0.0, 0.0, buffer.width as f32, buffer.height as f32),
+            radius: 0.0,
             fg: oxiterm_proto::style::AnsiColor::Color256(15),
             bg: oxiterm_proto::style::AnsiColor::Color256(0),
         });

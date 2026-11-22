@@ -85,6 +85,8 @@ pub enum Declaration {
     Left(f32),
     /// Stacking order layer priority.
     ZIndex(i32),
+    /// Corner radius in cells (GUI only).
+    BorderRadius(f32),
     /// Transition specification declarations.
     Transition(Vec<oxiterm_proto::style::TransitionSpec>),
     /// Unrecognized property or invalid property value.
@@ -300,6 +302,7 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
         Declaration::Bottom(v) => style.bottom = Some(*v),
         Declaration::Left(v) => style.left = Some(*v),
         Declaration::ZIndex(v) => style.z_index = Some(*v),
+        Declaration::BorderRadius(v) => style.border_radius = Some(*v),
         Declaration::Transition(v) => style.transitions = v.clone(),
         Declaration::Unknown(_) => {},
     }
@@ -625,7 +628,14 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
             Some(Declaration::Transition(specs))
         },
         // GUI-only properties: accepted and ignored without a warning (TUI has no equivalent).
-        "border-radius" | "box-shadow" | "font-family" | "font-size" => {
+        "border-radius" => match parse_length_unsigned(val_str, Axis::Horizontal) {
+            Some(v) => Some(Declaration::BorderRadius(v)),
+            None => {
+                tracing::warn!("Unknown TCSS property value for {}: {}", key, val_str);
+                Some(Declaration::Unknown(format!("{key}: {val_str}")))
+            }
+        },
+        "box-shadow" | "font-family" | "font-size" => {
             Some(Declaration::Unknown(format!("{key}: {val_str}")))
         }
         _ => {
@@ -880,6 +890,27 @@ pub fn apply_styles_for_mode(doc: &mut crate::document::THTMLDocument, styleshee
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn radius_of(v: &str) -> Option<f32> {
+        let decls = parse_inline_tcss(&format!("border-radius: {v};")).unwrap();
+        let mut style = oxiterm_proto::style::ComputedStyle::default();
+        for d in &decls {
+            apply_declaration(&mut style, d);
+        }
+        style.border_radius
+    }
+
+    #[test]
+    fn test_border_radius_parsing() {
+        assert_eq!(radius_of("2"), Some(2.0));
+        assert_eq!(radius_of("1.5"), Some(1.5));
+        assert_eq!(radius_of("16px"), Some(2.0));
+        assert_eq!(radius_of("4dp"), Some(0.5));
+        assert_eq!(radius_of("-1"), None);
+        assert_eq!(radius_of("-4px"), None);
+        assert_eq!(radius_of("4px 8px"), None);
+        assert_eq!(radius_of("abc"), None);
+    }
 
     #[test]
     fn test_border_parsing() {

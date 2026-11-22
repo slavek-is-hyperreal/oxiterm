@@ -6,22 +6,29 @@
 //! output exactly (guarded by `tests/golden_cells.rs`).
 //!
 //! # Coordinate system
-//! In phase 1, one unit = one terminal cell, and every coordinate produced by the builder is
-//! integer-valued. Coordinates are absolute (scroll and centering offsets already applied)
-//! and may be negative or exceed the viewport; sinks clip to their surface bounds.
+//! One unit = one terminal cell. In TUI mode every coordinate produced by the builder is
+//! integer-valued; in GUI mode (display-list sessions, fractional layout) rects and origins
+//! may be fractional, while glyph offsets inside a text run stay whole cells. Coordinates are
+//! absolute (scroll and centering offsets already applied) and may be negative or exceed the
+//! viewport; sinks clip to their surface bounds. `radius` and stroke widths are in cells
+//! measured along the horizontal axis (GUI painters multiply by the cell width); path x/y
+//! scale by cell width/height respectively.
 //!
 //! # Sink semantics (normative for the cell sink)
 //! Items are painted strictly in list order; a later item overwrites earlier cells.
-//! - [`DisplayItem::Fill`]: every cell in `rect` becomes `' '` with `fg`/`bg`.
+//! - [`DisplayItem::Fill`]: every cell in `rect` becomes `' '` with `fg`/`bg`. `radius` is
+//!   ignored (the cell sink always draws square corners).
 //! - [`DisplayItem::Border`]: draws the frame of `rect` with `chars`, `fg`, `bg`, in exactly
 //!   this order: the four corners (top-left; top-right if w > 1; bottom-left if h > 1;
 //!   bottom-right if w > 1 && h > 1), then top/bottom edges for x in 1..w-1 (bottom only if
 //!   h > 1), then left/right edges for y in 1..h-1 (right only if w > 1). Nothing is drawn
-//!   if w == 0 || h == 0.
+//!   if w == 0 || h == 0. `radius` is ignored (square corners, exactly as before).
 //! - [`DisplayItem::Text`]: each glyph's `ch` is written at `(origin.x + g.x, origin.y + g.y)`;
 //!   for `g.advance > 1`, continuation cells `x + 1 .. x + advance` are written as `' '` with
 //!   the same colours, but only those whose x is `< clip.x + clip.w`. The builder only emits
 //!   glyphs whose origin cell lies inside `clip`.
+//! - [`DisplayItem::Path`]: ignored entirely. A terminal cannot draw vectors; paths are
+//!   GUI-only.
 //! - [`DisplayItem::Legacy`]: painted by the legacy cell code for that node (img, video,
 //!   diagram) into `content`. GUI sinks will get dedicated items for these later.
 //! - [`DisplayItem::CellGrid`]: paints `rect.w * rect.h` cells verbatim, row-major, starting
@@ -55,6 +62,18 @@ impl RectF {
 pub struct PointF {
     pub x: f32,
     pub y: f32,
+}
+
+/// One vector path command (absolute coordinates).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PathCmd {
+    MoveTo(PointF),
+    LineTo(PointF),
+    /// Quadratic Bezier: control point, end point.
+    QuadTo(PointF, PointF),
+    /// Cubic Bezier: two control points, end point.
+    CubicTo(PointF, PointF, PointF),
+    Close,
 }
 
 /// One positioned glyph inside a [`DisplayItem::Text`] run.
@@ -106,9 +125,20 @@ impl From<crate::render::buffer::Cell> for GridCell {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayItem {
     /// Solid background fill of a node's border box.
-    Fill { node: NodeId, rect: RectF, fg: AnsiColor, bg: AnsiColor },
-    /// Node frame. `chars` keeps the TUI glyph set; GUI sinks may draw vector lines instead.
-    Border { node: NodeId, rect: RectF, chars: BorderChars, fg: AnsiColor, bg: AnsiColor },
+    ///
+    /// `radius` is the corner radius in cells (0.0 = square); only GUI painters honour it.
+    Fill { node: NodeId, rect: RectF, radius: f32, fg: AnsiColor, bg: AnsiColor },
+    /// Node frame. `chars` keeps the TUI glyph set; GUI sinks may draw vector lines instead
+    /// (rounded when `radius > 0`).
+    Border { node: NodeId, rect: RectF, radius: f32, chars: BorderChars, fg: AnsiColor, bg: AnsiColor },
+    /// General vector path (GUI only; the cell sink ignores it). Coordinates are absolute.
+    /// `fill` paints the closed shape, `stroke` is `(colour, width in cells)`.
+    Path {
+        node: NodeId,
+        cmds: Vec<PathCmd>,
+        fill: Option<AnsiColor>,
+        stroke: Option<(AnsiColor, f32)>,
+    },
     /// Already laid-out, positioned glyphs (wrapping and masking are resolved by the builder).
     Text {
         node: NodeId,

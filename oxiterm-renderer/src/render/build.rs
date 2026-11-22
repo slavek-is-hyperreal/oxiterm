@@ -4,13 +4,18 @@
 //! a pre-order walk from the root) and emits, per node, a [`DisplayItem::Fill`], an optional
 //! [`DisplayItem::Border`], then a [`DisplayItem::Text`] for Text/Button/Input content or a
 //! [`DisplayItem::Legacy`] for Img/Video/Diagram.
+//!
+//! `RenderMode::Tui` snaps every rect and padding to whole cells (the historical output,
+//! guarded by the golden tests). `RenderMode::Gui` keeps the layout's fractional rects and
+//! origins; text still wraps against `floor(inner width)` columns and glyph offsets stay in
+//! whole cells relative to the (possibly fractional) origin.
 
 use crate::document::THTMLDocument;
 use crate::layout::types::{to_cells, LayoutResult};
 use crate::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, PointF, RectF};
 use crate::render::unicode::UnicodeWidthCache;
 use oxiterm_proto::dom::{Node, NodeId, NodeTag};
-use oxiterm_proto::style::{AnsiColor, Position, WrapMode};
+use oxiterm_proto::style::{AnsiColor, Position, RenderMode, WrapMode};
 use std::collections::HashMap;
 
 /// Resolved `(fg, bg)` colours per node after inheritance.
@@ -56,16 +61,17 @@ pub(crate) fn build_display_list(
     colors: &ResolvedColors,
     start: (i32, i32),
     offset: (u16, u16),
+    mode: RenderMode,
 ) -> DisplayList {
     let mut list = DisplayList::new();
     if !layout.paint_order.is_empty() {
         for &node_id in &layout.paint_order {
             if let Some(&(fg, bg)) = colors.get(&node_id) {
-                emit_node(&mut list, doc, layout, node_id, start, offset, fg, bg);
+                emit_node(&mut list, doc, layout, node_id, start, offset, mode, fg, bg);
             }
         }
     } else {
-        walk(&mut list, doc, layout, colors, doc.root, start, offset);
+        walk(&mut list, doc, layout, colors, doc.root, start, offset, mode);
     }
     list
 }
@@ -78,13 +84,14 @@ fn walk(
     node_id: NodeId,
     start: (i32, i32),
     offset: (u16, u16),
+    mode: RenderMode,
 ) {
     let Some(node) = doc.arena.get(node_id) else { return };
     if let Some(&(fg, bg)) = colors.get(&node_id) {
-        emit_node(list, doc, layout, node_id, start, offset, fg, bg);
+        emit_node(list, doc, layout, node_id, start, offset, mode, fg, bg);
     }
     for &child_id in &node.children {
-        walk(list, doc, layout, colors, child_id, start, offset);
+        walk(list, doc, layout, colors, child_id, start, offset, mode);
     }
 }
 
@@ -96,21 +103,33 @@ fn emit_node(
     node_id: NodeId,
     start: (i32, i32),
     offset: (u16, u16),
+    mode: RenderMode,
     fg: AnsiColor,
     bg: AnsiColor,
 ) {
     let Some(node) = doc.arena.get(node_id) else { return };
     let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-    // TUI path: layout rects are whole cells here; snap with the shared rule.
-    let (rx, ry, rw, rh) = (to_cells(rect.x), to_cells(rect.y), to_cells(rect.width), to_cells(rect.height));
-    let (abs_x, abs_y) = if node.style.position == Position::Fixed {
-        (offset.0 as i32 + rx as i32, offset.1 as i32 + ry as i32)
-    } else {
-        (start.0 + rx as i32, start.1 + ry as i32)
+    let fixed = node.style.position == Position::Fixed;
+    let (origin_x, origin_y) = if fixed { (offset.0 as i32, offset.1 as i32) } else { start };
+    // TUI: layout rects snap to whole cells with the shared rule. GUI: fractional as laid out.
+    let (abs_x, abs_y, rw, rh) = match mode {
+        RenderMode::Tui => (
+            (origin_x + to_cells(rect.x) as i32) as f32,
+            (origin_y + to_cells(rect.y) as i32) as f32,
+            to_cells(rect.width) as f32,
+            to_cells(rect.height) as f32,
+        ),
+        RenderMode::Gui => (
+            origin_x as f32 + rect.x,
+            origin_y as f32 + rect.y,
+            rect.width.max(0.0),
+            rect.height.max(0.0),
+        ),
     };
+    let radius = node.style.border_radius.unwrap_or(0.0);
 
-    let border_box = RectF::new(abs_x as f32, abs_y as f32, rw as f32, rh as f32);
-    list.push(DisplayItem::Fill { node: node_id, rect: border_box, fg, bg });
+    let border_box = RectF::new(abs_x, abs_y, rw, rh);
+    list.push(DisplayItem::Fill { node: node_id, rect: border_box, radius, fg, bg });
 
     let has_border = node.style.border.is_some();
     if let Some(border) = &node.style.border {
@@ -121,30 +140,24 @@ fn emit_node(
         list.push(DisplayItem::Border {
             node: node_id,
             rect: border_box,
+            radius,
             chars: border.chars.clone(),
             fg: border_fg,
             bg,
         });
     }
 
-    let (cx, cy) = if has_border { (abs_x + 1, abs_y + 1) } else { (abs_x, abs_y) };
-    let (cw, ch) = if has_border {
-        (rw.saturating_sub(2), rh.saturating_sub(2))
-    } else {
-        (rw, rh)
-    };
+    let (cx, cy) = if has_border { (abs_x + 1.0, abs_y + 1.0) } else { (abs_x, abs_y) };
+    let (cw, ch) = if has_border { ((rw - 2.0).max(0.0), (rh - 2.0).max(0.0)) } else { (rw, rh) };
     match node.tag {
         NodeTag::Text | NodeTag::Button => {
-            if let Some(item) = text_item(node, node_id, cx, cy, cw, ch, fg, bg) {
+            if let Some(item) = text_item(node, node_id, cx, cy, cw, ch, mode, fg, bg) {
                 list.push(item);
             }
         }
         NodeTag::Input => list.push(input_item(node, node_id, cx, cy, cw, fg, bg)),
         NodeTag::Img | NodeTag::Video | NodeTag::Diagram => {
-            list.push(DisplayItem::Legacy {
-                node: node_id,
-                content: RectF::new(cx as f32, cy as f32, cw as f32, ch as f32),
-            });
+            list.push(DisplayItem::Legacy { node: node_id, content: RectF::new(cx, cy, cw, ch) });
         }
         _ => {}
     }
@@ -156,20 +169,29 @@ fn emit_node(
 fn text_item(
     node: &Node,
     node_id: NodeId,
-    content_x: i32,
-    content_y: i32,
-    content_w: u16,
-    content_h: u16,
+    content_x: f32,
+    content_y: f32,
+    content_w: f32,
+    content_h: f32,
+    mode: RenderMode,
     fg: AnsiColor,
     bg: AnsiColor,
 ) -> Option<DisplayItem> {
     let text = node.text.as_ref()?;
-    let pad_x = if node.tag == NodeTag::Button { to_cells(node.style.padding.left) as i32 } else { 0 };
-    let pad_y = if node.tag == NodeTag::Button { to_cells(node.style.padding.top) as i32 } else { 0 };
+    // Padding: whole cells in TUI, as styled in GUI. (Integer-valued f32 maths is exact.)
+    let pad = |v: f32| match mode {
+        RenderMode::Tui => to_cells(v) as f32,
+        RenderMode::Gui => v.max(0.0),
+    };
+    let pad_x = if node.tag == NodeTag::Button { pad(node.style.padding.left) } else { 0.0 };
+    let pad_y = if node.tag == NodeTag::Button { pad(node.style.padding.top) } else { 0.0 };
     let draw_x = content_x + pad_x;
     let draw_y = content_y + pad_y;
-    let inner_w = content_w.saturating_sub(pad_x as u16);
-    let inner_h = content_h.saturating_sub(pad_y as u16);
+    let inner_wf = (content_w - pad_x).max(0.0);
+    let inner_hf = (content_h - pad_y).max(0.0);
+    // Wrapping and the glyph loop work on whole columns/rows.
+    let inner_w = inner_wf.floor().min(f32::from(u16::MAX)) as u16;
+    let inner_h = inner_hf.floor().min(f32::from(u16::MAX)) as u16;
 
     let lines_to_draw: Vec<String> = if node.style.wrap == WrapMode::Word && inner_w > 0 {
         let mut result = Vec::new();
@@ -239,8 +261,8 @@ fn text_item(
 
     Some(DisplayItem::Text {
         node: node_id,
-        origin: PointF { x: draw_x as f32, y: draw_y as f32 },
-        clip: RectF::new(draw_x as f32, draw_y as f32, inner_w as f32, inner_h as f32),
+        origin: PointF { x: draw_x, y: draw_y },
+        clip: RectF::new(draw_x, draw_y, inner_wf, inner_hf),
         glyphs,
         fg,
         bg,
@@ -253,16 +275,18 @@ fn text_item(
 fn input_item(
     node: &Node,
     node_id: NodeId,
-    content_x: i32,
-    content_y: i32,
-    content_w: u16,
+    content_x: f32,
+    content_y: f32,
+    content_w: f32,
     fg: AnsiColor,
     bg: AnsiColor,
 ) -> DisplayItem {
     let text_str = node.text.as_deref().unwrap_or("");
     let is_password = node.attrs.input_type.as_deref().map(|t| t == "password").unwrap_or(false);
     let mut chars = text_str.chars();
-    let glyphs = (0..content_w)
+    // One glyph per whole column (content_w is integral in TUI, possibly fractional in GUI).
+    let cols = content_w.floor().clamp(0.0, f32::from(u16::MAX)) as u16;
+    let glyphs = (0..cols)
         .map(|x| {
             let ch = match chars.next() {
                 Some(c) => if is_password { '*' } else { c },
@@ -273,8 +297,8 @@ fn input_item(
         .collect();
     DisplayItem::Text {
         node: node_id,
-        origin: PointF { x: content_x as f32, y: content_y as f32 },
-        clip: RectF::new(content_x as f32, content_y as f32, content_w as f32, 1.0),
+        origin: PointF { x: content_x, y: content_y },
+        clip: RectF::new(content_x, content_y, content_w, 1.0),
         glyphs,
         fg,
         bg,
@@ -305,7 +329,7 @@ mod tests {
     fn word_wrap_produces_glyph_rows() {
         let mut n = text_node(NodeTag::Text, "ab cd ef");
         n.style.wrap = WrapMode::Word;
-        let item = text_item(&n, NodeId(0), 0, 0, 5, 3, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 0.0, 0.0, 5.0, 3.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
         let g = glyph_str(&item);
         assert_eq!(
             g,
@@ -316,7 +340,7 @@ mod tests {
     #[test]
     fn wide_glyph_wraps_at_edge() {
         let n = text_node(NodeTag::Text, "a\u{4e16}");
-        let item = text_item(&n, NodeId(0), 2, 1, 2, 2, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 2.0, 1.0, 2.0, 2.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
         let DisplayItem::Text { glyphs, origin, .. } = &item else { unreachable!() };
         assert_eq!((origin.x, origin.y), (2.0, 1.0));
         assert_eq!(glyphs.len(), 2);
@@ -327,7 +351,7 @@ mod tests {
     fn password_input_is_masked_and_padded() {
         let mut n = text_node(NodeTag::Input, "abc");
         n.attrs.input_type = Some("password".to_string());
-        let item = input_item(&n, NodeId(0), 1, 2, 5, AnsiColor::Reset, AnsiColor::Reset);
+        let item = input_item(&n, NodeId(0), 1.0, 2.0, 5.0, AnsiColor::Reset, AnsiColor::Reset);
         let s: String = glyph_str(&item).iter().map(|g| g.2).collect();
         assert_eq!(s, "***__");
     }
@@ -337,9 +361,64 @@ mod tests {
         let mut n = text_node(NodeTag::Button, "ok");
         n.style.padding.left = 2.0;
         n.style.padding.top = 1.0;
-        let item = text_item(&n, NodeId(0), 3, 4, 10, 5, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 3.0, 4.0, 10.0, 5.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
         let DisplayItem::Text { origin, clip, .. } = &item else { unreachable!() };
         assert_eq!((origin.x, origin.y), (5.0, 5.0));
         assert_eq!(*clip, RectF::new(5.0, 5.0, 8.0, 4.0));
+    }
+
+    fn fill_rects(list: &DisplayList) -> Vec<(f32, f32)> {
+        list.items
+            .iter()
+            .filter_map(|i| match i {
+                DisplayItem::Fill { rect, .. } => Some((rect.x, rect.w)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn build_doc(src: &str, mode: RenderMode) -> DisplayList {
+        use crate::layout::engine::LayoutEngine;
+        let mut doc = crate::parser::thtml::THTMLParser::parse_with_mode(src, mode).unwrap();
+        let layout = LayoutEngine::with_mode(mode).compute(&mut doc, 21, 0, None).unwrap();
+        let colors = precompute_inherited_colors(&doc);
+        build_display_list(&doc, &layout, &colors, (0, 0), (0, 0), mode)
+    }
+
+    #[test]
+    fn gui_mode_keeps_fractional_geometry_tui_stays_integral() {
+        let src = r#"<screen style="width: 21; height: 3; flex-direction: row;"><box style="flex: 1; border-radius: 4px;"><text>a</text></box><box style="flex: 1;"><text>b</text></box></screen>"#;
+        let gui = build_doc(src, RenderMode::Gui);
+        let xs = fill_rects(&gui);
+        assert!(xs.iter().any(|&(x, w)| x == 10.5 && w == 10.5), "gui: {xs:?}");
+        assert!(xs.iter().any(|&(x, w)| x == 0.0 && w == 10.5), "gui: {xs:?}");
+        let tui = build_doc(src, RenderMode::Tui);
+        for (x, w) in fill_rects(&tui) {
+            assert_eq!((x.fract(), w.fract()), (0.0, 0.0), "tui must stay integral");
+        }
+        // border-radius reaches Fill (0.5 cell = 4px / 8px) and is square elsewhere.
+        let radii: Vec<f32> = gui
+            .items
+            .iter()
+            .filter_map(|i| if let DisplayItem::Fill { radius, .. } = i { Some(*radius) } else { None })
+            .collect();
+        assert!(radii.contains(&0.5) && radii.contains(&0.0), "{radii:?}");
+    }
+
+    #[test]
+    fn border_radius_lands_in_border_item() {
+        let src = r#"<screen style="width: 21; height: 3;"><box style="border-style: single; border-radius: 2;">x</box></screen>"#;
+        let l = build_doc(src, RenderMode::Gui);
+        assert!(l.items.iter().any(|i| matches!(i, DisplayItem::Border { radius, .. } if *radius == 2.0)));
+    }
+
+    #[test]
+    fn gui_text_wraps_on_floor_of_fractional_width() {
+        let mut n = text_node(NodeTag::Text, "abcdef");
+        n.style.wrap = WrapMode::Word;
+        let item = text_item(&n, NodeId(0), 0.5, 0.0, 3.7, 3.0, RenderMode::Gui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let DisplayItem::Text { origin, glyphs, .. } = &item else { unreachable!() };
+        assert_eq!(origin.x, 0.5);
+        assert_eq!(glyphs.len(), 3, "floor(3.7) = 3 columns");
     }
 }

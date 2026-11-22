@@ -86,6 +86,9 @@ pub struct ComputedStyle {
     pub transitions: Vec<TransitionSpec>,
     /// Optional opacity factor [0.0, 1.0].
     pub opacity: Option<f32>,
+    /// Corner radius in cell units (horizontal axis), GUI renderers only. `None` = square.
+    #[serde(default)]
+    pub border_radius: Option<f32>,
 }
 
 /// Animatable CSS style property for transitions.

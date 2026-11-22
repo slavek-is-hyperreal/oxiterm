@@ -2117,7 +2117,7 @@ pub mod web_impl {
             assert_eq!(msg[0], WS_TAG_DISPLAY_LIST);
             let mut raw = Vec::new();
             std::io::Read::read_to_end(&mut flate2::read::ZlibDecoder::new(&msg[1..]), &mut raw).unwrap();
-            assert_eq!(raw[0], 1, "wire version");
+            assert_eq!(raw[0], oxiterm_renderer::render::wire::WIRE_VERSION, "wire version");
             oxiterm_renderer::render::wire::decode(&raw).unwrap()
         }
 

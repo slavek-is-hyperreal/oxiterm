@@ -1881,6 +1881,13 @@ impl EventLoop {
                     self.rebuild_focusable_nodes();
 
                     let dims = *self.session.dims.read();
+                    // Display-list clients lay out in fractional GUI mode; everyone else (and a
+                    // client whose flag was reset) in whole-cell TUI mode. Checked here, at the
+                    // single compute site, so it also covers flags set without an event.
+                    let want_mode = self.render_mode();
+                    if self.layout_engine.mode() != want_mode {
+                        self.layout_engine = LayoutEngine::with_mode(want_mode);
+                    }
                     let state_guard = self.session.state.read();
                     if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
                     self.total_height = layout.total_height;
@@ -1963,7 +1970,7 @@ impl EventLoop {
                     // Display-list clients get the painted list plus a snapshot of the buffer
                     // right after it, so the overlays below can be appended as CellGrids.
                     let gui_frame = if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
-                        let list = Renderer::render_frame(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
+                        let list = Renderer::render_frame_mode(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset, self.layout_engine.mode());
                         let snapshot = oxiterm_renderer::CellBuffer {
                             cells: self.buffer.back.cells.clone(),
                             width: self.buffer.back.width,
@@ -2578,6 +2585,7 @@ mod tests {
         assert!(el.focused_node.is_some());
         el.frame_sink = Box::new(CapturingListSink { lists: lists.clone(), session: session.clone() });
         el.run();
+        assert_eq!(el.layout_engine.mode(), oxiterm_proto::style::RenderMode::Gui, "display-list session lays out in GUI mode");
 
         let lists = lists.lock();
         assert_eq!(lists.len(), 1, "exactly one frame expected before quit");
