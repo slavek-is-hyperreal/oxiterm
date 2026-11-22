@@ -495,6 +495,34 @@ impl ScrollIndicator {
     }
 }
 
+/// What `wait_plan` decides before the blocking receive.
+struct WaitPlan {
+    /// 16 ms when animations / drag / media are active, else 1000 ms.
+    timeout: std::time::Duration,
+    /// Media animations, transitions or a drag are active.
+    is_active: bool,
+    /// Transitions are running (forces a render even when no event arrives).
+    transitions_active: bool,
+}
+
+/// What `receive_batch` reports back to the loop.
+struct BatchOutcome {
+    /// Some event (or an active-cadence timeout) wants a render.
+    needs_render: bool,
+    /// The 100-event cap was hit: more events may be queued, render next iteration.
+    capped: bool,
+    /// Queue disconnected or quit requested: leave the loop.
+    disconnected: bool,
+}
+
+/// Result of handling one event.
+enum EventOutcome {
+    /// Keyboard quit (SSH only).
+    Quit,
+    /// Handled; whether it wants a render.
+    Handled { needs_render: bool },
+}
+
 struct EventLoopGuard {
     host: Arc<dyn LoopHost>,
 }
@@ -1388,9 +1416,54 @@ impl EventLoop {
     }
 
     /// Starts the main event loop thread driving keyboard and mouse coordinate reactions.
+    ///
+    /// Shape (OxiUI Phase 4, step 7a): `run()` only sequences named phases. The locals
+    /// `first_frame` / `pending_render` / `needs_render` are the only cross-phase state; they
+    /// travel through the small return structs `WaitPlan`, `BatchOutcome` and `EventOutcome`.
     pub fn run(&mut self) {
-
+        // Must stay in `run()`: dropping it is what reports `loop_exited()` to the host.
         let _guard = EventLoopGuard { host: self.host.clone() };
+        self.prepare_session();
+
+        let mut first_frame = true;
+        let mut pending_render = false;
+        loop {
+            if self.idle_expired() {
+                return;
+            }
+
+            let mut needs_render = first_frame || pending_render;
+            first_frame = false;
+            pending_render = false;
+
+            let plan = self.wait_plan();
+            if plan.transitions_active {
+                needs_render = true;
+            }
+
+            let batch = self.receive_batch(plan.timeout, plan.is_active);
+            needs_render |= batch.needs_render;
+            // The 100-event cap defers the render to the next iteration. Assigned (not OR-ed)
+            // here, before `render_frame_if_due` below may also set it.
+            pending_render = batch.capped;
+
+            if batch.disconnected {
+                return;
+            }
+
+            if self.poll_resize() {
+                needs_render = true;
+            }
+
+            if self.render_frame_if_due(needs_render) {
+                pending_render = true;
+            }
+        }
+    }
+
+    /// One-time setup before the first iteration: state subscriptions, initial state
+    /// injection, `<for>` expansion, the web client's `current_page`, sink setup.
+    fn prepare_session(&mut self) {
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -1405,580 +1478,610 @@ impl EventLoop {
         }
 
         let _ = self.frame_sink.setup();
-        
-        let mut first_frame = true;
-        let mut pending_render = false;
-        loop {
-            // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
-            let elapsed = self.host.idle_for();
-            if elapsed > std::time::Duration::from_secs(600) {
-                info!("Session {} timed out ({}s idle)", self.session.id, elapsed.as_secs());
-                // Signal idle death so WsFrameSink::drop emits [0xFF, 1] to web clients.
-                self.session.death_reason.store(1, std::sync::atomic::Ordering::SeqCst);
-                return;
-            }
+    }
 
-            let mut needs_render = first_frame || pending_render;
-            first_frame = false;
-            pending_render = false;
+    /// Idle timeout check. True when the session died of idleness (`death_reason` is set).
+    fn idle_expired(&self) -> bool {
+        // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
+        let elapsed = self.host.idle_for();
+        if elapsed > std::time::Duration::from_secs(600) {
+            info!("Session {} timed out ({}s idle)", self.session.id, elapsed.as_secs());
+            // Signal idle death so WsFrameSink::drop emits [0xFF, 1] to web clients.
+            self.session.death_reason.store(1, std::sync::atomic::Ordering::SeqCst);
+            return true;
+        }
+        false
+    }
 
-            let has_active_transitions = self.animation_controller.has_active();
-            if has_active_transitions {
-                needs_render = true;
-            }
-            let has_media_animations = self.has_active_animations();
-            let is_dragging = self.active_drag.is_some();
-            let is_active = has_media_animations || has_active_transitions || is_dragging;
+    /// How long the next wait may block, and whether the loop is in its 16 ms animation cadence.
+    fn wait_plan(&self) -> WaitPlan {
+        let has_active_transitions = self.animation_controller.has_active();
+        let has_media_animations = self.has_active_animations();
+        let is_dragging = self.active_drag.is_some();
+        let is_active = has_media_animations || has_active_transitions || is_dragging;
 
-            let sleep_dur = if is_active {
-                std::time::Duration::from_millis(16)
-            } else {
-                std::time::Duration::from_millis(1000)
-            };
+        let sleep_dur = if is_active {
+            std::time::Duration::from_millis(16)
+        } else {
+            std::time::Duration::from_millis(1000)
+        };
+        WaitPlan { timeout: sleep_dur, is_active, transitions_active: has_active_transitions }
+    }
 
-            let mut disconnected = false;
-            {
-                let events_in = self.events_in.clone();
-                let mut rx_lock = events_in.lock();
-                let mut processed_count = 0;
-                loop {
-                    if processed_count >= 100 {
-                        pending_render = true;
-                        break;
-                    }
+    /// The blocking wait plus draining up to 100 queued events. `events_in` stays locked for the
+    /// whole batch. Reads the clock once, right after the blocking wait.
+    fn receive_batch(&mut self, sleep_dur: std::time::Duration, is_active: bool) -> BatchOutcome {
+        let mut needs_render = false;
+        let mut capped = false;
+        let mut disconnected = false;
+        {
+            let events_in = self.events_in.clone();
+            let mut rx_lock = events_in.lock();
+            let mut processed_count = 0;
+            loop {
+                if processed_count >= 100 {
+                    capped = true;
+                    break;
+                }
 
-                    let event_opt = if processed_count == 0 {
-                        let received = rx_lock.wait_event(sleep_dur);
-                        // The one clock read of this iteration, after the blocking wait.
-                        self.now = self.clock.now();
-                        match received {
-                            WaitResult::Event(e) => Some(e),
-                            WaitResult::Timeout => {
-                                if is_active {
-                                    needs_render = true;
-                                }
-                                break;
+                let event_opt = if processed_count == 0 {
+                    let received = rx_lock.wait_event(sleep_dur);
+                    // The one clock read of this iteration, after the blocking wait.
+                    self.now = self.clock.now();
+                    match received {
+                        WaitResult::Event(e) => Some(e),
+                        WaitResult::Timeout => {
+                            if is_active {
+                                needs_render = true;
                             }
-                            WaitResult::Disconnected => {
-                                info!("Event loop receiver disconnected. Exiting run loop.");
-                                disconnected = true;
-                                break;
-                            }
+                            break;
                         }
-                    } else {
-                        rx_lock.try_recv()
-                    };
-
-                    let event = match event_opt {
-                        Some(e) => e,
-                        None => break,
-                    };
-
-                    processed_count += 1;
-
-                    self.host.touch_activity();
-                    let is_input_focused = self.focused_node
-                        .and_then(|id| self.doc.get_node(id))
-                        .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
-                        .unwrap_or(false);
-                    // Preprocess: remap scroll keys and detect quit. Returns None on quit.
-                    // Quit is SSH-only; web sessions pass 'q' through unchanged.
-                    let is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
-                    let event = match Self::preprocess_key(event, is_input_focused, is_web) {
-                        Some(e) => e,
-                        None => {
-                            info!("Quit requested via keyboard");
+                        WaitResult::Disconnected => {
+                            info!("Event loop receiver disconnected. Exiting run loop.");
                             disconnected = true;
                             break;
                         }
-                    };
-                    match event {
-                                InputEvent::StatePatched => {
-                                    // Same sequence as the render prelude: syncing the patch alone
-                                    // would consume the dirty keys, and the render's
-                                    // restore_baselines would then revert animated properties.
-                                    self.apply_state_to_doc(self.now);
-                                    self.expand_all_for_nodes();
-                                    needs_render = true;
-                                }
-                                InputEvent::Resize { cols, rows } => {
-                                    info!("Reactor notified resize to {}x{}", cols, rows);
-                                    needs_render = true;
-                                }
-                                InputEvent::SwitchViewport(is_mobile) => {
-                                    self.session.is_mobile.store(is_mobile, std::sync::atomic::Ordering::SeqCst);
-                                    if let Some(bp) = self.base_source_path.clone() {
-                                        let file_name = bp.file_name().and_then(|f| f.to_str()).unwrap_or("index.thtml").to_string();
-                                        if self.throttle.check_nav(self.now) {
-                                            if let Err(e) = self.resolve_and_load_page(&file_name) {
-                                                warn!("SwitchViewport: failed to load page: {}", e);
-                                                self.send_nav_error();
-                                            }
-                                            needs_render = true;
-                                        } else if self.throttle.is_first_throttle() {
-                                            warn!("SwitchViewport: NAV throttle active, dropping viewport switch");
-                                            self.send_nav_throttle_notice();
-                                        }
-                                    }
-                                }
-                                InputEvent::NavigateTo(rel_path) => {
-                                    // Containment check is inside resolve_and_load_page.
-                                    if self.throttle.check_nav(self.now) {
-                                        if let Err(e) = self.resolve_and_load_page(&rel_path) {
-                                            warn!("NavigateTo: failed to load page: {}", e);
-                                            self.send_nav_error();
-                                        }
-                                        needs_render = true;
-                                    } else if self.throttle.is_first_throttle() {
-                                        warn!("NavigateTo: NAV throttle active, dropping navigation");
-                                        self.send_nav_throttle_notice();
-                                    }
-                                }
-                                InputEvent::NavigateToAppPath(app_path) => {
-                                    if self.navigate_app_path(&app_path) {
-                                        needs_render = true;
-                                    }
-                                }
-                                InputEvent::AppResponse(patch) => {
-                                    self.apply_app_patch(patch.0, PatchOrigin::ActionResponse);
-                                    needs_render = true;
-                                }
-                                InputEvent::PushPatch(patch) => {
-                                    self.apply_app_patch(patch.0, PatchOrigin::Push);
-                                    needs_render = true;
-                                }
-                                InputEvent::OpenUrl(url) => {
-                                    // Sent by dispatcher when App Server patch contains open_url.
-                                    // handle_open_url emits opcode 0x33 to web clients only;
-                                    // SSH sessions receive a warn! and no action.
-                                    self.handle_open_url(url, oxiterm_proto::dom::NodeId(0));
-                                }
-                                InputEvent::SetAppToken(token) => {
-                                    self.handle_set_app_token(token);
-                                }
-                                InputEvent::Reload => {
-                                    if self.reload_current_source() {
-                                        info!("Hot Reload successful for session {}", self.session.id);
-                                        needs_render = true;
-                                    }
-                                }
-                                InputEvent::SetDisplayList(_) => {
-                                    // The flag is already stored by the WS handler. Not NAV-throttled:
-                                    // skipping the reparse would leave a GUI session with a TUI-parsed doc.
-                                    self.reload_current_source();
-                                    // The client's picture is no longer the front buffer's.
-                                    self.buffer.force_dirty();
-                                    needs_render = true;
-                                }
-                                // Anchored by spec [Plan-2.2/R1]: KeyPress arm runs unconditionally.
-                                // Activation paths (focus-nav, Enter) must never be dropped by the INPUT bucket.
-                                // check_input() is moved inside the character-input else-branch only.
-                                InputEvent::KeyPress(key) => {
+                    }
+                } else {
+                    rx_lock.try_recv()
+                };
 
-                                    let is_nav_forward = key.codepoint == '\u{F701}'
-                                        || key.codepoint == '\u{F702}'
-                                        || key.codepoint == '\t';
-                                    let is_nav_backward = key.codepoint == '\u{F700}'
-                                        || key.codepoint == '\u{F703}';
+                let event = match event_opt {
+                    Some(e) => e,
+                    None => break,
+                };
 
-                                    if is_nav_forward || is_nav_backward {
-                                        // Focus navigation — unconditional (cheap, no render flood risk).
-                                        if !self.focusable_nodes.is_empty() {
-                                            let n = self.focusable_nodes.len();
-                                            let cur = self.focused_node
-                                                .and_then(|f| self.focusable_nodes.iter().position(|&x| x == f))
-                                                .unwrap_or(0);
-                                            let next = if is_nav_forward {
-                                                (cur + 1) % n
-                                            } else {
-                                                (cur + n - 1) % n
-                                            };
-                                            self.focused_node = Some(self.focusable_nodes[next]);
-                                            info!("Focus moved to node {:?}", self.focused_node);
-                                            needs_render = true;
-                                        }
-                                    } else {
-                                        // Enter → HTMX activation (Enter only). NAV bucket in handle_htmx_target caps loads.
-                                        if key.codepoint == '\r' || key.codepoint as u32 == 13 {
-                                            if let Some(focused) = self.focused_node {
-                                                if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
-                                                    info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
-                                                    self.handle_htmx_target(target_node_id, &htmx_target);
-                                                    needs_render = true;
-                                                }
-                                            }
-                                        }
-                                        // Character input / predictive echo — runs for ALL non-navigation keys
-                                        // (printable chars append, Backspace deletes; Enter is a no-op here).
-                                        // D2: state write (append char / backspace) is UNCONDITIONAL —
-                                        // a dropped frame is invisible; a dropped keystroke corrupts
-                                        // a comment or password field.
-                                        // check_input() gates only needs_render (render-flood surface).
-                                        let handled_by_input = self.apply_key_to_focused_input(key.codepoint);
-
-                                        if !handled_by_input {
-                                            // D7: suppress predictive echo for password inputs
-                                            let is_password_focused = self.focused_node
-                                                .and_then(|id| self.doc.get_node(id))
-                                                .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
-                                                .unwrap_or(false);
-                                            if !is_password_focused {
-                                                let mut echo = self.session.predictive_echo.write();
-                                                echo.buffer.push(key.codepoint);
-                                            }
-                                        }
-                                        // Render is gated: skipping a frame is safe; losing a char is not.
-                                        if self.throttle.check_input(self.now) {
-                                            needs_render = true;
-                                        }
-                                    }
-                                }
-                                // Anchored by spec [Plan-2.2/R1]: MouseEvent arm runs unconditionally.
-                                // The arm delegates entirely to handle_mouse_event(), which owns the
-                                // Press-vs-flood split. Re-adding an `if self.throttle.check_input()`
-                                // guard HERE would cause t2 to fail (Press swallowed when bucket empty).
-                                InputEvent::MouseEvent(mouse) => {
-                                    if self.handle_mouse_event(mouse) {
-                                        needs_render = true;
-                                    }
-                                }
-                                InputEvent::CapabilityResponse(raw) => {
-                                    info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
-                                    self.session.terminal_profile.write().parse_da1_response(&raw);
-                                }
-                                InputEvent::Xoff => { self.output_paused = true; }
-                                InputEvent::Xon => { self.output_paused = false; needs_render = true; }
-                                InputEvent::Refresh => { needs_render = true; }
-                                InputEvent::ScrollUp => {
-                                    let dims = *self.session.dims.read();
-                                    let has_scroll = self.total_height > dims.rows;
-                                    let viewport_h = if has_scroll {
-                                        dims.rows.saturating_sub(1)
-                                    } else {
-                                        dims.rows
-                                    };
-                                    self.scroll_offset = self.scroll_offset.saturating_sub(viewport_h);
-                                    needs_render = true;
-                                }
-                                InputEvent::ScrollDown => {
-                                    let dims = *self.session.dims.read();
-                                    let has_scroll = self.total_height > dims.rows;
-                                    let viewport_h = if has_scroll {
-                                        dims.rows.saturating_sub(1)
-                                    } else {
-                                        dims.rows
-                                    };
-                                    let max_scroll = self.total_height.saturating_sub(viewport_h);
-                                    self.scroll_offset = (self.scroll_offset + viewport_h).min(max_scroll);
-                                    needs_render = true;
-                                }
-                                InputEvent::TextInput(text) => {
-                                    info!("TextInput received (len={}): {:?}", text.len(), text);
-                                }
-                                _ => {}
-                            }
+                processed_count += 1;
+            match self.handle_event(event) {
+                EventOutcome::Quit => {
+                    disconnected = true;
+                    break;
+                }
+                EventOutcome::Handled { needs_render: event_needs_render } => {
+                    if event_needs_render {
+                        needs_render = true;
+                    }
                 }
             }
+        }
+        }
+        BatchOutcome { needs_render, capped, disconnected }
+    }
 
-            if disconnected {
-                return;
+    /// Handles one input event (everything the old receive loop did per event).
+    fn handle_event(&mut self, event: InputEvent) -> EventOutcome {
+        let mut needs_render = false;
+        self.host.touch_activity();
+        let is_input_focused = self.focused_node
+            .and_then(|id| self.doc.get_node(id))
+            .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
+            .unwrap_or(false);
+        // Preprocess: remap scroll keys and detect quit. Returns None on quit.
+        // Quit is SSH-only; web sessions pass 'q' through unchanged.
+        let is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
+        let event = match Self::preprocess_key(event, is_input_focused, is_web) {
+            Some(e) => e,
+            None => {
+                info!("Quit requested via keyboard");
+                return EventOutcome::Quit;
             }
-
-            let dims_opt = self.session.resize_debouncer.write().poll(self.now);
-            if let Some(dims) = dims_opt {
-                *self.session.dims.write() = dims;
-                self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
-                info!("Resized session {} to {:?}", self.session.id, dims);
-
-                let _ = self.frame_sink.clear_screen();
-
+        };
+        match event {
+            InputEvent::StatePatched => {
+                // Same sequence as the render prelude: syncing the patch alone
+                // would consume the dirty keys, and the render's
+                // restore_baselines would then revert animated properties.
+                self.apply_state_to_doc(self.now);
+                self.expand_all_for_nodes();
                 needs_render = true;
             }
-
-            if needs_render && !self.output_paused {
-                if self.frame_limiter.should_render(self.now) {
-                    let now = self.now;
-                    self.apply_state_to_doc(now);
-                    self.animation_controller.tick(&mut self.doc, now);
-                    self.rebuild_focusable_nodes();
-
-                    let dims = *self.session.dims.read();
-                    // Display-list clients lay out in fractional GUI mode; everyone else (and a
-                    // client whose flag was reset) in whole-cell TUI mode. Checked here, at the
-                    // single compute site, so it also covers flags set without an event.
-                    let want_mode = self.render_mode();
-                    if self.layout_engine.mode() != want_mode {
-                        self.layout_engine = LayoutEngine::with_mode(want_mode);
+            InputEvent::Resize { cols, rows } => {
+                info!("Reactor notified resize to {}x{}", cols, rows);
+                needs_render = true;
+            }
+            InputEvent::SwitchViewport(is_mobile) => {
+                self.session.is_mobile.store(is_mobile, std::sync::atomic::Ordering::SeqCst);
+                if let Some(bp) = self.base_source_path.clone() {
+                    let file_name = bp.file_name().and_then(|f| f.to_str()).unwrap_or("index.thtml").to_string();
+                    if self.throttle.check_nav(self.now) {
+                        if let Err(e) = self.resolve_and_load_page(&file_name) {
+                            warn!("SwitchViewport: failed to load page: {}", e);
+                            self.send_nav_error();
+                        }
+                        needs_render = true;
+                    } else if self.throttle.is_first_throttle() {
+                        warn!("SwitchViewport: NAV throttle active, dropping viewport switch");
+                        self.send_nav_throttle_notice();
                     }
-                    // The viewport is the root's minimum height; content can grow past it.
-                    self.layout_engine.set_viewport_rows(dims.rows);
-                    let state_guard = self.session.state.read();
-                    if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
-                    self.total_height = layout.total_height;
-
-                    let has_scroll = self.total_height > dims.rows;
-                    let viewport_h = if has_scroll {
-                        dims.rows.saturating_sub(1)
-                    } else {
-                        dims.rows
-                    };
-
-                    Self::autoscroll_to_focused(
-                        self.focused_node,
-                        &mut self.autoscroll_anchor,
-                        &mut self.scroll_offset,
-                        &layout,
-                        viewport_h,
-                    );
-
-                    let max_scroll = self.total_height.saturating_sub(viewport_h);
-                    self.scroll_offset = self.scroll_offset.min(max_scroll);
-
-                    {
-                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-                        let start_x = offset_x as i32;
-                        let start_y = (offset_y as i32) - (self.scroll_offset as i32);
-
-                        let mut active = Vec::new();
-                        let mut stack = vec![(self.doc.root, start_x, start_y)];
-                        while let Some((node_id, parent_x, parent_y)) = stack.pop() {
-                            if let Some(node) = self.doc.arena.get(node_id) {
-                                let rect = layout.nodes.get(&node_id).copied().unwrap_or_default().cells();
-                                let abs_x = parent_x + rect.x as i32;
-                                let abs_y = parent_y + rect.y as i32;
-                                
-                                let has_border = node.style.border.is_some();
-                                let content_x = if has_border { abs_x + 1 } else { abs_x };
-                                let content_y = if has_border { abs_y + 1 } else { abs_y };
-                                let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
-                                let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
-
-                                if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
-                                    if let Some(ref src) = node.attrs.src {
-                                        // Keep the true (possibly negative) position so media
-                                        // scrolled partly out of view is clipped by the client
-                                        // instead of sticking to row/column 0; skip media that
-                                        // is entirely outside the viewport.
-                                        let visible = content_y + i32::from(content_h) > 0
-                                            && content_y < i32::from(dims.rows)
-                                            && content_x + i32::from(content_w) > 0
-                                            && content_x < i32::from(dims.cols);
-                                        if visible {
-                                            active.push(MediaRenderInfo {
-                                                path: src.clone(),
-                                                x: content_x.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
-                                                y: content_y.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
-                                                width: content_w,
-                                                height: content_h,
-                                            });
-                                        }
-                                    }
-                                }
-                                
-                                for &child in &node.children {
-                                    stack.push((child, parent_x, parent_y));
-                                }
-                            }
-                        }
-                        *self.session.active_media.write() = active;
+                }
+            }
+            InputEvent::NavigateTo(rel_path) => {
+                // Containment check is inside resolve_and_load_page.
+                if self.throttle.check_nav(self.now) {
+                    if let Err(e) = self.resolve_and_load_page(&rel_path) {
+                        warn!("NavigateTo: failed to load page: {}", e);
+                        self.send_nav_error();
                     }
+                    needs_render = true;
+                } else if self.throttle.is_first_throttle() {
+                    warn!("NavigateTo: NAV throttle active, dropping navigation");
+                    self.send_nav_throttle_notice();
+                }
+            }
+            InputEvent::NavigateToAppPath(app_path) => {
+                if self.navigate_app_path(&app_path) {
+                    needs_render = true;
+                }
+            }
+            InputEvent::AppResponse(patch) => {
+                self.apply_app_patch(patch.0, PatchOrigin::ActionResponse);
+                needs_render = true;
+            }
+            InputEvent::PushPatch(patch) => {
+                self.apply_app_patch(patch.0, PatchOrigin::Push);
+                needs_render = true;
+            }
+            InputEvent::OpenUrl(url) => {
+                // Sent by dispatcher when App Server patch contains open_url.
+                // handle_open_url emits opcode 0x33 to web clients only;
+                // SSH sessions receive a warn! and no action.
+                self.handle_open_url(url, oxiterm_proto::dom::NodeId(0));
+            }
+            InputEvent::SetAppToken(token) => {
+                self.handle_set_app_token(token);
+            }
+            InputEvent::Reload => {
+                if self.reload_current_source() {
+                    info!("Hot Reload successful for session {}", self.session.id);
+                    needs_render = true;
+                }
+            }
+            InputEvent::SetDisplayList(_) => {
+                // The flag is already stored by the WS handler. Not NAV-throttled:
+                // skipping the reparse would leave a GUI session with a TUI-parsed doc.
+                self.reload_current_source();
+                // The client's picture is no longer the front buffer's.
+                self.buffer.force_dirty();
+                needs_render = true;
+            }
+            // Anchored by spec [Plan-2.2/R1]: KeyPress arm runs unconditionally.
+            // Activation paths (focus-nav, Enter) must never be dropped by the INPUT bucket.
+            // check_input() is moved inside the character-input else-branch only.
+            InputEvent::KeyPress(key) => {
 
-                    if let Some(ref mut bridge) = self.dbus_bridge {
-                        let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
-                        let _ = bridge.register_at_spi(&tree);
-                        if let Some(active_id) = self.session.predictive_echo.read().active_node {
-                            let _ = bridge.update_focus(active_id, &tree);
-                        }
-                    }
+                let is_nav_forward = key.codepoint == '\u{F701}'
+                    || key.codepoint == '\u{F702}'
+                    || key.codepoint == '\t';
+                let is_nav_backward = key.codepoint == '\u{F700}'
+                    || key.codepoint == '\u{F703}';
 
-                    // Anchored by spec [QUAL-01]. Dispatch deferred mouse inputs once a valid layout is available.
-                    if let Some(mouse) = self.pending_mouse.take() {
-                        let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
-                    }
-
-                    let mut profile = self.session.terminal_profile.read().clone();
-                    profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
-                    let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
-                    let app_base_dir = self.session.app_base_dir.read().clone();
-                    self.buffer.back.clear();
-                    // Display-list clients get the painted list plus a snapshot of the buffer
-                    // right after it, so the overlays below can be appended as CellGrids.
-                    let gui_frame = if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
-                        let list = Renderer::render_frame_mode(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset, self.layout_engine.mode());
-                        let snapshot = oxiterm_renderer::CellBuffer {
-                            cells: self.buffer.back.cells.clone(),
-                            width: self.buffer.back.width,
-                            height: self.buffer.back.height,
-                            graphics: Vec::new(),
-                        };
-                        Some((list, snapshot))
-                    } else {
-                        Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
-                        None
-                    };
-
-                    // Focus ring: draw markers on left/right edge of focused node
-                    if let Some(focused_id) = self.focused_node {
-                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-                        if let Some(rect) = layout.nodes.get(&focused_id).map(|r| r.cells()) {
-                            let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
-                            if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
-                                let mid_row = mid_row_offset as u16;
-                                let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
-                                let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
-                                // Markers MUST be unambiguous width-1 glyphs: a wide glyph
-                                // (e.g. ▶/◀, which are East-Asian Ambiguous) drawn in the
-                                // cell before the label pushes the visible text right off
-                                // its hit box on terminals that render them 2-wide, so
-                                // clicks on a focused label miss. ASCII '>'/'<' are safe.
-                                if rect.x > 0 {
-                                    let lx = rect.x.saturating_sub(1) + offset_x;
-                                    if lx < self.buffer.back.width {
-                                        self.buffer.back.set(lx, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                            ch: FOCUS_RING_LEFT,
-                                            fg: focus_fg,
-                                            bg: focus_bg,
-                                            bold: true,
-                                            ..Default::default()
-                                        });
-                                    }
-                                }
-                                let right = rect.x + rect.width + offset_x;
-                                if right < self.buffer.back.width {
-                                    self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
-                                        ch: FOCUS_RING_RIGHT,
-                                        fg: focus_fg,
-                                        bg: focus_bg,
-                                        bold: true,
-                                        ..Default::default()
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    // S5-21: PredictiveEcho overlay
-                    // D7: suppress overlay for focused password inputs
-                    let echo_suppressed = self.focused_node
-                        .and_then(|id| self.doc.get_node(id))
-                        .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
-                        .unwrap_or(false);
-                    let echo = self.session.predictive_echo.read();
-                    if !echo.buffer.is_empty() && !echo_suppressed {
-                        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-
-                        let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
-                        if let Some(node_id) = echo.active_node {
-                            if let Some(rect) = layout.nodes.get(&node_id).map(|r| r.cells()) {
-                                cursor_x = rect.x + offset_x;
-                                cursor_y = (rect.y + offset_y).saturating_sub(self.scroll_offset);
-                            }
-                        }
-
-                        if cursor_y < viewport_h {
-                            for ch in echo.buffer.chars() {
-                                if cursor_x < self.buffer.back.width {
-                                    self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
-                                        ch,
-                                        fg: oxiterm_proto::style::AnsiColor::Color256(2),
-                                        ..Default::default()
-                                    });
-                                    cursor_x += 1;
-                                }
-                            }
-                        }
-                    }
-
-                    // Renders a visual scroll progress indicator at the bottom of the viewport if content exceeds terminal rows.
-                    if self.total_height > dims.rows {
-                        let last_row = dims.rows.saturating_sub(1);
-                        let mut status_parts = Vec::new();
-                        
-                        let max_scroll = self.total_height.saturating_sub(viewport_h);
-                        if self.scroll_offset > 0 {
-                            status_parts.push("▲ PgUp".to_string());
-                        }
-                        if self.scroll_offset < max_scroll {
-                            status_parts.push("▼ PgDn".to_string());
-                        }
-
-                        // Position model: line fraction, bar fill, and percentage all
-                        // derive from the SAME scroll_offset/max_scroll, so they can never
-                        // disagree. max_scroll comes from the layout extent (total_height),
-                        // matching the vertical centering in `get_centering_offset`.
-                        let bar_width = 8;
-                        let ind = ScrollIndicator::new(self.scroll_offset, self.total_height, viewport_h, bar_width);
-                        status_parts.push(format!("line {}/{}", ind.position, ind.steps));
-                        let pct = ind.percent;
-                        let filled_width = ind.filled;
-                        let bar: String = std::iter::repeat('█').take(filled_width)
-                            .chain(std::iter::repeat('░').take(bar_width - filled_width))
-                            .collect();
-                            
-                        status_parts.push(format!("{} {}%", bar, pct));
-                        
-                        let status_str = status_parts.join("  ");
-                        let bar_bg = oxiterm_proto::style::AnsiColor::Color256(236); // dark grey
-                        let bar_fg = oxiterm_proto::style::AnsiColor::Color256(255); // white
-                        
-                        for x in 0..dims.cols {
-                            self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
-                                ch: ' ',
-                                fg: bar_fg,
-                                bg: bar_bg,
-                                ..Default::default()
-                            });
-                        }
-                        
-                        let start_x = if dims.cols > status_str.chars().count() as u16 {
-                            (dims.cols - status_str.chars().count() as u16) / 2
+                if is_nav_forward || is_nav_backward {
+                    // Focus navigation — unconditional (cheap, no render flood risk).
+                    if !self.focusable_nodes.is_empty() {
+                        let n = self.focusable_nodes.len();
+                        let cur = self.focused_node
+                            .and_then(|f| self.focusable_nodes.iter().position(|&x| x == f))
+                            .unwrap_or(0);
+                        let next = if is_nav_forward {
+                            (cur + 1) % n
                         } else {
-                            0
+                            (cur + n - 1) % n
                         };
-                        
-                        for (i, ch) in status_str.chars().enumerate() {
-                            let x = start_x + i as u16;
-                            if x < dims.cols {
-                                self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
-                                    ch,
-                                    fg: bar_fg,
-                                    bg: bar_bg,
-                                    bold: true,
-                                    ..Default::default()
+                        self.focused_node = Some(self.focusable_nodes[next]);
+                        info!("Focus moved to node {:?}", self.focused_node);
+                        needs_render = true;
+                    }
+                } else {
+                    // Enter → HTMX activation (Enter only). NAV bucket in handle_htmx_target caps loads.
+                    if key.codepoint == '\r' || key.codepoint as u32 == 13 {
+                        if let Some(focused) = self.focused_node {
+                            if let Some((target_node_id, htmx_target)) = self.get_htmx_node_and_target(focused) {
+                                info!("Enter activated HTMX (node {:?}): {}", target_node_id, htmx_target);
+                                self.handle_htmx_target(target_node_id, &htmx_target);
+                                needs_render = true;
+                            }
+                        }
+                    }
+                    // Character input / predictive echo — runs for ALL non-navigation keys
+                    // (printable chars append, Backspace deletes; Enter is a no-op here).
+                    // D2: state write (append char / backspace) is UNCONDITIONAL —
+                    // a dropped frame is invisible; a dropped keystroke corrupts
+                    // a comment or password field.
+                    // check_input() gates only needs_render (render-flood surface).
+                    let handled_by_input = self.apply_key_to_focused_input(key.codepoint);
+
+                    if !handled_by_input {
+                        // D7: suppress predictive echo for password inputs
+                        let is_password_focused = self.focused_node
+                            .and_then(|id| self.doc.get_node(id))
+                            .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
+                            .unwrap_or(false);
+                        if !is_password_focused {
+                            let mut echo = self.session.predictive_echo.write();
+                            echo.buffer.push(key.codepoint);
+                        }
+                    }
+                    // Render is gated: skipping a frame is safe; losing a char is not.
+                    if self.throttle.check_input(self.now) {
+                        needs_render = true;
+                    }
+                }
+            }
+            // Anchored by spec [Plan-2.2/R1]: MouseEvent arm runs unconditionally.
+            // The arm delegates entirely to handle_mouse_event(), which owns the
+            // Press-vs-flood split. Re-adding an `if self.throttle.check_input()`
+            // guard HERE would cause t2 to fail (Press swallowed when bucket empty).
+            InputEvent::MouseEvent(mouse) => {
+                if self.handle_mouse_event(mouse) {
+                    needs_render = true;
+                }
+            }
+            InputEvent::CapabilityResponse(raw) => {
+                info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
+                self.session.terminal_profile.write().parse_da1_response(&raw);
+            }
+            InputEvent::Xoff => { self.output_paused = true; }
+            InputEvent::Xon => { self.output_paused = false; needs_render = true; }
+            InputEvent::Refresh => { needs_render = true; }
+            InputEvent::ScrollUp => {
+                let dims = *self.session.dims.read();
+                let has_scroll = self.total_height > dims.rows;
+                let viewport_h = if has_scroll {
+                    dims.rows.saturating_sub(1)
+                } else {
+                    dims.rows
+                };
+                self.scroll_offset = self.scroll_offset.saturating_sub(viewport_h);
+                needs_render = true;
+            }
+            InputEvent::ScrollDown => {
+                let dims = *self.session.dims.read();
+                let has_scroll = self.total_height > dims.rows;
+                let viewport_h = if has_scroll {
+                    dims.rows.saturating_sub(1)
+                } else {
+                    dims.rows
+                };
+                let max_scroll = self.total_height.saturating_sub(viewport_h);
+                self.scroll_offset = (self.scroll_offset + viewport_h).min(max_scroll);
+                needs_render = true;
+            }
+            InputEvent::TextInput(text) => {
+                info!("TextInput received (len={}): {:?}", text.len(), text);
+            }
+            _ => {}
+                }
+        EventOutcome::Handled { needs_render }
+    }
+
+    /// Applies a due debounced resize (buffer and screen reset). True when one was applied.
+    fn poll_resize(&mut self) -> bool {
+        let dims_opt = self.session.resize_debouncer.write().poll(self.now);
+        if let Some(dims) = dims_opt {
+            *self.session.dims.write() = dims;
+            self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
+            info!("Resized session {} to {:?}", self.session.id, dims);
+
+            let _ = self.frame_sink.clear_screen();
+
+            return true;
+        }
+        false
+    }
+
+    /// Renders a frame when one is wanted and the frame limiter allows it. Returns true when the
+    /// limiter deferred the frame (the caller must retry next iteration: `pending_render`).
+    fn render_frame_if_due(&mut self, needs_render: bool) -> bool {
+        if needs_render && !self.output_paused {
+            if self.frame_limiter.should_render(self.now) {
+                self.render_frame();
+            } else {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Computes layout and draws, overlays and sends one frame. The `state` and predictive-echo
+    /// read guards below are held until the end of the function, through the sink sends.
+    fn render_frame(&mut self) {
+        let now = self.now;
+        self.apply_state_to_doc(now);
+        self.animation_controller.tick(&mut self.doc, now);
+        self.rebuild_focusable_nodes();
+
+        let dims = *self.session.dims.read();
+        // Display-list clients lay out in fractional GUI mode; everyone else (and a
+        // client whose flag was reset) in whole-cell TUI mode. Checked here, at the
+        // single compute site, so it also covers flags set without an event.
+        let want_mode = self.render_mode();
+        if self.layout_engine.mode() != want_mode {
+            self.layout_engine = LayoutEngine::with_mode(want_mode);
+        }
+        // The viewport is the root's minimum height; content can grow past it.
+        self.layout_engine.set_viewport_rows(dims.rows);
+        let state_guard = self.session.state.read();
+        if let Ok(layout) = self.layout_engine.compute(&mut self.doc, dims.cols, self.scroll_offset, Some(&*state_guard)) {
+        self.total_height = layout.total_height;
+
+        let has_scroll = self.total_height > dims.rows;
+        let viewport_h = if has_scroll {
+            dims.rows.saturating_sub(1)
+        } else {
+            dims.rows
+        };
+
+        Self::autoscroll_to_focused(
+            self.focused_node,
+            &mut self.autoscroll_anchor,
+            &mut self.scroll_offset,
+            &layout,
+            viewport_h,
+        );
+
+        let max_scroll = self.total_height.saturating_sub(viewport_h);
+        self.scroll_offset = self.scroll_offset.min(max_scroll);
+
+        {
+            let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+            let start_x = offset_x as i32;
+            let start_y = (offset_y as i32) - (self.scroll_offset as i32);
+
+            let mut active = Vec::new();
+            let mut stack = vec![(self.doc.root, start_x, start_y)];
+            while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+                if let Some(node) = self.doc.arena.get(node_id) {
+                    let rect = layout.nodes.get(&node_id).copied().unwrap_or_default().cells();
+                    let abs_x = parent_x + rect.x as i32;
+                    let abs_y = parent_y + rect.y as i32;
+                                
+                    let has_border = node.style.border.is_some();
+                    let content_x = if has_border { abs_x + 1 } else { abs_x };
+                    let content_y = if has_border { abs_y + 1 } else { abs_y };
+                    let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
+                    let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
+
+                    if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
+                        if let Some(ref src) = node.attrs.src {
+                            // Keep the true (possibly negative) position so media
+                            // scrolled partly out of view is clipped by the client
+                            // instead of sticking to row/column 0; skip media that
+                            // is entirely outside the viewport.
+                            let visible = content_y + i32::from(content_h) > 0
+                                && content_y < i32::from(dims.rows)
+                                && content_x + i32::from(content_w) > 0
+                                && content_x < i32::from(dims.cols);
+                            if visible {
+                                active.push(MediaRenderInfo {
+                                    path: src.clone(),
+                                    x: content_x.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+                                    y: content_y.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+                                    width: content_w,
+                                    height: content_h,
                                 });
                             }
                         }
                     }
-                    
-                    let _ = self.frame_sink.update_document(&self.doc);
-                    let sent = if let Some((mut list, snapshot)) = gui_frame {
-                        list.items.extend(oxiterm_renderer::render::cell_sink::CellSink::diff_grids(&snapshot, &self.buffer.back));
-                        let r = self.frame_sink.send_display_list(&list);
-                        // ARIA mirror (0x37): same origin the display-list builder used
-                        // (centering offset, minus scroll for non-fixed nodes).
-                        let (ax, ay) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-                        let json = oxiterm_a11y::build_aria_json(
-                            &self.doc,
-                            &layout,
-                            self.focused_node,
-                            (ax as i32, ay as i32 - self.scroll_offset as i32),
-                            (ax, ay),
-                        );
-                        let _ = self.frame_sink.send_a11y(json.as_bytes());
-                        r
-                    } else {
-                        self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back)
-                    };
-                    if let Ok(true) = sent {
-                        self.buffer.swap();
-                        self.frame_limiter.record_frame(self.now);
+                                
+                    for &child in &node.children {
+                        stack.push((child, parent_x, parent_y));
                     }
                 }
-                } else {
-                    pending_render = true;
+            }
+            *self.session.active_media.write() = active;
+        }
+
+        if let Some(ref mut bridge) = self.dbus_bridge {
+            let tree = oxiterm_a11y::build_a11y_tree(&self.doc);
+            let _ = bridge.register_at_spi(&tree);
+            if let Some(active_id) = self.session.predictive_echo.read().active_node {
+                let _ = bridge.update_focus(active_id, &tree);
+            }
+        }
+
+        // Anchored by spec [QUAL-01]. Dispatch deferred mouse inputs once a valid layout is available.
+        if let Some(mouse) = self.pending_mouse.take() {
+            let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
+        }
+
+        let mut profile = self.session.terminal_profile.read().clone();
+        profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
+        let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
+        let app_base_dir = self.session.app_base_dir.read().clone();
+        self.buffer.back.clear();
+        // Display-list clients get the painted list plus a snapshot of the buffer
+        // right after it, so the overlays below can be appended as CellGrids.
+        let gui_frame = if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+            let list = Renderer::render_frame_mode(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset, self.layout_engine.mode());
+            let snapshot = oxiterm_renderer::CellBuffer {
+                cells: self.buffer.back.cells.clone(),
+                width: self.buffer.back.width,
+                height: self.buffer.back.height,
+                graphics: Vec::new(),
+            };
+            Some((list, snapshot))
+        } else {
+            Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
+            None
+        };
+
+        // Focus ring: draw markers on left/right edge of focused node
+        if let Some(focused_id) = self.focused_node {
+            let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+            if let Some(rect) = layout.nodes.get(&focused_id).map(|r| r.cells()) {
+                let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
+                if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
+                    let mid_row = mid_row_offset as u16;
+                    let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
+                    let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                    // Markers MUST be unambiguous width-1 glyphs: a wide glyph
+                    // (e.g. ▶/◀, which are East-Asian Ambiguous) drawn in the
+                    // cell before the label pushes the visible text right off
+                    // its hit box on terminals that render them 2-wide, so
+                    // clicks on a focused label miss. ASCII '>'/'<' are safe.
+                    if rect.x > 0 {
+                        let lx = rect.x.saturating_sub(1) + offset_x;
+                        if lx < self.buffer.back.width {
+                            self.buffer.back.set(lx, mid_row, oxiterm_renderer::render::buffer::Cell {
+                                ch: FOCUS_RING_LEFT,
+                                fg: focus_fg,
+                                bg: focus_bg,
+                                bold: true,
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    let right = rect.x + rect.width + offset_x;
+                    if right < self.buffer.back.width {
+                        self.buffer.back.set(right, mid_row, oxiterm_renderer::render::buffer::Cell {
+                            ch: FOCUS_RING_RIGHT,
+                            fg: focus_fg,
+                            bg: focus_bg,
+                            bold: true,
+                            ..Default::default()
+                        });
+                    }
                 }
             }
         }
+
+        // S5-21: PredictiveEcho overlay
+        // D7: suppress overlay for focused password inputs
+        let echo_suppressed = self.focused_node
+            .and_then(|id| self.doc.get_node(id))
+            .and_then(|n| n.attrs.input_type.as_deref().map(|t| t == "password"))
+            .unwrap_or(false);
+        let echo = self.session.predictive_echo.read();
+        if !echo.buffer.is_empty() && !echo_suppressed {
+            let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+
+            let (mut cursor_x, mut cursor_y) = (offset_x, offset_y.saturating_sub(self.scroll_offset));
+            if let Some(node_id) = echo.active_node {
+                if let Some(rect) = layout.nodes.get(&node_id).map(|r| r.cells()) {
+                    cursor_x = rect.x + offset_x;
+                    cursor_y = (rect.y + offset_y).saturating_sub(self.scroll_offset);
+                }
+            }
+
+            if cursor_y < viewport_h {
+                for ch in echo.buffer.chars() {
+                    if cursor_x < self.buffer.back.width {
+                        self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
+                            ch,
+                            fg: oxiterm_proto::style::AnsiColor::Color256(2),
+                            ..Default::default()
+                        });
+                        cursor_x += 1;
+                    }
+                }
+            }
+        }
+
+        // Renders a visual scroll progress indicator at the bottom of the viewport if content exceeds terminal rows.
+        if self.total_height > dims.rows {
+            let last_row = dims.rows.saturating_sub(1);
+            let mut status_parts = Vec::new();
+                        
+            let max_scroll = self.total_height.saturating_sub(viewport_h);
+            if self.scroll_offset > 0 {
+                status_parts.push("▲ PgUp".to_string());
+            }
+            if self.scroll_offset < max_scroll {
+                status_parts.push("▼ PgDn".to_string());
+            }
+
+            // Position model: line fraction, bar fill, and percentage all
+            // derive from the SAME scroll_offset/max_scroll, so they can never
+            // disagree. max_scroll comes from the layout extent (total_height),
+            // matching the vertical centering in `get_centering_offset`.
+            let bar_width = 8;
+            let ind = ScrollIndicator::new(self.scroll_offset, self.total_height, viewport_h, bar_width);
+            status_parts.push(format!("line {}/{}", ind.position, ind.steps));
+            let pct = ind.percent;
+            let filled_width = ind.filled;
+            let bar: String = std::iter::repeat('█').take(filled_width)
+                .chain(std::iter::repeat('░').take(bar_width - filled_width))
+                .collect();
+                            
+            status_parts.push(format!("{} {}%", bar, pct));
+                        
+            let status_str = status_parts.join("  ");
+            let bar_bg = oxiterm_proto::style::AnsiColor::Color256(236); // dark grey
+            let bar_fg = oxiterm_proto::style::AnsiColor::Color256(255); // white
+                        
+            for x in 0..dims.cols {
+                self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
+                    ch: ' ',
+                    fg: bar_fg,
+                    bg: bar_bg,
+                    ..Default::default()
+                });
+            }
+                        
+            let start_x = if dims.cols > status_str.chars().count() as u16 {
+                (dims.cols - status_str.chars().count() as u16) / 2
+            } else {
+                0
+            };
+                        
+            for (i, ch) in status_str.chars().enumerate() {
+                let x = start_x + i as u16;
+                if x < dims.cols {
+                    self.buffer.back.set(x, last_row, oxiterm_renderer::render::buffer::Cell {
+                        ch,
+                        fg: bar_fg,
+                        bg: bar_bg,
+                        bold: true,
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+                    
+        let _ = self.frame_sink.update_document(&self.doc);
+        let sent = if let Some((mut list, snapshot)) = gui_frame {
+            list.items.extend(oxiterm_renderer::render::cell_sink::CellSink::diff_grids(&snapshot, &self.buffer.back));
+            let r = self.frame_sink.send_display_list(&list);
+            // ARIA mirror (0x37): same origin the display-list builder used
+            // (centering offset, minus scroll for non-fixed nodes).
+            let (ax, ay) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+            let json = oxiterm_a11y::build_aria_json(
+                &self.doc,
+                &layout,
+                self.focused_node,
+                (ax as i32, ay as i32 - self.scroll_offset as i32),
+                (ax, ay),
+            );
+            let _ = self.frame_sink.send_a11y(json.as_bytes());
+            r
+        } else {
+            self.frame_sink.send_frame(&self.buffer.front, &self.buffer.back)
+        };
+        if let Ok(true) = sent {
+            self.buffer.swap();
+            self.frame_limiter.record_frame(self.now);
+        }
+    }
     }
 
     fn has_active_animations(&self) -> bool {
