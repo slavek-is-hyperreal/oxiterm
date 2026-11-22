@@ -10,13 +10,15 @@ use parking_lot::RwLock;
 use std::time::Duration;
 use tracing::{info, warn, debug};
 
+pub use crate::session_state::{
+    EventPush, EventSource, LoopHandles, LoopHost, MediaRenderInfo, PredictiveEcho, PtyDimensions,
+    ResizeDebouncer, SessionId, SessionState,
+};
+
 pub use oxiterm_renderer::document::THTMLDocument;
 use oxiterm_renderer::layout::engine::LayoutEngine;
 use oxiterm_renderer::render::buffer::DoubleBuffer;
 use oxiterm_renderer::render::renderer::Renderer;
-
-/// Unique identifier type for a client session.
-pub type SessionId = usize;
 
 /// Registry holding active client session objects.
 pub struct SessionRegistry {
@@ -29,121 +31,21 @@ pub struct SessionRegistry {
     max_sessions: usize,
 }
 
-/// Pty dimensions configuration.
-#[derive(Debug, Clone, Copy)]
-pub struct PtyDimensions {
-    /// Number of terminal columns.
-    pub cols: u16,
-    /// Number of terminal rows.
-    pub rows: u16,
-}
-
 use std::sync::mpsc;
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::input::InputEvent;
 
-/// Predictive echo buffer for client side latency hiding.
+/// Represents an active interactive client session: the TRANSPORT half.
 ///
-/// Anchored by spec [S5-21].
-#[derive(Debug, Default)]
-pub struct PredictiveEcho {
-    /// Characters typed by the user but not yet confirmed by the server.
-    pub buffer: String,
-    /// The input node currently targeted by the echo.
-    pub active_node: Option<NodeId>,
-}
-
-impl PredictiveEcho {
-    /// Pushes a new character to the predictive buffer.
-    pub fn push(&mut self, ch: char) {
-        self.buffer.push(ch);
-    }
-
-    /// Confirms a character from the predictive buffer.
-    ///
-    /// Removes character from the buffer in FIFO order if it matches the confirmed character.
-    pub fn confirm(&mut self, ch: char) {
-        let mut chars: Vec<char> = self.buffer.chars().collect();
-        if let Some(&first) = chars.first() {
-            if first == ch {
-                chars.remove(0);
-                self.buffer = chars.into_iter().collect();
-            } else {
-                warn!("PredictiveEcho: expected '{}', got '{}'", first, ch);
-            }
-        }
-    }
-
-    /// Drains and returns all pending buffered text.
-    pub fn flush_to_server(&mut self) -> String {
-        self.buffer.drain(..).collect()
-    }
-}
-
-/// Debouncer to prevent rapid, redundant terminal layout recomputations on resizing.
-#[derive(Debug)]
-pub struct ResizeDebouncer {
-    pub pending: Option<PtyDimensions>,
-    pub pushed_at: crate::clock::MonoTime,
-    pub last_update: crate::clock::MonoTime,
-}
-
-impl ResizeDebouncer {
-    /// Creates a new debouncer.
-    pub fn new() -> Self {
-        Self {
-            pending: None,
-            pushed_at: crate::clock::MonoTime::ZERO,
-            last_update: crate::clock::MonoTime::ZERO,
-        }
-    }
-
-    /// Queues a new dimensions update.
-    ///
-    /// `now` comes from the session's host clock ([`ClientSession::clock`]); `push` is called
-    /// by the transports (SSH/WebSocket), which stamp the same clock the loop polls with.
-    pub fn push(&mut self, dims: PtyDimensions, now: crate::clock::MonoTime) {
-        self.pending = Some(dims);
-        self.pushed_at = now;
-    }
-
-    /// Polls for a debounced layout change.
-    ///
-    /// Returns the dimensions if the debouncing window has elapsed since the last push.
-    pub fn poll(&mut self, now: crate::clock::MonoTime) -> Option<PtyDimensions> {
-        if let Some(dims) = self.pending {
-            if now.saturating_duration_since(self.pushed_at) > Duration::from_millis(100) {
-                self.pending = None;
-                self.last_update = now;
-                return Some(dims);
-            }
-        }
-        None
-    }
-}
-
-/// Info details for active media elements.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MediaRenderInfo {
-    /// File path of the media resource.
-    pub path: String,
-    /// X coordinate of layout position in cells; negative when scrolled/positioned past the
-    /// left edge (sent as i16 in the 0x21 message).
-    pub x: i16,
-    /// Y coordinate of layout position in cells; negative when scrolled past the top edge.
-    pub y: i16,
-    /// Width bounding box.
-    pub width: u16,
-    /// Height bounding box.
-    pub height: u16,
-}
-
-/// Represents an active interactive SSH client session.
+/// The pure half (dimensions, local state, echo, mode flags, current page, identity, clock,
+/// death reason) lives in [`SessionState`]; this struct owns it as `state_half` and adds the
+/// connection plumbing: channels, metrics, token, epoch, connection count and the idle
+/// reaper's wall clock. `Deref<Target = SessionState>` keeps `session.state`, `session.dims`
+/// etc. working for transports and tests; the event loop receives only the pure half plus the
+/// narrow [`LoopHandles`].
 pub struct ClientSession {
-    /// Unique identifier.
-    pub id: SessionId,
-    /// Shared terminal grid dimensions.
-    pub dims: RwLock<PtyDimensions>,
+    /// The pure half, shared with the event loop.
+    pub state_half: Arc<SessionState>,
     /// Prometheus metrics tracker.
     pub metrics: Arc<crate::metrics::SessionMetrics>,
     /// Channel to send raw bytes or commands to the `ReactorThread`.
@@ -152,81 +54,84 @@ pub struct ClientSession {
     pub event_rx: Arc<parking_lot::Mutex<crate::backpressure::Receiver<InputEvent>>>,
     /// Input events sender.
     pub event_tx: crate::backpressure::BoundedFrameChannel<InputEvent>,
-    /// Predictive input echo engine.
-    pub predictive_echo: RwLock<PredictiveEcho>,
-    /// Debouncer for terminal window changes.
-    pub resize_debouncer: RwLock<ResizeDebouncer>,
-    /// Active terminal emulator profile capability features.
-    pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
-    /// Host clock of this session. The event loop takes its time from it by default and the
-    /// transports use it to stamp resize pushes, so both share one origin.
-    pub clock: Arc<dyn crate::clock::Clock>,
     /// Instant of the last received input action.
     ///
-    /// TRANSPORT-SIDE wall-clock state: it is read by the idle reaper in web.rs. It is only
-    /// touched through [`ClientSession::touch_activity`] / [`ClientSession::idle_for`] and
-    /// moves out of the loop's path in Phase 4 step 5 (split of `ClientSession`).
+    /// TRANSPORT-SIDE wall-clock state for the idle reaper (web.rs). The loop reaches it only
+    /// through [`LoopHost`] (`touch_activity` / `idle_for`).
     pub last_activity: RwLock<std::time::Instant>,
-    /// Session-wide local DOM state database.
-    pub state: RwLock<crate::state::StateManager>,
-    /// Active media placement layout tracking list.
-    pub active_media: RwLock<Vec<MediaRenderInfo>>,
-    /// Indicates if the session is a mobile web session.
-    pub is_mobile: std::sync::atomic::AtomicBool,
-    /// Web client negotiated display-list frames (`0x12` caps bit 0): documents are parsed in
-    /// `RenderMode::Gui` and frames go out as display lists instead of cell diffs.
-    pub display_list_client: std::sync::atomic::AtomicBool,
-    /// Indicates if the session is a web (WebSocket) session with DOM media overlay.
-    pub is_web_client: std::sync::atomic::AtomicBool,
-    /// The current relative page path for WebSocket announce.
-    pub current_page: RwLock<Option<String>>,
-    /// The application base directory.
-    pub app_base_dir: RwLock<Option<std::path::PathBuf>>,
     /// Number of active WebSocket connections.
     pub active_connections: std::sync::atomic::AtomicUsize,
     /// Unique connection token for session reattachment.
     pub token: String,
-    /// Authenticated user identity for this session.
-    /// Set exactly once at session start by identity.rs; never overwritten on reattach.
-    pub identity: parking_lot::RwLock<Option<crate::identity::UserIdentity>>,
     pub web_frame_tx: parking_lot::RwLock<Option<(usize, tokio::sync::mpsc::Sender<Vec<u8>>)>>,
     pub connection_epoch: std::sync::atomic::AtomicUsize,
     pub event_loop_running: std::sync::atomic::AtomicBool,
-    /// Reason byte emitted in the next [0xFF, reason] termination frame.
-    /// 0 = takeover (hardcoded at takeover site); 1 = idle; 2 = restart/unknown (default).
-    /// Written by EventLoop idle path; read by WsFrameSink::drop.
-    pub death_reason: std::sync::atomic::AtomicU8,
+}
+
+impl std::ops::Deref for ClientSession {
+    type Target = SessionState;
+    fn deref(&self) -> &SessionState {
+        &self.state_half
+    }
+}
+
+impl LoopHost for ClientSession {
+    fn touch_activity(&self) {
+        ClientSession::touch_activity(self)
+    }
+    fn idle_for(&self) -> Duration {
+        ClientSession::idle_for(self)
+    }
+    fn loop_exited(&self) {
+        self.event_loop_running.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl EventSource for crate::backpressure::Receiver<InputEvent> {
+    fn wait_event(&mut self, timeout: Duration) -> Result<InputEvent, mpsc::RecvTimeoutError> {
+        crate::backpressure::Receiver::recv_timeout(self, timeout)
+    }
+    fn try_recv(&mut self) -> Option<InputEvent> {
+        crate::backpressure::Receiver::try_recv(self)
+    }
+}
+
+impl EventPush for crate::backpressure::BoundedFrameChannel<InputEvent> {
+    fn push(&self, event: InputEvent) {
+        let _ = self.try_send(event);
+    }
 }
 
 impl ClientSession {
-    /// Records input activity now.
-    ///
-    /// TRANSPORT-SIDE clock read (idle reaper, web.rs). Deliberately still `Instant::now()`;
-    /// it leaves the event loop's path in Phase 4 step 5.
+    /// Records input activity now (transport-side wall clock, idle reaper).
     pub fn touch_activity(&self) {
         *self.last_activity.write() = std::time::Instant::now();
     }
 
-    /// Time since the last recorded activity. TRANSPORT-SIDE clock read, see `touch_activity`.
+    /// Time since the last recorded activity.
     pub fn idle_for(&self) -> Duration {
         self.last_activity.read().elapsed()
     }
 
-    /// Attempts to attach an identity to the session.
-    ///
-    /// Injects reserved state keys (including `_is_web`) and sets the identity field if identity is None (C2/M2).
-    /// Returns true if the identity was successfully attached.
-    pub fn attach_identity(&self, id: crate::identity::UserIdentity) -> bool {
-        let mut stored = self.identity.write();
-        if stored.is_none() {
-            let is_web = self.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
-            let mut state = self.state.write();
-            id.inject_reserved_keys(&mut *state, is_web);
-            *stored = Some(id);
-            true
-        } else {
-            false
+    /// The loop's view of this session: the pure state and the narrow transport handles.
+    pub fn loop_handles(self: &Arc<Self>) -> LoopHandles {
+        LoopHandles {
+            state: self.state_half.clone(),
+            events_in: self.event_rx.clone(),
+            events_out: Arc::new(self.event_tx.clone()),
+            host: self.clone(),
         }
+    }
+
+    /// Creates the event loop driving this session.
+    pub fn new_event_loop(
+        self: &Arc<Self>,
+        event_bus: Arc<crate::events::EventBus>,
+        output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
+        doc: THTMLDocument,
+        a11y_mode: bool,
+    ) -> EventLoop {
+        EventLoop::new(self.loop_handles(), event_bus, output_tx, doc, a11y_mode)
     }
 
     /// Closes input receiver streams, initiating shutdown.
@@ -239,114 +144,6 @@ impl ClientSession {
         self.event_rx.lock().reopen();
     }
 
-    /// Accepts only a relative `.thtml` path for a `navigate` patch: no scheme, no absolute
-    /// path, no `open:` prefix, bounded length. Containment within the app base dir is still
-    /// enforced by the event loop when the page is loaded.
-    pub(crate) fn sanitize_navigate_target(path: &str) -> Option<String> {
-        let ok = !path.is_empty()
-            && path.len() <= 512
-            && path.ends_with(".thtml")
-            && !path.starts_with('/')
-            && !path.starts_with('\\')
-            && !path.contains("://")
-            && !path.starts_with("open:")
-            && !path.contains('\0');
-        if ok {
-            Some(path.to_string())
-        } else {
-            warn!("app patch: rejected navigate target");
-            None
-        }
-    }
-
-    /// Applies the plain state keys of a patch to the session state.
-    ///
-    /// The single key-application path for every patch (App Server response, push endpoint):
-    /// the event loop has already taken `navigate`, `open_url` and `set_app_token` out. Enforces
-    /// limits on key lengths, array items, and payload sizes to mitigate DoS, and refuses
-    /// reserved (`_`-prefixed) keys.
-    pub(crate) fn apply_patch_keys(&self, obj: serde_json::Map<String, serde_json::Value>) {
-        {
-            // Anchored by spec [SEC-11a]: limit 100 keys per patch
-            if obj.len() > 100 {
-                warn!("Ignoring state patch with too many keys: {}", obj.len());
-                return;
-            }
-            let mut state = self.state.write();
-            for (key, val) in obj {
-                // Reserved keys (prefixed `_`) are written only by identity.rs at session start.
-                if key.starts_with('_') {
-                    warn!("app patch: skipping reserved key '{}'", key);
-                    continue;
-                }
-                // Anchored by spec [SEC-11b]: limit 256 characters per key
-                if key.len() > 256 {
-                    warn!("Skipping key in state patch: key length exceeds 256 characters");
-                    continue;
-                }
-                let state_val = match val {
-                    serde_json::Value::Number(num) => {
-                        if let Some(i) = num.as_i64() {
-                            crate::state::StateValue::Int(i)
-                        } else {
-                            let s = num.to_string();
-                            if s.len() > 65536 {
-                                warn!("Skipping key {}: number string length exceeds 64KiB", key);
-                                continue;
-                            }
-                            crate::state::StateValue::Str(s)
-                        }
-                    }
-                    serde_json::Value::String(s) => {
-                        // Anchored by spec [SEC-11c]: limit 64KiB per string
-                        if s.len() > 65536 {
-                            warn!("Skipping key {}: string length exceeds 64KiB", key);
-                            continue;
-                        }
-                        crate::state::StateValue::Str(s)
-                    }
-                    serde_json::Value::Bool(b) => crate::state::StateValue::Bool(b),
-                    serde_json::Value::Array(arr) => {
-                        // Anchored by spec [SEC-11c]: limit 1000 items in list
-                        if arr.len() > 1000 {
-                            warn!("Skipping key {}: array size exceeds 1000 items", key);
-                            continue;
-                        }
-                        let mut list = Vec::new();
-                        let mut string_too_long = false;
-                        for v in arr {
-                            let s = match v {
-                                serde_json::Value::String(st) => st,
-                                other => other.to_string(),
-                            };
-                            if s.len() > 65536 {
-                                string_too_long = true;
-                                break;
-                            }
-                            list.push(s);
-                        }
-                        if string_too_long {
-                            warn!("Skipping key {}: list item string length exceeds 64KiB", key);
-                            continue;
-                        }
-                        crate::state::StateValue::List(list)
-                    }
-                    serde_json::Value::Null => {
-                        crate::state::StateValue::Str(String::new())
-                    }
-                    other => {
-                        let s = other.to_string();
-                        if s.len() > 65536 {
-                            warn!("Skipping key {}: serialized value length exceeds 64KiB", key);
-                            continue;
-                        }
-                        crate::state::StateValue::Str(s)
-                    }
-                };
-                state.set(key, state_val);
-            }
-        }
-    }
 }
 
 impl SessionRegistry {
@@ -410,32 +207,18 @@ impl SessionRegistry {
 
         let token = Self::generate_token();
 
-        let session = Arc::new(ClientSession { 
-            id,
-            dims: RwLock::new(PtyDimensions { cols: 80, rows: 24 }),
+        let session = Arc::new(ClientSession {
+            state_half: Arc::new(SessionState::new(id, Arc::new(crate::host_clock::SystemClock::new()))),
             metrics: crate::metrics::SessionMetrics::new(&id.to_string(), &self.prometheus_registry),
             raw_input_tx: raw_tx,
             event_rx: Arc::new(parking_lot::Mutex::new(event_rx)),
             event_tx: event_tx.clone(),
-            predictive_echo: RwLock::new(PredictiveEcho::default()),
-            resize_debouncer: RwLock::new(ResizeDebouncer::new()),
-            terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
-            clock: Arc::new(crate::clock::SystemClock::new()),
             last_activity: RwLock::new(std::time::Instant::now()),
-            state: RwLock::new(crate::state::StateManager::new()),
-            active_media: RwLock::new(Vec::new()),
-            is_mobile: std::sync::atomic::AtomicBool::new(false),
-            display_list_client: std::sync::atomic::AtomicBool::new(false),
-            is_web_client: std::sync::atomic::AtomicBool::new(false),
-            current_page: RwLock::new(None),
-            app_base_dir: RwLock::new(None),
             active_connections: std::sync::atomic::AtomicUsize::new(0),
             token: token.clone(),
-            identity: parking_lot::RwLock::new(None),
             web_frame_tx: parking_lot::RwLock::new(None),
             connection_epoch: std::sync::atomic::AtomicUsize::new(0),
             event_loop_running: std::sync::atomic::AtomicBool::new(false),
-            death_reason: std::sync::atomic::AtomicU8::new(2),
         });
         self.sessions.write().insert(id, session.clone());
         self.tokens.write().insert(token, id);
@@ -597,8 +380,14 @@ pub(crate) enum PatchOrigin {
 
 /// Standard processing loop coordination.
 pub struct EventLoop {
-    /// Session model reference.
-    pub session: Arc<ClientSession>,
+    /// Pure session state (shared with the transport half).
+    pub session: Arc<SessionState>,
+    /// Input event source (the queue is owned by the host; locked per receive batch).
+    pub events_in: Arc<parking_lot::Mutex<dyn EventSource>>,
+    /// Puts events back into the queue (action replies).
+    pub events_out: Arc<dyn EventPush>,
+    /// Activity / lifecycle reporting to the transport.
+    pub host: Arc<dyn LoopHost>,
     /// Global notification dispatcher.
     pub event_bus: Arc<crate::events::EventBus>,
     /// Current loaded document tree.
@@ -722,12 +511,12 @@ impl ScrollIndicator {
 }
 
 struct EventLoopGuard {
-    session: Arc<ClientSession>,
+    host: Arc<dyn LoopHost>,
 }
 
 impl Drop for EventLoopGuard {
     fn drop(&mut self) {
-        self.session.event_loop_running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.host.loop_exited();
     }
 }
 
@@ -805,18 +594,19 @@ impl EventLoop {
 
     /// Creates a new `EventLoop` with clean session parameters.
     pub fn new(
-        session: Arc<ClientSession>, 
+        handles: LoopHandles,
         event_bus: Arc<crate::events::EventBus>, 
         output_tx: crate::backpressure::BoundedFrameChannel<Vec<u8>>,
         doc: THTMLDocument,
         a11y_mode: bool,
     ) -> Self {
+        let LoopHandles { state: session, events_in, events_out, host } = handles;
         let dims = *session.dims.read();
         let clock = session.clock.clone();
         let now = clock.now();
         let root_session = session.clone();
         let page_source: Arc<dyn crate::page_source::PageSource> = Arc::new(
-            crate::page_source::FsPageSource::with_dynamic_root(move || root_session.app_base_dir.read().clone()),
+            crate::fs_page_source::FsPageSource::with_dynamic_root(move || root_session.app_base_dir.read().clone()),
         );
         
         let mut dbus_bridge = None;
@@ -833,7 +623,10 @@ impl EventLoop {
         };
         
         let mut event_loop = Self { 
-            session, 
+            session,
+            events_in,
+            events_out,
+            host,
             event_bus,
             doc,
             layout_engine: LayoutEngine::new(),
@@ -1376,9 +1169,9 @@ impl EventLoop {
                 app_token,
             };
             // The reply only queues an event: the loop applies the response on its own thread.
-            let event_tx = self.session.event_tx.clone();
+            let events_out = self.events_out.clone();
             let reply = crate::action::ActionReply::new(move |patch| {
-                let _ = event_tx.try_send(InputEvent::AppResponse(oxiterm_proto::input::AppPatch(patch)));
+                events_out.push(InputEvent::AppResponse(oxiterm_proto::input::AppPatch(patch)));
             });
             handler.dispatch(payload, reply);
         }
@@ -1612,7 +1405,7 @@ impl EventLoop {
     /// Starts the main event loop thread driving keyboard and mouse coordinate reactions.
     pub fn run(&mut self) {
 
-        let _guard = EventLoopGuard { session: self.session.clone() };
+        let _guard = EventLoopGuard { host: self.host.clone() };
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -1632,7 +1425,7 @@ impl EventLoop {
         let mut pending_render = false;
         loop {
             // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
-            let elapsed = self.session.idle_for();
+            let elapsed = self.host.idle_for();
             if elapsed > std::time::Duration::from_secs(600) {
                 info!("Session {} timed out ({}s idle)", self.session.id, elapsed.as_secs());
                 // Signal idle death so WsFrameSink::drop emits [0xFF, 1] to web clients.
@@ -1660,8 +1453,8 @@ impl EventLoop {
 
             let mut disconnected = false;
             {
-                let session = self.session.clone();
-                let mut rx_lock = session.event_rx.lock();
+                let events_in = self.events_in.clone();
+                let mut rx_lock = events_in.lock();
                 let mut processed_count = 0;
                 loop {
                     if processed_count >= 100 {
@@ -1670,7 +1463,7 @@ impl EventLoop {
                     }
 
                     let event_opt = if processed_count == 0 {
-                        let received = rx_lock.recv_timeout(sleep_dur);
+                        let received = rx_lock.wait_event(sleep_dur);
                         // The one clock read of this iteration, after the blocking wait.
                         self.now = self.clock.now();
                         match received {
@@ -1698,7 +1491,7 @@ impl EventLoop {
 
                     processed_count += 1;
 
-                    self.session.touch_activity();
+                    self.host.touch_activity();
                     let is_input_focused = self.focused_node
                         .and_then(|id| self.doc.get_node(id))
                         .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
@@ -2295,7 +2088,7 @@ impl EventLoop {
             // `navigate` is never stored as state; it is applied AFTER the rest of the patch so
             // the new page sees the patched state.
             let navigate = match obj.remove("navigate") {
-                Some(serde_json::Value::String(path)) => ClientSession::sanitize_navigate_target(&path),
+                Some(serde_json::Value::String(path)) => SessionState::sanitize_navigate_target(&path),
                 Some(_) => {
                     warn!("app patch: ignoring non-string navigate value");
                     None
@@ -2389,7 +2182,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        EventLoop::new(session, event_bus, output_tx, doc, false)
+        session.new_event_loop(event_bus, output_tx, doc, false)
     }
 
     use super::*;
@@ -2594,7 +2387,7 @@ mod tests {
         };
         
         let mut event_loop = EventLoop::new(
-            client_session,
+            client_session.loop_handles(),
             event_bus,
             output_tx,
             doc,
@@ -2712,7 +2505,7 @@ mod tests {
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
 
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.source_path = Some(app_file.clone());
         event_loop.base_source_path = Some(app_file.clone());
         *client_session.app_base_dir.write() = Some(temp_dir.clone());
@@ -2760,7 +2553,7 @@ mod tests {
 
         let doc = crate::loader::load_thtml_str(r#"<screen style="width: 40; height: 10;"><box event-htmx="noop:x" style="margin-left: 5;"><text>Hello</text></box></screen>"#).unwrap();
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
-        let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
         let lists = Arc::new(parking_lot::Mutex::new(Vec::new()));
         el.rebuild_focusable_nodes(); // focuses the first interactive node
         assert!(el.focused_node.is_some());
@@ -2799,7 +2592,7 @@ mod tests {
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
 
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.source_path = Some(app_file.clone());
         event_loop.base_source_path = Some(app_file.clone());
         *client_session.app_base_dir.write() = Some(temp_dir.clone());
@@ -2827,7 +2620,7 @@ mod tests {
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
 
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.source_path = Some(app_file.clone());
         event_loop.base_source_path = Some(temp_dir.join("subdir").join("index.thtml"));
         *client_session.app_base_dir.write() = Some(temp_dir.clone());
@@ -2906,7 +2699,7 @@ mod tests {
 
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.base_source_path = Some(doc_file.clone());
 
         // Attempt path traversal: "../../etc/passwd" — must be blocked
@@ -2933,7 +2726,7 @@ mod tests {
 
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut event_loop = EventLoop::new(client_session, event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.base_source_path = Some(index.clone());
 
         // Valid path inside base: must succeed
@@ -2962,7 +2755,7 @@ mod tests {
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut event_loop = EventLoop::new(client_session.clone(), event_bus, output_tx, doc, false);
+        let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, false);
         event_loop.focused_node = Some(btn_id);
 
         // Drive handle_htmx_target with action target
@@ -3098,7 +2891,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut event_loop = session.new_event_loop(event_bus, output_tx, doc, false);
         let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
@@ -3119,7 +2912,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut event_loop = session.new_event_loop(event_bus, output_tx, doc, false);
         let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
@@ -3140,7 +2933,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut event_loop = session.new_event_loop(event_bus, output_tx, doc, false);
         let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
@@ -3170,7 +2963,7 @@ mod tests {
         let for_id = arena.alloc(for_node);
         let doc = THTMLDocument { arena, root: for_id, dirty_nodes: Vec::new() };
 
-        let mut event_loop = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut event_loop = session.new_event_loop(event_bus, output_tx, doc, false);
         
         event_loop.expand_all_for_nodes();
         {
@@ -3202,7 +2995,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut event_loop = session.new_event_loop(event_bus, output_tx, doc, false);
         
         use oxiterm_proto::dom::NodeId;
         event_loop.for_template_cache.insert(NodeId(42), vec![NodeId(43)]);
@@ -3246,7 +3039,7 @@ mod tests {
         let index = mem.page_at(std::path::Path::new("index.thtml"));
         let doc = mem.load(&index, oxiterm_proto::style::RenderMode::Tui).unwrap();
         let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
-        let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
         el.page_source = Arc::new(mem);
         el.source_path = Some(index.actual.clone());
         el.base_source_path = Some(index.base.clone());
@@ -3298,7 +3091,7 @@ mod tests {
 
         // Simulate run exit via Drop guard
         {
-            let _guard = EventLoopGuard { session: session.clone() };
+            let _guard = EventLoopGuard { host: session.clone() };
         }
 
         // Should be false again
@@ -3328,7 +3121,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        EventLoop::new(session, event_bus, output_tx, doc, false)
+        session.new_event_loop(event_bus, output_tx, doc, false)
     }
 
     fn drain_frames(rx: &mut tokio::sync::mpsc::Receiver<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -3379,7 +3172,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
 
         el.send_nav_error();
 
@@ -3403,7 +3196,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         let seen = capture_notices(&mut el);
 
         // Send two nav errors (simulating traversal case and missing case)
@@ -3436,7 +3229,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         let seen = capture_notices(&mut el);
 
         // Exhaust NAV tokens
@@ -3648,7 +3441,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
 
         // Manually set a fake last_layout to ensure it's not None
         // (We can't construct a full LayoutResult, but we can verify None after reset)
@@ -3696,7 +3489,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let el = session.new_event_loop(event_bus, output_tx, doc, false);
         (el, btn_id)
     }
 
@@ -3913,7 +3706,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.rebuild_parent_map();
 
         // Text at col=5..13, row=2..3 (smaller area → hit_test picks it over Box).
@@ -4017,7 +3810,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.rebuild_focusable_nodes();
 
         // Focus the Input node.
@@ -4144,7 +3937,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let el = session.new_event_loop(event_bus, output_tx, doc, false);
 
         let app_token = {
             let state_guard = el.session.state.read();
@@ -4164,7 +3957,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let el = session.new_event_loop(event_bus, output_tx, doc, false);
 
         let app_token = {
             let state_guard = el.session.state.read();
@@ -4208,7 +4001,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new(format!("http://127.0.0.1:{}/events", port))));
 
         // Receive APC SetAppToken with a new non-empty token
@@ -4245,7 +4038,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new("http://127.0.0.1:1/events".to_string())));
 
         // Receive APC SetAppToken with the same token
@@ -4264,7 +4057,7 @@ mod tests {
         let doc = oxiterm_renderer::document::THTMLDocument::default();
         let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
         let event_bus = Arc::new(crate::events::EventBus::new());
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
 
         el.handle_set_app_token("".to_string());
 
@@ -4374,7 +4167,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.rebuild_parent_map();
 
         // Synthetic layout
@@ -4467,7 +4260,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.rebuild_parent_map();
 
         // Synthetic layout: window at (10, 5, 20, 10), handle at (10, 5, 20, 2), content at (10, 7, 20, 8)
@@ -4530,7 +4323,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         el.rebuild_parent_map();
 
         // Layout with paint_order: bg_id painted first, fg_id painted second (on top)
@@ -4585,7 +4378,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
-        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         let start_time = crate::clock::MonoTime::from_millis(1000);
 
         // Baseline establishment
@@ -4647,7 +4440,7 @@ mod tests {
         EventLoop::inject_initial_state(&mut doc, &*session.state.read());
         assert_eq!(doc.get_node(box_id).unwrap().style.width, Some(5.0));
 
-        let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
+        let mut el = session.new_event_loop(event_bus, output_tx, doc, false);
         let start_time = crate::clock::MonoTime::from_millis(1000);
 
         // Baseline establishment

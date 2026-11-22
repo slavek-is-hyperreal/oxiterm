@@ -1039,11 +1039,11 @@ pub mod web_impl {
                 crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
             };
 
-            let mut event_loop = EventLoop::new(client_session.clone(), event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+            let mut event_loop = client_session.new_event_loop(event_bus, crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
             event_loop.frame_sink = frame_sink;
             event_loop.source_path = resolved_source_path;
             event_loop.base_source_path = base_source_path;
-            event_loop.page_source = Arc::new(crate::page_source::FsPageSource::new(app_base_dir.clone()));
+            event_loop.page_source = Arc::new(crate::fs_page_source::FsPageSource::new(app_base_dir.clone()));
             if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
                 info!("Web EventLoop initializing HttpActionHandler targeting {}", url);
                 event_loop.action_handler = Some(Arc::new(crate::dispatcher::HttpActionHandler::new(url)));
@@ -2173,7 +2173,7 @@ pub mod web_impl {
                 root: oxiterm_proto::dom::NodeId(0),
                 dirty_nodes: Vec::new(),
             };
-            let mut event_loop = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+            let mut event_loop = session.new_event_loop(Arc::new(crate::events::EventBus::new()), crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
             event_loop.frame_sink = Box::new(WsFrameSink::new(session.clone(), None));
 
             event_loop.handle_open_url("https://example.com".to_string(), oxiterm_proto::dom::NodeId(0));

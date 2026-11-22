@@ -7,12 +7,9 @@
 //! * [`MonoTime`] is a duration measured from an arbitrary, host-chosen origin. It is plain
 //!   data (`Copy`, `Ord`), constructible in tests and wasm-safe. Subtraction saturates, like
 //!   `Instant::duration_since`.
-//! * [`SystemClock`] is the host clock of the server: `Instant` at creation + elapsed. It is
-//!   the only `Instant::now()` that feeds loop LOGIC (throttle, limiter, debouncer,
-//!   animations, render). Exceptions that remain until Phase 4 step 5: `run()` still calls
-//!   `ClientSession::idle_for()` (once per iteration) and `touch_activity()` (per event), which
-//!   read `Instant` for the transport-side idle reaper (`last_activity`), so the loop does not
-//!   run on wasm yet.
+//! * `host_clock::SystemClock` is the host clock of the server (`Instant` at creation + elapsed),
+//!   kept in its own module because it is the one place that reads a real clock; a wasm host
+//!   provides its own `Clock`. The idle reaper's wall clock is transport state, not part of this.
 //! * [`FakeClock`] is a manually advanced clock for tests and the trace harness.
 
 use std::ops::{Add, Sub};
@@ -78,34 +75,6 @@ pub trait Clock: Send + Sync {
     fn now(&self) -> MonoTime;
 }
 
-/// Host clock of the server process: `Instant` at creation plus elapsed.
-///
-/// HOST CLOCK: the only `Instant::now()` behind the loop's logic clock (see the module docs for
-/// the transport-side `last_activity` exceptions). A wasm host
-/// provides its own `Clock` (e.g. `performance.now()`); the core never calls this type.
-pub struct SystemClock {
-    origin: std::time::Instant,
-}
-
-impl SystemClock {
-    /// Creates a clock whose origin is now.
-    pub fn new() -> Self {
-        Self { origin: std::time::Instant::now() }
-    }
-}
-
-impl Default for SystemClock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Clock for SystemClock {
-    fn now(&self) -> MonoTime {
-        MonoTime(self.origin.elapsed())
-    }
-}
-
 /// A manually driven clock for tests. Clones share the same time, so a test keeps one handle
 /// and gives another (boxed) to the event loop running on its own thread.
 #[derive(Clone, Default)]
@@ -159,12 +128,5 @@ mod tests {
         assert_eq!(c.now(), MonoTime::from_millis(12));
         c.set(MonoTime::from_millis(1));
         assert_eq!(d.now(), MonoTime::from_millis(1));
-    }
-
-    #[test]
-    fn system_clock_is_monotonic() {
-        let c = SystemClock::new();
-        let a = c.now();
-        assert!(c.now() >= a);
     }
 }

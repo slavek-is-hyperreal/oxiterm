@@ -211,10 +211,10 @@ impl Handler for OxiServer {
                     crate::placeholder::build_placeholder_doc(dims.cols, dims.rows)
                 };
 
-                let mut event_loop = crate::session::EventLoop::new(client_session, event_bus, output_tx, doc, self.config.server.a11y_mode);
+                let mut event_loop = client_session.new_event_loop(event_bus, output_tx, doc, self.config.server.a11y_mode);
                 event_loop.source_path = self.source_path.clone();
                 if let Some(dir) = app_base_dir {
-                    event_loop.page_source = std::sync::Arc::new(crate::page_source::FsPageSource::new(dir));
+                    event_loop.page_source = std::sync::Arc::new(crate::fs_page_source::FsPageSource::new(dir));
                 }
                 if let Some(ref url) = self.config.server.app_server_url {
                     event_loop.action_handler = Some(std::sync::Arc::new(crate::dispatcher::HttpActionHandler::new(url.clone())));

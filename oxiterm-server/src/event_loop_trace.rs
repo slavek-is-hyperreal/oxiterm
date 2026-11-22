@@ -355,7 +355,7 @@ impl Run {
         let doc = crate::loader::load_thtml_file_mode(&page_path, render_mode).unwrap();
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(1);
         let shared = Arc::new(Shared { state: Mutex::new(SinkState::default()), cv: Condvar::new() });
-        let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
         el.frame_sink = Box::new(TraceSink { shared: shared.clone(), notice_tx: tx });
         el.source_path = Some(page_path.clone());
         el.base_source_path = Some(page_path);
