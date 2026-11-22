@@ -56,3 +56,16 @@ Looking to explore where OxiTerm is heading? Check out our concept blueprints:
   - 🐧 **[OxiDESK / OxiDE](docs/retro-desktop-environment.md)**: Transforming OxiTerm into a responsive desktop environment for vintage Linux PCs (Pentium II/III/4, 64–512 MB RAM).
   - ⚡ **[OxiTerm Embedded & IoT](docs/embedded-iot-platform.md)**: Ultra-lightweight HMI and headless dashboard for SBCs, industrial machinery, and edge routers.
 
+
+---
+
+### 📜 License
+
+OxiTerm is dual-licensed under either of
+
+- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
+- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual-licensed as above, without any additional terms or conditions.
