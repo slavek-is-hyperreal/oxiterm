@@ -1,0 +1,35 @@
+<!-- Trace-harness fixture: two bars whose width is bound to `prog`, one with an ease-out and
+     one with a spring transition. The button sets `prog` through event-htmx (a patch would
+     consume the dirty keys before the render, so no transition would start). Used by the fake-clock trace (OxiUI Phase 4, step 1). -->
+<style>
+.track {
+    border-style: single;
+    height: 3;
+    width: 30;
+    padding-left: 0;
+    padding-right: 0;
+}
+.fill-ease {
+    bg: #a855f7;
+    height: 1;
+    transition: width 400ms ease-out;
+}
+.fill-spring {
+    bg: #22c55e;
+    height: 1;
+    transition: width 400ms spring(120, 12, 1);
+}
+</style>
+<screen style="width: 40; height: 14;">
+    <box style="flex-direction: column; padding: 1;">
+        <box class="track">
+            <box class="fill-ease" style="width: 5;" bind-width="prog"></box>
+        </box>
+        <box class="track">
+            <box class="fill-spring" style="width: 5;" bind-width="prog"></box>
+        </box>
+        <box style="height: 3; width: 12; border-style: single;" event-htmx="set:prog=24">
+            <text style="height: 1;">Grow</text>
+        </box>
+    </box>
+</screen>

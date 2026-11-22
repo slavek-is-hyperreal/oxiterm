@@ -5,7 +5,8 @@
 //! `top`, `left`, `right`, `bottom`, `opacity`).
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use crate::clock::MonoTime;
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::style::{AnimatableProperty, Easing};
 use oxiterm_renderer::document::THTMLDocument;
@@ -193,7 +194,7 @@ pub struct ActiveTransition {
     pub property: AnimatableProperty,
     pub start_value: f32,
     pub end_value: f32,
-    pub start_time: Instant,
+    pub start_time: MonoTime,
     pub duration: Duration,
     pub delay: Duration,
     pub easing: Easing,
@@ -201,12 +202,12 @@ pub struct ActiveTransition {
 
 impl ActiveTransition {
     /// Samples the current interpolated value and whether the transition has finished.
-    pub fn sample(&self, now: Instant) -> (f32, bool) {
+    pub fn sample(&self, now: MonoTime) -> (f32, bool) {
         if now < self.start_time + self.delay {
             return (self.start_value, false);
         }
 
-        let elapsed = now.duration_since(self.start_time + self.delay);
+        let elapsed = now.saturating_duration_since(self.start_time + self.delay);
         let elapsed_secs = elapsed.as_secs_f32();
         let total_secs = self.duration.as_secs_f32();
 
@@ -315,6 +316,7 @@ impl AnimationController {
         duration: Duration,
         delay: Duration,
         easing: Easing,
+        now: MonoTime,
     ) {
         self.cancel_property(node_id, property);
         self.active_transitions.push(ActiveTransition {
@@ -322,7 +324,7 @@ impl AnimationController {
             property,
             start_value,
             end_value,
-            start_time: Instant::now(),
+            start_time: now,
             duration,
             delay,
             easing,
@@ -331,7 +333,7 @@ impl AnimationController {
 
     /// Detects style property changes on nodes with TCSS `transitions` specs,
     /// launching in-flight transitions from current value to new target value.
-    pub fn sync_transitions(&mut self, doc: &mut THTMLDocument, now: Instant) {
+    pub fn sync_transitions(&mut self, doc: &mut THTMLDocument, now: MonoTime) {
         let mut new_transitions = Vec::new();
 
         for (node_id, node) in doc.arena.iter() {
@@ -401,7 +403,7 @@ impl AnimationController {
         }
 
         for (node_id, prop, start, end, dur, delay, easing) in new_transitions {
-            self.start_transition(node_id, prop, start, end, dur, delay, easing);
+            self.start_transition(node_id, prop, start, end, dur, delay, easing, now);
         }
     }
 
@@ -437,7 +439,7 @@ impl AnimationController {
     }
 
     /// Gets current in-flight value if the property is already transitioning.
-    fn get_current_in_flight_value(&self, node_id: NodeId, prop: AnimatableProperty, now: Instant) -> Option<f32> {
+    fn get_current_in_flight_value(&self, node_id: NodeId, prop: AnimatableProperty, now: MonoTime) -> Option<f32> {
         self.active_transitions
             .iter()
             .find(|t| t.node_id == node_id && t.property == prop)
@@ -447,7 +449,7 @@ impl AnimationController {
     /// Advances all active transitions to `now`, writing interpolated values into `doc`.
     ///
     /// Returns `true` if any document node styles were modified.
-    pub fn tick(&mut self, doc: &mut THTMLDocument, now: Instant) -> bool {
+    pub fn tick(&mut self, doc: &mut THTMLDocument, now: MonoTime) -> bool {
         if self.active_transitions.is_empty() {
             return false;
         }
@@ -599,7 +601,7 @@ mod tests {
         doc.root = id;
 
         let mut controller = AnimationController::new();
-        let now = Instant::now();
+        let now = MonoTime::from_millis(1000);
 
         // Baseline establishment
         controller.sync_transitions(&mut doc, now);
@@ -642,7 +644,7 @@ mod tests {
         doc.root = id;
 
         let mut controller = AnimationController::new();
-        let now = Instant::now();
+        let now = MonoTime::from_millis(1000);
 
         // Baseline: width 10
         controller.sync_transitions(&mut doc, now);
@@ -654,8 +656,8 @@ mod tests {
 
         // Halfway tick: sets node.style.width to 15
         controller.tick(&mut doc, now + Duration::from_millis(50));
-        // Interpolated lengths are no longer rounded (the TUI layout does that), and the
-        // transition's start_time is Instant::now(), so allow a little timing jitter.
+        // Interpolated lengths are no longer rounded (the TUI layout does that); the injected
+        // clock makes the sample exact, the tolerance only covers float rounding.
         let mid = doc.arena.get(id).unwrap().style.width.unwrap();
         assert!((mid - 15.0).abs() < 0.5, "got {mid}");
 

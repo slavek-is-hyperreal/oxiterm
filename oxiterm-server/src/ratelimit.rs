@@ -6,7 +6,13 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
+use crate::clock::MonoTime;
 use parking_lot::Mutex;
+
+// NOTE: `RateLimiter` below is the per-IP connection limiter used only by the web transport
+// (web.rs). It is transport-side, never part of a session, and keeps reading the wall clock
+// itself. It must be split off from `FrameRateLimiter` when this file moves into the core
+// (Phase 4 step 8).
 
 /// Rate limiter for connection requests, tracking request frequencies.
 pub struct RateLimiter {
@@ -76,7 +82,8 @@ impl RateLimiter {
 
 /// Rate limiter for rendering loop iterations.
 pub struct FrameRateLimiter {
-    last_frame: Instant,
+    /// `None` until the first frame: the first render is always allowed.
+    last_frame: Option<MonoTime>,
     min_interval: Duration,
 }
 
@@ -85,18 +92,21 @@ impl FrameRateLimiter {
     pub fn new(fps: u32) -> Self {
         let min_interval = Duration::from_secs_f32(1.0 / fps as f32);
         Self {
-            last_frame: Instant::now() - min_interval,
+            last_frame: None,
             min_interval,
         }
     }
 
     /// Non-blocking check returning true if enough time has passed since the last frame was rendered.
-    pub fn should_render(&self) -> bool {
-        self.last_frame.elapsed() >= self.min_interval
+    pub fn should_render(&self, now: MonoTime) -> bool {
+        match self.last_frame {
+            Some(last) => now.saturating_duration_since(last) >= self.min_interval,
+            None => true,
+        }
     }
 
     /// Records the execution of a frame paint, updating the timestamp.
-    pub fn record_frame(&mut self) {
-        self.last_frame = Instant::now();
+    pub fn record_frame(&mut self, now: MonoTime) {
+        self.last_frame = Some(now);
     }
 }

@@ -84,8 +84,8 @@ impl PredictiveEcho {
 #[derive(Debug)]
 pub struct ResizeDebouncer {
     pub pending: Option<PtyDimensions>,
-    pub pushed_at: std::time::Instant,
-    pub last_update: std::time::Instant,
+    pub pushed_at: crate::clock::MonoTime,
+    pub last_update: crate::clock::MonoTime,
 }
 
 impl ResizeDebouncer {
@@ -93,25 +93,28 @@ impl ResizeDebouncer {
     pub fn new() -> Self {
         Self {
             pending: None,
-            pushed_at: std::time::Instant::now(),
-            last_update: std::time::Instant::now(),
+            pushed_at: crate::clock::MonoTime::ZERO,
+            last_update: crate::clock::MonoTime::ZERO,
         }
     }
 
     /// Queues a new dimensions update.
-    pub fn push(&mut self, dims: PtyDimensions) {
+    ///
+    /// `now` comes from the session's host clock ([`ClientSession::clock`]); `push` is called
+    /// by the transports (SSH/WebSocket), which stamp the same clock the loop polls with.
+    pub fn push(&mut self, dims: PtyDimensions, now: crate::clock::MonoTime) {
         self.pending = Some(dims);
-        self.pushed_at = std::time::Instant::now();
+        self.pushed_at = now;
     }
 
     /// Polls for a debounced layout change.
     ///
     /// Returns the dimensions if the debouncing window has elapsed since the last push.
-    pub fn poll(&mut self) -> Option<PtyDimensions> {
+    pub fn poll(&mut self, now: crate::clock::MonoTime) -> Option<PtyDimensions> {
         if let Some(dims) = self.pending {
-            if self.pushed_at.elapsed() > Duration::from_millis(100) {
+            if now.saturating_duration_since(self.pushed_at) > Duration::from_millis(100) {
                 self.pending = None;
-                self.last_update = std::time::Instant::now();
+                self.last_update = now;
                 return Some(dims);
             }
         }
@@ -155,7 +158,14 @@ pub struct ClientSession {
     pub resize_debouncer: RwLock<ResizeDebouncer>,
     /// Active terminal emulator profile capability features.
     pub terminal_profile: RwLock<crate::ssh::negotiator::TerminalProfile>,
+    /// Host clock of this session. The event loop takes its time from it by default and the
+    /// transports use it to stamp resize pushes, so both share one origin.
+    pub clock: Arc<dyn crate::clock::Clock>,
     /// Instant of the last received input action.
+    ///
+    /// TRANSPORT-SIDE wall-clock state: it is read by the idle reaper in web.rs. It is only
+    /// touched through [`ClientSession::touch_activity`] / [`ClientSession::idle_for`] and
+    /// moves out of the loop's path in Phase 4 step 5 (split of `ClientSession`).
     pub last_activity: RwLock<std::time::Instant>,
     /// Session-wide local DOM state database.
     pub state: RwLock<crate::state::StateManager>,
@@ -189,6 +199,19 @@ pub struct ClientSession {
 }
 
 impl ClientSession {
+    /// Records input activity now.
+    ///
+    /// TRANSPORT-SIDE clock read (idle reaper, web.rs). Deliberately still `Instant::now()`;
+    /// it leaves the event loop's path in Phase 4 step 5.
+    pub fn touch_activity(&self) {
+        *self.last_activity.write() = std::time::Instant::now();
+    }
+
+    /// Time since the last recorded activity. TRANSPORT-SIDE clock read, see `touch_activity`.
+    pub fn idle_for(&self) -> Duration {
+        self.last_activity.read().elapsed()
+    }
+
     /// Attempts to attach an identity to the session.
     ///
     /// Injects reserved state keys (including `_is_web`) and sets the identity field if identity is None (C2/M2).
@@ -449,6 +472,7 @@ impl SessionRegistry {
             predictive_echo: RwLock::new(PredictiveEcho::default()),
             resize_debouncer: RwLock::new(ResizeDebouncer::new()),
             terminal_profile: RwLock::new(crate::ssh::negotiator::TerminalProfile::default()),
+            clock: Arc::new(crate::clock::SystemClock::new()),
             last_activity: RwLock::new(std::time::Instant::now()),
             state: RwLock::new(crate::state::StateManager::new()),
             active_media: RwLock::new(Vec::new()),
@@ -668,6 +692,13 @@ pub struct EventLoop {
     pub active_drag: Option<DragState>,
     /// CSS transitions and animations controller.
     pub animation_controller: crate::animation::AnimationController,
+    /// Time source. Defaults to the session's host clock; tests and the trace harness swap in
+    /// a fake one. This is the only place the loop gets time from.
+    pub clock: Arc<dyn crate::clock::Clock>,
+    /// The loop's current time: `clock` read once per `run()` iteration, right after the
+    /// blocking receive returns. Everything below the loop (throttle, limiter, debouncer,
+    /// animations) uses this value instead of reading a clock.
+    pub now: crate::clock::MonoTime,
 }
 
 /// Active pointer drag operation state machine tracking element relocation.
@@ -844,6 +875,8 @@ impl EventLoop {
         a11y_mode: bool,
     ) -> Self {
         let dims = *session.dims.read();
+        let clock = session.clock.clone();
+        let now = clock.now();
         
         let mut dbus_bridge = None;
         let frame_sink: Box<dyn oxiterm_renderer::FrameSink> = if a11y_mode {
@@ -868,6 +901,8 @@ impl EventLoop {
             output_tx,
             frame_sink,
             frame_limiter: crate::ratelimit::FrameRateLimiter::new(60),
+            now,
+            clock,
             pending_mouse: None,
             source_path: None,
             base_source_path: None,
@@ -880,7 +915,7 @@ impl EventLoop {
             total_height: 0,
             app_dispatcher: None,
             for_template_cache: HashMap::new(),
-            throttle: crate::throttle::EventThrottle::new(),
+            throttle: crate::throttle::EventThrottle::new(now),
             active_drag: None,
             animation_controller: crate::animation::AnimationController::new(),
         };
@@ -1235,7 +1270,7 @@ impl EventLoop {
         if let Some(url) = target.strip_prefix("open:") {
             self.handle_open_url(url.to_string(), node_id);
         } else if target.ends_with(".thtml") {
-            if self.throttle.check_nav() {
+            if self.throttle.check_nav(self.now) {
                 if let Err(e) = self.resolve_and_load_page(target) {
                     warn!("handle_htmx_target: failed to load page {}: {}", target, e);
                     self.send_nav_error();
@@ -1629,7 +1664,7 @@ impl EventLoop {
         } else {
             // Release / Move / hover — flood surface.
             // Gate only the render trigger; skipping a hover render is safe.
-            self.throttle.check_input()
+            self.throttle.check_input(self.now)
         }
     }
 
@@ -1663,7 +1698,7 @@ impl EventLoop {
         let mut pending_render = false;
         loop {
             // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
-            let elapsed = self.session.last_activity.read().elapsed();
+            let elapsed = self.session.idle_for();
             if elapsed > std::time::Duration::from_secs(600) {
                 info!("Session {} timed out ({}s idle)", self.session.id, elapsed.as_secs());
                 // Signal idle death so WsFrameSink::drop emits [0xFF, 1] to web clients.
@@ -1701,7 +1736,10 @@ impl EventLoop {
                     }
 
                     let event_opt = if processed_count == 0 {
-                        match rx_lock.recv_timeout(sleep_dur) {
+                        let received = rx_lock.recv_timeout(sleep_dur);
+                        // The one clock read of this iteration, after the blocking wait.
+                        self.now = self.clock.now();
+                        match received {
                             Ok(e) => Some(e),
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                                 if is_active {
@@ -1726,7 +1764,7 @@ impl EventLoop {
 
                     processed_count += 1;
 
-                    *self.session.last_activity.write() = std::time::Instant::now();
+                    self.session.touch_activity();
                     let is_input_focused = self.focused_node
                         .and_then(|id| self.doc.get_node(id))
                         .map(|node| node.tag == oxiterm_proto::dom::NodeTag::Input)
@@ -1756,7 +1794,7 @@ impl EventLoop {
                                     self.session.is_mobile.store(is_mobile, std::sync::atomic::Ordering::SeqCst);
                                     if let Some(bp) = self.base_source_path.clone() {
                                         let file_name = bp.file_name().and_then(|f| f.to_str()).unwrap_or("index.thtml").to_string();
-                                        if self.throttle.check_nav() {
+                                        if self.throttle.check_nav(self.now) {
                                             if let Err(e) = self.resolve_and_load_page(&file_name) {
                                                 warn!("SwitchViewport: failed to load page: {}", e);
                                                 self.send_nav_error();
@@ -1770,7 +1808,7 @@ impl EventLoop {
                                 }
                                 InputEvent::NavigateTo(rel_path) => {
                                     // Containment check is inside resolve_and_load_page.
-                                    if self.throttle.check_nav() {
+                                    if self.throttle.check_nav(self.now) {
                                         if let Err(e) = self.resolve_and_load_page(&rel_path) {
                                             warn!("NavigateTo: failed to load page: {}", e);
                                             self.send_nav_error();
@@ -1783,7 +1821,7 @@ impl EventLoop {
                                 }
                                 InputEvent::NavigateToAppPath(app_path) => {
                                     // Same containment check and NAV throttle as NavigateTo.
-                                    if self.throttle.check_nav() {
+                                    if self.throttle.check_nav(self.now) {
                                         if let Err(e) = self.load_app_page(&app_path) {
                                             warn!("NavigateToAppPath: failed to load page: {}", e);
                                             self.send_nav_error();
@@ -1875,7 +1913,7 @@ impl EventLoop {
                                             }
                                         }
                                         // Render is gated: skipping a frame is safe; losing a char is not.
-                                        if self.throttle.check_input() {
+                                        if self.throttle.check_input(self.now) {
                                             needs_render = true;
                                         }
                                     }
@@ -1931,7 +1969,7 @@ impl EventLoop {
                 return;
             }
 
-            let dims_opt = self.session.resize_debouncer.write().poll();
+            let dims_opt = self.session.resize_debouncer.write().poll(self.now);
             if let Some(dims) = dims_opt {
                 *self.session.dims.write() = dims;
                 self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
@@ -1943,8 +1981,8 @@ impl EventLoop {
             }
 
             if needs_render && !self.output_paused {
-                if self.frame_limiter.should_render() {
-                    let now = std::time::Instant::now();
+                if self.frame_limiter.should_render(self.now) {
+                    let now = self.now;
                     self.animation_controller.restore_baselines(&mut self.doc);
                     Self::sync_dirty_state(&mut self.doc, &mut *self.session.state.write());
                     self.animation_controller.sync_transitions(&mut self.doc, now);
@@ -2220,7 +2258,7 @@ impl EventLoop {
                     };
                     if let Ok(true) = sent {
                         self.buffer.swap();
-                        self.frame_limiter.record_frame();
+                        self.frame_limiter.record_frame(self.now);
                     }
                 }
                 } else {
@@ -3281,18 +3319,18 @@ mod tests {
 
         // Exhaust NAV tokens
         for _ in 0..crate::throttle::NAV_CAPACITY {
-            assert!(el.throttle.check_nav(), "should be within capacity");
+            assert!(el.throttle.check_nav(el.now), "should be within capacity");
         }
         // Now throttled — simulate 20 throttle calls
         let mut throttle_notices = 0usize;
         for _ in 0..20 {
-            if !el.throttle.check_nav() && el.throttle.is_first_throttle() {
+            if !el.throttle.check_nav(el.now) && el.throttle.is_first_throttle() {
                 el.send_nav_throttle_notice();
                 throttle_notices += 1;
             }
         }
         // Must be exactly 1 throttle notice per episode
-        // Run note: under real time ≤ capacity+1 due to refill; under paused time exactly 1.
+        // The bucket is checked at the fixed `el.now`, so no refill happens: exactly 1 notice.
         assert_eq!(throttle_notices, 1,
             "exactly one throttle notice per episode; got {}", throttle_notices);
 
@@ -3306,14 +3344,14 @@ mod tests {
     #[test]
     fn test_t5_input_throttle_silent_drop() {
         // 2.2/t5: INPUT throttle drops events silently (no 0x34)
-        let mut t = crate::throttle::EventThrottle::new();
+        let mut t = crate::throttle::EventThrottle::new(crate::clock::MonoTime::ZERO);
         // Exhaust the input bucket
         for _ in 0..crate::throttle::INPUT_CAPACITY {
-            assert!(t.check_input());
+            assert!(t.check_input(crate::clock::MonoTime::ZERO));
         }
         // Further 150 events: all dropped
         for _ in 0..150 {
-            assert!(!t.check_input(), "throttled input must return false");
+            assert!(!t.check_input(crate::clock::MonoTime::ZERO), "throttled input must return false");
         }
         // No 0x34 test: no send path reached for INPUT throttle
     }
@@ -3321,16 +3359,16 @@ mod tests {
     #[test]
     fn test_t8_after_throttle_refill_nav_accepted() {
         // 2.2/t8: After exhaust + manual refill, NAV accepted again; episode cleared
-        let mut t = crate::throttle::EventThrottle::new();
+        let mut t = crate::throttle::EventThrottle::new(crate::clock::MonoTime::ZERO);
         for _ in 0..crate::throttle::NAV_CAPACITY {
-            t.check_nav();
+            t.check_nav(crate::clock::MonoTime::ZERO);
         }
-        assert!(!t.check_nav(), "exhausted");
+        assert!(!t.check_nav(crate::clock::MonoTime::ZERO), "exhausted");
         t.is_first_throttle(); // enter episode
 
         // Force refill
         t.nav.set_tokens(crate::throttle::NAV_CAPACITY as f64);
-        assert!(t.check_nav(), "after refill, allowed again");
+        assert!(t.check_nav(crate::clock::MonoTime::ZERO), "after refill, allowed again");
         assert!(!t.nav_throttle_active, "episode cleared on allow");
     }
 
@@ -3418,10 +3456,10 @@ mod tests {
             - std::time::Duration::from_secs(600);
 
         // Simulate handle_websocket reset
-        *session.last_activity.write() = std::time::Instant::now();
+        session.touch_activity();
         session.death_reason.store(2, std::sync::atomic::Ordering::SeqCst);
 
-        let elapsed = session.last_activity.read().elapsed();
+        let elapsed = session.idle_for();
         assert!(elapsed < std::time::Duration::from_secs(1),
             "last_activity after reattach must be < 1s ago, was {:?}", elapsed);
     }
@@ -4391,7 +4429,7 @@ mod tests {
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
 
         let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
-        let start_time = std::time::Instant::now();
+        let start_time = crate::clock::MonoTime::from_millis(1000);
 
         // Baseline establishment
         el.animation_controller.sync_transitions(&mut el.doc, start_time);
@@ -4453,7 +4491,7 @@ mod tests {
         assert_eq!(doc.get_node(box_id).unwrap().style.width, Some(5.0));
 
         let mut el = EventLoop::new(session.clone(), event_bus, output_tx, doc, false);
-        let start_time = std::time::Instant::now();
+        let start_time = crate::clock::MonoTime::from_millis(1000);
 
         // Baseline establishment
         el.animation_controller.sync_transitions(&mut el.doc, start_time);

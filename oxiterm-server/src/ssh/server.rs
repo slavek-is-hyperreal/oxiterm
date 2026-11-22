@@ -147,7 +147,7 @@ impl Handler for OxiServer {
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
                 *session.dims.write() = new_dims;
-                session.resize_debouncer.write().push(new_dims);
+                { let now = session.clock.now(); session.resize_debouncer.write().push(new_dims, now); }
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
             }
         }
@@ -258,7 +258,7 @@ impl Handler for OxiServer {
                     cols: u16::try_from(width).unwrap_or(u16::MAX),
                     rows: u16::try_from(height).unwrap_or(u16::MAX),
                 };
-                session.resize_debouncer.write().push(new_dims);
+                { let now = session.clock.now(); session.resize_debouncer.write().push(new_dims, now); }
                 // Trigger a resize event through the reactor channel to dynamically adapt cell buffer layout grids.
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
             }

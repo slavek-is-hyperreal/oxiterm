@@ -914,7 +914,7 @@ pub mod web_impl {
         // K1: trigger render on attach
         // Reset last_activity (F2: also reset death_reason so a reattached session
         // does not inherit a stale reason from a prior idle cycle).
-        *client_session.last_activity.write() = std::time::Instant::now();
+        client_session.touch_activity();
         client_session.death_reason.store(2, std::sync::atomic::Ordering::SeqCst);
         let _ = client_session.event_tx.try_send(InputEvent::Refresh);
 
@@ -1098,7 +1098,7 @@ pub mod web_impl {
                         if bytes.len() >= 5 {
                             let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
                             let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
-                            client_session.resize_debouncer.write().push(PtyDimensions { cols, rows });
+                            { let now = client_session.clock.now(); client_session.resize_debouncer.write().push(PtyDimensions { cols, rows }, now); }
                             let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
                         }
                     }

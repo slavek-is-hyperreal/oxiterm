@@ -22,8 +22,17 @@
 //! A snapshot is taken only then. Notices are recorded as semantic lines (not raw bytes) so
 //! that routing them through the frame sink later (Phase 4 step 2) does not change baselines.
 //!
-//! Not covered yet: CSS transitions and animations (timing dependent; they join after the
-//! clock injection of step 1).
+//! # Fake clock (transitions)
+//! The scripts above run on the real host clock. Timing dependent pages (CSS transitions) run
+//! on a [`FakeClock`] instead (`Run::start_fake`): the loop's `now` is whatever the script
+//! sets, so a frame's picture depends only on the fake time it was rendered at. The frame
+//! limiter lives on the same clock, so a frozen clock allows no further frame: every expected
+//! frame is preceded by `advance`/`step_frame`.
+//!
+//! Caveat: only `el.clock` is swapped. `ClientSession::clock` (used by the transports to stamp
+//! `ResizeDebouncer::push`) stays the system clock, so a fake-clock script must not resize.
+//!
+//! Not covered: media animations (renderer cache clock, step 8).
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Write as _;
@@ -34,6 +43,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
+
+use crate::clock::{FakeClock, MonoTime};
 
 use oxiterm_proto::input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseAction, MouseButton, MouseInput};
 use oxiterm_proto::style::{AnsiColor, RenderMode};
@@ -76,6 +87,7 @@ const TRACES: &[&str] = &[
     "throttle-cell",
     "appserver-cell",
     "appserver-gui",
+    "transition-cell",
 ];
 
 // ---------------------------------------------------------------------------------------
@@ -270,6 +282,8 @@ struct Run {
     notice_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     thread: Option<std::thread::JoinHandle<()>>,
     mock: Option<Mock>,
+    /// Handle of the loop's clock when the run uses the fake clock.
+    clock: Option<FakeClock>,
     app_base: PathBuf,
     watch: Vec<String>,
     forbidden: Vec<String>,
@@ -295,6 +309,17 @@ fn mouse(col: u16, row: u16, action: MouseAction) -> InputEvent {
 impl Run {
     /// Starts a session on `page` (path relative to `app_base`) and waits for the first frame.
     fn start(mode: Mode, app_base: &Path, page: &str, with_mock: bool) -> Run {
+        Self::start_inner(mode, app_base, page, with_mock, None)
+    }
+
+    /// Like `start`, but the loop runs on a fake clock set to `t0_ms`.
+    fn start_fake(mode: Mode, app_base: &Path, page: &str, t0_ms: u64) -> Run {
+        let clock = FakeClock::new();
+        clock.set(MonoTime::from_millis(t0_ms));
+        Self::start_inner(mode, app_base, page, false, Some(clock))
+    }
+
+    fn start_inner(mode: Mode, app_base: &Path, page: &str, with_mock: bool, clock: Option<FakeClock>) -> Run {
         let registry = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 4);
         let session = registry.create_session().unwrap();
         *session.dims.write() = PtyDimensions { cols: COLS, rows: ROWS };
@@ -317,6 +342,10 @@ impl Run {
         el.frame_sink = Box::new(TraceSink { shared: shared.clone() });
         el.source_path = Some(page_path.clone());
         el.base_source_path = Some(page_path);
+        if let Some(c) = &clock {
+            el.clock = Arc::new(c.clone());
+            el.now = el.clock.now();
+        }
         let mock = if with_mock {
             let m = Mock::start();
             el.app_dispatcher = Some(AppDispatcher::new(m.url.clone()));
@@ -334,6 +363,7 @@ impl Run {
             notice_rx,
             thread: Some(thread),
             mock,
+            clock,
             app_base,
             watch: Vec::new(),
             forbidden: Vec::new(),
@@ -349,6 +379,21 @@ impl Run {
         run.wait_render(0);
         run.wait_quiet(QUIET);
         run
+    }
+
+    /// Moves the fake clock forward without waiting for anything (the loop is idle).
+    fn advance(&self, ms: u64) {
+        self.clock.as_ref().expect("fake clock run").advance(Duration::from_millis(ms));
+    }
+
+    /// Moves the fake clock forward while the loop is animating and waits for the one frame
+    /// that is rendered at the new time.
+    fn step_frame(&mut self, ms: u64) {
+        self.wait_gap();
+        let mark = self.frames();
+        self.advance(ms);
+        self.wait_render(mark);
+        self.wait_quiet(QUIET);
     }
 
     fn watch(&mut self, keys: &[&str]) {
@@ -1103,4 +1148,28 @@ fn trace_appserver_cell() {
 #[test]
 fn trace_appserver_gui() {
     check_baseline("appserver-gui", &script_appserver(Mode::Gui));
+}
+
+/// Two bars with an ease-out and a spring width transition, driven by a button press on a fake
+/// clock: the picture at each fake time is deterministic. Time moves only through the script.
+fn script_transition() -> String {
+    let mut run = Run::start_fake(Mode::Cell, &pages_dir(), "transition_bars.thtml", 1000);
+    run.watch(&["prog"]);
+    run.snap("initial frame (fake t=0)");
+    // Idle loop: moving the clock alone renders nothing; the limiter then allows the next frame.
+    run.advance(100);
+    // Press only: a release would arrive at frozen time and the limiter would render nothing.
+    let (col, row) = run.locate("set:prog=24");
+    run.send(mouse(col, row, MouseAction::Press));
+    run.snap("press Grow: prog=24 (transitions start, t=0 of the transition)");
+    for (i, ms) in [50u64, 50, 100, 100, 100, 100, 100].into_iter().enumerate() {
+        run.step_frame(ms);
+        run.snap(&format!("transition frame {} (+{ms} ms)", i + 1));
+    }
+    run.finish()
+}
+
+#[test]
+fn trace_transition_cell() {
+    check_baseline("transition-cell", &script_transition());
 }

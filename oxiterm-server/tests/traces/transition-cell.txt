@@ -1,0 +1,437 @@
+##### step 1: initial frame (fake t=0)
+page: transition_bars.thtml
+notices: (none)
+state: prog=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-26 fg=c15 bg=#a855f7 | 27-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-26 fg=c15 bg=#22c55e | 27-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 2: press Grow: prog=24 (transitions start, t=0 of the transition)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid: unchanged
+##### step 3: transition frame 1 (+50 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-30 fg=c15 bg=#a855f7 | 31-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-28 fg=c15 bg=#22c55e | 29-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 4: transition frame 2 (+50 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-33 fg=c15 bg=#a855f7 | 34-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-32 fg=c15 bg=#22c55e | 33-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 5: transition frame 3 (+100 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-39 fg=c15 bg=#a855f7 | 40-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-42 fg=c15 bg=#22c55e | 43-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 6: transition frame 4 (+100 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-43 fg=c15 bg=#a855f7 | 44-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-47 fg=c15 bg=#22c55e | 48-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 7: transition frame 5 (+100 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-45 fg=c15 bg=#a855f7 | 46-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-48 fg=c15 bg=#22c55e | 49-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 8: transition frame 6 (+100 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-45 fg=c15 bg=#a855f7 | 46-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-46 fg=c15 bg=#22c55e | 47-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 9: transition frame 7 (+100 ms)
+page: transition_bars.thtml
+notices: (none)
+state: prog=Str("24")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌────────────────────────────┐|
+  |                     │                            │|
+  |                     └────────────────────────────┘|
+  |                     ┌──────────┐|
+  |                    >│Grow      │<|
+  |                     └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-21 fg=c15 bg=c0 | 22-45 fg=c15 bg=#a855f7 | 46-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-21 fg=c15 bg=c0 | 22-45 fg=c15 bg=#22c55e | 46-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-19 fg=c15 bg=c0 | 20-20 fg=c51 bg=reset bold | 21-32 fg=c15 bg=c0 | 33-33 fg=c51 bg=reset bold | 34-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0

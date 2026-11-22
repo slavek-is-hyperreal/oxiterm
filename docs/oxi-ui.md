@@ -232,7 +232,7 @@ The golden and display-list equivalence tests call the renderer directly. They d
 - Drive the real `EventLoop` through scripted input on a few example pages: counter (clicks), todo (`<for>` lists), input (typing, password), navigation (page changes), plus one App Server action with a mocked server.
 - Record everything that leaves the loop: cell frames, display-list bytes, ARIA JSON, notices and dispatched actions. Use a capturing sink and a capturing handler.
 - Store the traces as committed baselines, and assert them unchanged after every step. Bless only by the lead, never by a subagent.
-- Pages with timing-dependent output (transitions) join the harness right after step 1, once the clock is injectable.
+- Pages with timing-dependent output (transitions) join the harness right after step 1, once the clock is injectable (done: `transition-cell`).
 
 **Status: implemented** in `oxiterm-server/src/event_loop_trace.rs` (test-only module), baselines in `oxiterm-server/tests/traces/*.txt`, fixture pages in `oxiterm-server/tests/traces/pages/`.
 - Run: `cargo test -p oxiterm-server --lib event_loop_trace` (about 10 s). A mismatch names the baseline file, the step and the first differing line.
@@ -243,11 +243,16 @@ The golden and display-list equivalence tests call the renderer directly. They d
 - Notices are recorded as semantic lines read from the `web_frame_tx` channel. When step 2 routes them through the sink, only the capture adapter changes; baselines stay valid. Likewise step 3 changes only how the mock's reply re-enters the loop.
 - Known quirks the traces record (do not "fix" them while refactoring): `<for>` blocks are re-expanded only on `StatePatched`; `current_page` is not normalised (`demos/../features.thtml`); Enter on a button pushes `'\r'` into the predictive echo (shown as `\u{d}` in the grid); the `<for>` template node itself is rendered.
 - Known race kept OUT of the traces: the dispatcher thread queues `SetAppToken` before it applies the patch, so the `app_token_sync` request may or may not see the patched state. The App Server script therefore patches no bound key together with `set_app_token`. Step 3 (responses as events) removes the race; then the script can be extended.
-- Not covered: transitions and animations (timing dependent; they join after step 1).
+- Transitions: covered by the fake-clock trace `transition-cell` (step 1). Not covered: media animations (renderer cache clock, step 8).
 
 #### Steps: one seam per step, in place inside `oxiterm-server`, trace harness green after each
 
 1. **Clock injection.** Replace every `Instant::now()` in the loop, animation, rate limiter, throttle and debouncer with a `now` passed in. The server passes the real clock; tests pass a fake one.
+   - **Done.** `oxiterm-server/src/clock.rs`: `MonoTime` (a `Duration` from a host-chosen origin, saturating arithmetic), `Clock` trait, `SystemClock` (the host clock: `Instant` at creation + elapsed; the only `Instant::now()` of the loop's time path) and `FakeClock` (shared handle, tests/harness). `ClientSession.clock` holds the host clock; `EventLoop.clock` defaults to it and `run()` reads it once per iteration, right after the blocking receive, into `EventLoop.now`. Throttle, `FrameRateLimiter`, `ResizeDebouncer` (`push(dims, now)` is stamped by the transports from `session.clock`), `AnimationController` (`start_transition` now uses the passed `now`) take `now` explicitly.
+   - New trace `transition-cell` (fixture `tests/traces/pages/transition_bars.thtml`) runs on a `FakeClock`: ease-out and spring width transitions sampled at fixed fake times.
+   - **Remaining clock reads:** `ClientSession.last_activity` (`Instant`, behind `touch_activity()` / `idle_for()`; idle reaper in web.rs; moves in step 5), session-token `SystemTime` and `drain_sessions` in the registry (transport), per-IP `RateLimiter` in `ratelimit.rs` (web transport; split from `FrameRateLimiter` in step 8), `SessionMetrics.connected_at`, and the renderer media cache (step 8).
+   - Pre-existing bug found, NOT fixed (behaviour-preserving step): `StatePatched` runs `sync_dirty_state` before the render and consumes the dirty keys; the render then calls `restore_baselines`, which reverts the patched value, so on a node with a `transition` a pushed or App Server patch to a bound property (`bind-width` etc.) is lost visually, not just un-animated. Only event-htmx actions (dirty keys survive to the render) animate. The new trace therefore drives the transition with a button press.
+   - Design note: `ClientSession.clock` exists because resize pushes come from SSH/WS threads that must stamp the same origin the loop polls with.
 2. **Notices through the sink.** Add `FrameSink::send_notice(ClientNotice)` with `NavError`, `NavThrottle`, `OpenUrl` and `AppToken` (and any others found). The loop stops touching `web_frame_tx`.
 3. **`ActionHandler` replaces `AppDispatcher`.** The HTTP implementation (thread + ureq) stays in the server. Responses re-enter as an event, e.g. `InputEvent::AppResponse(patch)`; they are no longer applied to `ClientSession` from a foreign thread. Add an in-process handler for tests.
 4. **`PageSource`** wraps `loader` + `pathsafe`. The filesystem implementation lives in the server; an in-memory implementation is used for tests and wasm.

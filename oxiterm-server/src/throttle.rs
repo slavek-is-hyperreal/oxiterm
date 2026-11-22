@@ -4,7 +4,7 @@
 //! NAV bucket covers: NavigateTo, SwitchViewport, htmx .thtml loads.
 //! INPUT bucket covers: KeyPress, MouseEvent, TextInput.
 
-use std::time::Instant;
+use crate::clock::MonoTime;
 
 /// NAV bucket capacity (events).
 pub const NAV_CAPACITY: u32 = 5;
@@ -20,23 +20,23 @@ pub struct TokenBucket {
     capacity: u32,
     refill_per_sec: f64,
     tokens: f64,
-    last_refill: Instant,
+    last_refill: MonoTime,
 }
 
 impl TokenBucket {
     /// Creates a new token bucket, starting full.
-    pub fn new(capacity: u32, refill_per_sec: f64) -> Self {
+    pub fn new(capacity: u32, refill_per_sec: f64, now: MonoTime) -> Self {
         Self {
             capacity,
             refill_per_sec,
             tokens: capacity as f64,
-            last_refill: Instant::now(),
+            last_refill: now,
         }
     }
 
     /// Returns true if a token is available and consumes it; false if empty.
-    pub fn try_consume(&mut self) -> bool {
-        self.refill();
+    pub fn try_consume(&mut self, now: MonoTime) -> bool {
+        self.refill(now);
         if self.tokens >= 1.0 {
             self.tokens -= 1.0;
             true
@@ -45,9 +45,8 @@ impl TokenBucket {
         }
     }
 
-    fn refill(&mut self) {
-        let now = Instant::now();
-        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+    fn refill(&mut self, now: MonoTime) {
+        let elapsed = now.saturating_duration_since(self.last_refill).as_secs_f64();
         self.tokens = (self.tokens + elapsed * self.refill_per_sec)
             .min(self.capacity as f64);
         self.last_refill = now;
@@ -73,10 +72,10 @@ pub struct EventThrottle {
 
 impl EventThrottle {
     /// Creates a new throttle with full buckets.
-    pub fn new() -> Self {
+    pub fn new(now: MonoTime) -> Self {
         Self {
-            nav: TokenBucket::new(NAV_CAPACITY, NAV_REFILL_PER_SEC),
-            input: TokenBucket::new(INPUT_CAPACITY, INPUT_REFILL_PER_SEC),
+            nav: TokenBucket::new(NAV_CAPACITY, NAV_REFILL_PER_SEC, now),
+            input: TokenBucket::new(INPUT_CAPACITY, INPUT_REFILL_PER_SEC, now),
             nav_throttle_active: false,
         }
     }
@@ -85,8 +84,8 @@ impl EventThrottle {
     ///
     /// Returns `true` if the event is allowed (token consumed).
     /// Returns `false` if throttled.
-    pub fn check_nav(&mut self) -> bool {
-        if self.nav.try_consume() {
+    pub fn check_nav(&mut self, now: MonoTime) -> bool {
+        if self.nav.try_consume(now) {
             self.nav_throttle_active = false;
             true
         } else {
@@ -112,8 +111,8 @@ impl EventThrottle {
     /// Never gates `Press` activation or navigation keypresses — those paths are unconditional
     /// (see [Plan-2.2/R1]). Expensive work (nav, render) is capped by the NAV bucket and
     /// frame coalescing respectively.
-    pub fn check_input(&mut self) -> bool {
-        self.input.try_consume()
+    pub fn check_input(&mut self, now: MonoTime) -> bool {
+        self.input.try_consume(now)
     }
 }
 
@@ -123,29 +122,29 @@ mod tests {
 
     #[test]
     fn test_throttle_nav_capacity_and_refill() {
-        let mut t = EventThrottle::new();
+        let mut t = EventThrottle::new(MonoTime::ZERO);
         // Exhaust the bucket
         for _ in 0..NAV_CAPACITY {
-            assert!(t.check_nav(), "should allow up to capacity");
+            assert!(t.check_nav(MonoTime::ZERO), "should allow up to capacity");
         }
-        assert!(!t.check_nav(), "should be throttled after capacity exhausted");
+        assert!(!t.check_nav(MonoTime::ZERO), "should be throttled after capacity exhausted");
         assert!(t.is_first_throttle(), "first call after throttle is first episode");
         assert!(!t.is_first_throttle(), "second call is NOT first");
 
         // Force refill
         t.nav.set_tokens(NAV_CAPACITY as f64);
-        assert!(t.check_nav(), "after refill, allowed again");
+        assert!(t.check_nav(MonoTime::ZERO), "after refill, allowed again");
         assert!(!t.nav_throttle_active, "episode cleared on allow");
     }
 
     #[test]
     fn test_throttle_input_silent_drop() {
-        let mut t = EventThrottle::new();
+        let mut t = EventThrottle::new(MonoTime::ZERO);
         for _ in 0..INPUT_CAPACITY {
-            assert!(t.check_input(), "within capacity");
+            assert!(t.check_input(MonoTime::ZERO), "within capacity");
         }
         for _ in 0..50 {
-            assert!(!t.check_input(), "beyond capacity: silently dropped");
+            assert!(!t.check_input(MonoTime::ZERO), "beyond capacity: silently dropped");
         }
     }
 }
