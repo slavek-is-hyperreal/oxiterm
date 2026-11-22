@@ -6,7 +6,9 @@
 use crate::document::THTMLDocument;
 use crate::layout::types::LayoutResult;
 use crate::render::buffer::{CellBuffer, Cell};
-use oxiterm_proto::dom::{NodeTag, NodeId};
+use crate::render::build::{build_display_list, precompute_inherited_colors};
+use crate::render::cell_sink::CellSink;
+use oxiterm_proto::dom::{Node, NodeTag};
 use oxiterm_proto::style::TerminalProfile;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
@@ -103,426 +105,88 @@ impl Renderer {
                 });
             }
         }
-        
-        // 2. Draw the DOM tree, centering the root element if it has a smaller fixed size
+
+        // 2. Build the display list, centering the root element if it has a smaller fixed size
         let (offset_x, offset_y) = layout.get_centering_offset(doc, buffer.width, buffer.height);
         let start_x = offset_x as i32;
         let start_y = (offset_y as i32) - (scroll_offset as i32);
 
-        if !layout.paint_order.is_empty() {
-            let colors = Self::precompute_inherited_colors(doc);
-            for &node_id in &layout.paint_order {
-                if let Some(&(resolved_fg, resolved_bg)) = colors.get(&node_id) {
-                    Self::render_single_node(
-                        doc,
-                        layout,
-                        buffer,
-                        node_id,
-                        start_x,
-                        start_y,
-                        offset_x,
-                        offset_y,
-                        resolved_fg,
-                        resolved_bg,
-                        profile,
-                        base_dir,
-                        app_base_dir,
-                    );
-                }
-            }
-        } else {
-            Self::render_recursive(
-                doc,
-                layout,
-                buffer,
-                doc.root,
-                start_x,
-                start_y,
-                offset_x,
-                offset_y,
-                oxiterm_proto::style::AnsiColor::Color256(15),
-                oxiterm_proto::style::AnsiColor::Color256(0),
+        let colors = precompute_inherited_colors(doc);
+        let list = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y));
+
+        // 3. Rasterize it; tag content is still painted by the legacy per-tag cell code
+        CellSink::paint(&list, buffer, |node_id, content, buf| {
+            let Some(node) = doc.arena.get(node_id) else {
+                return;
+            };
+            Self::paint_content(
+                node,
+                content.x as i32,
+                content.y as i32,
+                content.w as u16,
+                content.h as u16,
+                buf,
                 profile,
                 base_dir,
                 app_base_dir,
             );
-        }
+        });
     }
 
-    fn precompute_inherited_colors(doc: &THTMLDocument) -> std::collections::HashMap<NodeId, (oxiterm_proto::style::AnsiColor, oxiterm_proto::style::AnsiColor)> {
-        let mut map = std::collections::HashMap::new();
-        let root_fg = oxiterm_proto::style::AnsiColor::Color256(15);
-        let root_bg = oxiterm_proto::style::AnsiColor::Color256(0);
-        Self::resolve_colors_recursive(doc, doc.root, root_fg, root_bg, &mut map);
-        map
-    }
-
-    fn resolve_colors_recursive(
-        doc: &THTMLDocument,
-        node_id: NodeId,
-        inherited_fg: oxiterm_proto::style::AnsiColor,
-        inherited_bg: oxiterm_proto::style::AnsiColor,
-        map: &mut std::collections::HashMap<NodeId, (oxiterm_proto::style::AnsiColor, oxiterm_proto::style::AnsiColor)>,
-    ) {
-        if let Some(node) = doc.arena.get(node_id) {
-            let fg = match node.style.fg {
-                oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
-                c => c,
-            };
-            let bg = match node.style.bg {
-                oxiterm_proto::style::AnsiColor::Reset => inherited_bg,
-                c => c,
-            };
-            map.insert(node_id, (fg, bg));
-            for &child_id in &node.children {
-                Self::resolve_colors_recursive(doc, child_id, fg, bg, map);
-            }
-        }
-    }
-
-    fn render_recursive(
-        doc: &THTMLDocument,
-        layout: &LayoutResult,
+    /// Paints the legacy tag-specific content (img, video, diagram) of one node into
+    /// its content rect (inside the border).
+    #[allow(clippy::too_many_arguments)]
+    fn paint_content(
+        node: &Node,
+        content_x: i32,
+        content_y: i32,
+        content_w: u16,
+        content_h: u16,
         buffer: &mut CellBuffer,
-        node_id: NodeId,
-        start_x: i32,
-        start_y: i32,
-        offset_x: u16,
-        offset_y: u16,
-        inherited_fg: oxiterm_proto::style::AnsiColor,
-        inherited_bg: oxiterm_proto::style::AnsiColor,
         profile: &TerminalProfile,
         base_dir: Option<&Path>,
         app_base_dir: Option<&Path>,
     ) {
-        let (resolved_fg, resolved_bg) = if let Some(node) = doc.arena.get(node_id) {
-            let fg = match node.style.fg {
-                oxiterm_proto::style::AnsiColor::Reset => inherited_fg,
-                c => c,
-            };
-            let bg = match node.style.bg {
-                oxiterm_proto::style::AnsiColor::Reset => inherited_bg,
-                c => c,
-            };
-            (fg, bg)
-        } else {
-            (inherited_fg, inherited_bg)
-        };
-
-        Self::render_single_node(
-            doc,
-            layout,
-            buffer,
-            node_id,
-            start_x,
-            start_y,
-            offset_x,
-            offset_y,
-            resolved_fg,
-            resolved_bg,
-            profile,
-            base_dir,
-            app_base_dir,
-        );
-
-        if let Some(node) = doc.arena.get(node_id) {
-            for &child_id in &node.children {
-                Self::render_recursive(
-                    doc,
-                    layout,
+        match &node.tag {
+            NodeTag::Img => {
+                Self::render_img(
+                    node,
+                    content_x,
+                    content_y,
+                    content_w,
+                    content_h,
                     buffer,
-                    child_id,
-                    start_x,
-                    start_y,
-                    offset_x,
-                    offset_y,
-                    resolved_fg,
-                    resolved_bg,
                     profile,
                     base_dir,
                     app_base_dir,
                 );
             }
-        }
-    }
-
-    fn render_single_node(
-        doc: &THTMLDocument,
-        layout: &LayoutResult,
-        buffer: &mut CellBuffer,
-        node_id: NodeId,
-        start_x: i32,
-        start_y: i32,
-        offset_x: u16,
-        offset_y: u16,
-        resolved_fg: oxiterm_proto::style::AnsiColor,
-        resolved_bg: oxiterm_proto::style::AnsiColor,
-        profile: &TerminalProfile,
-        base_dir: Option<&Path>,
-        app_base_dir: Option<&Path>,
-    ) {
-        if let Some(node) = doc.arena.get(node_id) {
-            let rect = layout.nodes.get(&node_id).copied().unwrap_or_default();
-            let (abs_x, abs_y) = if node.style.position == oxiterm_proto::style::Position::Fixed {
-                (offset_x as i32 + rect.x as i32, offset_y as i32 + rect.y as i32)
-            } else {
-                (start_x + rect.x as i32, start_y + rect.y as i32)
-            };
-
-            // Draw background
-            for y in 0..rect.height {
-                for x in 0..rect.width {
-                    Self::safe_set(buffer, abs_x + x as i32, abs_y + y as i32, Cell {
-                        ch: ' ',
-                        fg: resolved_fg,
-                        bg: resolved_bg,
-                        ..Default::default()
-                    });
-                }
+            NodeTag::Video => {
+                Self::render_vid(
+                    node,
+                    content_x,
+                    content_y,
+                    content_w,
+                    content_h,
+                    buffer,
+                    profile,
+                    base_dir,
+                    app_base_dir,
+                );
             }
-
-            // Draw border if defined
-            if let Some(border) = &node.style.border {
-                let border_fg = match border.fg {
-                    oxiterm_proto::style::AnsiColor::Reset => resolved_fg,
-                    c => c,
-                };
-                
-                if rect.width > 0 && rect.height > 0 {
-                    // Corners
-                    Self::safe_set(buffer, abs_x, abs_y, Cell {
-                        ch: border.chars.top_left,
-                        fg: border_fg,
-                        bg: resolved_bg,
-                        ..Default::default()
-                    });
-                    if rect.width > 1 {
-                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y, Cell {
-                            ch: border.chars.top_right,
-                            fg: border_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                    }
-                    if rect.height > 1 {
-                        Self::safe_set(buffer, abs_x, abs_y + rect.height as i32 - 1, Cell {
-                            ch: border.chars.bot_left,
-                            fg: border_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                    }
-                    if rect.width > 1 && rect.height > 1 {
-                        Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + rect.height as i32 - 1, Cell {
-                            ch: border.chars.bot_right,
-                            fg: border_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                    }
-
-                    // Horizontal borders
-                    for x in 1..rect.width.saturating_sub(1) {
-                        Self::safe_set(buffer, abs_x + x as i32, abs_y, Cell {
-                            ch: border.chars.top,
-                            fg: border_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                        if rect.height > 1 {
-                            Self::safe_set(buffer, abs_x + x as i32, abs_y + rect.height as i32 - 1, Cell {
-                                ch: border.chars.bot,
-                                fg: border_fg,
-                                bg: resolved_bg,
-                                ..Default::default()
-                            });
-                        }
-                    }
-
-                    // Vertical borders
-                    for y in 1..rect.height.saturating_sub(1) {
-                        Self::safe_set(buffer, abs_x, abs_y + y as i32, Cell {
-                            ch: border.chars.left,
-                            fg: border_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                        if rect.width > 1 {
-                            Self::safe_set(buffer, abs_x + rect.width as i32 - 1, abs_y + y as i32, Cell {
-                                ch: border.chars.right,
-                                fg: border_fg,
-                                bg: resolved_bg,
-                                ..Default::default()
-                            });
-                        }
-                    }
-                }
+            NodeTag::Diagram => {
+                Self::render_diagram(
+                    node,
+                    content_x,
+                    content_y,
+                    content_w,
+                    content_h,
+                    buffer,
+                    base_dir,
+                    app_base_dir,
+                );
             }
-
-            let has_border = node.style.border.is_some();
-            let content_x = if has_border { abs_x + 1 } else { abs_x };
-            let content_y = if has_border { abs_y + 1 } else { abs_y };
-            let content_w = if has_border { rect.width.saturating_sub(2) } else { rect.width };
-            let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
-
-            match &node.tag {
-                NodeTag::Text | NodeTag::Button => {
-                    if let Some(text) = &node.text {
-                        let pad_x = if node.tag == NodeTag::Button {
-                            node.style.padding.left as i32
-                        } else {
-                            0
-                        };
-                        let pad_y = if node.tag == NodeTag::Button {
-                            node.style.padding.top as i32
-                        } else {
-                            0
-                        };
-                        let draw_x = content_x + pad_x;
-                        let draw_y = content_y + pad_y;
-                        let inner_w = content_w.saturating_sub(pad_x as u16);
-                        let inner_h = content_h.saturating_sub(pad_y as u16);
-
-                        let lines_to_draw: Vec<String> = if node.style.wrap == oxiterm_proto::style::WrapMode::Word && inner_w > 0 {
-                            let mut result = Vec::new();
-                            for line in text.lines() {
-                                if line.is_empty() {
-                                    result.push(String::new());
-                                    continue;
-                                }
-                                let mut current_line = String::new();
-                                let mut current_line_width = 0;
-                                let mut line_has_words = false;
-                                
-                                let words = line.split_whitespace();
-                                for word in words {
-                                    let word_w = word.chars()
-                                        .map(|c| crate::render::unicode::UnicodeWidthCache::get().width(c) as u16)
-                                        .sum::<u16>();
-                                    
-                                    if !line_has_words {
-                                        current_line = word.to_string();
-                                        current_line_width = word_w;
-                                        line_has_words = true;
-                                    } else {
-                                        let space_w = 1;
-                                        if current_line_width + space_w + word_w <= inner_w {
-                                            current_line.push(' ');
-                                            current_line.push_str(word);
-                                            current_line_width += space_w + word_w;
-                                        } else {
-                                            result.push(current_line);
-                                            current_line = word.to_string();
-                                            current_line_width = word_w;
-                                        }
-                                    }
-                                }
-                                if line_has_words {
-                                    result.push(current_line);
-                                } else {
-                                    result.push(String::new());
-                                }
-                            }
-                            result
-                        } else {
-                            text.lines().map(|s| s.to_string()).collect()
-                        };
-
-                        let mut cy = 0;
-                        for line in lines_to_draw {
-                            let mut cx = 0;
-                            for ch in line.chars() {
-                                let char_w = crate::render::unicode::UnicodeWidthCache::get().width(ch) as u16;
-                                if char_w > 0 {
-                                    if char_w > 1 && cx + char_w > inner_w && char_w <= inner_w {
-                                        cx = 0;
-                                        cy += 1;
-                                    }
-                                    if cx < inner_w && cy < inner_h {
-                                        Self::safe_set(buffer, draw_x + cx as i32, draw_y + cy as i32, Cell {
-                                            ch,
-                                            fg: resolved_fg,
-                                            bg: resolved_bg,
-                                            ..Default::default()
-                                        });
-                                        // Fill continuation cells with styled spaces
-                                        for i in 1..char_w {
-                                            if cx + i < inner_w {
-                                                Self::safe_set(buffer, draw_x + (cx + i) as i32, draw_y + cy as i32, Cell {
-                                                    ch: ' ',
-                                                    fg: resolved_fg,
-                                                    bg: resolved_bg,
-                                                    ..Default::default()
-                                                });
-                                            }
-                                        }
-                                    }
-                                    cx += char_w;
-                                }
-                            }
-                            cy += 1;
-                        }
-                    }
-                }
-                NodeTag::Input => {
-                    let text_str = node.text.as_deref().unwrap_or("");
-                    let is_password = node.attrs.input_type.as_deref().map(|t| t == "password").unwrap_or(false);
-                    let mut chars = text_str.chars();
-                    for x in 0..content_w {
-                        let ch = match chars.next() {
-                            Some(c) => {
-                                if is_password { '*' } else { c }
-                            }
-                            None => '_',
-                        };
-                        Self::safe_set(buffer, content_x + x as i32, content_y, Cell {
-                            ch,
-                            fg: resolved_fg,
-                            bg: resolved_bg,
-                            ..Default::default()
-                        });
-                    }
-                }
-                NodeTag::Img => {
-                    Self::render_img(
-                        node,
-                        content_x,
-                        content_y,
-                        content_w,
-                        content_h,
-                        buffer,
-                        profile,
-                        base_dir,
-                        app_base_dir,
-                    );
-                }
-                NodeTag::Video => {
-                    Self::render_vid(
-                        node,
-                        content_x,
-                        content_y,
-                        content_w,
-                        content_h,
-                        buffer,
-                        profile,
-                        base_dir,
-                        app_base_dir,
-                    );
-                }
-                NodeTag::Diagram => {
-                    Self::render_diagram(
-                        node,
-                        content_x,
-                        content_y,
-                        content_w,
-                        content_h,
-                        buffer,
-                        base_dir,
-                        app_base_dir,
-                    );
-                }
-                _ => {}
-            }
+            _ => {}
         }
     }
 

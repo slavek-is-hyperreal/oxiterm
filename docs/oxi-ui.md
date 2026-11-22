@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phase 0 done; phases 1–7 planned.
+> **Status:** Phases 0–1 done; phases 2–7 planned.
 
 ---
 
@@ -136,7 +136,11 @@ Original scope:
 - Media nodes (img/video) use the web-mode placeholder path so the snapshots are deterministic.
 - **Done when:** the baseline is committed and `cargo test` passes on it.
 
-### Phase 1: DisplayList inside the renderer (no API change)
+### Phase 1: DisplayList inside the renderer (no API change) — ✅ done
+
+Implemented as `render/display_list.rs` (types + normative sink semantics), `render/build.rs` (DOM + layout → DisplayList; Fill, Border and Text items, with positioned glyphs for text, button and input) and `render/cell_sink.rs` (DisplayList → `CellBuffer`). Img, video and diagram still go through `DisplayItem::Legacy`. All 72 golden snapshots are unchanged.
+
+Original scope:
 - Add `render/display_list.rs` (types), `render/build.rs` (DOM + layout → DisplayList), and `render/cell_sink.rs` (DisplayList → `CellBuffer`).
 - `Renderer::render_node(...)` keeps its **exact signature**. Internally it calls build, then `CellSink`. `session.rs`, `web.rs`, `events.rs` and a11y do not change.
 - Migrate only background, border and text (incl. wrap, wide chars, password masking, button text). `img`, `video` and `diagram` stay on the old code via `DisplayItem::Legacy`.

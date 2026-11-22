@@ -4,6 +4,9 @@
 //! and kitty/sixel graphics protocol emitters.
 
 pub mod buffer;
+pub mod build;
+pub mod cell_sink;
+pub mod display_list;
 pub mod diff;
 pub mod unicode;
 pub mod emitter;
