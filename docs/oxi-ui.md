@@ -125,6 +125,12 @@ The owner chose to support both execution modes. §3.2 describes how: a shared `
 
 ## 5. Phased Plan
 
+> **Execution order (decided 2026-11-22):** phases are numbered by topic, not by order. After Phase 4 the order is:
+> 1. **Phase 5 stages 5.0–5.1:** instrumentation and CPU-side wins. These are not GUI work, so every mode benefits.
+> 2. **Phase 6:** proportional text.
+> 3. **Phase 7:** WASM local mode, OxiDE framebuffer sink, and Android as a thin WebView shell around the web client (thin-client or WASM-local).
+> 4. **The rest of Phase 5 last (5.2–5.7):** the native window with GPU rendering, which then also gives Android a native renderer.
+
 ### Phase 0: Golden snapshot harness (safety net first) — ✅ done
 
 Implemented in `oxiterm-renderer/tests/golden_cells.rs`, with 72 baselines in `oxiterm-renderer/tests/golden/` (36 pages × 2 sizes). Rendering is static, as in the web playground: no state injection, so `bind-show` nodes are visible. Regenerate with `OXI_BLESS=1 cargo test -p oxiterm-renderer --test golden_cells`. Stale baselines for deleted pages also fail the test.
@@ -338,9 +344,9 @@ Each stage is one delegated task with its own gate, reviewed and committed befor
 - **Done when:** the same document gives identical glyph positions in local mode and thin-client mode (golden test on the DisplayList), and clicks land on the right node in both.
 
 ### Phase 7: Mobile and framebuffer
-- Android: `winit` Android backend or NDK `SurfaceView`, IME/viewport resize, touch and gesture normalization in the input layer. One APK supports both local and thin-client mode.
+- Android (done before the native GPU work of Phase 5): a thin app shell around a WebView that runs the existing web client, either as a thin client (Phase 3 stream) or as the WASM local core. One APK supports both modes. Includes IME/viewport resize and touch/gesture normalisation in the web client. A native renderer (`winit` Android backend + the Phase 5 wgpu pipeline) replaces the WebView later, once Phase 5 lands.
 - WASM local mode: `oxiterm-core` + the web painter in the browser, offline-capable (alongside the phase 3 thin client).
-- **OxiDE**: the same GPU or a software sink writing to DRM/KMS dumb buffers or `/dev/fb0` (see [retro-desktop-environment.md](retro-desktop-environment.md) and [embedded-iot-platform.md](embedded-iot-platform.md)). OxiDE becomes an application/shell on top of OxiUI rather than a separate fork, running in local mode.
+- **OxiDE**: a software sink (the GPU sink only after Phase 5) writing to DRM/KMS dumb buffers or `/dev/fb0` (see [retro-desktop-environment.md](retro-desktop-environment.md) and [embedded-iot-platform.md](embedded-iot-platform.md)). OxiDE becomes an application/shell on top of OxiUI rather than a separate fork, running in local mode.
 
 ---
 
