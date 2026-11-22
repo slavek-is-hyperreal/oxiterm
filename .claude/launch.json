@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "oxiterm-site",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cargo build -q --release -p oxiterm-cli && exec ./target/release/oxiterm-cli serve examples/index.thtml --port 2222 --web-port 8087 --no-auth"],
+      "port": 8087
+    }
+  ]
+}
