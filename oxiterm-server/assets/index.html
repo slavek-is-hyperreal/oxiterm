@@ -858,8 +858,10 @@
                     clearMediaLayer();
                 } else if (bytes.length >= 13) {
                     const hash   = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
-                    const col    = bytes[5]  | (bytes[6]  << 8);
-                    const row    = bytes[7]  | (bytes[8]  << 8);
+                    // col/row are signed (i16): media scrolled partly off the top or left edge
+                    // keeps its true position and is clipped by #media-layer (overflow: hidden).
+                    const col    = ((bytes[5] | (bytes[6] << 8)) << 16) >> 16;
+                    const row    = ((bytes[7] | (bytes[8] << 8)) << 16) >> 16;
                     const width  = bytes[9]  | (bytes[10] << 8);
                     const height = bytes[11] | (bytes[12] << 8);
                     addMediaToLayer(hash, col, row, width, height);

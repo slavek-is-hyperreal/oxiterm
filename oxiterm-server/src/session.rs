@@ -124,10 +124,11 @@ impl ResizeDebouncer {
 pub struct MediaRenderInfo {
     /// File path of the media resource.
     pub path: String,
-    /// X coordinate of layout position.
-    pub x: u16,
-    /// Y coordinate of layout position.
-    pub y: u16,
+    /// X coordinate of layout position in cells; negative when scrolled/positioned past the
+    /// left edge (sent as i16 in the 0x21 message).
+    pub x: i16,
+    /// Y coordinate of layout position in cells; negative when scrolled past the top edge.
+    pub y: i16,
     /// Width bounding box.
     pub width: u16,
     /// Height bounding box.
@@ -2003,13 +2004,23 @@ impl EventLoop {
 
                                 if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
                                     if let Some(ref src) = node.attrs.src {
-                                        active.push(MediaRenderInfo {
-                                            path: src.clone(),
-                                            x: content_x.max(0) as u16,
-                                            y: content_y.max(0) as u16,
-                                            width: content_w,
-                                            height: content_h,
-                                        });
+                                        // Keep the true (possibly negative) position so media
+                                        // scrolled partly out of view is clipped by the client
+                                        // instead of sticking to row/column 0; skip media that
+                                        // is entirely outside the viewport.
+                                        let visible = content_y + i32::from(content_h) > 0
+                                            && content_y < i32::from(dims.rows)
+                                            && content_x + i32::from(content_w) > 0
+                                            && content_x < i32::from(dims.cols);
+                                        if visible {
+                                            active.push(MediaRenderInfo {
+                                                path: src.clone(),
+                                                x: content_x.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+                                                y: content_y.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+                                                width: content_w,
+                                                height: content_h,
+                                            });
+                                        }
                                     }
                                 }
                                 

@@ -85,6 +85,12 @@ async fn main() -> Result<()> {
             config.server.port = port;
             config.server.web_port = web_port;
             config.server.a11y_mode = a11y;
+            // SSH sessions take the App Server URL from the config (web sessions read the env
+            // var directly), so mirror OXITERM_APP_SERVER here or SSH actions never reach it.
+            if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
+                config.server.app_server_url = Some(url.clone());
+                config.app_server_url = Some(url);
+            }
             if no_auth {
                 config.server.no_auth = true;
             }
@@ -136,6 +142,10 @@ async fn main() -> Result<()> {
             config.server.port = port;
             config.server.web_port = web_port;
             config.server.a11y_mode = a11y;
+            if let Ok(url) = std::env::var("OXITERM_APP_SERVER") {
+                config.server.app_server_url = Some(url.clone());
+                config.app_server_url = Some(url);
+            }
             
             let prometheus_registry = std::sync::Arc::new(prometheus::Registry::new());
             let registry = std::sync::Arc::new(oxiterm_server::session::SessionRegistry::new(prometheus_registry.clone(), config.session.max_sessions));

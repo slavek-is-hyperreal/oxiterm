@@ -176,6 +176,16 @@ impl Handler for OxiServer {
                 };
                 client_session.attach_identity(identity);
 
+                // Same app base dir as web sessions: the start page's directory. It scopes page
+                // containment checks and app-relative navigation (`navigate` patches); without it
+                // SSH sessions fell back to the process working directory.
+                if let Some(ref path) = self.source_path {
+                    if let Some(dir) = path.parent() {
+                        let dir = if dir.as_os_str().is_empty() { std::path::Path::new(".") } else { dir };
+                        *client_session.app_base_dir.write() = Some(dir.to_path_buf());
+                    }
+                }
+
                 let handle = session.handle();
                 let (output_tx, mut output_rx) = crate::backpressure::BoundedFrameChannel::<Vec<u8>>::new(32);
                 
