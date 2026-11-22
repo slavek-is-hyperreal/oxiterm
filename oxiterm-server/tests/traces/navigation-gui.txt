@@ -1,0 +1,1043 @@
+##### step 1: initial frame (features)
+page: features.thtml
+notices: (none)
+state: tab=- counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  ✦ OxiTerm Features & Live Demos                            >< Back to Home< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 1. Reactive State (Int/Bool/Str/Li                        │ > Try State Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                         ╭────────────────────╮|
+  | 2. HTMX Actions (inc/dec/set/clear                      │ > Try Counter Demo │|
+  |                                                         ╰────────────────────╯|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 3. Input Fields & Password Masking                        │ > Try Input Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                          ╭───────────────────╮|
+  | 4. TCSS Styling (Classes, #ID, Cas                       │ > Try Styles Demo │|
+  |                                                          ╰───────────────────╯|
+  ||
+  |                                                            ╭─────────────────╮|
+  | 5. Tabs & Conditional Views (bind-                         │ > Try Tabs Demo │|
+  |                                                            ╰─────────────────╯|
+  |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#1e293b bg=#0f172a
+  style 1: 0-0 fg=#1e293b bg=#0f172a | 1-2 fg=c15 bg=#0f172a | 3-33 fg=#38bdf8 bg=#0f172a | 34-61 fg=c15 bg=#0f172a | 62-62 fg=c51 bg=reset bold | 63-76 fg=#475569 bg=#0f172a | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#0f172a | 79-79 fg=#1e293b bg=#0f172a
+  style 2: 0-79 fg=#1e293b bg=#0f172a
+  style 3: 0-79 fg=c15 bg=#080f1a
+  style 4: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 5: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#38bdf8 bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 6: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 7: 0-79 fg=c15 bg=#080f1a
+  style 8: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 9: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-56 fg=c15 bg=#080f1a | 57-57 fg=#4ade80 bg=#080f1a | 58-58 fg=c15 bg=#080f1a | 59-76 fg=#4ade80 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 10: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 11: 0-79 fg=c15 bg=#080f1a
+  style 12: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 13: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#f59e0b bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#f59e0b bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 14: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 15: 0-79 fg=c15 bg=#080f1a
+  style 16: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 17: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-57 fg=c15 bg=#080f1a | 58-58 fg=#c084fc bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-76 fg=#c084fc bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 18: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 19: 0-79 fg=c15 bg=#080f1a
+  style 20: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 21: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 22: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 23: 0-24 fg=c255 bg=c236 | 25-54 fg=c255 bg=c236 bold | 55-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#1e293b bg=#0f172a
+  Fill n3 (3.00,1.00 31.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 31.00x1.00) fg=#38bdf8 bg=#0f172a mods= "✦ OxiTerm Features & Live Demos"
+  Fill n4 (63.00,1.00 14.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(63.00,1.00) clip=(63.00,1.00 14.00x1.00) fg=#475569 bg=#0f172a mods= "< Back to Home"
+  Fill n5 (0.00,3.00 80.00x40.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n6 (1.00,4.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n7 (1.00,5.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n7 @(1.00,5.00) clip=(1.00,5.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "1. Reactive State (Int/Bool/Str/Li"
+  Fill n8 (59.00,4.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n8 (59.00,4.00 20.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n9 (61.00,5.00 16.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n9 @(61.00,5.00) clip=(61.00,5.00 16.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try State Demo"
+  Fill n10 (1.00,8.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n11 (1.00,9.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n11 @(1.00,9.00) clip=(1.00,9.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "2. HTMX Actions (inc/dec/set/clear"
+  Fill n12 (57.00,8.00 22.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n12 (57.00,8.00 22.00x3.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Fill n13 (59.00,9.00 18.00x1.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Text n13 @(59.00,9.00) clip=(59.00,9.00 18.00x1.00) fg=#4ade80 bg=#080f1a mods= "> Try Counter Demo"
+  Fill n14 (1.00,12.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n15 (1.00,13.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n15 @(1.00,13.00) clip=(1.00,13.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "3. Input Fields & Password Masking"
+  Fill n16 (59.00,12.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n16 (59.00,12.00 20.00x3.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Fill n17 (61.00,13.00 16.00x1.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Text n17 @(61.00,13.00) clip=(61.00,13.00 16.00x1.00) fg=#f59e0b bg=#080f1a mods= "> Try Input Demo"
+  Fill n18 (1.00,16.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n19 (1.00,17.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n19 @(1.00,17.00) clip=(1.00,17.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "4. TCSS Styling (Classes, #ID, Cas"
+  Fill n20 (58.00,16.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n20 (58.00,16.00 21.00x3.00) r=0.00 fg=#c084fc bg=#080f1a
+  Fill n21 (60.00,17.00 17.00x1.00) r=0.00 fg=#c084fc bg=#080f1a
+  Text n21 @(60.00,17.00) clip=(60.00,17.00 17.00x1.00) fg=#c084fc bg=#080f1a mods= "> Try Styles Demo"
+  Fill n22 (1.00,20.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n23 (1.00,21.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n23 @(1.00,21.00) clip=(1.00,21.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "5. Tabs & Conditional Views (bind-"
+  Fill n24 (60.00,20.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n24 (60.00,20.00 19.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n25 (62.00,21.00 15.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n25 @(62.00,21.00) clip=(62.00,21.00 15.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try Tabs Demo"
+  Fill n26 (1.00,24.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n27 (1.00,25.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n27 @(1.00,25.00) clip=(1.00,25.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "6. Vector Media (SVG / Lottie / Ri"
+  Fill n28 (59.00,24.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n28 (59.00,24.00 20.00x3.00) r=0.00 fg=#f87171 bg=#080f1a
+  Fill n29 (61.00,25.00 16.00x1.00) r=0.00 fg=#f87171 bg=#080f1a
+  Text n29 @(61.00,25.00) clip=(61.00,25.00 16.00x1.00) fg=#f87171 bg=#080f1a mods= "> Try Media Demo"
+  Fill n30 (1.00,28.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n31 (1.00,29.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n31 @(1.00,29.00) clip=(1.00,29.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "7. MP4 Video Playback (ffmpeg)"
+  Fill n32 (59.00,28.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n32 (59.00,28.00 20.00x3.00) r=0.00 fg=#fb923c bg=#080f1a
+  Fill n33 (61.00,29.00 16.00x1.00) r=0.00 fg=#fb923c bg=#080f1a
+  Text n33 @(61.00,29.00) clip=(61.00,29.00 16.00x1.00) fg=#fb923c bg=#080f1a mods= "> Try Video Demo"
+  Fill n34 (1.00,32.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n35 (1.00,33.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n35 @(1.00,33.00) clip=(1.00,33.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "8. Dynamic List Loops (<for> tag)"
+  Fill n36 (60.00,32.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n36 (60.00,32.00 19.00x3.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Fill n37 (62.00,33.00 15.00x1.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Text n37 @(62.00,33.00) clip=(62.00,33.00 15.00x1.00) fg=#a3e635 bg=#080f1a mods= "> Try Todo Demo"
+  Fill n38 (1.00,36.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n39 (1.00,37.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n39 @(1.00,37.00) clip=(1.00,37.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "9. App Server OAuth Integration"
+  Fill n40 (58.00,36.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n40 (58.00,36.00 21.00x3.00) r=0.00 fg=#1db954 bg=#080f1a
+  Fill n41 (60.00,37.00 17.00x1.00) r=0.00 fg=#1db954 bg=#080f1a
+  Text n41 @(60.00,37.00) clip=(60.00,37.00 17.00x1.00) fg=#1db954 bg=#080f1a mods= "> Try Spotify App"
+  Fill n42 (1.00,40.00 78.00x1.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n43 (1.00,40.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n43 @(1.00,40.00) clip=(1.00,40.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "10. Auto Mobile View (_mobile)"
+  Fill n44 (35.00,40.00 44.00x1.00) r=0.00 fg=#94a3b8 bg=#080f1a
+  Text n44 @(35.00,40.00) clip=(35.00,40.00 44.00x1.00) fg=#94a3b8 bg=#080f1a mods= "Resize terminal window < 800px width"
+  Fill n45 (0.00,43.00 80.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n46 (2.00,43.00 41.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n46 @(2.00,43.00) clip=(2.00,43.00 41.00x1.00) fg=#475569 bg=#0f172a mods= "[Tab] Select Demo [Enter] Open Live Demo"
+  CellGrid (62.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 31.00x1.00) id=3 label="✦ OxiTerm Features & Live Demos"
+        button (63.00,1.00 14.00x1.00) id=4 label="< Back to Home"
+      group (0.00,3.00 80.00x40.00) id=5 label=""
+        group (1.00,4.00 78.00x3.00) id=6 label=""
+          text (1.00,5.00 34.00x1.00) id=7 label="1. Reactive State (Int/Bool/Str/List)"
+          button (59.00,4.00 20.00x3.00) id=8 label="> Try State Demo"
+        group (1.00,8.00 78.00x3.00) id=10 label=""
+          text (1.00,9.00 34.00x1.00) id=11 label="2. HTMX Actions (inc/dec/set/clear)"
+          button (57.00,8.00 22.00x3.00) id=12 label="> Try Counter Demo"
+        group (1.00,12.00 78.00x3.00) id=14 label=""
+          text (1.00,13.00 34.00x1.00) id=15 label="3. Input Fields & Password Masking"
+          button (59.00,12.00 20.00x3.00) id=16 label="> Try Input Demo"
+        group (1.00,16.00 78.00x3.00) id=18 label=""
+          text (1.00,17.00 34.00x1.00) id=19 label="4. TCSS Styling (Classes, #ID, Cascade)"
+          button (58.00,16.00 21.00x3.00) id=20 label="> Try Styles Demo"
+        group (1.00,20.00 78.00x3.00) id=22 label=""
+          text (1.00,21.00 34.00x1.00) id=23 label="5. Tabs & Conditional Views (bind-show)"
+          button (60.00,20.00 19.00x3.00) id=24 label="> Try Tabs Demo"
+        group (1.00,24.00 78.00x3.00) id=26 label=""
+          text (1.00,25.00 34.00x1.00) id=27 label="6. Vector Media (SVG / Lottie / Rive)"
+          button (59.00,24.00 20.00x3.00) id=28 label="> Try Media Demo"
+        group (1.00,28.00 78.00x3.00) id=30 label=""
+          text (1.00,29.00 34.00x1.00) id=31 label="7. MP4 Video Playback (ffmpeg)"
+          button (59.00,28.00 20.00x3.00) id=32 label="> Try Video Demo"
+        group (1.00,32.00 78.00x3.00) id=34 label=""
+          text (1.00,33.00 34.00x1.00) id=35 label="8. Dynamic List Loops (<for> tag)"
+          button (60.00,32.00 19.00x3.00) id=36 label="> Try Todo Demo"
+        group (1.00,36.00 78.00x3.00) id=38 label=""
+          text (1.00,37.00 34.00x1.00) id=39 label="9. App Server OAuth Integration"
+          button (58.00,36.00 21.00x3.00) id=40 label="> Try Spotify App"
+        group (1.00,40.00 78.00x1.00) id=42 label=""
+          text (1.00,40.00 34.00x1.00) id=43 label="10. Auto Mobile View (_mobile)"
+          text (35.00,40.00 44.00x1.00) id=44 label="Resize terminal window < 800px width"
+      group (0.00,43.00 80.00x1.00) id=45 label=""
+        text (2.00,43.00 41.00x1.00) id=46 label="[Tab] Select Demo  [Enter] Open Live Demo"
+##### step 2: click row -> navigation demo
+page: demos/navigation.thtml
+notices: (none)
+state: tab=- counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📑  Keyboard Navigation and bind-show                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |  ┌──────────┐ ┌──────────┐ ┌────────────────┐|
+  |  │  ℹ Info  │ │  ⌨ Keys  │ │  🔗  bind-show  │                 Active tab:info|
+  |  └──────────┘ └──────────┘ └────────────────┘|
+  ||
+  |  ╭──────────────────────────────────────────────────────────────────────────╮|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │  Tabs without page reload                                                │|
+  |  │                                                                          │|
+  |  │  Click tab → event-htmx="set:tab=xxx"                                    │|
+  |  │  StateManager saves the new "tab" value.                                 │|
+  |  │  bind-show="tab=info" hides/shows the node.                              │|
+  |  │  LayoutEngine completely skips hidden nodes.                             │|
+  |  │  Zero latency — server-side logic.                                       │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  ╰──────────────────────────────────────────────────────────────────────────╯|
+  ||
+  |  [Q] Exit  [Tab] Navigation  [Enter] Change Tab|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#38bdf8 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#64748b bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#38bdf8 bg=#0f2a3d | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#334155 bg=#0f172a | 46-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#38bdf8 bg=#0f2a3d | 14-14 fg=c15 bg=#0f172a | 15-15 fg=#334155 bg=#0f172a | 16-25 fg=#475569 bg=#0f172a | 26-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-28 fg=#334155 bg=#0f172a | 29-44 fg=#475569 bg=#0f172a | 45-45 fg=#334155 bg=#0f172a | 46-62 fg=c15 bg=#0f172a | 63-73 fg=#64748b bg=#0f172a | 74-77 fg=#38bdf8 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#38bdf8 bg=#0f2a3d | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#334155 bg=#0f172a | 46-79 fg=c15 bg=#0f172a
+  style 7: 0-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-28 fg=#38bdf8 bg=#0f172a | 29-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-40 fg=#64748b bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-43 fg=#64748b bg=#0f172a | 44-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-46 fg=#64748b bg=#0f172a | 47-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-47 fg=#64748b bg=#0f172a | 48-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-37 fg=#64748b bg=#0f172a | 38-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-1 fg=c15 bg=#1e293b | 2-47 fg=#64748b bg=#1e293b | 48-79 fg=c15 bg=#1e293b
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 36.00x1.00) r=0.00 fg=#38bdf8 bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 36.00x1.00) fg=#38bdf8 bg=#1e293b mods= "📑 Keyboard Navigation and bind-show"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#64748b bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x5.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,4.50 12.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Border n6 (2.00,4.50 12.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Fill n7 (5.00,5.50 6.00x1.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Text n7 @(5.00,5.50) clip=(5.00,5.50 6.00x1.00) fg=#38bdf8 bg=#0f2a3d mods= "ℹ Info"
+  Fill n12 (15.00,4.50 12.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n12 (15.00,4.50 12.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n13 (18.00,5.50 6.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n13 @(18.00,5.50) clip=(18.00,5.50 6.00x1.00) fg=#475569 bg=#0f172a mods= "⌨ Keys"
+  Fill n18 (28.00,4.50 18.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n18 (28.00,4.50 18.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n19 (31.00,5.50 12.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n19 @(31.00,5.50) clip=(31.00,5.50 12.00x1.00) fg=#475569 bg=#0f172a mods= "🔗 bind-show"
+  Fill n24 (47.00,6.00 16.00x0.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n25 (63.00,5.50 11.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(63.00,5.50) clip=(63.00,5.50 11.00x1.00) fg=#64748b bg=#0f172a mods= "Active tab:"
+  Fill n26 (74.00,5.50 4.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n26 @(74.00,5.50) clip=(74.00,5.50 4.00x1.00) fg=#38bdf8 bg=#0f172a mods= "info"
+  Fill n27 (0.00,8.00 80.00x15.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n28 (2.00,8.00 76.00x14.00) r=0.00 fg=c15 bg=#0f172a
+  Border n28 (2.00,8.00 76.00x14.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n29 (5.00,11.00 24.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n29 @(5.00,11.00) clip=(5.00,11.00 24.00x1.00) fg=#38bdf8 bg=#0f172a mods= "Tabs without page reload"
+  Fill n30 (5.00,13.00 36.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n30 @(5.00,13.00) clip=(5.00,13.00 36.00x1.00) fg=#64748b bg=#0f172a mods= "Click tab → event-htmx=\"set:tab=xxx\""
+  Fill n31 (5.00,14.00 39.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n31 @(5.00,14.00) clip=(5.00,14.00 39.00x1.00) fg=#64748b bg=#0f172a mods= "StateManager saves the new \"tab\" value."
+  Fill n32 (5.00,15.00 42.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n32 @(5.00,15.00) clip=(5.00,15.00 42.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"tab=info\" hides/shows the node."
+  Fill n33 (5.00,16.00 43.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n33 @(5.00,16.00) clip=(5.00,16.00 43.00x1.00) fg=#64748b bg=#0f172a mods= "LayoutEngine completely skips hidden nodes."
+  Fill n34 (5.00,17.00 33.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n34 @(5.00,17.00) clip=(5.00,17.00 33.00x1.00) fg=#64748b bg=#0f172a mods= "Zero latency — server-side logic."
+  Fill n49 (0.00,23.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n50 (2.00,23.00 46.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n50 @(2.00,23.00) clip=(2.00,23.00 46.00x1.00) fg=#64748b bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 36.00x1.00) id=3 label="📑 Keyboard Navigation and bind-show"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x5.00) id=5 label=""
+        button (2.00,4.50 12.00x3.00) id=6 label="ℹ Info"
+        button (15.00,4.50 12.00x3.00) id=12 label="⌨ Keys"
+        button (28.00,4.50 18.00x3.00) id=18 label="🔗 bind-show"
+        text (63.00,5.50 11.00x1.00) id=25 label="Active tab:"
+        text (74.00,5.50 4.00x1.00) id=26 label="info"
+      group (0.00,8.00 80.00x15.00) id=27 label=""
+        group (2.00,8.00 76.00x14.00) id=28 label=""
+          text (5.00,11.00 24.00x1.00) id=29 label="Tabs without page reload"
+          text (5.00,13.00 36.00x1.00) id=30 label="Click tab → event-htmx=\"set:tab=xxx\""
+          text (5.00,14.00 39.00x1.00) id=31 label="StateManager saves the new \"tab\" value."
+          text (5.00,15.00 42.00x1.00) id=32 label="bind-show=\"tab=info\" hides/shows the node."
+          text (5.00,16.00 43.00x1.00) id=33 label="LayoutEngine completely skips hidden nodes."
+          text (5.00,17.00 33.00x1.00) id=34 label="Zero latency — server-side logic."
+      group (0.00,23.00 80.00x1.00) id=49 label=""
+        text (2.00,23.00 46.00x1.00) id=50 label="[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+##### step 3: tab keys (no page change)
+page: demos/navigation.thtml
+notices: (none)
+state: tab=Str("keys") counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📑  Keyboard Navigation and bind-show                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |  ┌──────────┐ ┌──────────┐ ┌────────────────┐|
+  |  │  ℹ Info  │ │  ⌨ Keys  │ │  🔗  bind-show  │                 Active tab:keys|
+  |  └──────────┘ └──────────┘ └────────────────┘|
+  ||
+  |  ╭──────────────────────────────────────────────────────────────────────────╮|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │  Keyboard Navigation                                                     │|
+  |  │                                                                          │|
+  |  │  Tab / ↓ / →  — next focusable node                                      │|
+  |  │  Shift+Tab / ↑ / ←  — previous node                                      │|
+  |  │  Enter  — activate event-htmx of focused node                            │|
+  |  │  Q      — exit session                                                   │|
+  |  │  Focus ring: ▶ and ◀ around the active node.                             │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  ╰──────────────────────────────────────────────────────────────────────────╯|
+  ||
+  |  [Q] Exit  [Tab] Navigation  [Enter] Change Tab|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#38bdf8 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#64748b bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#38bdf8 bg=#0f2a3d | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#334155 bg=#0f172a | 46-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-12 fg=#475569 bg=#0f172a | 13-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#38bdf8 bg=#0f2a3d | 27-27 fg=c15 bg=#0f172a | 28-28 fg=#334155 bg=#0f172a | 29-44 fg=#475569 bg=#0f172a | 45-45 fg=#334155 bg=#0f172a | 46-62 fg=c15 bg=#0f172a | 63-73 fg=#64748b bg=#0f172a | 74-77 fg=#38bdf8 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#38bdf8 bg=#0f2a3d | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#334155 bg=#0f172a | 46-79 fg=c15 bg=#0f172a
+  style 7: 0-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-23 fg=#fbbf24 bg=#0f172a | 24-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-38 fg=#64748b bg=#0f172a | 39-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-38 fg=#64748b bg=#0f172a | 39-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-48 fg=#64748b bg=#0f172a | 49-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-25 fg=#64748b bg=#0f172a | 26-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-47 fg=#64748b bg=#0f172a | 48-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-1 fg=c15 bg=#1e293b | 2-47 fg=#64748b bg=#1e293b | 48-79 fg=c15 bg=#1e293b
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 36.00x1.00) r=0.00 fg=#38bdf8 bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 36.00x1.00) fg=#38bdf8 bg=#1e293b mods= "📑 Keyboard Navigation and bind-show"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#64748b bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x5.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n8 (2.00,4.50 12.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n8 (2.00,4.50 12.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n9 (5.00,5.50 6.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n9 @(5.00,5.50) clip=(5.00,5.50 6.00x1.00) fg=#475569 bg=#0f172a mods= "ℹ Info"
+  Fill n14 (15.00,4.50 12.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Border n14 (15.00,4.50 12.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Fill n15 (18.00,5.50 6.00x1.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Text n15 @(18.00,5.50) clip=(18.00,5.50 6.00x1.00) fg=#38bdf8 bg=#0f2a3d mods= "⌨ Keys"
+  Fill n20 (28.00,4.50 18.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n20 (28.00,4.50 18.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n21 (31.00,5.50 12.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n21 @(31.00,5.50) clip=(31.00,5.50 12.00x1.00) fg=#475569 bg=#0f172a mods= "🔗 bind-show"
+  Fill n24 (47.00,6.00 16.00x0.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n25 (63.00,5.50 11.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(63.00,5.50) clip=(63.00,5.50 11.00x1.00) fg=#64748b bg=#0f172a mods= "Active tab:"
+  Fill n26 (74.00,5.50 4.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n26 @(74.00,5.50) clip=(74.00,5.50 4.00x1.00) fg=#38bdf8 bg=#0f172a mods= "keys"
+  Fill n27 (0.00,8.00 80.00x15.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n35 (2.00,8.00 76.00x14.00) r=0.00 fg=c15 bg=#0f172a
+  Border n35 (2.00,8.00 76.00x14.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n36 (5.00,11.00 19.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n36 @(5.00,11.00) clip=(5.00,11.00 19.00x1.00) fg=#fbbf24 bg=#0f172a mods= "Keyboard Navigation"
+  Fill n37 (5.00,13.00 34.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n37 @(5.00,13.00) clip=(5.00,13.00 34.00x1.00) fg=#64748b bg=#0f172a mods= "Tab / ↓ / →  — next focusable node"
+  Fill n38 (5.00,14.00 34.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n38 @(5.00,14.00) clip=(5.00,14.00 34.00x1.00) fg=#64748b bg=#0f172a mods= "Shift+Tab / ↑ / ←  — previous node"
+  Fill n39 (5.00,15.00 44.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n39 @(5.00,15.00) clip=(5.00,15.00 44.00x1.00) fg=#64748b bg=#0f172a mods= "Enter  — activate event-htmx of focused node"
+  Fill n40 (5.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n40 @(5.00,16.00) clip=(5.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "Q      — exit session"
+  Fill n41 (5.00,17.00 43.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n41 @(5.00,17.00) clip=(5.00,17.00 43.00x1.00) fg=#64748b bg=#0f172a mods= "Focus ring: ▶ and ◀ around the active node."
+  Fill n49 (0.00,23.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n50 (2.00,23.00 46.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n50 @(2.00,23.00) clip=(2.00,23.00 46.00x1.00) fg=#64748b bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 36.00x1.00) id=3 label="📑 Keyboard Navigation and bind-show"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x5.00) id=5 label=""
+        button (2.00,4.50 12.00x3.00) id=8 label="ℹ Info"
+        button (15.00,4.50 12.00x3.00) id=14 label="⌨ Keys"
+        button (28.00,4.50 18.00x3.00) id=20 label="🔗 bind-show"
+        text (63.00,5.50 11.00x1.00) id=25 label="Active tab:"
+        text (74.00,5.50 4.00x1.00) id=26 label="keys"
+      group (0.00,8.00 80.00x15.00) id=27 label=""
+        group (2.00,8.00 76.00x14.00) id=35 label=""
+          text (5.00,11.00 19.00x1.00) id=36 label="Keyboard Navigation"
+          text (5.00,13.00 34.00x1.00) id=37 label="Tab / ↓ / →  — next focusable node"
+          text (5.00,14.00 34.00x1.00) id=38 label="Shift+Tab / ↑ / ←  — previous node"
+          text (5.00,15.00 44.00x1.00) id=39 label="Enter  — activate event-htmx of focused node"
+          text (5.00,16.00 21.00x1.00) id=40 label="Q      — exit session"
+          text (5.00,17.00 43.00x1.00) id=41 label="Focus ring: ▶ and ◀ around the active node."
+      group (0.00,23.00 80.00x1.00) id=49 label=""
+        text (2.00,23.00 46.00x1.00) id=50 label="[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+##### step 4: tab bind
+page: demos/navigation.thtml
+notices: (none)
+state: tab=Str("bind") counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📑  Keyboard Navigation and bind-show                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |  ┌──────────┐ ┌──────────┐ ┌────────────────┐|
+  |  │  ℹ Info  │ │  ⌨ Keys  │ │  🔗  bind-show  │                 Active tab:bind|
+  |  └──────────┘ └──────────┘ └────────────────┘|
+  ||
+  |  ╭──────────────────────────────────────────────────────────────────────────╮|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │  bind-show Syntax                                                        │|
+  |  │                                                                          │|
+  |  │  bind-show="key"       — true when Bool(true)                            │|
+  |  │  bind-show="key=true"  — explicit true                                   │|
+  |  │  bind-show="key=false" — opposite (falsy or absent)                      │|
+  |  │  bind-show="tab=home"    — Str equality                                  │|
+  |  │  bind-show="count=0"     — Int equality                                  │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  │                                                                          │|
+  |  ╰──────────────────────────────────────────────────────────────────────────╯|
+  ||
+  |  [Q] Exit  [Tab] Navigation  [Enter] Change Tab|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#38bdf8 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#64748b bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#38bdf8 bg=#0f2a3d | 46-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-12 fg=#475569 bg=#0f172a | 13-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-15 fg=#334155 bg=#0f172a | 16-25 fg=#475569 bg=#0f172a | 26-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#38bdf8 bg=#0f2a3d | 46-62 fg=c15 bg=#0f172a | 63-73 fg=#64748b bg=#0f172a | 74-77 fg=#38bdf8 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-13 fg=#334155 bg=#0f172a | 14-14 fg=c15 bg=#0f172a | 15-26 fg=#334155 bg=#0f172a | 27-27 fg=c15 bg=#0f172a | 28-45 fg=#38bdf8 bg=#0f2a3d | 46-79 fg=c15 bg=#0f172a
+  style 7: 0-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-20 fg=#c084fc bg=#0f172a | 21-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-48 fg=#64748b bg=#0f172a | 49-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-41 fg=#64748b bg=#0f172a | 42-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-54 fg=#64748b bg=#0f172a | 55-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-42 fg=#64748b bg=#0f172a | 43-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-4 fg=c15 bg=#0f172a | 5-42 fg=#64748b bg=#0f172a | 43-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#334155 bg=#0f172a | 3-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-1 fg=c15 bg=#1e293b | 2-47 fg=#64748b bg=#1e293b | 48-79 fg=c15 bg=#1e293b
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 36.00x1.00) r=0.00 fg=#38bdf8 bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 36.00x1.00) fg=#38bdf8 bg=#1e293b mods= "📑 Keyboard Navigation and bind-show"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#64748b bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x5.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n10 (2.00,4.50 12.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n10 (2.00,4.50 12.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n11 (5.00,5.50 6.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n11 @(5.00,5.50) clip=(5.00,5.50 6.00x1.00) fg=#475569 bg=#0f172a mods= "ℹ Info"
+  Fill n16 (15.00,4.50 12.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Border n16 (15.00,4.50 12.00x3.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n17 (18.00,5.50 6.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n17 @(18.00,5.50) clip=(18.00,5.50 6.00x1.00) fg=#475569 bg=#0f172a mods= "⌨ Keys"
+  Fill n22 (28.00,4.50 18.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Border n22 (28.00,4.50 18.00x3.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Fill n23 (31.00,5.50 12.00x1.00) r=0.00 fg=#38bdf8 bg=#0f2a3d
+  Text n23 @(31.00,5.50) clip=(31.00,5.50 12.00x1.00) fg=#38bdf8 bg=#0f2a3d mods= "🔗 bind-show"
+  Fill n24 (47.00,6.00 16.00x0.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n25 (63.00,5.50 11.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(63.00,5.50) clip=(63.00,5.50 11.00x1.00) fg=#64748b bg=#0f172a mods= "Active tab:"
+  Fill n26 (74.00,5.50 4.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n26 @(74.00,5.50) clip=(74.00,5.50 4.00x1.00) fg=#38bdf8 bg=#0f172a mods= "bind"
+  Fill n27 (0.00,8.00 80.00x15.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n42 (2.00,8.00 76.00x14.00) r=0.00 fg=c15 bg=#0f172a
+  Border n42 (2.00,8.00 76.00x14.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n43 (5.00,11.00 16.00x1.00) r=0.00 fg=#c084fc bg=#0f172a
+  Text n43 @(5.00,11.00) clip=(5.00,11.00 16.00x1.00) fg=#c084fc bg=#0f172a mods= "bind-show Syntax"
+  Fill n44 (5.00,13.00 44.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n44 @(5.00,13.00) clip=(5.00,13.00 44.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"key\"       — true when Bool(true)"
+  Fill n45 (5.00,14.00 37.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n45 @(5.00,14.00) clip=(5.00,14.00 37.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"key=true\"  — explicit true"
+  Fill n46 (5.00,15.00 50.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n46 @(5.00,15.00) clip=(5.00,15.00 50.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"key=false\" — opposite (falsy or absent)"
+  Fill n47 (5.00,16.00 38.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n47 @(5.00,16.00) clip=(5.00,16.00 38.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"tab=home\"    — Str equality"
+  Fill n48 (5.00,17.00 38.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n48 @(5.00,17.00) clip=(5.00,17.00 38.00x1.00) fg=#64748b bg=#0f172a mods= "bind-show=\"count=0\"     — Int equality"
+  Fill n49 (0.00,23.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n50 (2.00,23.00 46.00x1.00) r=0.00 fg=#64748b bg=#1e293b
+  Text n50 @(2.00,23.00) clip=(2.00,23.00 46.00x1.00) fg=#64748b bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 36.00x1.00) id=3 label="📑 Keyboard Navigation and bind-show"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x5.00) id=5 label=""
+        button (2.00,4.50 12.00x3.00) id=10 label="ℹ Info"
+        button (15.00,4.50 12.00x3.00) id=16 label="⌨ Keys"
+        button (28.00,4.50 18.00x3.00) id=22 label="🔗 bind-show"
+        text (63.00,5.50 11.00x1.00) id=25 label="Active tab:"
+        text (74.00,5.50 4.00x1.00) id=26 label="bind"
+      group (0.00,8.00 80.00x15.00) id=27 label=""
+        group (2.00,8.00 76.00x14.00) id=42 label=""
+          text (5.00,11.00 16.00x1.00) id=43 label="bind-show Syntax"
+          text (5.00,13.00 44.00x1.00) id=44 label="bind-show=\"key\"       — true when Bool(true)"
+          text (5.00,14.00 37.00x1.00) id=45 label="bind-show=\"key=true\"  — explicit true"
+          text (5.00,15.00 50.00x1.00) id=46 label="bind-show=\"key=false\" — opposite (falsy or absent)"
+          text (5.00,16.00 38.00x1.00) id=47 label="bind-show=\"tab=home\"    — Str equality"
+          text (5.00,17.00 38.00x1.00) id=48 label="bind-show=\"count=0\"     — Int equality"
+      group (0.00,23.00 80.00x1.00) id=49 label=""
+        text (2.00,23.00 46.00x1.00) id=50 label="[Q] Exit  [Tab] Navigation  [Enter] Change Tab"
+##### step 5: click Back -> features
+page: demos/../features.thtml
+notices: (none)
+state: tab=Str("bind") counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  ✦ OxiTerm Features & Live Demos                            >< Back to Home< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 1. Reactive State (Int/Bool/Str/Li                        │ > Try State Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                         ╭────────────────────╮|
+  | 2. HTMX Actions (inc/dec/set/clear                      │ > Try Counter Demo │|
+  |                                                         ╰────────────────────╯|
+  ||
+  |                                                           ╭──────────────────╮|
+  | 3. Input Fields & Password Masking                        │ > Try Input Demo │|
+  |                                                           ╰──────────────────╯|
+  ||
+  |                                                          ╭───────────────────╮|
+  | 4. TCSS Styling (Classes, #ID, Cas                       │ > Try Styles Demo │|
+  |                                                          ╰───────────────────╯|
+  ||
+  |                                                            ╭─────────────────╮|
+  | 5. Tabs & Conditional Views (bind-                         │ > Try Tabs Demo │|
+  |                                                            ╰─────────────────╯|
+  |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#1e293b bg=#0f172a
+  style 1: 0-0 fg=#1e293b bg=#0f172a | 1-2 fg=c15 bg=#0f172a | 3-33 fg=#38bdf8 bg=#0f172a | 34-61 fg=c15 bg=#0f172a | 62-62 fg=c51 bg=reset bold | 63-76 fg=#475569 bg=#0f172a | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#0f172a | 79-79 fg=#1e293b bg=#0f172a
+  style 2: 0-79 fg=#1e293b bg=#0f172a
+  style 3: 0-79 fg=c15 bg=#080f1a
+  style 4: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 5: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#38bdf8 bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 6: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 7: 0-79 fg=c15 bg=#080f1a
+  style 8: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 9: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-56 fg=c15 bg=#080f1a | 57-57 fg=#4ade80 bg=#080f1a | 58-58 fg=c15 bg=#080f1a | 59-76 fg=#4ade80 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 10: 0-56 fg=c15 bg=#080f1a | 57-78 fg=#4ade80 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 11: 0-79 fg=c15 bg=#080f1a
+  style 12: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 13: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-58 fg=c15 bg=#080f1a | 59-59 fg=#f59e0b bg=#080f1a | 60-60 fg=c15 bg=#080f1a | 61-76 fg=#f59e0b bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 14: 0-58 fg=c15 bg=#080f1a | 59-78 fg=#f59e0b bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 15: 0-79 fg=c15 bg=#080f1a
+  style 16: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 17: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-57 fg=c15 bg=#080f1a | 58-58 fg=#c084fc bg=#080f1a | 59-59 fg=c15 bg=#080f1a | 60-76 fg=#c084fc bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 18: 0-57 fg=c15 bg=#080f1a | 58-78 fg=#c084fc bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 19: 0-79 fg=c15 bg=#080f1a
+  style 20: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 21: 0-0 fg=c15 bg=#080f1a | 1-34 fg=#f8fafc bg=#080f1a | 35-59 fg=c15 bg=#080f1a | 60-60 fg=#38bdf8 bg=#080f1a | 61-61 fg=c15 bg=#080f1a | 62-76 fg=#38bdf8 bg=#080f1a | 77-77 fg=c15 bg=#080f1a | 78-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 22: 0-59 fg=c15 bg=#080f1a | 60-78 fg=#38bdf8 bg=#080f1a | 79-79 fg=c15 bg=#080f1a
+  style 23: 0-24 fg=c255 bg=c236 | 25-54 fg=c255 bg=c236 bold | 55-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#1e293b bg=#0f172a
+  Fill n3 (3.00,1.00 31.00x1.00) r=0.00 fg=#38bdf8 bg=#0f172a
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 31.00x1.00) fg=#38bdf8 bg=#0f172a mods= "✦ OxiTerm Features & Live Demos"
+  Fill n4 (63.00,1.00 14.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(63.00,1.00) clip=(63.00,1.00 14.00x1.00) fg=#475569 bg=#0f172a mods= "< Back to Home"
+  Fill n5 (0.00,3.00 80.00x40.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n6 (1.00,4.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n7 (1.00,5.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n7 @(1.00,5.00) clip=(1.00,5.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "1. Reactive State (Int/Bool/Str/Li"
+  Fill n8 (59.00,4.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n8 (59.00,4.00 20.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n9 (61.00,5.00 16.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n9 @(61.00,5.00) clip=(61.00,5.00 16.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try State Demo"
+  Fill n10 (1.00,8.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n11 (1.00,9.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n11 @(1.00,9.00) clip=(1.00,9.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "2. HTMX Actions (inc/dec/set/clear"
+  Fill n12 (57.00,8.00 22.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n12 (57.00,8.00 22.00x3.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Fill n13 (59.00,9.00 18.00x1.00) r=0.00 fg=#4ade80 bg=#080f1a
+  Text n13 @(59.00,9.00) clip=(59.00,9.00 18.00x1.00) fg=#4ade80 bg=#080f1a mods= "> Try Counter Demo"
+  Fill n14 (1.00,12.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n15 (1.00,13.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n15 @(1.00,13.00) clip=(1.00,13.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "3. Input Fields & Password Masking"
+  Fill n16 (59.00,12.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n16 (59.00,12.00 20.00x3.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Fill n17 (61.00,13.00 16.00x1.00) r=0.00 fg=#f59e0b bg=#080f1a
+  Text n17 @(61.00,13.00) clip=(61.00,13.00 16.00x1.00) fg=#f59e0b bg=#080f1a mods= "> Try Input Demo"
+  Fill n18 (1.00,16.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n19 (1.00,17.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n19 @(1.00,17.00) clip=(1.00,17.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "4. TCSS Styling (Classes, #ID, Cas"
+  Fill n20 (58.00,16.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n20 (58.00,16.00 21.00x3.00) r=0.00 fg=#c084fc bg=#080f1a
+  Fill n21 (60.00,17.00 17.00x1.00) r=0.00 fg=#c084fc bg=#080f1a
+  Text n21 @(60.00,17.00) clip=(60.00,17.00 17.00x1.00) fg=#c084fc bg=#080f1a mods= "> Try Styles Demo"
+  Fill n22 (1.00,20.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n23 (1.00,21.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n23 @(1.00,21.00) clip=(1.00,21.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "5. Tabs & Conditional Views (bind-"
+  Fill n24 (60.00,20.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n24 (60.00,20.00 19.00x3.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Fill n25 (62.00,21.00 15.00x1.00) r=0.00 fg=#38bdf8 bg=#080f1a
+  Text n25 @(62.00,21.00) clip=(62.00,21.00 15.00x1.00) fg=#38bdf8 bg=#080f1a mods= "> Try Tabs Demo"
+  Fill n26 (1.00,24.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n27 (1.00,25.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n27 @(1.00,25.00) clip=(1.00,25.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "6. Vector Media (SVG / Lottie / Ri"
+  Fill n28 (59.00,24.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n28 (59.00,24.00 20.00x3.00) r=0.00 fg=#f87171 bg=#080f1a
+  Fill n29 (61.00,25.00 16.00x1.00) r=0.00 fg=#f87171 bg=#080f1a
+  Text n29 @(61.00,25.00) clip=(61.00,25.00 16.00x1.00) fg=#f87171 bg=#080f1a mods= "> Try Media Demo"
+  Fill n30 (1.00,28.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n31 (1.00,29.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n31 @(1.00,29.00) clip=(1.00,29.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "7. MP4 Video Playback (ffmpeg)"
+  Fill n32 (59.00,28.00 20.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n32 (59.00,28.00 20.00x3.00) r=0.00 fg=#fb923c bg=#080f1a
+  Fill n33 (61.00,29.00 16.00x1.00) r=0.00 fg=#fb923c bg=#080f1a
+  Text n33 @(61.00,29.00) clip=(61.00,29.00 16.00x1.00) fg=#fb923c bg=#080f1a mods= "> Try Video Demo"
+  Fill n34 (1.00,32.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n35 (1.00,33.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n35 @(1.00,33.00) clip=(1.00,33.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "8. Dynamic List Loops (<for> tag)"
+  Fill n36 (60.00,32.00 19.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n36 (60.00,32.00 19.00x3.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Fill n37 (62.00,33.00 15.00x1.00) r=0.00 fg=#a3e635 bg=#080f1a
+  Text n37 @(62.00,33.00) clip=(62.00,33.00 15.00x1.00) fg=#a3e635 bg=#080f1a mods= "> Try Todo Demo"
+  Fill n38 (1.00,36.00 78.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n39 (1.00,37.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n39 @(1.00,37.00) clip=(1.00,37.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "9. App Server OAuth Integration"
+  Fill n40 (58.00,36.00 21.00x3.00) r=0.00 fg=c15 bg=#080f1a
+  Border n40 (58.00,36.00 21.00x3.00) r=0.00 fg=#1db954 bg=#080f1a
+  Fill n41 (60.00,37.00 17.00x1.00) r=0.00 fg=#1db954 bg=#080f1a
+  Text n41 @(60.00,37.00) clip=(60.00,37.00 17.00x1.00) fg=#1db954 bg=#080f1a mods= "> Try Spotify App"
+  Fill n42 (1.00,40.00 78.00x1.00) r=0.00 fg=c15 bg=#080f1a
+  Fill n43 (1.00,40.00 34.00x1.00) r=0.00 fg=#f8fafc bg=#080f1a
+  Text n43 @(1.00,40.00) clip=(1.00,40.00 34.00x1.00) fg=#f8fafc bg=#080f1a mods= "10. Auto Mobile View (_mobile)"
+  Fill n44 (35.00,40.00 44.00x1.00) r=0.00 fg=#94a3b8 bg=#080f1a
+  Text n44 @(35.00,40.00) clip=(35.00,40.00 44.00x1.00) fg=#94a3b8 bg=#080f1a mods= "Resize terminal window < 800px width"
+  Fill n45 (0.00,43.00 80.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n46 (2.00,43.00 41.00x1.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n46 @(2.00,43.00) clip=(2.00,43.00 41.00x1.00) fg=#475569 bg=#0f172a mods= "[Tab] Select Demo [Enter] Open Live Demo"
+  CellGrid (62.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/22  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 31.00x1.00) id=3 label="✦ OxiTerm Features & Live Demos"
+        button (63.00,1.00 14.00x1.00) id=4 label="< Back to Home"
+      group (0.00,3.00 80.00x40.00) id=5 label=""
+        group (1.00,4.00 78.00x3.00) id=6 label=""
+          text (1.00,5.00 34.00x1.00) id=7 label="1. Reactive State (Int/Bool/Str/List)"
+          button (59.00,4.00 20.00x3.00) id=8 label="> Try State Demo"
+        group (1.00,8.00 78.00x3.00) id=10 label=""
+          text (1.00,9.00 34.00x1.00) id=11 label="2. HTMX Actions (inc/dec/set/clear)"
+          button (57.00,8.00 22.00x3.00) id=12 label="> Try Counter Demo"
+        group (1.00,12.00 78.00x3.00) id=14 label=""
+          text (1.00,13.00 34.00x1.00) id=15 label="3. Input Fields & Password Masking"
+          button (59.00,12.00 20.00x3.00) id=16 label="> Try Input Demo"
+        group (1.00,16.00 78.00x3.00) id=18 label=""
+          text (1.00,17.00 34.00x1.00) id=19 label="4. TCSS Styling (Classes, #ID, Cascade)"
+          button (58.00,16.00 21.00x3.00) id=20 label="> Try Styles Demo"
+        group (1.00,20.00 78.00x3.00) id=22 label=""
+          text (1.00,21.00 34.00x1.00) id=23 label="5. Tabs & Conditional Views (bind-show)"
+          button (60.00,20.00 19.00x3.00) id=24 label="> Try Tabs Demo"
+        group (1.00,24.00 78.00x3.00) id=26 label=""
+          text (1.00,25.00 34.00x1.00) id=27 label="6. Vector Media (SVG / Lottie / Rive)"
+          button (59.00,24.00 20.00x3.00) id=28 label="> Try Media Demo"
+        group (1.00,28.00 78.00x3.00) id=30 label=""
+          text (1.00,29.00 34.00x1.00) id=31 label="7. MP4 Video Playback (ffmpeg)"
+          button (59.00,28.00 20.00x3.00) id=32 label="> Try Video Demo"
+        group (1.00,32.00 78.00x3.00) id=34 label=""
+          text (1.00,33.00 34.00x1.00) id=35 label="8. Dynamic List Loops (<for> tag)"
+          button (60.00,32.00 19.00x3.00) id=36 label="> Try Todo Demo"
+        group (1.00,36.00 78.00x3.00) id=38 label=""
+          text (1.00,37.00 34.00x1.00) id=39 label="9. App Server OAuth Integration"
+          button (58.00,36.00 21.00x3.00) id=40 label="> Try Spotify App"
+        group (1.00,40.00 78.00x1.00) id=42 label=""
+          text (1.00,40.00 34.00x1.00) id=43 label="10. Auto Mobile View (_mobile)"
+          text (35.00,40.00 44.00x1.00) id=44 label="Resize terminal window < 800px width"
+      group (0.00,43.00 80.00x1.00) id=45 label=""
+        text (2.00,43.00 41.00x1.00) id=46 label="[Tab] Select Demo  [Enter] Open Live Demo"
+##### step 6: NavigateTo missing page
+page: demos/../features.thtml
+notices:
+  nav_error
+state: tab=Str("bind") counter=-
+grid: unchanged
+display_list: unchanged
+aria: unchanged
+##### step 7: NavigateTo traversal
+page: demos/../features.thtml
+notices:
+  nav_error
+state: tab=Str("bind") counter=-
+grid: unchanged
+display_list: unchanged
+aria: unchanged
+##### step 8: NavigateTo counter
+page: demos/../demos/counter.thtml
+notices: (none)
+state: tab=Str("bind") counter=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔═════╗              │  │ inc:key   — number += 1            │|
+  |  │             ║     ║              │  │ dec:key   — number -= 1            │|
+  |  │             ║     ║              │  │ clear:key — reset to 0             │|
+  |  │             ║  0  ║              │  │                                    │|
+  |  │             ║     ║              │  │ Int(i64) state lives in            │|
+  |  │             ║     ║              │  │ the server StateManager.           │|
+  |  │             ╚═════╝              │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-19 fg=#fbbf24 bg=#0f172a | 20-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.50,9.00 7.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.50,9.00 7.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.50,12.00 1.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.50,12.00) clip=(19.50,12.00 1.00x1.00) fg=#fbbf24 bg=#0f172a mods= "0"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.50,9.00 7.00x7.00) id=8 label=""
+            text (19.50,12.00 1.00x1.00) id=9 label="0"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 9: click + on the new page
+page: demos/../demos/counter.thtml
+notices: (none)
+state: tab=Str("bind") counter=Int(1)
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔═════╗              │  │ inc:key   — number += 1            │|
+  |  │             ║     ║              │  │ dec:key   — number -= 1            │|
+  |  │             ║     ║              │  │ clear:key — reset to 0             │|
+  |  │             ║  1  ║              │  │                                    │|
+  |  │             ║     ║              │  │ Int(i64) state lives in            │|
+  |  │             ║     ║              │  │ the server StateManager.           │|
+  |  │             ╚═════╝              │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-19 fg=#fbbf24 bg=#0f172a | 20-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.50,9.00 7.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.50,9.00 7.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.50,12.00 1.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.50,12.00) clip=(19.50,12.00 1.00x1.00) fg=#fbbf24 bg=#0f172a mods= "1"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.50,9.00 7.00x7.00) id=8 label=""
+            text (19.50,12.00 1.00x1.00) id=9 label="1"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"

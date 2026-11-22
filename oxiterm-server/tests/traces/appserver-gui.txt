@@ -1,0 +1,723 @@
+##### step 1: initial frame
+page: demos/counter.thtml
+notices: (none)
+app_server: (none)
+state: counter=- banner=- _hacked=- _app_token=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔═════╗              │  │ inc:key   — number += 1            │|
+  |  │             ║     ║              │  │ dec:key   — number -= 1            │|
+  |  │             ║     ║              │  │ clear:key — reset to 0             │|
+  |  │             ║  0  ║              │  │                                    │|
+  |  │             ║     ║              │  │ Int(i64) state lives in            │|
+  |  │             ║     ║              │  │ the server StateManager.           │|
+  |  │             ╚═════╝              │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-19 fg=#fbbf24 bg=#0f172a | 20-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.50,9.00 7.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.50,9.00 7.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.50,12.00 1.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.50,12.00) clip=(19.50,12.00 1.00x1.00) fg=#fbbf24 bg=#0f172a mods= "0"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.50,9.00 7.00x7.00) id=8 label=""
+            text (19.50,12.00 1.00x1.00) id=9 label="0"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 2: click + (request pending)
+page: demos/counter.thtml
+notices: (none)
+app_server:
+  action=inc:counter state{counter=1}
+state: counter=Int(1) banner=- _hacked=- _app_token=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔═════╗              │  │ inc:key   — number += 1            │|
+  |  │             ║     ║              │  │ dec:key   — number -= 1            │|
+  |  │             ║     ║              │  │ clear:key — reset to 0             │|
+  |  │             ║  1  ║              │  │                                    │|
+  |  │             ║     ║              │  │ Int(i64) state lives in            │|
+  |  │             ║     ║              │  │ the server StateManager.           │|
+  |  │             ╚═════╝              │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-19 fg=#fbbf24 bg=#0f172a | 20-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-21 fg=c15 bg=#0f172a | 22-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-22 fg=#f59e0b bg=#0f172a | 23-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.50,9.00 7.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.50,9.00 7.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.50,12.00 1.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.50,12.00) clip=(19.50,12.00 1.00x1.00) fg=#fbbf24 bg=#0f172a mods= "1"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.50,9.00 7.00x7.00) id=8 label=""
+            text (19.50,12.00 1.00x1.00) id=9 label="1"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 3: patch applied
+page: demos/counter.thtml
+notices: (none)
+app_server: (none)
+state: counter=Int(41) banner=Str("hello") _hacked=- _app_token=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔══════╗             │  │ inc:key   — number += 1            │|
+  |  │             ║      ║             │  │ dec:key   — number -= 1            │|
+  |  │             ║      ║             │  │ clear:key — reset to 0             │|
+  |  │             ║  41  ║             │  │                                    │|
+  |  │             ║      ║             │  │ Int(i64) state lives in            │|
+  |  │             ║      ║             │  │ the server StateManager.           │|
+  |  │             ╚══════╝             │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-20 fg=#fbbf24 bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.00,9.00 8.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.00,9.00 8.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.00,12.00 2.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.00,12.00) clip=(19.00,12.00 2.00x1.00) fg=#fbbf24 bg=#0f172a mods= "41"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.00,9.00 8.00x7.00) id=8 label=""
+            text (19.00,12.00 2.00x1.00) id=9 label="41"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 4: patch with open_url + set_app_token (token sync dispatched)
+page: demos/counter.thtml
+notices:
+  open_url https://example.com/auth?x=1
+app_server:
+  action=inc:counter state{counter=42}
+  action=app_token_sync app_token=tok-abc state{counter=42}
+state: counter=Int(42) banner=Str("second") _hacked=- _app_token=Str("tok-abc")
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔══════╗             │  │ inc:key   — number += 1            │|
+  |  │             ║      ║             │  │ dec:key   — number -= 1            │|
+  |  │             ║      ║             │  │ clear:key — reset to 0             │|
+  |  │             ║  42  ║             │  │                                    │|
+  |  │             ║      ║             │  │ Int(i64) state lives in            │|
+  |  │             ║      ║             │  │ the server StateManager.           │|
+  |  │             ╚══════╝             │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-20 fg=#fbbf24 bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.00,9.00 8.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.00,9.00 8.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.00,12.00 2.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.00,12.00) clip=(19.00,12.00 2.00x1.00) fg=#fbbf24 bg=#0f172a mods= "42"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.00,9.00 8.00x7.00) id=8 label=""
+            text (19.00,12.00 2.00x1.00) id=9 label="42"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"
+##### step 5: token sync answered
+page: demos/counter.thtml
+notices: (none)
+app_server: (none)
+state: counter=Int(42) banner=Str("second") _hacked=- _app_token=Str("tok-abc")
+grid: unchanged
+display_list: unchanged
+aria: unchanged
+##### step 6: pushed patch with set_app_token
+page: demos/counter.thtml
+notices:
+  app_token tok-push
+app_server: (none)
+state: counter=Int(99) banner=Str("second") _hacked=- _app_token=Str("tok-push")
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  🔢  Counter — inc / dec / clear                                     >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  ||
+  |  ╭──────────────────────────────────╮  ╭────────────────────────────────────╮|
+  |  │                                  │  │                                    │|
+  |  │          Current value:          │  │ Supported event-htmx actions:      │|
+  |  │                                  │  │                                    │|
+  |  │             ╔══════╗             │  │ inc:key   — number += 1            │|
+  |  │             ║      ║             │  │ dec:key   — number -= 1            │|
+  |  │             ║      ║             │  │ clear:key — reset to 0             │|
+  |  │             ║  99  ║             │  │                                    │|
+  |  │             ║      ║             │  │ Int(i64) state lives in            │|
+  |  │             ║      ║             │  │ the server StateManager.           │|
+  |  │             ╚══════╝             │  │ bind-state updates only            │|
+  |  │                                  │  │ this node reactively.              │|
+  |  │                                  │  │                                    │|
+  |  │     ┌─────┐ ┌─────┐ ┌─────┐      │  │                                    │|
+  |  │     │  −  │ │  +  │ │  x  │      │  │                                    │|
+  |  │     └─────┘ └─────┘ └─────┘      │  │                                    │|
+  |  │                                  │  │                                    │|
+  |  ╰──────────────────────────────────╯  ╰────────────────────────────────────╯|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-32 fg=#f59e0b bg=#1e293b | 33-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-79 fg=c15 bg=#0f172a
+  style 5: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 6: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 7: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-12 fg=c15 bg=#0f172a | 13-26 fg=#94a3b8 bg=#0f172a | 27-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-70 fg=#94a3b8 bg=#0f172a | 71-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 8: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 9: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#4ade80 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 10: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#f87171 bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 11: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-63 fg=#94a3b8 bg=#0f172a | 64-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 12: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-18 fg=c15 bg=#0f172a | 19-20 fg=#fbbf24 bg=#0f172a | 21-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 13: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 14: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-16 fg=#f59e0b bg=#0f172a | 17-22 fg=c15 bg=#0f172a | 23-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-65 fg=#64748b bg=#0f172a | 66-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 15: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-15 fg=c15 bg=#0f172a | 16-23 fg=#f59e0b bg=#0f172a | 24-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-64 fg=#64748b bg=#0f172a | 65-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 16: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-41 fg=c15 bg=#0f172a | 42-62 fg=#64748b bg=#0f172a | 63-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 17: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 18: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 19: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-24 fg=#475569 bg=#0f172a | 25-29 fg=#94a3b8 bg=#0f172a | 30-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 20: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-7 fg=c15 bg=#0f172a | 8-14 fg=#f87171 bg=#0f172a | 15-15 fg=c15 bg=#0f172a | 16-22 fg=#4ade80 bg=#0f172a | 23-23 fg=c15 bg=#0f172a | 24-30 fg=#475569 bg=#0f172a | 31-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 21: 0-1 fg=c15 bg=#0f172a | 2-2 fg=#f59e0b bg=#0f172a | 3-36 fg=c15 bg=#0f172a | 37-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-40 fg=#334155 bg=#0f172a | 41-76 fg=c15 bg=#0f172a | 77-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 22: 0-1 fg=c15 bg=#0f172a | 2-37 fg=#f59e0b bg=#0f172a | 38-39 fg=c15 bg=#0f172a | 40-77 fg=#334155 bg=#0f172a | 78-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (0.00,0.00 80.00x3.00) r=0.00 fg=c15 bg=#1e293b
+  Border n2 (0.00,0.00 80.00x3.00) r=0.00 fg=#334155 bg=#1e293b
+  Fill n3 (3.00,1.00 30.00x1.00) r=0.00 fg=#f59e0b bg=#1e293b
+  Text n3 @(3.00,1.00) clip=(3.00,1.00 30.00x1.00) fg=#f59e0b bg=#1e293b mods= "🔢 Counter — inc / dec / clear"
+  Fill n4 (71.00,1.00 6.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n4 @(71.00,1.00) clip=(71.00,1.00 6.00x1.00) fg=#475569 bg=#1e293b mods= "< Back"
+  Fill n5 (0.00,3.00 80.00x22.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n6 (2.00,5.00 36.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n6 (2.00,5.00 36.00x18.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n7 (13.00,7.00 14.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n7 @(13.00,7.00) clip=(13.00,7.00 14.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Current value:"
+  Fill n8 (16.00,9.00 8.00x7.00) r=0.00 fg=c15 bg=#0f172a
+  Border n8 (16.00,9.00 8.00x7.00) r=0.00 fg=#f59e0b bg=#0f172a
+  Fill n9 (19.00,12.00 2.00x1.00) r=0.00 fg=#fbbf24 bg=#0f172a
+  Text n9 @(19.00,12.00) clip=(19.00,12.00 2.00x1.00) fg=#fbbf24 bg=#0f172a mods= "99"
+  Fill n10 (8.50,18.00 23.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Border n11 (8.50,18.00 7.00x3.00) r=0.00 fg=#f87171 bg=#0f172a
+  Fill n12 (11.50,19.00 1.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n12 @(11.50,19.00) clip=(11.50,19.00 1.00x1.00) fg=#f87171 bg=#0f172a mods= "−"
+  Fill n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Border n13 (16.50,18.00 7.00x3.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Fill n14 (19.50,19.00 1.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n14 @(19.50,19.00) clip=(19.50,19.00 1.00x1.00) fg=#4ade80 bg=#0f172a mods= "+"
+  Fill n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Border n15 (24.50,18.00 7.00x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Fill n16 (27.50,19.00 1.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n16 @(27.50,19.00) clip=(27.50,19.00 1.00x1.00) fg=#94a3b8 bg=#0f172a mods= "x"
+  Fill n17 (40.00,5.00 38.00x18.00) r=0.00 fg=c15 bg=#0f172a
+  Border n17 (40.00,5.00 38.00x18.00) r=0.00 fg=#334155 bg=#0f172a
+  Fill n18 (42.00,7.00 29.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n18 @(42.00,7.00) clip=(42.00,7.00 29.00x1.00) fg=#94a3b8 bg=#0f172a mods= "Supported event-htmx actions:"
+  Fill n19 (42.00,9.00 23.00x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n19 @(42.00,9.00) clip=(42.00,9.00 23.00x1.00) fg=#4ade80 bg=#0f172a mods= "inc:key   — number += 1"
+  Fill n20 (42.00,10.00 23.00x1.00) r=0.00 fg=#f87171 bg=#0f172a
+  Text n20 @(42.00,10.00) clip=(42.00,10.00 23.00x1.00) fg=#f87171 bg=#0f172a mods= "dec:key   — number -= 1"
+  Fill n21 (42.00,11.00 22.00x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n21 @(42.00,11.00) clip=(42.00,11.00 22.00x1.00) fg=#94a3b8 bg=#0f172a mods= "clear:key — reset to 0"
+  Fill n22 (42.00,12.00 34.00x1.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n23 (42.00,13.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n23 @(42.00,13.00) clip=(42.00,13.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "Int(i64) state lives in"
+  Fill n24 (42.00,14.00 24.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n24 @(42.00,14.00) clip=(42.00,14.00 24.00x1.00) fg=#64748b bg=#0f172a mods= "the server StateManager."
+  Fill n25 (42.00,15.00 23.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n25 @(42.00,15.00) clip=(42.00,15.00 23.00x1.00) fg=#64748b bg=#0f172a mods= "bind-state updates only"
+  Fill n26 (42.00,16.00 21.00x1.00) r=0.00 fg=#64748b bg=#0f172a
+  Text n26 @(42.00,16.00) clip=(42.00,16.00 21.00x1.00) fg=#64748b bg=#0f172a mods= "this node reactively."
+  Fill n27 (0.00,25.00 80.00x1.00) r=0.00 fg=c15 bg=#1e293b
+  Fill n28 (2.00,25.00 42.00x1.00) r=0.00 fg=#475569 bg=#1e293b
+  Text n28 @(2.00,25.00) clip=(2.00,25.00 42.00x1.00) fg=#475569 bg=#1e293b mods= "[Q] Exit  [Tab] Navigation  [Enter] Action"
+  CellGrid (70.00,1.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (77.00,1.00 1.00x1.00) cells=1
+    |<|
+  CellGrid (0.00,23.00 80.00x1.00) cells=80
+    |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      group (0.00,0.00 80.00x3.00) id=2 label=""
+        text (3.00,1.00 30.00x1.00) id=3 label="🔢 Counter — inc / dec / clear"
+        button (71.00,1.00 6.00x1.00) id=4 label="< Back"
+      group (0.00,3.00 80.00x22.00) id=5 label=""
+        group (2.00,5.00 36.00x18.00) id=6 label=""
+          text (13.00,7.00 14.00x1.00) id=7 label="Current value:"
+          group (16.00,9.00 8.00x7.00) id=8 label=""
+            text (19.00,12.00 2.00x1.00) id=9 label="99"
+          group (8.50,18.00 23.00x3.00) id=10 label=""
+            button (8.50,18.00 7.00x3.00) id=11 label="−"
+            button (16.50,18.00 7.00x3.00) id=13 label="+"
+            button (24.50,18.00 7.00x3.00) id=15 label="x"
+        group (40.00,5.00 38.00x18.00) id=17 label=""
+          text (42.00,7.00 29.00x1.00) id=18 label="Supported event-htmx actions:"
+          text (42.00,9.00 23.00x1.00) id=19 label="inc:key   — number += 1"
+          text (42.00,10.00 23.00x1.00) id=20 label="dec:key   — number -= 1"
+          text (42.00,11.00 22.00x1.00) id=21 label="clear:key — reset to 0"
+          text (42.00,13.00 23.00x1.00) id=23 label="Int(i64) state lives in"
+          text (42.00,14.00 24.00x1.00) id=24 label="the server StateManager."
+          text (42.00,15.00 23.00x1.00) id=25 label="bind-state updates only"
+          text (42.00,16.00 21.00x1.00) id=26 label="this node reactively."
+      group (0.00,25.00 80.00x1.00) id=27 label=""
+        text (2.00,25.00 42.00x1.00) id=28 label="[Q] Exit  [Tab] Navigation  [Enter] Action"

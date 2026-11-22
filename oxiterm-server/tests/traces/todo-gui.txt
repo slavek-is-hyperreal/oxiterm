@@ -1,0 +1,579 @@
+##### step 1: initial frame
+page: todo_for.thtml
+notices: (none)
+state: task_list=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           []|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 13.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 2.00x1.00) fg=c15 bg=c0 mods= "[]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 11.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (22.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 13.00x20.00) id=2 label=""
+        button (11.00,3.00 11.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 11.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 11.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 2.00x1.00) id=9 label="[]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 11.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"
+##### step 2: append milk (list not re-expanded yet)
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           [milk]|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 13.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 6.00x1.00) fg=c15 bg=c0 mods= "[milk]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 11.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (22.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 13.00x20.00) id=2 label=""
+        button (11.00,3.00 11.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 11.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 11.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 6.00x1.00) id=9 label="[milk]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 11.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"
+##### step 3: append eggs
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌──────────┐|
+  |          >│Add milk  │<|
+  |           └──────────┘|
+  |           ┌──────────┐|
+  |           │Add eggs  │|
+  |           └──────────┘|
+  |           ┌──────────┐|
+  |           │Clear all │|
+  |           └──────────┘|
+  |           [milk, eggs]|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-22 fg=c15 bg=c0 | 23-23 fg=c51 bg=reset bold | 24-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 14.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 12.00x1.00) fg=c15 bg=c0 mods= "[milk, eggs]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (23.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 14.00x20.00) id=2 label=""
+        button (11.00,3.00 12.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 12.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 12.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 12.00x1.00) id=9 label="[milk, eggs]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 12.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"
+##### step 4: StatePatched re-expands the <for> block
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌──────────────────┐|
+  |          >│Add milk          │<|
+  |           └──────────────────┘|
+  |           ┌──────────────────┐|
+  |           │Add eggs          │|
+  |           └──────────────────┘|
+  |           ┌──────────────────┐|
+  |           │Clear all         │|
+  |           └──────────────────┘|
+  |           [milk, eggs]|
+  |           Tasks|
+  |           - {item}- milk- eggs|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-30 fg=c15 bg=c0 | 31-31 fg=c51 bg=reset bold | 32-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 22.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 20.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 12.00x1.00) fg=c15 bg=c0 mods= "[milk, eggs]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 20.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  Fill n13 (19.00,14.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n13 @(19.00,14.00) clip=(19.00,14.00 6.00x1.00) fg=c15 bg=c0 mods= "- milk"
+  Fill n14 (25.00,14.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n14 @(25.00,14.00) clip=(25.00,14.00 6.00x1.00) fg=c15 bg=c0 mods= "- eggs"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (31.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 22.00x20.00) id=2 label=""
+        button (11.00,3.00 20.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 20.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 20.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 12.00x1.00) id=9 label="[milk, eggs]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 20.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"
+          text (19.00,14.00 6.00x1.00) id=13 label="- milk"
+          text (25.00,14.00 6.00x1.00) id=14 label="- eggs"
+##### step 5: append milk + StatePatched
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs", "milk"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌────────────────────────┐|
+  |          >│Add milk                │<|
+  |           └────────────────────────┘|
+  |           ┌────────────────────────┐|
+  |           │Add eggs                │|
+  |           └────────────────────────┘|
+  |           ┌────────────────────────┐|
+  |           │Clear all               │|
+  |           └────────────────────────┘|
+  |           [milk, eggs, milk]|
+  |           Tasks|
+  |           - {item}- milk- eggs- milk|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-36 fg=c15 bg=c0 | 37-37 fg=c51 bg=reset bold | 38-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 28.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 26.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 18.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 18.00x1.00) fg=c15 bg=c0 mods= "[milk, eggs, milk]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 26.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  Fill n15 (19.00,14.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n15 @(19.00,14.00) clip=(19.00,14.00 6.00x1.00) fg=c15 bg=c0 mods= "- milk"
+  Fill n16 (25.00,14.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n16 @(25.00,14.00) clip=(25.00,14.00 6.00x1.00) fg=c15 bg=c0 mods= "- eggs"
+  Fill n17 (31.00,14.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n17 @(31.00,14.00) clip=(31.00,14.00 6.00x1.00) fg=c15 bg=c0 mods= "- milk"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (37.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 28.00x20.00) id=2 label=""
+        button (11.00,3.00 26.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 26.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 26.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 18.00x1.00) id=9 label="[milk, eggs, milk]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 26.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"
+          text (19.00,14.00 6.00x1.00) id=15 label="- milk"
+          text (25.00,14.00 6.00x1.00) id=16 label="- eggs"
+          text (31.00,14.00 6.00x1.00) id=17 label="- milk"
+##### step 6: clear + StatePatched
+page: todo_for.thtml
+notices: (none)
+state: task_list=List([])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           []|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (10.00,2.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (10.00,2.00 60.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (10.00,2.00 13.00x20.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n3 (11.00,3.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n4 (12.00,4.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(12.00,4.00) clip=(12.00,4.00 8.00x1.00) fg=c15 bg=c0 mods= "Add milk"
+  Fill n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n5 (11.00,6.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n6 (12.00,7.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(12.00,7.00) clip=(12.00,7.00 8.00x1.00) fg=c15 bg=c0 mods= "Add eggs"
+  Fill n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n7 (11.00,9.00 11.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (12.00,10.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(12.00,10.00) clip=(12.00,10.00 9.00x1.00) fg=c15 bg=c0 mods= "Clear all"
+  Fill n9 (11.00,12.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(11.00,12.00) clip=(11.00,12.00 2.00x1.00) fg=c15 bg=c0 mods= "[]"
+  Fill n10 (11.00,13.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n10 @(11.00,13.00) clip=(11.00,13.00 5.00x1.00) fg=c15 bg=c0 mods= "Tasks"
+  Fill n11 (11.00,14.00 11.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n12 (11.00,14.00 8.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n12 @(11.00,14.00) clip=(11.00,14.00 8.00x1.00) fg=c15 bg=c0 mods= "- {item}"
+  CellGrid (10.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (22.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=3
+  application (10.00,2.00 80.00x24.00) id=0 label=""
+    application (10.00,2.00 60.00x20.00) id=1 label=""
+      group (10.00,2.00 13.00x20.00) id=2 label=""
+        button (11.00,3.00 11.00x3.00) id=3 label="Add milk"
+        button (11.00,6.00 11.00x3.00) id=5 label="Add eggs"
+        button (11.00,9.00 11.00x3.00) id=7 label="Clear all"
+        text (11.00,12.00 2.00x1.00) id=9 label="[]"
+        text (11.00,13.00 5.00x1.00) id=10 label="Tasks"
+        group (11.00,14.00 11.00x1.00) id=11 label=""
+          text (11.00,14.00 8.00x1.00) id=12 label="- {item}"

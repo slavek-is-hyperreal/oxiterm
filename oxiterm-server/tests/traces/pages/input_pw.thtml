@@ -1,0 +1,19 @@
+<!-- Trace-harness fixture: a plain input and a password input. The password key is
+     deliberately NOT shown through bind-state, so its clear text never reaches a frame. -->
+<screen style="width: 50; height: 16;">
+    <box style="flex-direction: column; padding: 1;">
+        <text style="height: 1;">Name:</text>
+        <input bind-value="name_input" placeholder="your name"
+               style="height: 3; border-style: single; padding-left: 1;"/>
+        <text style="height: 1;">Password:</text>
+        <input type="password" bind-value="secret" placeholder="secret"
+               style="height: 3; border-style: single; padding-left: 1;"/>
+        <box style="flex-direction: row;">
+            <text style="height: 1;">Typed: </text>
+            <text style="height: 1;" bind-state="name_input"> </text>
+        </box>
+        <box style="height: 3; border-style: single;" event-htmx="clear:name_input">
+            <text style="height: 1;">Clear name</text>
+        </box>
+    </box>
+</screen>

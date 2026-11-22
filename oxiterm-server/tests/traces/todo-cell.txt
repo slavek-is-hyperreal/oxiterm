@@ -1,0 +1,324 @@
+##### step 1: initial frame
+page: todo_for.thtml
+notices: (none)
+state: task_list=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           []|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 2: append milk (list not re-expanded yet)
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           [milk]|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 3: append eggs
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌──────────┐|
+  |          >│Add milk  │<|
+  |           └──────────┘|
+  |           ┌──────────┐|
+  |           │Add eggs  │|
+  |           └──────────┘|
+  |           ┌──────────┐|
+  |           │Clear all │|
+  |           └──────────┘|
+  |           [milk, eggs]|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-22 fg=c15 bg=c0 | 23-23 fg=c51 bg=reset bold | 24-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 4: StatePatched re-expands the <for> block
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌──────────────────┐|
+  |          >│Add milk          │<|
+  |           └──────────────────┘|
+  |           ┌──────────────────┐|
+  |           │Add eggs          │|
+  |           └──────────────────┘|
+  |           ┌──────────────────┐|
+  |           │Clear all         │|
+  |           └──────────────────┘|
+  |           [milk, eggs]|
+  |           Tasks|
+  |           - {item}- milk- eggs|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-30 fg=c15 bg=c0 | 31-31 fg=c51 bg=reset bold | 32-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 5: append milk + StatePatched
+page: todo_for.thtml
+notices: (none)
+state: task_list=List(["milk", "eggs", "milk"])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌────────────────────────┐|
+  |          >│Add milk                │<|
+  |           └────────────────────────┘|
+  |           ┌────────────────────────┐|
+  |           │Add eggs                │|
+  |           └────────────────────────┘|
+  |           ┌────────────────────────┐|
+  |           │Clear all               │|
+  |           └────────────────────────┘|
+  |           [milk, eggs, milk]|
+  |           Tasks|
+  |           - {item}- milk- eggs- milk|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-36 fg=c15 bg=c0 | 37-37 fg=c51 bg=reset bold | 38-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 6: clear + StatePatched
+page: todo_for.thtml
+notices: (none)
+state: task_list=List([])
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  |           ┌─────────┐|
+  |          >│Add milk │<|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Add eggs │|
+  |           └─────────┘|
+  |           ┌─────────┐|
+  |           │Clear all│|
+  |           └─────────┘|
+  |           []|
+  |           Tasks|
+  |           - {item}|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-9 fg=c15 bg=c0 | 10-10 fg=c51 bg=reset bold | 11-21 fg=c15 bg=c0 | 22-22 fg=c51 bg=reset bold | 23-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0

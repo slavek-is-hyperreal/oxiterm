@@ -1,0 +1,22 @@
+<!-- Trace-harness fixture: a <for> list that is filled by append: actions. The template
+     must stay binding-free (the expander rejects bind-*/event-htmx inside it). The buttons
+     come BEFORE the list so that growing the list never moves a click target (the harness
+     computes click positions from a layout that does not expand <for>). -->
+<screen style="width: 60; height: 20;">
+    <box style="flex-direction: column; padding: 1;">
+        <box style="height: 3; border-style: single;" event-htmx="append:task_list=milk">
+            <text style="height: 1;">Add milk</text>
+        </box>
+        <box style="height: 3; border-style: single;" event-htmx="append:task_list=eggs">
+            <text style="height: 1;">Add eggs</text>
+        </box>
+        <box style="height: 3; border-style: single;" event-htmx="clear:task_list">
+            <text style="height: 1;">Clear all</text>
+        </box>
+        <text style="height: 1;" bind-state="task_list">[]</text>
+        <text style="height: 1;">Tasks</text>
+        <for each="task_list">
+            <text style="height: 1;">- {item}</text>
+        </for>
+    </box>
+</screen>

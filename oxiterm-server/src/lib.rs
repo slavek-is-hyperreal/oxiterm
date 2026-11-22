@@ -31,3 +31,6 @@ pub use ratelimit::RateLimiter;
 
 #[cfg(test)]
 pub mod test_env;
+
+#[cfg(test)]
+mod event_loop_trace;

@@ -1,0 +1,432 @@
+##### step 1: initial frame (first input focused)
+page: input_pw.thtml
+notices: (none)
+state: name_input=- secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│__________│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 2: typed Ana
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("Ana") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│Ana_______│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:Ana|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 3: backspace
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│An________│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 4: Tab to the password input
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│__________│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 5: typed the password
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter2")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│*******___│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 6: password backspace
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│******____│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 7: Tab to the clear button
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │******____│|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |               >│Clear name│<|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+##### step 8: Enter clears the name
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  |               \u{d}|
+  |                Name:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │******____│|
+  |                └──────────┘|
+  |                Typed:|
+  |                ┌──────────┐|
+  |               >│Clear name│<|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-14 fg=c15 bg=c0 | 15-15 fg=c2 bg=reset | 16-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0

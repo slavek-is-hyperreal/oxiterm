@@ -1,0 +1,735 @@
+##### step 1: initial frame (first input focused)
+page: input_pw.thtml
+notices: (none)
+state: name_input=- secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│__________│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 0.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,7.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,7.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name"
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"
+##### step 2: typed Ana
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("Ana") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│Ana_______│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:Ana|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "Ana_______"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 3.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 3.00x1.00) fg=c15 bg=c0 mods= "Ana"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,7.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,7.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name" value="Ana"
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+          text (22.00,13.00 3.00x1.00) id=9 label="Ana"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"
+##### step 3: backspace
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |               >│An________│<|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "An________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 2.00x1.00) fg=c15 bg=c0 mods= "An"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,7.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,7.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name" value="An"
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+          text (22.00,13.00 2.00x1.00) id=9 label="An"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"
+##### step 4: Tab to the password input
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=-
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│__________│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "An________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 2.00x1.00) fg=c15 bg=c0 mods= "An"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,11.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,11.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=6
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name" value="An"
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+          text (22.00,13.00 2.00x1.00) id=9 label="An"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"
+##### step 5: typed the password
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter2")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│*******___│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "An________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "*******___"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 2.00x1.00) fg=c15 bg=c0 mods= "An"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,11.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,11.00 1.00x1.00) cells=1
+    |<|
+aria: unchanged
+##### step 6: password backspace
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |               >│******____│<|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |                │Clear name│|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "An________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "******____"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 2.00x1.00) fg=c15 bg=c0 mods= "An"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,11.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,11.00 1.00x1.00) cells=1
+    |<|
+aria: unchanged
+##### step 7: Tab to the clear button
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("An") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  ||
+  |                Name:|
+  |                ┌──────────┐|
+  |                │An________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │******____│|
+  |                └──────────┘|
+  |                Typed:An|
+  |                ┌──────────┐|
+  |               >│Clear name│<|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "An________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "******____"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 2.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 2.00x1.00) fg=c15 bg=c0 mods= "An"
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,15.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,15.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=10
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name" value="An"
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+          text (22.00,13.00 2.00x1.00) id=9 label="An"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"
+##### step 8: Enter clears the name
+page: input_pw.thtml
+notices: (none)
+state: name_input=Str("") secret=Str("hunter")
+grid:
+  size 80x24
+  ||
+  ||
+  ||
+  ||
+  |               \u{d}|
+  |                Name:|
+  |                ┌──────────┐|
+  |                │__________│|
+  |                └──────────┘|
+  |                Password:|
+  |                ┌──────────┐|
+  |                │******____│|
+  |                └──────────┘|
+  |                Typed:|
+  |                ┌──────────┐|
+  |               >│Clear name│<|
+  |                └──────────┘|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=c0
+  style 1: 0-79 fg=c15 bg=c0
+  style 2: 0-79 fg=c15 bg=c0
+  style 3: 0-79 fg=c15 bg=c0
+  style 4: 0-14 fg=c15 bg=c0 | 15-15 fg=c2 bg=reset | 16-79 fg=c15 bg=c0
+  style 5: 0-79 fg=c15 bg=c0
+  style 6: 0-79 fg=c15 bg=c0
+  style 7: 0-79 fg=c15 bg=c0
+  style 8: 0-79 fg=c15 bg=c0
+  style 9: 0-79 fg=c15 bg=c0
+  style 10: 0-79 fg=c15 bg=c0
+  style 11: 0-79 fg=c15 bg=c0
+  style 12: 0-79 fg=c15 bg=c0
+  style 13: 0-79 fg=c15 bg=c0
+  style 14: 0-79 fg=c15 bg=c0
+  style 15: 0-14 fg=c15 bg=c0 | 15-15 fg=c51 bg=reset bold | 16-27 fg=c15 bg=c0 | 28-28 fg=c51 bg=reset bold | 29-79 fg=c15 bg=c0
+  style 16: 0-79 fg=c15 bg=c0
+  style 17: 0-79 fg=c15 bg=c0
+  style 18: 0-79 fg=c15 bg=c0
+  style 19: 0-79 fg=c15 bg=c0
+  style 20: 0-79 fg=c15 bg=c0
+  style 21: 0-79 fg=c15 bg=c0
+  style 22: 0-79 fg=c15 bg=c0
+  style 23: 0-79 fg=c15 bg=c0
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (15.00,4.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (15.00,4.00 50.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n2 (15.00,4.00 14.00x16.00) r=0.00 fg=c15 bg=c0
+  Fill n3 (16.00,5.00 5.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n3 @(16.00,5.00) clip=(16.00,5.00 5.00x1.00) fg=c15 bg=c0 mods= "Name:"
+  Fill n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n4 (16.00,6.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n4 @(17.00,7.00) clip=(17.00,7.00 10.00x1.00) fg=c15 bg=c0 mods= "__________"
+  Fill n5 (16.00,9.00 9.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n5 @(16.00,9.00) clip=(16.00,9.00 9.00x1.00) fg=c15 bg=c0 mods= "Password:"
+  Fill n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n6 (16.00,10.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Text n6 @(17.00,11.00) clip=(17.00,11.00 10.00x1.00) fg=c15 bg=c0 mods= "******____"
+  Fill n7 (16.00,13.00 12.00x1.00) r=0.00 fg=c15 bg=c0
+  Fill n8 (16.00,13.00 6.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n8 @(16.00,13.00) clip=(16.00,13.00 6.00x1.00) fg=c15 bg=c0 mods= "Typed:"
+  Fill n9 (22.00,13.00 0.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n9 @(22.00,13.00) clip=(22.00,13.00 0.00x1.00) fg=c15 bg=c0 mods= ""
+  Fill n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Border n10 (16.00,14.00 12.00x3.00) r=0.00 fg=c15 bg=c0
+  Fill n11 (17.00,15.00 10.00x1.00) r=0.00 fg=c15 bg=c0
+  Text n11 @(17.00,15.00) clip=(17.00,15.00 10.00x1.00) fg=c15 bg=c0 mods= "Clear name"
+  CellGrid (15.00,4.00 1.00x1.00) cells=1
+    |\u{d}|
+  CellGrid (15.00,15.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (28.00,15.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=10
+  application (15.00,4.00 80.00x24.00) id=0 label=""
+    application (15.00,4.00 50.00x16.00) id=1 label=""
+      group (15.00,4.00 14.00x16.00) id=2 label=""
+        text (16.00,5.00 5.00x1.00) id=3 label="Name:"
+        textbox (16.00,6.00 12.00x3.00) id=4 label="your name" value=""
+        text (16.00,9.00 9.00x1.00) id=5 label="Password:"
+        textbox (16.00,10.00 12.00x3.00) id=6 label="secret"
+        group (16.00,13.00 12.00x1.00) id=7 label=""
+          text (16.00,13.00 6.00x1.00) id=8 label="Typed:"
+        button (16.00,14.00 12.00x3.00) id=10 label="Clear name"

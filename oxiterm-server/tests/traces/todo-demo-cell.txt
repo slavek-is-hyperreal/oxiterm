@@ -1,0 +1,162 @@
+##### step 1: initial frame
+page: demos/todo.thtml
+notices: (none)
+state: task_list=-
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📝  Todo List — append and List state                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  | Tasks                                         List:[] ╭──────────────────────╮|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ List state           │|
+  | │ [✓] Fix auth bug                         │ DONE │ │ │                      │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │ append:k=v           │|
+  |                                                       │ adds to list.        │|
+  | ╭────────────────────────────────────────┌────────┐─╮ │ clear:k clears.      │|
+  | │ [→] Implement Hot Reload               │ ACTIVE │ │ │ bind-state="k"       │|
+  | ╰────────────────────────────────────────└────────┘─╯ │ shows [a, b].        │|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ State persists       │|
+  | │ [ ] Write documentation                  │ TODO │ │ │ through navigation.  │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │                      │|
+  |                                                       │                      │|
+  |                                                       │                      │|
+  | ┌───────────────────────────────────────────────────┐ │                      │|
+  | │              [ + Add to state list ]              │ │                      │|
+  | └───────────────────────────────────────────────────┘ │                      │|
+  |                                                       │                      │|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#4ade80 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c15 bg=#0f172a | 1-5 fg=#4ade80 bg=#0f172a | 6-46 fg=c15 bg=#0f172a | 47-51 fg=#475569 bg=#0f172a | 52-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 5: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 6: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#94a3b8 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#334155 bg=#0f172a | 2-43 fg=#475569 bg=#0f172a | 44-44 fg=#334155 bg=#0f172a | 45-50 fg=#475569 bg=#0f172a | 51-51 fg=#334155 bg=#0f172a | 52-52 fg=#475569 bg=#0f172a | 53-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 8: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#475569 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 9: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 10: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-71 fg=#475569 bg=#0f172a | 72-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 11: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-41 fg=#e2e8f0 bg=#0f172a | 42-42 fg=#38bdf8 bg=#0f172a | 43-43 fg=#e2e8f0 bg=#0f172a | 44-49 fg=#38bdf8 bg=#0f172a | 50-50 fg=#e2e8f0 bg=#0f172a | 51-51 fg=#38bdf8 bg=#0f172a | 52-52 fg=#e2e8f0 bg=#0f172a | 53-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 12: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 13: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 14: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 15: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#1e293b bg=#0f172a | 2-43 fg=#94a3b8 bg=#0f172a | 44-44 fg=#1e293b bg=#0f172a | 45-45 fg=#94a3b8 bg=#0f172a | 46-49 fg=#475569 bg=#0f172a | 50-50 fg=#94a3b8 bg=#0f172a | 51-51 fg=#1e293b bg=#0f172a | 52-52 fg=#94a3b8 bg=#0f172a | 53-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-75 fg=#475569 bg=#0f172a | 76-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 16: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 17: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 18: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 19: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 20: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-15 fg=c15 bg=#0f172a | 16-38 fg=#4ade80 bg=#0f172a | 39-52 fg=c15 bg=#0f172a | 53-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 21: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 22: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+##### step 2: append
+page: demos/todo.thtml
+notices: (none)
+state: task_list=List(["new task"])
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📝  Todo List — append and List state                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  | Tasks                                 List:[new task] ╭──────────────────────╮|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ List state           │|
+  | │ [✓] Fix auth bug                         │ DONE │ │ │                      │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │ append:k=v           │|
+  |                                                       │ adds to list.        │|
+  | ╭────────────────────────────────────────┌────────┐─╮ │ clear:k clears.      │|
+  | │ [→] Implement Hot Reload               │ ACTIVE │ │ │ bind-state="k"       │|
+  | ╰────────────────────────────────────────└────────┘─╯ │ shows [a, b].        │|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ State persists       │|
+  | │ [ ] Write documentation                  │ TODO │ │ │ through navigation.  │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │                      │|
+  |                                                       │                      │|
+  |                                                       │                      │|
+  | ┌───────────────────────────────────────────────────┐ │                      │|
+  | │              [ + Add to state list ]              │ │                      │|
+  | └───────────────────────────────────────────────────┘ │                      │|
+  |                                                       │                      │|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#4ade80 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c15 bg=#0f172a | 1-5 fg=#4ade80 bg=#0f172a | 6-38 fg=c15 bg=#0f172a | 39-43 fg=#475569 bg=#0f172a | 44-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 5: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 6: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#94a3b8 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#334155 bg=#0f172a | 2-43 fg=#475569 bg=#0f172a | 44-44 fg=#334155 bg=#0f172a | 45-50 fg=#475569 bg=#0f172a | 51-51 fg=#334155 bg=#0f172a | 52-52 fg=#475569 bg=#0f172a | 53-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 8: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#475569 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 9: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 10: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-71 fg=#475569 bg=#0f172a | 72-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 11: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-41 fg=#e2e8f0 bg=#0f172a | 42-42 fg=#38bdf8 bg=#0f172a | 43-43 fg=#e2e8f0 bg=#0f172a | 44-49 fg=#38bdf8 bg=#0f172a | 50-50 fg=#e2e8f0 bg=#0f172a | 51-51 fg=#38bdf8 bg=#0f172a | 52-52 fg=#e2e8f0 bg=#0f172a | 53-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 12: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 13: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 14: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 15: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#1e293b bg=#0f172a | 2-43 fg=#94a3b8 bg=#0f172a | 44-44 fg=#1e293b bg=#0f172a | 45-45 fg=#94a3b8 bg=#0f172a | 46-49 fg=#475569 bg=#0f172a | 50-50 fg=#94a3b8 bg=#0f172a | 51-51 fg=#1e293b bg=#0f172a | 52-52 fg=#94a3b8 bg=#0f172a | 53-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-75 fg=#475569 bg=#0f172a | 76-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 16: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 17: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 18: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 19: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 20: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-15 fg=c15 bg=#0f172a | 16-38 fg=#4ade80 bg=#0f172a | 39-52 fg=c15 bg=#0f172a | 53-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 21: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 22: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
+##### step 3: append again
+page: demos/todo.thtml
+notices: (none)
+state: task_list=List(["new task", "new task"])
+grid:
+  size 80x24
+  |┌──────────────────────────────────────────────────────────────────────────────┐|
+  |│  📝  Todo List — append and List state                               >< Back< │|
+  |└──────────────────────────────────────────────────────────────────────────────┘|
+  ||
+  | Tasks                       List:[new task, new task] ╭──────────────────────╮|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ List state           │|
+  | │ [✓] Fix auth bug                         │ DONE │ │ │                      │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │ append:k=v           │|
+  |                                                       │ adds to list.        │|
+  | ╭────────────────────────────────────────┌────────┐─╮ │ clear:k clears.      │|
+  | │ [→] Implement Hot Reload               │ ACTIVE │ │ │ bind-state="k"       │|
+  | ╰────────────────────────────────────────└────────┘─╯ │ shows [a, b].        │|
+  |                                                       │                      │|
+  | ╭──────────────────────────────────────────┌──────┐─╮ │ State persists       │|
+  | │ [ ] Write documentation                  │ TODO │ │ │ through navigation.  │|
+  | ╰──────────────────────────────────────────└──────┘─╯ │                      │|
+  |                                                       │                      │|
+  |                                                       │                      │|
+  | ┌───────────────────────────────────────────────────┐ │                      │|
+  | │              [ + Add to state list ]              │ │                      │|
+  | └───────────────────────────────────────────────────┘ │                      │|
+  |                                                       │                      │|
+  |                         ▼ PgDn  line 1/4  ░░░░░░░░ 0%|
+  style 0: 0-79 fg=#334155 bg=#1e293b
+  style 1: 0-0 fg=#334155 bg=#1e293b | 1-2 fg=c15 bg=#1e293b | 3-38 fg=#4ade80 bg=#1e293b | 39-69 fg=c15 bg=#1e293b | 70-70 fg=c51 bg=reset bold | 71-76 fg=#475569 bg=#1e293b | 77-77 fg=c51 bg=reset bold | 78-78 fg=c15 bg=#1e293b | 79-79 fg=#334155 bg=#1e293b
+  style 2: 0-79 fg=#334155 bg=#1e293b
+  style 3: 0-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c15 bg=#0f172a | 1-5 fg=#4ade80 bg=#0f172a | 6-28 fg=c15 bg=#0f172a | 29-33 fg=#475569 bg=#0f172a | 34-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 5: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 6: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#94a3b8 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#334155 bg=#0f172a | 2-43 fg=#475569 bg=#0f172a | 44-44 fg=#334155 bg=#0f172a | 45-50 fg=#475569 bg=#0f172a | 51-51 fg=#334155 bg=#0f172a | 52-52 fg=#475569 bg=#0f172a | 53-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 8: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#334155 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-66 fg=#475569 bg=#0f172a | 67-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 9: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 10: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-71 fg=#475569 bg=#0f172a | 72-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 11: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#38bdf8 bg=#0f172a | 2-41 fg=#e2e8f0 bg=#0f172a | 42-42 fg=#38bdf8 bg=#0f172a | 43-43 fg=#e2e8f0 bg=#0f172a | 44-49 fg=#38bdf8 bg=#0f172a | 50-50 fg=#e2e8f0 bg=#0f172a | 51-51 fg=#38bdf8 bg=#0f172a | 52-52 fg=#e2e8f0 bg=#0f172a | 53-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 12: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#38bdf8 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-69 fg=#475569 bg=#0f172a | 70-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 13: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 14: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-70 fg=#475569 bg=#0f172a | 71-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 15: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#1e293b bg=#0f172a | 2-43 fg=#94a3b8 bg=#0f172a | 44-44 fg=#1e293b bg=#0f172a | 45-45 fg=#94a3b8 bg=#0f172a | 46-49 fg=#475569 bg=#0f172a | 50-50 fg=#94a3b8 bg=#0f172a | 51-51 fg=#1e293b bg=#0f172a | 52-52 fg=#94a3b8 bg=#0f172a | 53-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-56 fg=c15 bg=#0f172a | 57-75 fg=#475569 bg=#0f172a | 76-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 16: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#1e293b bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 17: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 18: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 19: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 20: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-15 fg=c15 bg=#0f172a | 16-38 fg=#4ade80 bg=#0f172a | 39-52 fg=c15 bg=#0f172a | 53-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 21: 0-0 fg=c15 bg=#0f172a | 1-53 fg=#4ade80 bg=#0f172a | 54-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 22: 0-54 fg=c15 bg=#0f172a | 55-55 fg=#334155 bg=#0f172a | 56-77 fg=c15 bg=#0f172a | 78-78 fg=#334155 bg=#0f172a | 79-79 fg=c15 bg=#0f172a
+  style 23: 0-24 fg=c255 bg=c236 | 25-53 fg=c255 bg=c236 bold | 54-79 fg=c255 bg=c236
