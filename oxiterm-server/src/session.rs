@@ -240,12 +240,16 @@ impl ClientSession {
     }
 
     /// Sends a permanent app token frame (0x35) to web clients.
+    ///
+    /// Transport-side write kept on purpose (OxiUI Phase 4 step 2): it is called from
+    /// `apply_state_patch`, i.e. from the dispatcher thread / push endpoint, not from the event
+    /// loop, so it cannot go through the loop's `FrameSink`. Step 3 (responses re-enter as
+    /// events) / step 5 (`ClientSession` split) move it into the sink. Bytes come from
+    /// `web::encode_notice`.
     pub fn send_app_token_frame(&self, token: &str) {
         if self.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
             if let Some((_, ref tx)) = *self.web_frame_tx.read() {
-                let mut frame = vec![0x35];
-                frame.extend_from_slice(token.as_bytes());
-                let _ = tx.try_send(frame);
+                let _ = tx.try_send(crate::web::encode_notice(&oxiterm_renderer::ClientNotice::AppToken(token.to_string())));
             }
         }
     }
@@ -1299,27 +1303,15 @@ impl EventLoop {
     ///
     /// Message is FIXED and GENERIC — never includes the requested path or failure reason
     /// (no-enumeration-oracle rule, Plan 2).
-    pub(crate) fn send_nav_error(&self) {
-        if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Some((_, ref tx)) = *self.session.web_frame_tx.read() {
-                let mut frame = vec![0x34];
-                frame.extend_from_slice("Nie znaleziono strony".as_bytes());
-                let _ = tx.try_send(frame);
-            }
-        }
+    pub(crate) fn send_nav_error(&mut self) {
+        let _ = self.frame_sink.send_notice(oxiterm_renderer::ClientNotice::NavError);
     }
 
     /// Sends a NAV throttle notice (0x34 "Zwolnij ;)") to web clients.
     ///
     /// Called at most once per throttle episode (guarded by `is_first_throttle()`).
-    pub(crate) fn send_nav_throttle_notice(&self) {
-        if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Some((_, ref tx)) = *self.session.web_frame_tx.read() {
-                let mut frame = vec![0x34];
-                frame.extend_from_slice("Zwolnij ;)".as_bytes());
-                let _ = tx.try_send(frame);
-            }
-        }
+    pub(crate) fn send_nav_throttle_notice(&mut self) {
+        let _ = self.frame_sink.send_notice(oxiterm_renderer::ClientNotice::NavThrottle);
     }
 
     /// Preprocesses a raw InputEvent before dispatch.
@@ -1357,7 +1349,7 @@ impl EventLoop {
     /// SSH sessions: logs a warning and does nothing (`open:` is web-only in plan 2).
     ///
     /// Only `http` and `https` schemes are permitted; others are rejected with a warning.
-    pub(crate) fn handle_open_url(&self, url: String, _source_node_id: NodeId) {
+    pub(crate) fn handle_open_url(&mut self, url: String, _source_node_id: NodeId) {
         let scheme_end = url.find(':').unwrap_or(0);
         let scheme = &url[..scheme_end];
         if scheme != "http" && scheme != "https" {
@@ -1366,11 +1358,7 @@ impl EventLoop {
         }
 
         if self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Some((_, ref tx)) = *self.session.web_frame_tx.read() {
-                let mut frame = vec![0x33];
-                frame.extend_from_slice(url.as_bytes());
-                let _ = tx.try_send(frame);
-            }
+            let _ = self.frame_sink.send_notice(oxiterm_renderer::ClientNotice::OpenUrl(url));
         } else {
             // SSH sessions: open: is WEB-ONLY in plan 2.
             // Plan 3 will add OSC 8 cell-level hyperlinks.
@@ -3026,6 +3014,23 @@ mod tests {
         assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("bob".to_string())));
     }
 
+    /// Frame sink double that records the `ClientNotice`s the loop raises (OxiUI phase 4 step 2).
+    struct NoticeCapture(Arc<parking_lot::Mutex<Vec<oxiterm_renderer::ClientNotice>>>);
+
+    impl oxiterm_renderer::FrameSink for NoticeCapture {
+        fn send_frame(&mut self, _f: &CellBuffer, _b: &CellBuffer) -> anyhow::Result<bool> { Ok(false) }
+        fn send_notice(&mut self, notice: oxiterm_renderer::ClientNotice) -> anyhow::Result<bool> {
+            self.0.lock().push(notice);
+            Ok(true)
+        }
+    }
+
+    fn capture_notices(el: &mut EventLoop) -> Arc<parking_lot::Mutex<Vec<oxiterm_renderer::ClientNotice>>> {
+        let seen = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.frame_sink = Box::new(NoticeCapture(seen.clone()));
+        seen
+    }
+
     #[test]
     fn test_32_open_https_emits_0x33() {
         let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
@@ -3038,17 +3043,13 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
-
-        let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
-        *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
         event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
 
-        let frame = open_rx.try_recv().expect("Should have received 0x33 frame");
-        assert_eq!(frame[0], 0x33);
-        assert_eq!(&frame[1..], b"https://example.com");
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::OpenUrl("https://example.com".to_string())]);
     }
 
     #[test]
@@ -3063,15 +3064,13 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
-
-        let (open_tx, mut open_rx) = tokio::sync::mpsc::channel(4);
-        *event_loop.session.web_frame_tx.write() = Some((1, open_tx));
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
         event_loop.handle_open_url("javascript:alert(1)".to_string(), NodeId(0));
 
-        assert!(open_rx.try_recv().is_err(), "javascript: URL must not emit 0x33");
+        assert!(seen.lock().is_empty(), "javascript: URL must not raise a notice");
     }
 
     #[test]
@@ -3086,13 +3085,13 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
-        // open_url_tx intentionally left as None (SSH path)
+        let mut event_loop = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let seen = capture_notices(&mut event_loop);
 
         use oxiterm_proto::dom::NodeId;
         // Must not panic, must not write to any channel
         event_loop.handle_open_url("https://example.com".to_string(), NodeId(0));
-        // Test passes if handle_open_url returns without panic
+        assert!(seen.lock().is_empty(), "SSH session: open: raises no notice");
     }
 
     #[test]
@@ -3235,6 +3234,7 @@ mod tests {
 
         let mut rx = None;
         let mut el = make_web_event_loop_with_channel(session, &mut rx);
+        let seen = capture_notices(&mut el);
         el.base_source_path = Some(temp.join("dummy.thtml"));
 
         // exhausting NAV tokens first so throttle is out of the way
@@ -3245,14 +3245,9 @@ mod tests {
         // Call send_nav_error directly to test the helper.
         el.send_nav_error();
 
-        let frames = drain_frames(rx.as_mut().unwrap());
-        let found = frames.iter().any(|f| {
-            f.len() > 1 && f[0] == 0x34 && {
-                let msg = std::str::from_utf8(&f[1..]).unwrap_or("");
-                msg == "Nie znaleziono strony"
-            }
-        });
-        assert!(found, "expected 0x34 'Nie znaleziono strony' frame, got: {:?}", frames);
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::NavError]);
+        // The loop no longer writes the transport channel itself.
+        assert!(drain_frames(rx.as_mut().unwrap()).is_empty());
     }
 
     #[test]
@@ -3271,7 +3266,7 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
 
         el.send_nav_error();
 
@@ -3295,16 +3290,18 @@ mod tests {
         let root = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Screen);
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
-        let el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let seen = capture_notices(&mut el);
 
         // Send two nav errors (simulating traversal case and missing case)
         el.send_nav_error();
         el.send_nav_error();
 
-        let frames = drain_frames(&mut frame_rx);
-        assert_eq!(frames.len(), 2, "expected exactly two frames");
-        assert_eq!(frames[0], frames[1], "traversal and missing must produce identical frames");
-        assert_eq!(frames[0][0], 0x34, "must be tag 0x34");
+        let notices = seen.lock().clone();
+        assert_eq!(notices.len(), 2, "expected exactly two notices");
+        assert_eq!(notices[0], notices[1], "traversal and missing must produce identical notices");
+        assert_eq!(notices[0], oxiterm_renderer::ClientNotice::NavError);
+        assert!(drain_frames(&mut frame_rx).is_empty(), "the loop must not write the transport channel");
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -3327,6 +3324,7 @@ mod tests {
         let root_id = arena.alloc(root);
         let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
         let mut el = EventLoop::new(session, event_bus, output_tx, doc, false);
+        let seen = capture_notices(&mut el);
 
         // Exhaust NAV tokens
         for _ in 0..crate::throttle::NAV_CAPACITY {
@@ -3345,11 +3343,9 @@ mod tests {
         assert_eq!(throttle_notices, 1,
             "exactly one throttle notice per episode; got {}", throttle_notices);
 
-        let frames = drain_frames(&mut frame_rx);
-        let notice_frames: Vec<_> = frames.iter().filter(|f| {
-            f.len() > 1 && f[0] == 0x34 && std::str::from_utf8(&f[1..]).unwrap_or("") == "Zwolnij ;)"
-        }).collect();
-        assert_eq!(notice_frames.len(), 1, "exactly one 0x34 'Zwolnij ;)' frame emitted");
+        assert_eq!(*seen.lock(), vec![oxiterm_renderer::ClientNotice::NavThrottle],
+            "exactly one NavThrottle notice emitted");
+        assert!(drain_frames(&mut frame_rx).is_empty(), "the loop must not write the transport channel");
     }
 
     #[test]

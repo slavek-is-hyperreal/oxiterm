@@ -3,6 +3,23 @@
 //! Provides WebSocket framing handlers (`WsFrameSink`), static assets routing,
 //! input event translators (keyboard, mouse, resize), and path traversal checks.
 
+/// WebSocket wire encoding of a [`oxiterm_renderer::ClientNotice`]: the ONLY place the notice
+/// tags and texts are defined. `0x33` + URL, `0x34` + fixed generic text, `0x35` + token.
+/// (Ungated: also used by `ClientSession::send_app_token_frame`.)
+pub fn encode_notice(notice: &oxiterm_renderer::ClientNotice) -> Vec<u8> {
+    use oxiterm_renderer::ClientNotice as N;
+    let (tag, text): (u8, &str) = match notice {
+        N::NavError => (0x34, "Nie znaleziono strony"),
+        N::NavThrottle => (0x34, "Zwolnij ;)"),
+        N::OpenUrl(url) => (0x33, url),
+        N::AppToken(token) => (0x35, token),
+    };
+    let mut frame = Vec::with_capacity(1 + text.len());
+    frame.push(tag);
+    frame.extend_from_slice(text.as_bytes());
+    frame
+}
+
 #[cfg(feature = "web")]
 pub mod web_impl {
     use std::sync::Arc;
@@ -289,6 +306,15 @@ pub mod web_impl {
     }
 
     impl FrameSink for WsFrameSink {
+        fn send_notice(&mut self, notice: oxiterm_renderer::ClientNotice) -> anyhow::Result<bool> {
+            // Notices are web-only. No sync_preamble: a notice must not emit 0x30/0x20/0x21.
+            // A full or missing channel is ignored, exactly as the loop did before.
+            if !self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(false);
+            }
+            Ok(self.send_bytes(super::encode_notice(&notice)).is_ok())
+        }
+
         fn update_document(&mut self, _doc: &oxiterm_renderer::document::THTMLDocument) -> anyhow::Result<()> {
             // R3: doc swap -> next frame is full, 0x21 emitted
             let _ = self.send_bytes(vec![0x21]);
@@ -2078,7 +2104,8 @@ pub mod web_impl {
                 root: oxiterm_proto::dom::NodeId(0),
                 dirty_nodes: Vec::new(),
             };
-            let event_loop = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+            let mut event_loop = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), crate::backpressure::BoundedFrameChannel::new(1).0, doc, false);
+            event_loop.frame_sink = Box::new(WsFrameSink::new(session.clone(), None));
 
             event_loop.handle_open_url("https://example.com".to_string(), oxiterm_proto::dom::NodeId(0));
             let msg1 = rx1.try_recv().unwrap();
@@ -2500,6 +2527,41 @@ pub mod web_impl {
             assert_eq!(state.get("_is_web"), Some(&crate::state::StateValue::Str("true".to_string())));
             assert_eq!(state.get("_username"), Some(&crate::state::StateValue::Str("guest".to_string())));
         }
+
+        #[test]
+        fn test_ws_sink_send_notice_writes_wire_bytes_for_web_only() {
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+            *session.web_frame_tx.write() = Some((1, tx));
+            let mut sink = WsFrameSink::new(session.clone(), None);
+
+            // SSH-like session: dropped.
+            assert!(!sink.send_notice(oxiterm_renderer::ClientNotice::NavError).unwrap());
+            assert!(rx.try_recv().is_err());
+
+            session.is_web_client.store(true, std::sync::atomic::Ordering::SeqCst);
+            assert!(sink.send_notice(oxiterm_renderer::ClientNotice::NavThrottle).unwrap());
+            assert_eq!(rx.try_recv().unwrap(), [&[0x34u8][..], b"Zwolnij ;)"].concat());
+            // No preamble frames (0x30/0x20/0x21) are interleaved.
+            assert!(rx.try_recv().is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod notice_encoding_tests {
+    use super::encode_notice;
+    use oxiterm_renderer::ClientNotice as N;
+
+    #[test]
+    fn notice_wire_bytes_are_unchanged() {
+        assert_eq!(encode_notice(&N::NavError), [&[0x34u8][..], b"Nie znaleziono strony"].concat());
+        assert_eq!(encode_notice(&N::NavThrottle), [&[0x34u8][..], b"Zwolnij ;)"].concat());
+        assert_eq!(encode_notice(&N::OpenUrl("https://example.com/a?b=1".into())), [&[0x33u8][..], b"https://example.com/a?b=1"].concat());
+        assert_eq!(encode_notice(&N::AppToken("tok-\u{142}".into())), [&[0x35u8][..], "tok-\u{142}".as_bytes()].concat());
+        // Empty token (cleared) is a bare tag.
+        assert_eq!(encode_notice(&N::AppToken(String::new())), vec![0x35]);
     }
 }
 

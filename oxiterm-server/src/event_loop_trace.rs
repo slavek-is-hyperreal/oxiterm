@@ -3,7 +3,8 @@
 //! Drives the REAL [`EventLoop`] (its `run()` on its own thread, exactly as the web/SSH
 //! hosts do) with scripted [`InputEvent`]s and records everything observable that leaves it:
 //! the final cell picture, the final display list and ARIA JSON (GUI sessions), the notices
-//! written to the WebSocket channel (0x33 / 0x34 / 0x35), the actions sent to a mocked App
+//! raised through `FrameSink::send_notice` (0x33 / 0x34; captured by `TraceSink`, encoded with
+//! the real WS encoding) or still written by the dispatcher thread (0x35), the actions sent to a mocked App
 //! Server and the bound state. The result is compared with a committed baseline in
 //! `tests/traces/`; an identical refactor yields an identical trace.
 //!
@@ -117,6 +118,9 @@ struct Shared {
 /// Frame sink double: records the latest picture, never swaps its decision (always "sent").
 struct TraceSink {
     shared: Arc<Shared>,
+    /// Same channel the session's transport writes to (the dispatcher thread's 0x35 still goes
+    /// there), so all notices stay one ordered stream for `drain_notices`.
+    notice_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
 }
 
 impl TraceSink {
@@ -145,6 +149,12 @@ impl FrameSink for TraceSink {
         Self::touch(&mut st);
         self.shared.cv.notify_all();
         Ok(true)
+    }
+
+    fn send_notice(&mut self, notice: oxiterm_renderer::ClientNotice) -> anyhow::Result<bool> {
+        // Capture adapter: encode with the real WS encoding, queue on the notice channel. Not a
+        // frame: no `frames`/`seq` bump (the harness watches the channel for the quiet window).
+        Ok(self.notice_tx.try_send(crate::web::encode_notice(&notice)).is_ok())
     }
 
     fn send_a11y(&mut self, json: &[u8]) -> anyhow::Result<bool> {
@@ -332,7 +342,7 @@ impl Run {
         let app_base = app_base.canonicalize().unwrap();
         *session.app_base_dir.write() = Some(app_base.clone());
         let (tx, notice_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4096);
-        *session.web_frame_tx.write() = Some((1, tx));
+        *session.web_frame_tx.write() = Some((1, tx.clone()));
 
         let page_path = app_base.join(page);
         let render_mode = if mode == Mode::Gui { RenderMode::Gui } else { RenderMode::Tui };
@@ -340,7 +350,7 @@ impl Run {
         let (output_tx, _output_rx) = crate::backpressure::BoundedFrameChannel::new(1);
         let shared = Arc::new(Shared { state: Mutex::new(SinkState::default()), cv: Condvar::new() });
         let mut el = EventLoop::new(session.clone(), Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
-        el.frame_sink = Box::new(TraceSink { shared: shared.clone() });
+        el.frame_sink = Box::new(TraceSink { shared: shared.clone(), notice_tx: tx });
         el.source_path = Some(page_path.clone());
         el.base_source_path = Some(page_path);
         if let Some(c) = &clock {

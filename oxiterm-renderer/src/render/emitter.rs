@@ -6,6 +6,24 @@
 use anyhow::Result;
 use crate::render::buffer::CellBuffer;
 
+/// A semantic out-of-band notice for the client, raised by the event loop (not a picture).
+///
+/// Lives next to [`FrameSink`] (which names it in a signature) so it moves to the core with
+/// it. The wire encoding is the sink's business (`oxiterm-server::web::encode_notice`); the
+/// user-visible texts are not part of the variants, to keep the generic-message rule
+/// (no enumeration oracle) in one place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientNotice {
+    /// Navigation target not found / failed to load. Generic by design: no path, no reason.
+    NavError,
+    /// NAV rate limit hit (once per throttle episode).
+    NavThrottle,
+    /// Ask the client to open this (already validated http/https) URL.
+    OpenUrl(String),
+    /// Permanent app token changed (empty string = cleared).
+    AppToken(String),
+}
+
 /// A sink representing an output channel for rendering frames (e.g. SSH session, raw terminal).
 pub trait FrameSink: Send {
     /// Compares front and back buffers, sends the diff update to the output channel.
@@ -24,6 +42,12 @@ pub trait FrameSink: Send {
     ///
     /// Returns `Ok(true)` if a message was actually transmitted (it is skipped when unchanged).
     fn send_a11y(&mut self, _json: &[u8]) -> Result<bool> { Ok(false) }
+
+    /// Delivers a [`ClientNotice`]. Only the web transport has a notice channel; SSH and
+    /// accessibility sinks keep the default and return `Ok(false)` (notice dropped).
+    ///
+    /// Returns `Ok(true)` if the notice was actually queued for the client.
+    fn send_notice(&mut self, _notice: ClientNotice) -> Result<bool> { Ok(false) }
 
     /// Updates the accessibility tree or client document representation.
     fn update_document(&mut self, _doc: &crate::document::THTMLDocument) -> Result<()> { Ok(()) }

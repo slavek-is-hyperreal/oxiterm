@@ -17,6 +17,6 @@ pub use arena::NodeArena;
 pub use document::THTMLDocument;
 pub use render::buffer::{CellBuffer, DoubleBuffer};
 pub use render::diff::{DiffEngine, AnsiCommand};
-pub use render::emitter::FrameSink;
+pub use render::emitter::{ClientNotice, FrameSink};
 pub use layout::types::{HitTester, LayoutResult, Rect};
 pub use layout::engine::LayoutEngine;
