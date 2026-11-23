@@ -428,12 +428,22 @@ pub struct EventLoop {
     /// CSS transitions and animations controller.
     pub animation_controller: crate::animation::AnimationController,
     /// Time source. Defaults to the session's host clock; tests and the trace harness swap in
-    /// a fake one. This is the only place the loop gets time from.
+    /// a fake one. Read only by the `run()` driver; a step-API host passes `now` itself.
     pub clock: Arc<dyn crate::clock::Clock>,
-    /// The loop's current time: `clock` read once per `run()` iteration, right after the
-    /// blocking receive returns. Everything below the loop (throttle, limiter, debouncer,
+    /// The loop's current time: the `now` of the latest `handle_event` / `tick` (the `run()`
+    /// driver reads `clock` once per iteration, right after the blocking receive). Everything below the loop (throttle, limiter, debouncer,
     /// animations) uses this value instead of reading a clock.
     pub now: crate::clock::MonoTime,
+    /// No frame has been rendered yet: the first `tick` renders unconditionally.
+    first_frame: bool,
+    /// An event since the last `tick` asked for a render (`handle_event` sets, `tick` clears).
+    needs_render: bool,
+    /// A render owed to the next `tick`: the frame limiter deferred one, or the driver hit its
+    /// per-batch event cap (`schedule_render`).
+    render_carry: bool,
+    /// At least one event was handled since the last `tick`. Without one, an active 16 ms
+    /// cadence renders on its own (the old "timeout while active" rule).
+    event_since_tick: bool,
 }
 
 /// Active pointer drag operation state machine tracking element relocation.
@@ -495,24 +505,21 @@ impl ScrollIndicator {
     }
 }
 
-/// What `wait_plan` decides before the blocking receive.
-struct WaitPlan {
-    /// 16 ms when animations / drag / media are active, else 1000 ms.
-    timeout: std::time::Duration,
-    /// Media animations, transitions or a drag are active.
-    is_active: bool,
-    /// Transitions are running (forces a render even when no event arrives).
-    transitions_active: bool,
-}
-
-/// What `receive_batch` reports back to the loop.
+/// What a driver learns from one batch of events.
 struct BatchOutcome {
-    /// Some event (or an active-cadence timeout) wants a render.
-    needs_render: bool,
-    /// The 100-event cap was hit: more events may be queued, render next iteration.
+    /// The 100-event cap was hit: more events may be queued, render on the next tick.
     capped: bool,
     /// Queue disconnected or quit requested: leave the loop.
     disconnected: bool,
+}
+
+/// Result of feeding one event to the step API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepOutcome {
+    /// Keyboard quit (SSH only): the host should end the session.
+    Quit,
+    /// Handled; keep going. Whether a render is wanted is recorded internally for `tick`.
+    Continue,
 }
 
 /// Result of handling one event.
@@ -666,6 +673,10 @@ impl EventLoop {
             throttle: crate::throttle::EventThrottle::new(now),
             active_drag: None,
             animation_controller: crate::animation::AnimationController::new(),
+            first_frame: true,
+            needs_render: false,
+            render_carry: false,
+            event_since_tick: false,
         };
         event_loop.rebuild_parent_map();
         event_loop.rebuild_focusable_nodes();
@@ -1415,55 +1426,53 @@ impl EventLoop {
         }
     }
 
-    /// Starts the main event loop thread driving keyboard and mouse coordinate reactions.
+    /// The server-side driver: the only place the event loop blocks (OxiUI Phase 4, step 7b).
     ///
-    /// Shape (OxiUI Phase 4, step 7a): `run()` only sequences named phases. The locals
-    /// `first_frame` / `pending_render` / `needs_render` are the only cross-phase state; they
-    /// travel through the small return structs `WaitPlan`, `BatchOutcome` and `EventOutcome`.
+    /// Per iteration: idle check, a blocking wait on the event source for at most
+    /// `next_deadline - now`, `handle_event` for each received event (the source stays locked
+    /// for the whole batch of at most 100), then `tick`. A browser or winit host does the same
+    /// with its own wait and calls `handle_event` / `tick` / `next_deadline` directly.
     pub fn run(&mut self) {
         // Must stay in `run()`: dropping it is what reports `loop_exited()` to the host.
         let _guard = EventLoopGuard { host: self.host.clone() };
         self.prepare_session();
+        self.first_frame = true;
+        self.render_carry = false;
+        self.needs_render = false;
+        self.event_since_tick = false;
 
-        let mut first_frame = true;
-        let mut pending_render = false;
         loop {
             if self.idle_expired() {
                 return;
             }
 
-            let mut needs_render = first_frame || pending_render;
-            first_frame = false;
-            pending_render = false;
+            // Based on the previous iteration's `now`, so the wait is exactly the planned 16 or
+            // 1000 ms and the clock is read once per iteration (after the wait).
+            let timeout = self
+                .next_deadline(self.now)
+                .map_or(std::time::Duration::from_millis(1000), |d| d - self.now);
 
-            let plan = self.wait_plan();
-            if plan.transitions_active {
-                needs_render = true;
-            }
-
-            let batch = self.receive_batch(plan.timeout, plan.is_active);
-            needs_render |= batch.needs_render;
-            // The 100-event cap defers the render to the next iteration. Assigned (not OR-ed)
-            // here, before `render_frame_if_due` below may also set it.
-            pending_render = batch.capped;
-
+            let (batch, now) = self.receive_batch(timeout);
             if batch.disconnected {
                 return;
             }
 
-            if self.poll_resize() {
-                needs_render = true;
-            }
-
-            if self.render_frame_if_due(needs_render) {
-                pending_render = true;
+            self.tick(now);
+            // The 100-event cap defers the render to the next iteration (after this tick).
+            if batch.capped {
+                self.schedule_render();
             }
         }
     }
 
-    /// One-time setup before the first iteration: state subscriptions, initial state
-    /// injection, `<for>` expansion, the web client's `current_page`, sink setup.
-    fn prepare_session(&mut self) {
+    /// Ensures the next `tick` renders (a render owed from a capped batch, or a host request).
+    pub fn schedule_render(&mut self) {
+        self.render_carry = true;
+    }
+
+    /// One-time setup before the first `handle_event` / `tick`: state subscriptions, initial
+    /// state injection, `<for>` expansion, the web client's `current_page`, sink setup.
+    pub fn prepare_session(&mut self) {
         {
             let mut state = self.session.state.write();
             Self::setup_state_subscriptions(&self.doc, &mut *state);
@@ -1480,7 +1489,8 @@ impl EventLoop {
         let _ = self.frame_sink.setup();
     }
 
-    /// Idle timeout check. True when the session died of idleness (`death_reason` is set).
+    /// Idle timeout check (host policy). True when the session died of idleness (`death_reason`
+    /// is set).
     fn idle_expired(&self) -> bool {
         // Anchored by spec [SA-10]. Perform idle timeout check (10 minutes) and terminate the session if exceeded.
         let elapsed = self.host.idle_for();
@@ -1493,27 +1503,35 @@ impl EventLoop {
         false
     }
 
-    /// How long the next wait may block, and whether the loop is in its 16 ms animation cadence.
-    fn wait_plan(&self) -> WaitPlan {
+    /// Media animations, transitions or a drag are active: the loop runs at the 16 ms cadence.
+    /// Returns `(cadence_active, transitions_active)`.
+    fn activity(&self) -> (bool, bool) {
         let has_active_transitions = self.animation_controller.has_active();
         let has_media_animations = self.has_active_animations();
         let is_dragging = self.active_drag.is_some();
-        let is_active = has_media_animations || has_active_transitions || is_dragging;
+        (has_media_animations || has_active_transitions || is_dragging, has_active_transitions)
+    }
 
-        let sleep_dur = if is_active {
+    /// When `tick` must run next if no event arrives: 16 ms from `now` while animations, a drag
+    /// or media are active, else 1000 ms. Never `None` yet; step 7c returns `None` when idle and
+    /// the host may wait for events indefinitely.
+    pub fn next_deadline(&self, now: crate::clock::MonoTime) -> Option<crate::clock::MonoTime> {
+        let (active, _) = self.activity();
+        let wait = if active {
             std::time::Duration::from_millis(16)
         } else {
             std::time::Duration::from_millis(1000)
         };
-        WaitPlan { timeout: sleep_dur, is_active, transitions_active: has_active_transitions }
+        Some(now + wait)
     }
 
-    /// The blocking wait plus draining up to 100 queued events. `events_in` stays locked for the
-    /// whole batch. Reads the clock once, right after the blocking wait.
-    fn receive_batch(&mut self, sleep_dur: std::time::Duration, is_active: bool) -> BatchOutcome {
-        let mut needs_render = false;
+    /// Driver only: the blocking wait plus draining up to 100 queued events, each fed to
+    /// `handle_event`. `events_in` stays locked for the whole batch. Reads the clock once, right
+    /// after the blocking wait, and returns that time.
+    fn receive_batch(&mut self, timeout: std::time::Duration) -> (BatchOutcome, crate::clock::MonoTime) {
         let mut capped = false;
         let mut disconnected = false;
+        let mut now = self.now;
         {
             let events_in = self.events_in.clone();
             let mut rx_lock = events_in.lock();
@@ -1525,17 +1543,13 @@ impl EventLoop {
                 }
 
                 let event_opt = if processed_count == 0 {
-                    let received = rx_lock.wait_event(sleep_dur);
+                    let received = rx_lock.wait_event(timeout);
                     // The one clock read of this iteration, after the blocking wait.
-                    self.now = self.clock.now();
+                    now = self.clock.now();
+                    self.now = now;
                     match received {
                         WaitResult::Event(e) => Some(e),
-                        WaitResult::Timeout => {
-                            if is_active {
-                                needs_render = true;
-                            }
-                            break;
-                        }
+                        WaitResult::Timeout => break,
                         WaitResult::Disconnected => {
                             info!("Event loop receiver disconnected. Exiting run loop.");
                             disconnected = true;
@@ -1552,24 +1566,58 @@ impl EventLoop {
                 };
 
                 processed_count += 1;
-            match self.handle_event(event) {
-                EventOutcome::Quit => {
+                if self.handle_event(event, now) == StepOutcome::Quit {
                     disconnected = true;
                     break;
                 }
-                EventOutcome::Handled { needs_render: event_needs_render } => {
-                    if event_needs_render {
-                        needs_render = true;
-                    }
-                }
             }
         }
+        (BatchOutcome { capped, disconnected }, now)
+    }
+
+    /// Step API: feeds one input event (keys, mouse, resize, patches, navigation). Never blocks.
+    /// Records internally that a render is wanted; `tick` performs it.
+    pub fn handle_event(&mut self, event: InputEvent, now: crate::clock::MonoTime) -> StepOutcome {
+        self.now = now;
+        self.event_since_tick = true;
+        match self.process_event(event) {
+            EventOutcome::Quit => StepOutcome::Quit,
+            EventOutcome::Handled { needs_render } => {
+                self.needs_render |= needs_render;
+                StepOutcome::Continue
+            }
         }
-        BatchOutcome { needs_render, capped, disconnected }
+    }
+
+    /// Step API: applies a due debounced resize and renders a frame when one is wanted and the
+    /// frame limiter allows it (emits through the sinks). Never blocks. Call it after the events
+    /// of a batch and whenever `next_deadline` passes.
+    pub fn tick(&mut self, now: crate::clock::MonoTime) {
+        self.now = now;
+        let (cadence_active, transitions_active) = self.activity();
+        // Unconditional clears: a render skipped because output is paused is dropped, not kept.
+        let first = std::mem::take(&mut self.first_frame);
+        let carry = std::mem::take(&mut self.render_carry);
+        let from_events = std::mem::take(&mut self.needs_render);
+        let had_event = std::mem::take(&mut self.event_since_tick);
+        let mut needs_render = first
+            || carry
+            || from_events
+            || transitions_active
+            // No event in this step: the active cadence's own timeout wants a frame.
+            || (cadence_active && !had_event);
+
+        if self.poll_resize() {
+            needs_render = true;
+        }
+
+        if self.render_frame_if_due(needs_render) {
+            self.render_carry = true;
+        }
     }
 
     /// Handles one input event (everything the old receive loop did per event).
-    fn handle_event(&mut self, event: InputEvent) -> EventOutcome {
+    fn process_event(&mut self, event: InputEvent) -> EventOutcome {
         let mut needs_render = false;
         self.host.touch_activity();
         let is_input_focused = self.focused_node
@@ -1790,7 +1838,7 @@ impl EventLoop {
     }
 
     /// Renders a frame when one is wanted and the frame limiter allows it. Returns true when the
-    /// limiter deferred the frame (the caller must retry next iteration: `pending_render`).
+    /// limiter deferred the frame (the caller must retry on the next tick: `render_carry`).
     fn render_frame_if_due(&mut self, needs_render: bool) -> bool {
         if needs_render && !self.output_paused {
             if self.frame_limiter.should_render(self.now) {
@@ -4607,6 +4655,137 @@ mod tests {
         el.animation_controller.tick(&mut el.doc, end_time);
         assert_eq!(el.doc.get_node(box_id).unwrap().style.width, Some(25.0));
         assert!(!el.animation_controller.has_active());
+    }
+
+    // ---- Phase 4 step 7b: the step API driven without threads ----
+
+    /// Frame sink that records each frame's rows as text.
+    struct RowsSink(Arc<parking_lot::Mutex<Vec<Vec<String>>>>);
+    impl oxiterm_renderer::FrameSink for RowsSink {
+        fn send_frame(&mut self, _f: &CellBuffer, back: &CellBuffer) -> anyhow::Result<bool> {
+            let w = back.width as usize;
+            let rows = (0..back.height as usize)
+                .map(|y| back.cells[y * w..(y + 1) * w].iter().filter(|c| !c.skip).map(|c| c.ch).collect())
+                .collect();
+            self.0.lock().push(rows);
+            Ok(true)
+        }
+    }
+
+    #[test]
+    fn test_step_api_counter_without_threads() {
+        use crate::action::FnActionHandler;
+        use crate::clock::{FakeClock, MonoTime};
+        use crate::loop_io::MemoryQueue;
+        use crate::page_source::{MemPageSource, PageSource};
+        use oxiterm_proto::input::{MouseAction, MouseButton, MouseInput};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let client_session = reg.create_session().unwrap();
+        *client_session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+
+        // Host-owned queue: action replies would come back through it (no thread involved).
+        let queue = MemoryQueue::new(128);
+        let handles = LoopHandles {
+            state: client_session.state_half.clone(),
+            events_in: Arc::new(parking_lot::Mutex::new(queue.clone())),
+            events_out: Arc::new(queue.clone()),
+            host: client_session.clone(),
+        };
+        let mem = MemPageSource::new([("counter.thtml", include_str!("../../examples/demos/counter.thtml"))]);
+        let page = mem.page_at(std::path::Path::new("counter.thtml"));
+        let doc = mem.load(&page, oxiterm_proto::style::RenderMode::Tui).unwrap();
+        let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut el = EventLoop::new(handles, Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        el.page_source = Arc::new(mem);
+        let frames = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.frame_sink = Box::new(RowsSink(frames.clone()));
+        let clock = FakeClock::new();
+        el.clock = Arc::new(clock.clone());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let c2 = calls.clone();
+        el.action_handler = Some(Arc::new(FnActionHandler(move |_p: &crate::action::DispatchPayload| {
+            c2.fetch_add(1, Ordering::SeqCst);
+            None
+        })));
+
+        // Initial tick renders the first frame (no events, no waiting).
+        el.prepare_session();
+        let t0 = MonoTime::from_millis(1000);
+        el.tick(t0);
+        assert_eq!(frames.lock().len(), 1, "initial tick renders a frame");
+
+        // Locate the counter text and the `+` button from the real layout.
+        let layout = el.layout_engine.last_layout.clone().unwrap();
+        let (ox, oy) = layout.get_centering_offset(&el.doc, 80, 24);
+        let find = |el: &EventLoop, pred: &dyn Fn(&oxiterm_proto::dom::Node) -> bool| {
+            el.doc.arena.iter().find(|(_, n)| pred(n)).map(|(id, _)| id).unwrap()
+        };
+        let text_id = find(&el, &|n| n.attrs.bind_state.as_deref() == Some("counter"));
+        let plus_id = find(&el, &|n| n.attrs.event_htmx.as_deref() == Some("inc:counter"));
+        let tr = layout.nodes.get(&text_id).unwrap().cells();
+        let pr = layout.nodes.get(&plus_id).unwrap().cells();
+        let value_at = |frame: &Vec<String>| -> String {
+            frame[(oy + tr.y) as usize].chars().skip((ox + tr.x) as usize).take(3).collect::<String>()
+        };
+        assert_eq!(value_at(&frames.lock()[0]).trim(), "0");
+
+        // Click `+`: handle_event records the render, tick (one second later) emits it.
+        let t1 = MonoTime::from_millis(2000);
+        let press = |col, row| InputEvent::MouseEvent(MouseInput {
+            col, row, button: MouseButton::Left, action: MouseAction::Press, modifiers: Default::default(),
+        });
+        let out = el.handle_event(press(ox + pr.x + pr.width / 2 + 1, oy + pr.y + pr.height / 2 + 1), t1);
+        assert_eq!(out, StepOutcome::Continue);
+        assert_eq!(frames.lock().len(), 1, "handle_event never renders");
+        el.tick(t1);
+        assert_eq!(client_session.state.read().get("counter"), Some(&crate::state::StateValue::Int(1)));
+        let fs = frames.lock();
+        assert_eq!(fs.len(), 2, "tick renders the frame the click asked for");
+        assert_eq!(value_at(&fs[1]).trim(), "1");
+        drop(fs);
+        // Action replies (none here) would be drained from the host queue and fed back.
+        assert!(queue.is_empty());
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "inc:counter is also dispatched to the in-process handler");
+
+        // Nothing pending: a later tick renders nothing.
+        el.tick(MonoTime::from_millis(3000));
+        assert_eq!(frames.lock().len(), 2);
+        assert_eq!(el.next_deadline(MonoTime::from_millis(3000)), Some(MonoTime::from_millis(4000)));
+    }
+
+    #[test]
+    fn test_next_deadline_16ms_active_1000ms_idle() {
+        use crate::clock::MonoTime;
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_proto::style::{AnimatableProperty, Easing, TransitionSpec};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let (output_tx, _) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut b = Node::new(NodeTag::Box);
+        b.style.width = Some(20.0);
+        b.style.transitions.push(TransitionSpec {
+            property: AnimatableProperty::Width, duration_ms: 100, delay_ms: 0, easing: Easing::Linear,
+        });
+        let box_id = arena.alloc(b);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![box_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+
+        let t = MonoTime::from_millis(1000);
+        el.animation_controller.sync_transitions(&mut el.doc, t);
+        assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(1000)), "idle");
+        el.doc.arena.get_mut(box_id).unwrap().style.width = Some(60.0);
+        el.animation_controller.sync_transitions(&mut el.doc, t);
+        assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(16)), "transition active");
+        el.animation_controller.tick(&mut el.doc, t + Duration::from_millis(200));
+        assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(1000)), "idle again");
     }
 }
 
