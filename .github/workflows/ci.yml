@@ -40,6 +40,13 @@ jobs:
       run: cargo test --workspace
     - name: Lints
       run: cargo clippy --workspace
+    # oxiterm-core must stay portable (browser and Android hosts). Build it alone so Cargo
+    # feature unification with the server cannot hide a native/server dependency.
+    - name: Core builds for wasm32 and Android
+      run: |
+        rustup target add aarch64-linux-android
+        cargo build -p oxiterm-core --target wasm32-unknown-unknown
+        cargo build -p oxiterm-core --target aarch64-linux-android
 
   audit:
     if: github.event_name != 'workflow_dispatch' || !inputs.coverage

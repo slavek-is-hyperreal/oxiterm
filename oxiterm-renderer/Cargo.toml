@@ -16,12 +16,12 @@ unicode-width = { workspace = true }
 parking_lot = { workspace = true }
 base64 = "0.22.1"
 image = "0.25"
+resvg = { version = "0.50", optional = true }
+rlottie = { version = "0.5.4", optional = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-resvg = "0.50"
-rlottie = "0.5.4"
-
-
-
-
-
+[features]
+# Native media: Lottie (rlottie C bindings), SVG (resvg), ffmpeg video, the filesystem asset
+# fallback and the clock-driven playback. Off = pure build for wasm/Android core: media nodes
+# render the same placeholder path the wasm build always used.
+default = ["native-media"]
+native-media = ["dep:rlottie", "dep:resvg"]

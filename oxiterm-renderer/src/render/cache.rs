@@ -2,10 +2,16 @@
 //!
 //! Provides FIFO-eviction caches for images, SVG trees, Lottie animations, and
 //! processes video rendering streams via external tools such as FFmpeg.
+//!
+//! Everything that needs threads, the filesystem, a clock or C bindings (rlottie, resvg, ffmpeg)
+//! is behind the `native-media` feature; `PlaybackRegistry`'s pure toggle/hover state (`.riv`)
+//! is always available.
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock, OnceLock};
+use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "native-media")]
+use std::sync::{Arc, RwLock};
 
 /// Cache lookup key for rendered graphic assets.
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
@@ -37,18 +43,20 @@ pub struct CacheValue {
 }
 
 /// A wrapper around rlottie `Animation` that makes it safe to share across threads.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 pub struct SafeAnimation {
     /// The underlying rlottie Animation instance.
     pub anim: rlottie::Animation,
 }
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 unsafe impl Send for SafeAnimation {}
 
 /// Playback tracking state of an animated or interactive media asset.
 #[derive(Clone)]
 pub struct PlaybackState {
-    /// Timestamp when media rendering started.
+    /// Timestamp when media rendering started (native media only: lottie frame pacing; the pure
+    /// build has no clock).
+    #[cfg(feature = "native-media")]
     pub start_time: std::time::Instant,
     /// Is the user cursor currently hovering over this element.
     pub hover: bool,
@@ -59,7 +67,7 @@ pub struct PlaybackState {
     /// State toggle switcher state (e.g. play/pause).
     pub toggled: bool,
     /// Optional reference to the underlying Lottie animation.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "native-media")]
     pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
 }
 
@@ -84,12 +92,13 @@ impl PlaybackRegistry {
             return state.clone();
         }
         let state = PlaybackState {
+            #[cfg(feature = "native-media")]
             start_time: std::time::Instant::now(),
             hover: false,
             click_active: false,
             click_coord: None,
             toggled: false,
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "native-media")]
             lottie_animation: None,
         };
         lock.insert(path.to_path_buf(), state.clone());
@@ -97,10 +106,11 @@ impl PlaybackRegistry {
     }
 
     /// Fetches or parses Lottie animation files into the playback registry.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "native-media")]
     pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
         let mut lock = self.states.lock().unwrap();
         let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
+            #[cfg(feature = "native-media")]
             start_time: std::time::Instant::now(),
             hover: false,
             click_active: false,
@@ -180,12 +190,12 @@ impl AssetCache {
 /// A cache for parsed resvg vector graphics Trees.
 ///
 /// Implements a simple FIFO eviction strategy when the capacity limit of 20 is reached.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 pub struct SvgCache {
     trees: Mutex<VecDeque<(PathBuf, Arc<resvg::usvg::Tree>)>>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 impl SvgCache {
     const CAPACITY: usize = 20;
 
@@ -226,17 +236,17 @@ impl SvgCache {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 use std::process::{Child, Command, Stdio};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 use std::io::Read;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 use std::thread;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 use std::time::Instant;
 
 /// Active video streaming session pipe connecting to an FFmpeg background process.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 pub struct VideoPlayer {
     /// Target frame output width in pixels.
     pub width: u32,
@@ -252,7 +262,7 @@ pub struct VideoPlayer {
     pub last_accessed: Instant,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 impl Drop for VideoPlayer {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -261,12 +271,12 @@ impl Drop for VideoPlayer {
 }
 
 /// Registry managing active background FFmpeg subprocess streams.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 pub struct VideoPlayerRegistry {
     players: Mutex<HashMap<(PathBuf, u32, u32, u32), VideoPlayer>>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 impl VideoPlayerRegistry {
     /// Returns the global singleton instance of the registry.
     pub fn get() -> &'static Self {

@@ -69,11 +69,11 @@ impl Renderer {
             return Ok(bytes);
         }
         
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(feature = "native-media"))]
         {
             Err(anyhow::anyhow!("AssetNotFound: {}", path_str))
         }
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "native-media")]
         {
             std::fs::read(path).map_err(|e| anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e))
         }
@@ -325,7 +325,7 @@ impl Renderer {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "native-media")]
     fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> image::RgbaImage {
         let mut rgba_data = pixmap.data().to_vec();
         for pixel in rgba_data.chunks_exact_mut(4) {
@@ -461,7 +461,7 @@ impl Renderer {
             // Fetch playback state if animation
             let mut frame_idx = None;
             if is_lottie {
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "native-media")]
                 {
                     let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
                     if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
@@ -479,7 +479,7 @@ impl Renderer {
                         frame_idx = Some(0);
                     }
                 }
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(not(feature = "native-media"))]
                 {
                     frame_idx = Some(0);
                 }
@@ -549,11 +549,11 @@ impl Renderer {
 
             // 2. Cache miss. Render from scratch
             let img_result = if is_svg {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(not(feature = "native-media"))]
                 {
                     Err(anyhow::anyhow!("SVG rendering not supported on WASM"))
                 }
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "native-media")]
                 {
                     // SVG rendering via resvg + tiny-skia
                     (|| -> anyhow::Result<image::RgbaImage> {
@@ -572,11 +572,11 @@ impl Renderer {
                     })()
                 }
             } else if is_lottie {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(not(feature = "native-media"))]
                 {
                     Err(anyhow::anyhow!("Lottie rendering not supported on WASM"))
                 }
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "native-media")]
                 {
                     // Native Lottie Rendering using rlottie
                     (|| -> anyhow::Result<image::RgbaImage> {
@@ -601,11 +601,11 @@ impl Renderer {
                     })()
                 }
             } else if is_rive {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(not(feature = "native-media"))]
                 {
                     Err(anyhow::anyhow!("Rive rendering not supported on WASM"))
                 }
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(feature = "native-media")]
                 {
                     // Procedural Rive Toggle Button widget simulation.
                     // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
@@ -835,6 +835,7 @@ impl Renderer {
                 return;
             }
 
+            #[cfg(feature = "native-media")]
             let fps = if profile.supports_kitty_gfx {
                 30
             } else if profile.supports_sixel {
@@ -843,18 +844,11 @@ impl Renderer {
                 2
             };
 
-            let frame: Option<std::sync::Arc<Vec<u8>>> = {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    None
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps)
-                }
-            };
+            #[cfg(feature = "native-media")]
+            let frame: Option<std::sync::Arc<Vec<u8>>> =
+                crate::render::cache::VideoPlayerRegistry::get().get_frame(&resolved_path, pixel_w, pixel_h, fps);
 
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "native-media")]
             if let Some(raw_rgba) = frame {
                 if profile.supports_kitty_gfx {
                     // Zero-copy transmit path. Pass Arc slice reference directly to transmit_image to avoid allocation.
@@ -1334,7 +1328,7 @@ mod tests {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "native-media")]
 pub fn unpremultiply_bgra_to_rgba(data: &[rlottie::Bgra], width: u32, height: u32) -> image::RgbaImage {
     let mut rgba_data = Vec::with_capacity(data.len() * 4);
     for pixel in data {

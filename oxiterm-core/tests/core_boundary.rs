@@ -114,3 +114,21 @@ fn scanner_detects_forbidden_tokens_and_ignores_tests_and_comments() {
     let ok = "// uses tokio and Instant::now in a comment\nfn f() {}\n#[cfg(test)]\nmod t { use std::fs; }\n";
     assert!(violations("ok.rs", ok).is_empty());
 }
+
+/// The renderer's `native-media` feature (rlottie C bindings, resvg, ffmpeg, threads, clock) must
+/// stay off for the core, directly and through `oxiterm-a11y` (feature unification would turn it
+/// on again otherwise).
+#[test]
+fn renderer_is_used_without_native_media() {
+    for rel in ["/Cargo.toml", "/../oxiterm-a11y/Cargo.toml"] {
+        let toml = std::fs::read_to_string(format!("{}{}", env!("CARGO_MANIFEST_DIR"), rel)).unwrap();
+        let line = toml
+            .lines()
+            .find(|l| l.trim_start().starts_with("oxiterm-renderer"))
+            .unwrap_or_else(|| panic!("{rel}: no oxiterm-renderer dependency"));
+        assert!(
+            line.contains("default-features = false") && !line.contains("native-media"),
+            "{rel}: oxiterm-renderer must use default-features = false: {line}"
+        );
+    }
+}

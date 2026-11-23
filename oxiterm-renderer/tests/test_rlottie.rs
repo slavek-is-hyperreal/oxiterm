@@ -1,3 +1,4 @@
+#![cfg(feature = "native-media")]
 #[cfg(test)]
 mod tests {
     use std::path::Path;
