@@ -219,7 +219,7 @@ impl SessionState {
     /// Accepts only a relative `.thtml` path for a `navigate` patch: no scheme, no absolute
     /// path, no `open:` prefix, bounded length. Containment within the app base dir is still
     /// enforced by the event loop when the page is loaded.
-    pub(crate) fn sanitize_navigate_target(path: &str) -> Option<String> {
+    pub fn sanitize_navigate_target(path: &str) -> Option<String> {
         let ok = !path.is_empty()
             && path.len() <= 512
             && path.ends_with(".thtml")
@@ -242,7 +242,7 @@ impl SessionState {
     /// the event loop has already taken `navigate`, `open_url` and `set_app_token` out. Enforces
     /// limits on key lengths, array items, and payload sizes to mitigate DoS, and refuses
     /// reserved (`_`-prefixed) keys.
-    pub(crate) fn apply_patch_keys(&self, obj: serde_json::Map<String, serde_json::Value>) {
+    pub fn apply_patch_keys(&self, obj: serde_json::Map<String, serde_json::Value>) {
         {
             // Anchored by spec [SEC-11a]: limit 100 keys per patch
             if obj.len() > 100 {

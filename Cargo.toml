@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "oxiterm-server",
+    "oxiterm-core",
     "oxiterm-proto",
     "oxiterm-renderer",
     "oxiterm-cli",

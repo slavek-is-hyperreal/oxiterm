@@ -7,7 +7,7 @@
 //!
 //! This module is written to move to `oxiterm-core`: the trait signature uses only
 //! `std::path` types and nothing here touches the disk. It still parses through
-//! `crate::loader::load_thtml_str_mode` (pure); splitting `loader.rs` is part of step 8.
+//! `crate::loader::load_thtml_str_mode` (pure).
 //!
 //! Errors are deliberately generic: a missing page, a traversal attempt, an absolute path and a
 //! symlink escape are all the same [`PageError::Unavailable`], so a client cannot probe the
@@ -87,7 +87,7 @@ pub fn with_thtml_ext(target: &str) -> String {
     t
 }
 
-pub(crate) fn strip_mobile(target: &str) -> String {
+pub fn strip_mobile(target: &str) -> String {
     if target.contains("_mobile.thtml") {
         target.replace("_mobile.thtml", ".thtml")
     } else {

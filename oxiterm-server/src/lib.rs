@@ -6,34 +6,32 @@
 #![allow(clippy::all, clippy::pedantic)]
 
 pub mod config;
-pub mod action;
+pub use oxiterm_core::action;
 pub mod dispatcher;
 pub mod metrics;
 pub mod ratelimit;
-pub mod frame_limiter;
-pub mod throttle;
+pub use oxiterm_core::frame_limiter;
+pub use oxiterm_core::throttle;
 pub mod session;
-pub mod events;
+pub use oxiterm_core::events;
 pub mod ssh;
 pub mod backpressure;
 pub mod loader;
 pub mod placeholder;
 pub mod url_validator;
-pub mod state;
+pub use oxiterm_core::state;
 pub mod web;
 pub mod pathsafe;
-pub mod page_source;
+pub use oxiterm_core::page_source;
 pub mod fs_page_source;
-pub mod identity;
-pub mod expand;
-pub mod animation;
-pub mod clock;
+pub use oxiterm_core::identity;
+pub use oxiterm_core::expand;
+pub use oxiterm_core::animation;
+pub use oxiterm_core::clock;
 pub mod host_clock;
-pub mod session_state;
-pub mod loop_io;
+pub use oxiterm_core::session_state;
+pub use oxiterm_core::loop_io;
 pub mod host_queue;
-#[cfg(test)]
-mod core_boundary;
 
 
 pub use config::OxiTermConfig;

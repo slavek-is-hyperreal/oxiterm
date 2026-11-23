@@ -52,8 +52,9 @@ impl TokenBucket {
         self.last_refill = now;
     }
 
-    /// Force-sets token count (for testing only).
-    #[cfg(test)]
+    /// Force-sets token count (for testing only; used by oxiterm-server's tests, hence not
+    /// `cfg(test)`).
+    #[doc(hidden)]
     pub fn set_tokens(&mut self, t: f64) {
         self.tokens = t.min(self.capacity as f64);
     }

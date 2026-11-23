@@ -2442,6 +2442,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxiterm-core"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "oxiterm-proto",
+ "oxiterm-renderer",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "oxiterm-proto"
 version = "0.2.0"
 dependencies = [
@@ -2507,6 +2520,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "oxiterm-a11y",
+ "oxiterm-core",
  "oxiterm-proto",
  "oxiterm-renderer",
  "parking_lot",

@@ -1,0 +1,16 @@
+[package]
+name = "oxiterm-core"
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# Must NOT depend on tokio, prometheus, russh, ureq, hyper, notify or oxiterm-server
+# (enforced by tests/core_boundary.rs).
+[dependencies]
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { path = "../oxiterm-renderer" }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
