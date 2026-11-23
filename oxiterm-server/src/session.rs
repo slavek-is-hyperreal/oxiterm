@@ -1514,9 +1514,12 @@ impl EventLoop {
 
     /// When `tick` must run next if no event arrives: 16 ms from `now` while animations, a drag
     /// or media are active, else 1000 ms; earlier when a debounced resize is pending (its
-    /// expiry, see `ResizeDebouncer::due_at`), so a new size no longer waits for the idle
-    /// timeout. Never `None` yet; a later step may return `None` when idle so the host can wait
-    /// for events indefinitely.
+    /// expiry, see `ResizeDebouncer::due_at`) and, while a render is owed (deferred by the frame
+    /// limiter, or wanted by an event not yet ticked), at the limiter's next allowed instant
+    /// (`FrameRateLimiter::next_allowed`; `now` when a frame is allowed already), so a deferred
+    /// frame no longer waits for the idle cadence. The result may be at or before `now`; the
+    /// wait computed from it saturates to zero. Never `None` yet; a later step may return `None`
+    /// when idle so the host can wait for events indefinitely.
     pub fn next_deadline(&self, now: crate::clock::MonoTime) -> Option<crate::clock::MonoTime> {
         let (active, _) = self.activity();
         let wait = if active {
@@ -1524,9 +1527,14 @@ impl EventLoop {
         } else {
             std::time::Duration::from_millis(1000)
         };
-        let cadence = now + wait;
-        let resize_due = self.session.resize_debouncer.read().due_at();
-        Some(resize_due.map_or(cadence, |d| d.min(cadence)))
+        let mut deadline = now + wait;
+        if let Some(d) = self.session.resize_debouncer.read().due_at() {
+            deadline = deadline.min(d);
+        }
+        if (self.render_carry || self.needs_render) && !self.output_paused {
+            deadline = deadline.min(self.frame_limiter.next_allowed().unwrap_or(now));
+        }
+        Some(deadline)
     }
 
     /// Driver only: the blocking wait plus draining up to 100 queued events, each fed to
@@ -4901,6 +4909,125 @@ mod tests {
         assert!(latency < Duration::from_millis(500), "resize applied after {:?}", latency);
         wait_for(&|| frames.lock().last().map_or(false, |f| f.len() == 30));
         assert_eq!(frames.lock().last().unwrap().len(), 30);
+
+        session.close();
+        handle.join().unwrap();
+    }
+    // ---- Phase 4 step 7d: a render deferred by the frame limiter is a deadline ----
+
+    /// Counter page in a loop with a recording sink; returns the loop, frames, a click event on
+    /// `+` and a reader of the counter value in a frame.
+    fn counter_loop(session: &Arc<ClientSession>) -> (EventLoop, Arc<parking_lot::Mutex<Vec<Vec<String>>>>, InputEvent, Box<dyn Fn(&Vec<String>) -> String + Send>) {
+        use crate::page_source::{MemPageSource, PageSource};
+        use oxiterm_proto::input::{MouseAction, MouseButton, MouseInput};
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let mem = MemPageSource::new([("counter.thtml", include_str!("../../examples/demos/counter.thtml"))]);
+        let page = mem.page_at(std::path::Path::new("counter.thtml"));
+        let doc = mem.load(&page, oxiterm_proto::style::RenderMode::Tui).unwrap();
+        let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        std::mem::forget(_rx);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, doc, false);
+        el.page_source = Arc::new(mem);
+        let frames = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.frame_sink = Box::new(RowsSink(frames.clone()));
+        // Probe the layout with one real-clock frame, then forget that frame.
+        el.prepare_session();
+        let now = el.clock.now();
+        el.tick(now);
+        let layout = el.layout_engine.last_layout.clone().unwrap();
+        let (ox, oy) = layout.get_centering_offset(&el.doc, 80, 24);
+        let find = |el: &EventLoop, pred: &dyn Fn(&oxiterm_proto::dom::Node) -> bool| {
+            el.doc.arena.iter().find(|(_, n)| pred(n)).map(|(id, _)| id).unwrap()
+        };
+        let text_id = find(&el, &|n| n.attrs.bind_state.as_deref() == Some("counter"));
+        let plus_id = find(&el, &|n| n.attrs.event_htmx.as_deref() == Some("inc:counter"));
+        let tr = layout.nodes.get(&text_id).unwrap().cells();
+        let pr = layout.nodes.get(&plus_id).unwrap().cells();
+        frames.lock().clear();
+        let click = InputEvent::MouseEvent(MouseInput {
+            col: ox + pr.x + pr.width / 2 + 1, row: oy + pr.y + pr.height / 2 + 1,
+            button: MouseButton::Left, action: MouseAction::Press, modifiers: Default::default(),
+        });
+        let value_at = move |frame: &Vec<String>| -> String {
+            frame[(oy + tr.y) as usize].chars().skip((ox + tr.x) as usize).take(3).collect::<String>().trim().to_string()
+        };
+        (el, frames, click, Box::new(value_at))
+    }
+
+    #[test]
+    fn test_deferred_render_deadline_is_the_limiter_slot() {
+        use crate::clock::{FakeClock, MonoTime};
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let (mut el, frames, click, value_at) = counter_loop(&session);
+        el.clock = Arc::new(FakeClock::new());
+        // Fresh limiter on the fake timeline.
+        el.frame_limiter = crate::ratelimit::FrameRateLimiter::new(60);
+        el.first_frame = true;
+        el.prepare_session();
+
+        let ms = MonoTime::from_millis;
+        let t = ms(1000);
+        el.tick(t);
+        assert_eq!(frames.lock().len(), 1, "first frame at t");
+        assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(1000)), "(b) nothing owed: idle cadence");
+
+        // An event needing a render 5 ms later: the limiter refuses, the render is carried.
+        let t5 = t + Duration::from_millis(5);
+        el.handle_event(click, t5);
+        let slot = el.frame_limiter.next_allowed().unwrap();
+        assert_eq!(el.next_deadline(t5), Some(slot), "owed render (not yet ticked) waits for the slot");
+        el.tick(t5);
+        assert_eq!(frames.lock().len(), 1, "limiter deferred the frame");
+        assert!(slot > t + Duration::from_millis(16) && slot < t + Duration::from_millis(17));
+        assert_eq!(el.next_deadline(t5), Some(slot), "deadline == limiter's next allowed instant, not 1000 ms");
+
+        // One nanosecond early still refuses; at the slot the frame lands.
+        el.tick(slot - Duration::from_nanos(1));
+        assert_eq!(frames.lock().len(), 1);
+        assert_eq!(el.next_deadline(slot - Duration::from_nanos(1)), Some(slot));
+        el.tick(slot);
+        let fs = frames.lock();
+        assert_eq!(fs.len(), 2, "tick at the slot renders");
+        assert_eq!(value_at(&fs[1]), "1");
+        drop(fs);
+        assert_eq!(el.next_deadline(slot), Some(slot + Duration::from_millis(1000)), "no spin: back to the idle cadence");
+    }
+
+    /// Real `run()` thread and system clock: two quick state changes on an idle page; the second
+    /// one (inside the limiter window of the first frame) must be on screen well under 1 s.
+    #[test]
+    fn test_deferred_render_shown_well_under_one_second_by_the_driver() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        let (el, frames, click, value_at) = counter_loop(&session);
+        let handle = std::thread::spawn(move || {
+            let mut el = el;
+            el.run()
+        });
+        let wait_for = |pred: &dyn Fn() -> bool| {
+            let start = std::time::Instant::now();
+            while !pred() && start.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        };
+        wait_for(&|| !frames.lock().is_empty());
+        assert!(!frames.lock().is_empty(), "first frame rendered");
+        // Idle: blocked in the long wait, limiter window long expired.
+        std::thread::sleep(Duration::from_millis(100));
+
+        let sent = |c: &InputEvent| { let _ = session.event_tx.try_send(c.clone()); };
+        let n0 = frames.lock().len();
+        sent(&click);
+        wait_for(&|| frames.lock().len() > n0);
+        // The second event lands a few ms after the first frame, inside its 16 ms window.
+        let started = std::time::Instant::now();
+        sent(&click);
+        wait_for(&|| frames.lock().last().map_or(false, |f| value_at(f) == "2"));
+        let latency = started.elapsed();
+        eprintln!("second change on screen after {:?}", latency);
+        assert_eq!(value_at(frames.lock().last().unwrap()), "2");
+        assert!(latency < Duration::from_millis(300), "second change on screen after {:?}", latency);
 
         session.close();
         handle.join().unwrap();
