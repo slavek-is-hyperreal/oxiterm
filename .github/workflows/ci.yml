@@ -46,10 +46,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    # Plain cargo-audit against the committed Cargo.lock: fails on vulnerabilities, reports
+    # unmaintained crates as warnings. (rustsec/audit-check needed check-run write access and
+    # failed with "Resource not accessible by integration" even with a clean audit.)
+    - name: Install cargo-audit
+      uses: taiki-e/install-action@cargo-audit
     - name: Run audit
-      uses: rustsec/audit-check@v1.4.1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+      run: cargo audit
 
   coverage:
     if: github.event_name == 'workflow_dispatch' && inputs.coverage
