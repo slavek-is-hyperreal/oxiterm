@@ -12,8 +12,7 @@ resolver = "2"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
-russh = "0.45"
-russh-keys = "0.45"
+russh = "0.65"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-log = "0.2"
@@ -25,7 +24,7 @@ futures = "0.3"
 parking_lot = "0.12"
 taffy = "0.6"
 ratatui = "0.29"
-prometheus = "0.13"
+prometheus = "0.14"
 hyper = { version = "1", features = ["full"] }
 http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }

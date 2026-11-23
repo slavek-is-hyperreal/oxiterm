@@ -6,9 +6,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use async_trait::async_trait;
-use russh::{server, server::{Session, Handler}, ChannelId, Channel};
-use russh_keys::key;
+use russh::{server, server::{Session, Handler, ChannelOpenHandle, PublicKeyOffer, VerifiedPublicKey}, ChannelId, Channel};
 use tracing::{info, warn};
 use crate::session::{SessionRegistry, SessionId, THTMLDocument};
 use crate::ssh::keys::AuthorizedKeys;
@@ -67,18 +65,28 @@ impl OxiServer {
 }
 
 
-#[async_trait]
 impl Handler for OxiServer {
     type Error = anyhow::Error;
 
-    async fn auth_publickey(&mut self, user: &str, public_key: &key::PublicKey) -> Result<server::Auth, Self::Error> {
+    async fn auth_publickey_offered(&mut self, user: &str, offer: PublicKeyOffer<'_>) -> Result<server::Auth, Self::Error> {
+        // Pre-check: spare the signature round for keys that can never be authorized.
+        if self.auth_keys.verify(offer.public_key) {
+            Ok(server::Auth::Accept)
+        } else {
+            warn!("Rejected unauthorized key offer for user: {user}");
+            Ok(server::Auth::reject())
+        }
+    }
+
+    async fn auth_publickey(&mut self, user: &str, key: VerifiedPublicKey<'_>) -> Result<server::Auth, Self::Error> {
+        let public_key = key.public_key;
         info!("Auth attempt for user: {user} with key: {public_key:?}");
         if self.auth_keys.verify(public_key) {
             *self.authenticated_user.lock() = Some(user.to_string());
             Ok(server::Auth::Accept)
         } else {
             warn!("Rejected unauthorized key for user: {user}");
-            Ok(server::Auth::Reject { proceed_with_methods: None })
+            Ok(server::Auth::reject())
         }
     }
 
@@ -111,20 +119,22 @@ impl Handler for OxiServer {
         }
         
         warn!("Auth rejected for {} (unauthorized or missing password)", self.peer_addr);
-        Ok(russh::server::Auth::Reject { proceed_with_methods: None })
+        Ok(russh::server::Auth::reject())
     }
 
-    async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, _session: &mut Session) -> Result<bool, Self::Error> {
+    async fn channel_open_session(&mut self, channel: Channel<russh::server::Msg>, reply: ChannelOpenHandle, _session: &mut Session) -> Result<(), Self::Error> {
         info!("Opening session on channel: {}", channel.id());
         
         // Rate limit checks are delegated to the TCP connection listener layer to reject overloads early.
         if let Some(client_session) = self.registry.create_session() {
             self.channels.lock().insert(channel.id(), client_session.id);
-            Ok(true)
+            reply.accept().await;
         } else {
             warn!("Rejecting SSH channel: session registry full");
-            Ok(false)
+            // Dropping the handle rejects the channel (AdministrativelyProhibited).
+            drop(reply);
         }
+        Ok(())
     }
 
     async fn pty_request(
@@ -226,7 +236,7 @@ impl Handler for OxiServer {
                 
                 tokio::spawn(async move {
                     while let Some(data) = output_rx.recv().await {
-                        let _ = handle.data(channel, data.into()).await;
+                        let _ = handle.data(channel, data).await;
                     }
                 });
             }
@@ -237,7 +247,7 @@ impl Handler for OxiServer {
     async fn exec_request(&mut self, channel: ChannelId, data: &[u8], session: &mut Session) -> Result<(), Self::Error> {
         warn!("Blocking exec request on channel {channel:?}: {}", String::from_utf8_lossy(data));
         session.request_failure();
-        Ok(()) 
+        Ok(())
     }
 
     async fn subsystem_request(&mut self, channel: ChannelId, name: &str, session: &mut Session) -> Result<(), Self::Error> {

@@ -13,7 +13,7 @@ pub use oxiterm_proto::style::{TerminalProfile, ColorDepth};
 /// Sends a primary Device Attributes (DA1) query sequence to probe basic capabilities.
 pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Sending DA1 query to channel {:?}", channel);
-    session.data(channel, b"\x1b[c".to_vec().into());
+    let _ = session.data(channel, b"\x1b[c".to_vec());
     Ok(())
 }
 
@@ -22,7 +22,7 @@ pub fn send_da1_query(channel: ChannelId, session: &mut Session) -> Result<()> {
 /// Anchored by spec [S6-01]. Queries support by writing a tiny mock graphic.
 pub fn probe_kitty_graphics(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Sending Kitty Graphics probe to channel {:?}", channel);
-    session.data(channel, b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\".to_vec().into());
+    let _ = session.data(channel, b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\".to_vec());
     Ok(())
 }
 
@@ -44,34 +44,34 @@ pub fn probe_sixel_support(profile: &TerminalProfile) -> bool {
 /// Requests the client shell terminal emulator to activate Kitty Keyboard protocol.
 pub fn enable_kitty_protocol(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling Kitty Keyboard Protocol on channel {:?}", channel);
-    session.data(channel, b"\x1b[=1u".to_vec().into());
+    let _ = session.data(channel, b"\x1b[=1u".to_vec());
     Ok(())
 }
 
 /// Requests activation of SGR mouse event reporting with button drag tracking (1002h + 1006h).
 pub fn enable_sgr_mouse(channel: ChannelId, session: &mut Session) -> Result<()> {
     debug!("Enabling SGR Mouse Protocol with drag tracking on channel {:?}", channel);
-    session.data(channel, b"\x1b[?1006h".to_vec().into());
-    session.data(channel, b"\x1b[?1002h".to_vec().into());
+    let _ = session.data(channel, b"\x1b[?1006h".to_vec());
+    let _ = session.data(channel, b"\x1b[?1002h".to_vec());
     Ok(())
 }
 
 /// Sends Begin Synchronized Update (BSU) escape sequence.
 pub fn send_bsu(channel: ChannelId, session: &mut Session) -> Result<()> {
-    session.data(channel, b"\x1b[?2026h".to_vec().into());
+    let _ = session.data(channel, b"\x1b[?2026h".to_vec());
     Ok(())
 }
 
 /// Sends End Synchronized Update (ESU) escape sequence.
 pub fn send_esu(channel: ChannelId, session: &mut Session) -> Result<()> {
-    session.data(channel, b"\x1b[?2026l".to_vec().into());
+    let _ = session.data(channel, b"\x1b[?2026l".to_vec());
     Ok(())
 }
 
 /// Issues an OSC sequence requesting unicode layout alignment.
 pub fn send_unicode_version_osc(channel: ChannelId, session: &mut Session, version: u8) -> Result<()> {
     let osc = format!("\x1b]52;u;{version}\x1b\\");
-    session.data(channel, osc.into_bytes().into());
+    let _ = session.data(channel, osc.into_bytes());
     Ok(())
 }
 

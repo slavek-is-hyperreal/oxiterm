@@ -29,7 +29,7 @@ pub async fn run_server(
 ) -> Result<()> {
     let mut ssh_config = russh::server::Config {
         auth_rejection_time_initial: Some(std::time::Duration::from_secs(3)),
-        methods: russh::MethodSet::PUBLICKEY | russh::MethodSet::PASSWORD,
+        methods: russh::MethodSet::from(&[russh::MethodKind::PublicKey, russh::MethodKind::Password][..]),
         ..Default::default()
     };
     ssh_config.keys.push(keys::load_host_key(&config.server.host_key_path)?);
@@ -63,7 +63,12 @@ pub async fn run_server(
                 let session_registry = registry.clone();
                 let session_channels = handler.channels.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
+                    // `run_stream` returns a RunningSession future that must be awaited to drive the connection.
+                    let result = match russh::server::run_stream(russh_config_ref, stream, handler).await {
+                        Ok(running) => running.await,
+                        Err(e) => Err(e),
+                    };
+                    if let Err(e) = result {
                         warn!("SSH session error for {peer_addr}: {e:?}");
                     }
                     // Anchored by spec [QUAL-006]. Ensure all session handles are removed from the registry on abrupt disconnect.
@@ -93,7 +98,12 @@ pub async fn run_server(
                 let session_channels = handler.channels.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(delay).await;
-                    if let Err(e) = russh::server::run_stream(russh_config_ref, stream, handler).await {
+                    // `run_stream` returns a RunningSession future that must be awaited to drive the connection.
+                    let result = match russh::server::run_stream(russh_config_ref, stream, handler).await {
+                        Ok(running) => running.await,
+                        Err(e) => Err(e),
+                    };
+                    if let Err(e) = result {
                         warn!("SSH session error for {peer_addr}: {e:?}");
                     }
                     // Anchored by spec [QUAL-006]. Ensure all session handles are removed from the registry on abrupt disconnect.

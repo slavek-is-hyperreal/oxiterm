@@ -150,7 +150,9 @@ mod tests {
         for h in ["<a\u{e9}", &"<a".repeat(1_000_000)] {
             let _ = markup_stats(h);
         }
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "markup_stats must be linear");
+        // ~1.7 s for 2 MB in a debug build on a dev machine; a quadratic scan would take hours.
+        // The generous bound keeps the guard meaningful without flaking on slow/loaded CI runners.
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "markup_stats must be linear");
         for h in ["", "<", "<<<>>>", "\u{0}\u{1b}[2J", "<html><body></body></html>", &"<div>".repeat(20000)] {
             let p = extract_article(h, &url);
             assert!(!p.title.is_empty());

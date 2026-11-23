@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] — 2026-11-23
+
+### 🔒 Dependency security upgrade
+- **russh 0.45 → 0.65** (`russh-keys` merged into `russh::keys`; `ssh-key` 0.7 backend): fixes RUSTSEC-2026-0496, -0493, -0494, -0492, -0154 and russh-cryptovec -0153 (pre-auth allocation / decompression / unbounded-size DoS issues). Also drops `rsa 0.9` (RUSTSEC-2023-0071, now `rsa 0.10`) and `crypto-bigint 0.5` (RUSTSEC-2026-0387, now 0.7).
+- **prometheus 0.13 → 0.14** (protobuf 2.x → 3.7.2, RUSTSEC-2024-0437).
+- **resvg 0.47 → 0.50** (drops the unmaintained `rustybuzz`/`ttf-parser` chain), **scraper 0.20 → 0.29** (drops unmaintained `fxhash`); `cargo update` of all compatible dependencies.
+- SSH server migrated to the new russh handler API (`auth_publickey_offered` pre-check + `auth_publickey` on the verified key, `ChannelOpenHandle`, `run_stream` returns a session future that is now awaited). Authorized keys are compared by key material, so a changed comment no longer matters. The existing PKCS#8 ED25519 `host_key` file still loads unchanged (covered by a new unit test).
+- Remaining `cargo audit` notes (unmaintained only, no vulnerabilities): `chrono` (via russh-util) and `paste` (via image/rav1e AVIF encoder).
+
 ## [0.6.0] — 2026-09-17
 
 ### 🪟 Desktop Environment Primitives & Window Management
