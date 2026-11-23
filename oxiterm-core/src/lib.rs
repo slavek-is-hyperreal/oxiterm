@@ -6,6 +6,7 @@
 pub mod action;
 pub mod animation;
 pub mod clock;
+pub mod event_loop;
 pub mod events;
 pub mod expand;
 pub mod frame_limiter;

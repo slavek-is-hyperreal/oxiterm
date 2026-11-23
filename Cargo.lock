@@ -2446,6 +2446,7 @@ name = "oxiterm-core"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "oxiterm-a11y",
  "oxiterm-proto",
  "oxiterm-renderer",
  "parking_lot",

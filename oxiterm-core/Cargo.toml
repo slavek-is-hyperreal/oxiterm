@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer" }
+oxiterm-a11y = { path = "../oxiterm-a11y" }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
