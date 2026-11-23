@@ -75,6 +75,9 @@ pub struct ResizeDebouncer {
 }
 
 impl ResizeDebouncer {
+    /// How long after the last push the new size is applied.
+    pub const WINDOW: Duration = Duration::from_millis(100);
+
     /// Creates a new debouncer.
     pub fn new() -> Self {
         Self {
@@ -98,13 +101,21 @@ impl ResizeDebouncer {
     /// Returns the dimensions if the debouncing window has elapsed since the last push.
     pub fn poll(&mut self, now: crate::clock::MonoTime) -> Option<PtyDimensions> {
         if let Some(dims) = self.pending {
-            if now.saturating_duration_since(self.pushed_at) > Duration::from_millis(100) {
+            if now.saturating_duration_since(self.pushed_at) > Self::WINDOW {
                 self.pending = None;
                 self.last_update = now;
                 return Some(dims);
             }
         }
         None
+    }
+
+    /// The earliest time at which [`poll`](Self::poll) returns the pending dimensions, or `None`
+    /// when nothing is pending. `poll` compares with a strict `>`, so this is the window plus one
+    /// nanosecond after the last push: a `poll(due_at())` always succeeds, which keeps a driver
+    /// that waits until this time from spinning.
+    pub fn due_at(&self) -> Option<crate::clock::MonoTime> {
+        self.pending.map(|_| self.pushed_at + Self::WINDOW + Duration::from_nanos(1))
     }
 }
 
@@ -312,5 +323,26 @@ impl SessionState {
                 state.set(key, state_val);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod resize_debouncer_tests {
+    use super::*;
+    use crate::clock::MonoTime;
+
+    #[test]
+    fn due_at_is_the_first_instant_poll_applies() {
+        let dims = PtyDimensions { cols: 10, rows: 5 };
+        let t = MonoTime::from_millis(500);
+        let mut d = ResizeDebouncer::new();
+        assert_eq!(d.due_at(), None);
+        d.push(dims, t);
+        let due = d.due_at().unwrap();
+        assert_eq!(due, t + ResizeDebouncer::WINDOW + Duration::from_nanos(1));
+        assert!(d.poll(due - Duration::from_nanos(1)).is_none(), "not due one nanosecond earlier");
+        assert_eq!(d.due_at(), Some(due), "still pending after an early poll");
+        assert_eq!(d.poll(due).map(|x| (x.cols, x.rows)), Some((10, 5)));
+        assert_eq!(d.due_at(), None, "drained");
     }
 }

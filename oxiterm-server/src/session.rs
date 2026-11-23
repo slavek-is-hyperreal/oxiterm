@@ -1513,8 +1513,10 @@ impl EventLoop {
     }
 
     /// When `tick` must run next if no event arrives: 16 ms from `now` while animations, a drag
-    /// or media are active, else 1000 ms. Never `None` yet; step 7c returns `None` when idle and
-    /// the host may wait for events indefinitely.
+    /// or media are active, else 1000 ms; earlier when a debounced resize is pending (its
+    /// expiry, see `ResizeDebouncer::due_at`), so a new size no longer waits for the idle
+    /// timeout. Never `None` yet; a later step may return `None` when idle so the host can wait
+    /// for events indefinitely.
     pub fn next_deadline(&self, now: crate::clock::MonoTime) -> Option<crate::clock::MonoTime> {
         let (active, _) = self.activity();
         let wait = if active {
@@ -1522,7 +1524,9 @@ impl EventLoop {
         } else {
             std::time::Duration::from_millis(1000)
         };
-        Some(now + wait)
+        let cadence = now + wait;
+        let resize_due = self.session.resize_debouncer.read().due_at();
+        Some(resize_due.map_or(cadence, |d| d.min(cadence)))
     }
 
     /// Driver only: the blocking wait plus draining up to 100 queued events, each fed to
@@ -4786,6 +4790,120 @@ mod tests {
         assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(16)), "transition active");
         el.animation_controller.tick(&mut el.doc, t + Duration::from_millis(200));
         assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(1000)), "idle again");
+    }
+
+    // ---- Phase 4 step 7c: the debounced resize is a deadline ----
+
+    fn dims_of(s: &ClientSession) -> (u16, u16) {
+        let d = *s.dims.read();
+        (d.cols, d.rows)
+    }
+
+    fn empty_screen_doc() -> THTMLDocument {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let root_id = arena.alloc(Node::new(NodeTag::Screen));
+        THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() }
+    }
+
+    #[test]
+    fn test_resize_deadline_and_coalescing_without_threads() {
+        use crate::clock::{FakeClock, MonoTime};
+
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, empty_screen_doc(), false);
+        let frames = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.frame_sink = Box::new(RowsSink(frames.clone()));
+        el.clock = Arc::new(FakeClock::new());
+        el.prepare_session();
+
+        let ms = MonoTime::from_millis;
+        let t = ms(1000);
+        el.tick(t);
+        assert_eq!(frames.lock().len(), 1, "first frame");
+        assert_eq!(el.next_deadline(t), Some(t + Duration::from_millis(1000)), "nothing pending: unchanged");
+
+        // A transport pushes the dims, then queues the Resize event (explicit fake timestamps).
+        let new_dims = PtyDimensions { cols: 100, rows: 30 };
+        let t1 = ms(2000);
+        session.resize_debouncer.write().push(new_dims, t1);
+        el.handle_event(InputEvent::Resize { cols: 100, rows: 30 }, t1);
+        el.tick(t1);
+        assert_eq!(frames.lock().len(), 2, "the Resize event renders at the old size");
+        assert_eq!(frames.lock()[1].len(), 24);
+        assert_eq!(dims_of(&session), (80, 24));
+
+        let due = t1 + Duration::from_millis(100) + Duration::from_nanos(1);
+        assert_eq!(el.next_deadline(t1), Some(due), "deadline is the debounce expiry, not now + 1 s");
+
+        // Inside the window nothing is applied.
+        el.tick(ms(2050));
+        assert_eq!(dims_of(&session), (80, 24));
+        assert_eq!(frames.lock().len(), 2);
+
+        // Coalescing: a second push at +60 ms extends the deadline.
+        let t2 = ms(2060);
+        session.resize_debouncer.write().push(PtyDimensions { cols: 90, rows: 20 }, t2);
+        el.handle_event(InputEvent::Resize { cols: 90, rows: 20 }, t2);
+        el.tick(t2);
+        let frames_before = frames.lock().len();
+        let due2 = t2 + Duration::from_millis(100) + Duration::from_nanos(1);
+        assert_eq!(el.next_deadline(t2), Some(due2));
+        el.tick(due); // the first expiry no longer applies anything
+        assert_eq!(dims_of(&session), (80, 24));
+        assert_eq!(frames.lock().len(), frames_before);
+
+        // At the deadline the last size is applied and a frame at the new size is emitted.
+        el.tick(due2);
+        assert_eq!(dims_of(&session), (90, 20));
+        let fs = frames.lock();
+        assert_eq!(fs.len(), frames_before + 1);
+        assert_eq!(fs.last().unwrap().len(), 20, "frame has the new row count");
+        drop(fs);
+        assert_eq!(el.next_deadline(due2), Some(due2 + Duration::from_millis(1000)), "debouncer drained");
+    }
+
+    /// Real `run()` thread and the system clock: a pushed size is applied ~100 ms later, not after
+    /// the 1 s idle receive timeout.
+    #[test]
+    fn test_resize_applied_well_under_one_second_by_the_driver() {
+        let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+        let session = reg.create_session().unwrap();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let (output_tx, _rx) = crate::backpressure::BoundedFrameChannel::new(10);
+        let mut el = session.new_event_loop(Arc::new(crate::events::EventBus::new()), output_tx, empty_screen_doc(), false);
+        let frames = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        el.frame_sink = Box::new(RowsSink(frames.clone()));
+        let handle = std::thread::spawn(move || el.run());
+
+        let wait_for = |pred: &dyn Fn() -> bool| {
+            let start = std::time::Instant::now();
+            while !pred() && start.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_for(&|| !frames.lock().is_empty());
+        assert!(!frames.lock().is_empty(), "first frame rendered");
+        // The loop is now idle, blocked in its (up to) 1 s wait.
+        std::thread::sleep(Duration::from_millis(100));
+
+        let started = std::time::Instant::now();
+        let new_dims = PtyDimensions { cols: 100, rows: 30 };
+        { let now = session.clock.now(); session.resize_debouncer.write().push(new_dims, now); }
+        let _ = session.event_tx.try_send(InputEvent::Resize { cols: 100, rows: 30 });
+        wait_for(&|| dims_of(&session) == (100, 30));
+        let latency = started.elapsed();
+        assert_eq!(dims_of(&session), (100, 30));
+        eprintln!("resize applied after {:?}", latency);
+        assert!(latency < Duration::from_millis(500), "resize applied after {:?}", latency);
+        wait_for(&|| frames.lock().last().map_or(false, |f| f.len() == 30));
+        assert_eq!(frames.lock().last().unwrap().len(), 30);
+
+        session.close();
+        handle.join().unwrap();
     }
 }
 
