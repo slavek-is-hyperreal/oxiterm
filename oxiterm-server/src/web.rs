@@ -525,6 +525,18 @@ pub mod web_impl {
         });
     }
 
+    /// `<id>.ttf` or `LICENSE-<id>.txt` of a bundled face -> (content type, embedded bytes).
+    fn font_route(name: &str) -> Option<(&'static str, &'static [u8])> {
+        use oxiterm_renderer::text::bundle::FontBundle;
+        if let Some(id) = name.strip_suffix(".ttf") {
+            FontBundle::font_bytes(id).map(|b| ("font/ttf", b))
+        } else if let Some(id) = name.strip_prefix("LICENSE-").and_then(|n| n.strip_suffix(".txt")) {
+            FontBundle::license_bytes(id).map(|b| ("text/plain; charset=utf-8", b))
+        } else {
+            None
+        }
+    }
+
     fn http_401() -> Response<Full<Bytes>> {
         Response::builder()
             .status(StatusCode::UNAUTHORIZED)
@@ -773,6 +785,16 @@ pub mod web_impl {
             "/oxiterm_web_bg.wasm" => {
                 (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(WASM_ASSET))
             }
+            "/oxiui/fonts.json" => {
+                let json = serde_json::to_vec(oxiterm_renderer::text::bundle::FontBundle::metrics()).unwrap_or_default();
+                (StatusCode::OK, "application/json", std::borrow::Cow::Owned(json))
+            }
+            // Fixed lookup of embedded bytes by exact id: nothing from the request reaches the
+            // filesystem.
+            p if p.starts_with("/oxiui/fonts/") => match font_route(&p["/oxiui/fonts/".len()..]) {
+                Some((mime, bytes)) => (StatusCode::OK, mime, std::borrow::Cow::Borrowed(bytes)),
+                None => (StatusCode::NOT_FOUND, "text/plain", std::borrow::Cow::Borrowed(b"Not Found" as &[u8])),
+            },
             _ => {
                 (StatusCode::NOT_FOUND, "text/plain", std::borrow::Cow::Borrowed(b"Not Found" as &[u8]))
             }
@@ -808,6 +830,10 @@ pub mod web_impl {
 
         if content_encoding {
             res.headers_mut().insert("Content-Encoding", hyper::header::HeaderValue::from_static("gzip"));
+        }
+        if status == StatusCode::OK && path.starts_with("/oxiui/fonts/") {
+            // The embedded bytes only change with a new server build; a year, immutable.
+            res.headers_mut().insert("Cache-Control", hyper::header::HeaderValue::from_static("public, max-age=31536000, immutable"));
         }
 
         Ok(res)
@@ -1912,6 +1938,60 @@ pub mod web_impl {
             assert!(response.contains("413 Payload Too Large") || response.contains("413 PAYLOAD TOO LARGE"));
 
             assert!(session.state.read().get("large_key").is_none());
+        }
+
+        #[tokio::test]
+        async fn test_oxiui_font_routes() {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            use oxiterm_renderer::text::bundle::{FontBundle, MONO_ID, SANS_ID};
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let rate_limiter = Arc::new(crate::ratelimit::RateLimiter::new(60));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            drop(listener);
+            tokio::spawn(async move {
+                start_web_server("127.0.0.1".to_string(), addr.port(), reg, rate_limiter, None, None);
+            });
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            // (lowercased head, body). No Accept-Encoding, so the body is the raw bytes.
+            async fn get(addr: std::net::SocketAddr, path: &str) -> (String, Vec<u8>) {
+                let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+                s.write_all(format!("GET {path} HTTP/1.1\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                let mut raw = Vec::new();
+                s.read_to_end(&mut raw).await.unwrap();
+                let split = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+                (String::from_utf8_lossy(&raw[..split]).to_lowercase(), raw[split..].to_vec())
+            }
+
+            let (head, body) = get(addr, "/oxiui/fonts.json").await;
+            assert!(head.contains("200 ok") && head.contains("application/json"), "{head}");
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(v["font_size_px"], 16.0);
+            assert_eq!(v["cell_h_px"], 20.0);
+            assert!((v["cell_w_px"].as_f64().unwrap() - 9.6).abs() < 1e-4);
+            assert_eq!(v["faces"][0]["id"], MONO_ID);
+            assert_eq!(v["faces"][1]["id"], SANS_ID);
+            for f in v["faces"].as_array().unwrap() {
+                for key in ["url_path", "license_path"] {
+                    let (h, _) = get(addr, f[key].as_str().unwrap()).await;
+                    assert!(h.contains("200 ok"), "{key}: {h}");
+                }
+            }
+            for id in [MONO_ID, SANS_ID] {
+                let (head, body) = get(addr, &format!("/oxiui/fonts/{id}.ttf")).await;
+                assert!(head.contains("200 ok") && head.contains("font/ttf"), "{head}");
+                assert!(head.contains("max-age=31536000"), "{head}");
+                assert_eq!(body, FontBundle::font_bytes(id).unwrap());
+                let (head, body) = get(addr, &format!("/oxiui/fonts/LICENSE-{id}.txt")).await;
+                assert!(head.contains("200 ok") && head.contains("text/plain"), "{head}");
+                assert_eq!(body, FontBundle::license_bytes(id).unwrap());
+            }
+            for bad in ["/oxiui/fonts/nope.ttf", "/oxiui/fonts/../index.html", "/oxiui/fonts/LICENSE-nope.txt",
+                        "/oxiui/fonts/oxi-mono", "/oxiui/fonts/", "/oxiui/fonts/oxi-mono.ttf/x"] {
+                let (head, _) = get(addr, bad).await;
+                assert!(head.contains("404"), "{bad}: {head}");
+            }
         }
 
         #[tokio::test]

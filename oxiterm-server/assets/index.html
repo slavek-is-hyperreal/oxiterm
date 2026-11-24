@@ -657,13 +657,44 @@
             if (guiMode && lastA11y) renderA11y(lastA11y, false);
         }
 
+        // ── GUI fonts (Phase 6.1): the server defines the cell ────────────────
+        // Fetches /oxiui/fonts.json and registers each face under its id as the CSS family
+        // ("oxi-mono", "oxi-sans"). Returns the metrics document, or null (with a console
+        // warning) if anything fails; the caller then keeps the browser-measured monospace.
+        // Ligatures: glyphs are painted one character at a time (never shaped as a run), so a
+        // ligature cannot form and shift the grid; featureSettings also switches liga/calt off
+        // for browsers that honour it on the FontFace descriptor.
+        async function loadGuiFonts() {
+            try {
+                const res = await fetch('/oxiui/fonts.json');
+                if (!res.ok) throw new Error('fonts.json: HTTP ' + res.status);
+                const m = await res.json();
+                if (!(m.cell_w_px > 0 && m.cell_h_px > 0 && m.font_size_px > 0 && Array.isArray(m.faces))) {
+                    throw new Error('fonts.json: bad metrics');
+                }
+                await Promise.all(m.faces.map(async (f) => {
+                    const face = new FontFace(f.id, `url(${f.url_path})`, { featureSettings: '"liga" 0, "calt" 0' });
+                    await face.load();
+                    document.fonts.add(face);
+                }));
+                return m;
+            } catch (e) {
+                console.warn('OxiUI: server fonts unavailable, using the browser monospace cell:', e);
+                return null;
+            }
+        }
+
         // ── connect() — sets up socket only; listeners are registered once in boot() ──
         async function connect() {
             // Init WASM exactly once
             if (!term) {
                 await init();
-                term = new WebTerminal(canvas, "16px monospace", 20.0);
+                // GUI mode: the cell is the server's (bundled mono face), loaded BEFORE the first
+                // 0x10 dims. Any failure falls back to measuring the browser monospace.
+                const gf = guiMode ? await loadGuiFonts() : null;
+                term = new WebTerminal(canvas, gf ? `${gf.font_size_px}px "oxi-mono"` : "16px monospace", 20.0);
                 [charWidth, charHeight] = term.get_char_dimensions();
+                if (gf) { charWidth = gf.cell_w_px; charHeight = gf.cell_h_px; }
             }
 
             // R6a: consume session token from URL, store in sessionStorage, scrub URL

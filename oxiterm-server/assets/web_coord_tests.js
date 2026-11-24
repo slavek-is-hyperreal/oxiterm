@@ -18,7 +18,7 @@
   //    lived) and offset origins. The exact integer boundary `origin + c*cell` is a
   //    measure-zero point where floating-point division may tip either way, so we sample
   //    strictly interior fractions rather than the edge itself.
-  const cells = [8, 8.4, 8.5, 8.6, 9, 10.5, 16];
+  const cells = [8, 8.4, 8.5, 8.6, 9, 9.5, 9.6, 10, 10.5, 16];
   const origins = [0, 7, 40.25];
   const fracs = [0.02, 0.25, 0.5, 0.75, 0.98];
   let samples = 0;

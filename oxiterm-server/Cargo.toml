@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 oxiterm-core = { path = "../oxiterm-core" }
 oxiterm-proto = { path = "../oxiterm-proto" }
-oxiterm-renderer = { path = "../oxiterm-renderer" }
+oxiterm-renderer = { path = "../oxiterm-renderer", features = ["text-shaping"] }
 oxiterm-a11y = { path = "../oxiterm-a11y" }
 flate2 = { version = "1.1", features = ["miniz_oxide"] }
 tokio = { workspace = true }
