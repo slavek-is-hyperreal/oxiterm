@@ -839,7 +839,7 @@ fn list_snapshot(list: &DisplayList) -> String {
                 stroke.map(|(c, w)| (color(c), w))
             )
             .unwrap(),
-            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods: m } => {
+            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods: m, .. } => {
                 let mut text = String::new();
                 let mut row = glyphs.first().map(|g| g.y);
                 for g in glyphs {

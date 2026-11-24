@@ -2100,7 +2100,7 @@ mod tests {
         let other = el.doc.arena.alloc(oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Box));
         let mut nodes = layout.nodes.clone();
         nodes.insert(other, oxiterm_renderer::layout::types::Rect { x: 0.0, y: 18.0, width: 4.0, height: 1.0 });
-        let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20, paint_order: Vec::new() };
+        let layout2 = oxiterm_renderer::layout::types::LayoutResult { nodes, total_height: 20, paint_order: Vec::new(), ..Default::default() };
         el.focused_node = Some(other);
         EventLoop::autoscroll_to_focused(el.focused_node, &mut el.autoscroll_anchor, &mut el.scroll_offset, &layout2, viewport_h);
         assert_eq!(el.scroll_offset, 19 - viewport_h, "focus change reveals the newly focused node");
@@ -2917,6 +2917,7 @@ mod tests {
             nodes,
             total_height,
             paint_order: Vec::new(),
+            ..Default::default()
         });
     }
 
@@ -3655,6 +3656,7 @@ mod tests {
             nodes,
             total_height: 24,
             paint_order: vec![bg_id, fg_id], // paint_order ascending by z-index
+            ..Default::default()
         });
 
         // Click on overlapping area (col 11, row 7 -> doc coords 10, 6)

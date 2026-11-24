@@ -34,6 +34,7 @@ pub struct MeasureContext {
 /// the resolved width. Widths are px / 9.6, heights lines x line height / 20. Returns `None`
 /// when shaping is unavailable (the caller falls back to the cell measure).
 fn measure_shaped(cache: &mut TextCache, known: Size<Option<f32>>, available: Size<AvailableSpace>, text: &str, font: &ResolvedFont) -> Option<Size<f32>> {
+    // `text` is already collapsed like the mono path paints it (see `sync_node`).
     let base = cache.base(text, font)?;
     let (min_c, max_c) = (base.min_content_cells(), base.max_content_cells());
     let width = match known.width {
@@ -366,7 +367,7 @@ impl LayoutEngine {
         let w = self.taffy.layout(t).ok()?.size.width - extra;
         let ctx = self.taffy.get_node_context(t)?;
         let font = ctx.font?;
-        let base = self.text_cache.base(&ctx.text, &font)?;
+        let base = self.text_cache.base(&ctx.text, &font)?; // ctx.text is already collapsed
         Some(self.text_cache.at_width(&base, w.max(0.0)))
     }
 }
@@ -515,7 +516,7 @@ impl LayoutEngine {
         collect_paint_order_recursive(doc, doc.root, &nodes, &mut paint_order);
 
         let result = LayoutResult { nodes, paint_order, // Scroll is still cell-based, so the extent stays whole cells.
-            total_height: max_bottom.ceil() as u16 };
+            total_height: max_bottom.ceil() as u16, shaped: self.shaped.clone() };
         self.last_layout = Some(result.clone());
         probe(LayoutPhase::Finish);
         if self.cross_check {
@@ -704,7 +705,16 @@ impl LayoutEngine {
         // Stage 6.3: a node whose font is not the root default (GUI only) is measured by shaping.
         let font = self.fonts.get(oxi_id);
         let shaped_font = self.mode == RenderMode::Gui && !font.uses_cell_metrics();
-        let ctx_text = Self::measure_text(node);
+        // A shaped `wrap:word` node keeps the text the mono path would paint (whitespace runs
+        // collapsed, once per frame here instead of on every measure call) in its context.
+        let collapsed;
+        let ctx_text = match Self::measure_text(node) {
+            Some(t) if shaped_font => {
+                collapsed = crate::text::collapse_word_whitespace(t);
+                Some(&*collapsed)
+            }
+            other => other,
+        };
         let ctx_font = if shaped_font && ctx_text.is_some() { Some(font) } else { None };
         if ctx_font.is_some() {
             self.shaped_refs.push((oxi_id, ShapedRef::Word));
@@ -1790,6 +1800,25 @@ mod shaped_tests {
         let r = e.compute(&mut doc, 80, 0, None).unwrap();
         let t = nodes(&doc, NodeTag::Text)[0];
         assert_eq!(r.nodes[&t].width, e.shaped_text(t).unwrap().max_content_cells());
+    }
+
+    #[test]
+    fn word_text_collapses_whitespace_like_the_mono_path_and_nowrap_keeps_it() {
+        let shape = |wrap: &str, txt: &str| {
+            let mut doc = gui(&format!(r#"<box style="width: 60; flex-direction: column;"><text style="font-family: sans-serif; wrap: {wrap};">{txt}</text></box>"#));
+            let mut e = engine();
+            e.compute(&mut doc, 80, 0, None).unwrap();
+            let t = nodes(&doc, NodeTag::Text)[0];
+            e.shaped_text(t).unwrap().clone()
+        };
+        let spaced = shape("word", "  alpha   beta \t gamma  ");
+        let plain = shape("word", "alpha beta gamma");
+        assert_eq!(&*spaced.text, "alpha beta gamma");
+        assert_eq!(spaced.max_content, plain.max_content, "same measure as the collapsed text");
+        // wrap:none is verbatim (the mono path paints `text.lines()` untouched), spaces included
+        let kept = shape("none", "alpha   beta");
+        assert_eq!(&*kept.text, "alpha   beta");
+        assert!(kept.max_content > shape("none", "alpha beta").max_content);
     }
 
     #[test]

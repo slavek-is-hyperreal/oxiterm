@@ -9,9 +9,19 @@
 //! guarded by the golden tests). `RenderMode::Gui` keeps the layout's fractional rects and
 //! origins; text still wraps against `floor(inner width)` columns and glyph offsets stay in
 //! whole cells relative to the (possibly fractional) origin.
+//!
+//! **Shaped text (Phase 6.4).** A Text/Button node in GUI mode that has a stored layout in
+//! `LayoutResult::shaped` (its font is not the root default, see `LayoutEngine::shaped_text`) is
+//! emitted from that layout: one `Text` item per node with `shaped: Some(..)`, never re-shaped or
+//! re-wrapped. Glyph `x` = `px / 9.6`, glyph `y` = the top of its line box (`line.top px / 20`;
+//! the baseline is `y + ShapedRun::baseline`), `advance` = `px / 9.6`. Only glyphs whose origin
+//! lies inside the item's `clip` are kept (the same rule as the cell path, on the exact
+//! fractional rect instead of whole columns). Inputs never have a shaped layout (they stay on the
+//! cell path, so password masking is untouched).
 
 use crate::document::THTMLDocument;
 use crate::font::ResolvedFonts;
+use crate::text::layout::TextLayout;
 use crate::layout::types::{to_cells, LayoutResult};
 use crate::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, PointF, RectF};
 use crate::render::unicode::UnicodeWidthCache;
@@ -157,7 +167,12 @@ fn emit_node(
         NodeTag::Text | NodeTag::Button => {
             let font = fonts.get(node_id);
             let mods = Modifiers { bold: font.bold, underline: false, italic: font.italic };
-            if let Some(item) = text_item(node, node_id, cx, cy, cw, ch, mode, fg, bg, mods) {
+            let shaped = if mode == RenderMode::Gui { layout.shaped.get(&node_id) } else { None };
+            let item = match shaped {
+                Some(l) => shaped_text_item(node, node_id, l, cx, cy, cw, ch, mode, fg, bg, mods),
+                None => text_item(node, node_id, cx, cy, cw, ch, mode, fg, bg, mods),
+            };
+            if let Some(item) = item {
                 list.push(item);
             }
         }
@@ -274,6 +289,102 @@ fn text_item(
         fg,
         bg,
         mods,
+        shaped: None,
+    })
+}
+
+/// Without `text-shaping` no layout is ever stored, so this is never reached.
+#[cfg(not(feature = "text-shaping"))]
+#[allow(clippy::too_many_arguments)]
+fn shaped_text_item(
+    _: &Node,
+    _: NodeId,
+    _: &TextLayout,
+    _: f32,
+    _: f32,
+    _: f32,
+    _: f32,
+    _: RenderMode,
+    _: AnsiColor,
+    _: AnsiColor,
+    _: Modifiers,
+) -> Option<DisplayItem> {
+    None
+}
+
+/// Emits a Text/Button node from its stored shaped layout (see the module docs). The padding and
+/// the content box are computed exactly as `text_item` does, so the origin and clip agree.
+#[cfg(feature = "text-shaping")]
+#[allow(clippy::too_many_arguments)]
+fn shaped_text_item(
+    node: &Node,
+    node_id: NodeId,
+    layout: &TextLayout,
+    content_x: f32,
+    content_y: f32,
+    content_w: f32,
+    content_h: f32,
+    mode: RenderMode,
+    fg: AnsiColor,
+    bg: AnsiColor,
+    mods: Modifiers,
+) -> Option<DisplayItem> {
+    use crate::font::{CELL_H_PX, CELL_W_PX};
+    use crate::render::display_list::{ShapedRun, FACE_MONO, FACE_SANS};
+    use oxiterm_proto::style::FontFace;
+    node.text.as_ref()?;
+    let pad = |v: f32| match mode {
+        RenderMode::Tui => to_cells(v) as f32,
+        RenderMode::Gui => v.max(0.0),
+    };
+    let pad_x = if node.tag == NodeTag::Button { pad(node.style.padding.left) } else { 0.0 };
+    let pad_y = if node.tag == NodeTag::Button { pad(node.style.padding.top) } else { 0.0 };
+    let (draw_x, draw_y) = (content_x + pad_x, content_y + pad_y);
+    let (inner_wf, inner_hf) = ((content_w - pad_x).max(0.0), (content_h - pad_y).max(0.0));
+
+    let face_id = |f: FontFace| match f {
+        FontFace::Mono => FACE_MONO,
+        FontFace::Sans => FACE_SANS,
+    };
+    let mut glyphs = Vec::new();
+    let mut glyph_faces = Vec::new();
+    let mut clusters: Vec<(u32, Box<str>)> = Vec::new();
+    for line in &layout.lines {
+        let y = line.top / CELL_H_PX;
+        for g in &line.glyphs {
+            let x = g.x / CELL_W_PX;
+            // Same rule as the cell path: the glyph origin must lie inside the clip.
+            if x >= inner_wf || y >= inner_hf {
+                continue;
+            }
+            let text = layout.cluster_text(g);
+            let idx = glyphs.len() as u32;
+            glyphs.push(Glyph { x, y, ch: text.chars().next().unwrap_or(' '), advance: g.advance / CELL_W_PX });
+            if text.chars().nth(1).is_some() {
+                clusters.push((idx, text.into()));
+            }
+            if g.face != layout.font.face {
+                glyph_faces.push((idx, face_id(g.face)));
+            }
+        }
+    }
+    let baseline = layout.lines.first().map_or(0.0, |l| (l.baseline - l.top) / CELL_H_PX);
+    Some(DisplayItem::Text {
+        node: node_id,
+        origin: PointF { x: draw_x, y: draw_y },
+        clip: RectF::new(draw_x, draw_y, inner_wf, inner_hf),
+        glyphs,
+        fg,
+        bg,
+        mods,
+        shaped: Some(Box::new(ShapedRun {
+            face: face_id(layout.font.face),
+            size_px: layout.font.size_px,
+            line_height: layout.font.line_height_px / CELL_H_PX,
+            baseline,
+            glyph_faces,
+            clusters,
+        })),
     })
 }
 
@@ -310,6 +421,7 @@ fn input_item(
         fg,
         bg,
         mods: Modifiers::default(),
+        shaped: None,
     }
 }
 

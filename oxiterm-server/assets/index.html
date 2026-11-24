@@ -673,7 +673,11 @@
                     throw new Error('fonts.json: bad metrics');
                 }
                 await Promise.all(m.faces.map(async (f) => {
-                    const face = new FontFace(f.id, `url(${f.url_path})`, { featureSettings: '"liga" 0, "calt" 0' });
+                    // Mono glyphs are painted one char at a time and must not ligate. The sans face is painted
+                    // as the server shaped it (clusters such as "ffi" are one glyph there), so it keeps
+                    // its ligatures.
+                    const desc = f.id === 'oxi-mono' ? { featureSettings: '"liga" 0, "calt" 0' } : {};
+                    const face = new FontFace(f.id, `url(${f.url_path})`, desc);
                     await face.load();
                     document.fonts.add(face);
                 }));
@@ -739,7 +743,7 @@
                 // resets the opt-in per connection). Sent BEFORE the first 0x10 so the
                 // server's handshake already knows the mode: the first frame is a display
                 // list and no cell frame is painted first.
-                if (guiMode) ws.send(new Uint8Array([0x12, 0x01]));
+                if (guiMode) ws.send(new Uint8Array([0x12, 0x03]));  // bit 0 display list, bit 1 wire v3 (proportional glyph runs)
 
                 // Send initial resize (0x10) to complete the handshake
                 resizeTerminal(true);

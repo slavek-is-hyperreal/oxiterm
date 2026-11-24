@@ -161,6 +161,10 @@ pub struct SessionState {
     /// Web client negotiated display-list frames (`0x12` caps bit 0): documents are parsed in
     /// `RenderMode::Gui` and frames go out as display lists instead of cell diffs.
     pub display_list_client: std::sync::atomic::AtomicBool,
+    /// `0x12` caps bit 1: the client understands display-list wire v3 (positioned proportional
+    /// glyph runs). Per connection like `display_list_client`; only read by the frame sink when
+    /// it picks the wire version (`wire::encode_for`).
+    pub display_list_v3: std::sync::atomic::AtomicBool,
     /// Indicates if the session is a web (WebSocket) session with DOM media overlay.
     pub is_web_client: std::sync::atomic::AtomicBool,
     /// The current relative page path for WebSocket announce.
@@ -190,6 +194,7 @@ impl SessionState {
             active_media: RwLock::new(Vec::new()),
             is_mobile: std::sync::atomic::AtomicBool::new(false),
             display_list_client: std::sync::atomic::AtomicBool::new(false),
+            display_list_v3: std::sync::atomic::AtomicBool::new(false),
             is_web_client: std::sync::atomic::AtomicBool::new(false),
             current_page: RwLock::new(None),
             app_base_dir: RwLock::new(None),

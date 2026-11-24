@@ -4,12 +4,16 @@
 //! documented in `docs/ARCHITECTURE.md` ("Display-list protocol"). Summary:
 //!
 //! ```text
-//! list   := version:u8(=2) count:u32 item*count
+//! list   := version:u8(=2 or 3) count:u32 item*count
 //! item   := tag:u8 body
 //! colour := 0 | 1 r g b | 2 idx            (Reset | TrueColor | Color256)
 //! rect   := x:f32 y:f32 w:f32 h:f32
 //! Fill   := node:u32 rect radius:f32 fg bg
 //! Border := node:u32 rect radius:f32 8*char:u32 fg bg
+//! Text   := node:u32 origin:f32*2 clip:rect fg bg mods:u8 n:u32 (x y ch:u32 advance)*n
+//! Run    := (v3 only, tag 9) the Text fields up to `mods`, then face:u8 size:f32 line_height:f32
+//!           baseline:f32 n:u32 (x y ch:u32 advance)*n nf:u32 (idx:u32 face:u8)*nf
+//!           nc:u32 (idx:u32 len:u32 utf8*len)*nc      (proportional text, see `ShapedRun`)
 //! Path   := node:u32 n:u32 cmd*n fill_flag:u8 [colour] stroke_flag:u8 [colour width:f32]
 //! cmd    := 0 x y | 1 x y | 2 cx cy x y | 3 c1x c1y c2x c2y x y | 4   (op:u8, f32 operands)
 //! ```
@@ -22,10 +26,14 @@ use anyhow::{anyhow, bail, ensure, Result};
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::style::{AnsiColor, BorderChars};
 
-use crate::render::display_list::{DisplayItem, DisplayList, Glyph, GridCell, Modifiers, PathCmd, PointF, RectF};
+use crate::render::display_list::{DisplayItem, DisplayList, Glyph, GridCell, Modifiers, PathCmd, PointF, RectF, ShapedRun};
 
-/// Wire format version written as the first byte.
+/// Baseline wire format version: what [`encode`] writes and every client understands.
 pub const WIRE_VERSION: u8 = 2;
+/// Version 3 adds the shaped text run (tag 9). It is written only by [`encode_for`], only for
+/// clients that announced it (`0x12` caps bit 1), and only for a list that contains a shaped
+/// run; every other list is byte-identical to version 2.
+pub const WIRE_VERSION_3: u8 = 3;
 
 const TAG_FILL: u8 = 1;
 const TAG_BORDER: u8 = 2;
@@ -35,6 +43,7 @@ const TAG_PUSH_CLIP: u8 = 5;
 const TAG_POP_CLIP: u8 = 6;
 const TAG_CELL_GRID: u8 = 7;
 const TAG_PATH: u8 = 8;
+const TAG_TEXT_RUN: u8 = 9;
 
 const OP_MOVE: u8 = 0;
 const OP_LINE: u8 = 1;
@@ -51,10 +60,65 @@ const MOD_SKIP: u8 = 8;
 const GLYPH_BYTES: usize = 16;
 const CELL_MIN_BYTES: usize = 7;
 
-/// Serializes a display list.
+/// Serializes a display list as version 2 (the baseline): a shaped text run is down-converted
+/// by [`downgrade_v2`] on the way out.
 pub fn encode(list: &DisplayList) -> Vec<u8> {
+    encode_version(list, WIRE_VERSION)
+}
+
+/// Serializes `list` for a client that understands wire versions up to `max_version`: version 3
+/// when `max_version >= 3` and the list holds a shaped run, version 2 otherwise (so a list
+/// without proportional text is byte-identical for every client).
+pub fn encode_for(list: &DisplayList, max_version: u8) -> Vec<u8> {
+    let v3 = max_version >= WIRE_VERSION_3
+        && list.items.iter().any(|i| matches!(i, DisplayItem::Text { shaped: Some(_), .. }));
+    encode_version(list, if v3 { WIRE_VERSION_3 } else { WIRE_VERSION })
+}
+
+/// The glyphs a version-2 client gets for a shaped run: one glyph per char, a cluster's chars
+/// all at the cluster's `x`/`y` (the first one keeps the advance, the others get `0.0`). Face,
+/// size, baseline and line height are dropped; `y` stays the top of the line box.
+fn expand_clusters(glyphs: &[Glyph], run: &ShapedRun) -> Vec<Glyph> {
+    let mut out = Vec::with_capacity(glyphs.len());
+    for (i, g) in glyphs.iter().enumerate() {
+        match run.cluster_of(i) {
+            Some(text) => {
+                for (k, ch) in text.chars().enumerate() {
+                    out.push(Glyph { ch, advance: if k == 0 { g.advance } else { 0.0 }, ..*g });
+                }
+            }
+            None => out.push(*g),
+        }
+    }
+    out
+}
+
+/// What a version-2 client sees of `list`: every shaped run replaced by its [`expand_clusters`]
+/// cell-style run (`shaped: None`). `decode(&encode(list)) == downgrade_v2(list)`.
+pub fn downgrade_v2(list: &DisplayList) -> DisplayList {
+    let items = list
+        .items
+        .iter()
+        .map(|item| match item {
+            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods, shaped: Some(run) } => DisplayItem::Text {
+                node: *node,
+                origin: *origin,
+                clip: *clip,
+                glyphs: expand_clusters(glyphs, run),
+                fg: *fg,
+                bg: *bg,
+                mods: *mods,
+                shaped: None,
+            },
+            other => other.clone(),
+        })
+        .collect();
+    DisplayList { items }
+}
+
+fn encode_version(list: &DisplayList, version: u8) -> Vec<u8> {
     let mut out = Vec::with_capacity(64 + list.items.len() * 32);
-    out.push(WIRE_VERSION);
+    out.push(version);
     put_u32(&mut out, list.items.len() as u32);
     for item in &list.items {
         match item {
@@ -80,8 +144,9 @@ pub fn encode(list: &DisplayList) -> Vec<u8> {
                 put_color(&mut out, *fg);
                 put_color(&mut out, *bg);
             }
-            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods } => {
-                out.push(TAG_TEXT);
+            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods, shaped } => {
+                let run = shaped.as_deref().filter(|_| version >= WIRE_VERSION_3);
+                out.push(if run.is_some() { TAG_TEXT_RUN } else { TAG_TEXT });
                 put_u32(&mut out, node.0);
                 put_f32(&mut out, origin.x);
                 put_f32(&mut out, origin.y);
@@ -89,12 +154,40 @@ pub fn encode(list: &DisplayList) -> Vec<u8> {
                 put_color(&mut out, *fg);
                 put_color(&mut out, *bg);
                 out.push(mods_byte(*mods, false));
+                if let Some(r) = run {
+                    out.push(r.face);
+                    put_f32(&mut out, r.size_px);
+                    put_f32(&mut out, r.line_height);
+                    put_f32(&mut out, r.baseline);
+                }
+                // A shaped run sent to a v2 client is flattened to one glyph per char.
+                let flat;
+                let glyphs: &[Glyph] = match (shaped.as_deref(), run) {
+                    (Some(r), None) => {
+                        flat = expand_clusters(glyphs, r);
+                        &flat
+                    }
+                    _ => glyphs,
+                };
                 put_u32(&mut out, glyphs.len() as u32);
                 for g in glyphs {
                     put_f32(&mut out, g.x);
                     put_f32(&mut out, g.y);
                     put_u32(&mut out, g.ch as u32);
                     put_f32(&mut out, g.advance);
+                }
+                if let Some(r) = run {
+                    put_u32(&mut out, r.glyph_faces.len() as u32);
+                    for (i, f) in &r.glyph_faces {
+                        put_u32(&mut out, *i);
+                        out.push(*f);
+                    }
+                    put_u32(&mut out, r.clusters.len() as u32);
+                    for (i, t) in &r.clusters {
+                        put_u32(&mut out, *i);
+                        put_u32(&mut out, t.len() as u32);
+                        out.extend_from_slice(t.as_bytes());
+                    }
                 }
             }
             DisplayItem::Legacy { node, content } => {
@@ -167,12 +260,12 @@ pub fn encode(list: &DisplayList) -> Vec<u8> {
     out
 }
 
-/// Parses a display list. Errors (never panics) on truncated input, an unknown version or
-/// tag, an invalid code point or colour tag, or trailing bytes.
+/// Parses a display list (version 2 or 3). Errors (never panics) on truncated input, an unknown
+/// version or tag, an invalid code point or colour tag, a malformed shaped run, or trailing bytes.
 pub fn decode(bytes: &[u8]) -> Result<DisplayList> {
     let mut r = Reader { buf: bytes, pos: 0 };
     let version = r.u8()?;
-    ensure!(version == WIRE_VERSION, "unsupported display list version {version}");
+    ensure!(version == WIRE_VERSION || version == WIRE_VERSION_3, "unsupported display list version {version}");
     let count = r.u32()? as usize;
     // Every item takes at least one byte, so a larger count cannot be valid.
     ensure!(count <= r.remaining(), "item count {count} exceeds payload");
@@ -216,7 +309,48 @@ pub fn decode(bytes: &[u8]) -> Result<DisplayList> {
                 for _ in 0..n {
                     glyphs.push(Glyph { x: r.f32()?, y: r.f32()?, ch: r.ch()?, advance: r.f32()? });
                 }
-                DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods }
+                DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods, shaped: None }
+            }
+            TAG_TEXT_RUN => {
+                ensure!(version >= WIRE_VERSION_3, "shaped text run in a version {version} list");
+                let node = NodeId(r.u32()?);
+                let origin = PointF { x: r.f32()?, y: r.f32()? };
+                let clip = r.rect()?;
+                let fg = r.color()?;
+                let bg = r.color()?;
+                let (mods, _) = parse_mods(r.u8()?);
+                let (face, size_px, line_height, baseline) = (r.u8()?, r.f32()?, r.f32()?, r.f32()?);
+                let n = r.u32()? as usize;
+                ensure!(n <= r.remaining() / GLYPH_BYTES, "glyph count {n} exceeds payload");
+                let mut glyphs = Vec::with_capacity(n);
+                for _ in 0..n {
+                    glyphs.push(Glyph { x: r.f32()?, y: r.f32()?, ch: r.ch()?, advance: r.f32()? });
+                }
+                // Both tables are sorted by glyph index (strictly ascending, in range).
+                let nf = r.u32()? as usize;
+                ensure!(nf <= r.remaining() / 5, "face override count {nf} exceeds payload");
+                let mut glyph_faces = Vec::with_capacity(nf);
+                let mut prev: Option<u32> = None;
+                for _ in 0..nf {
+                    let (i, f) = (r.u32()?, r.u8()?);
+                    ensure!((i as usize) < n && prev.map_or(true, |p| i > p), "bad face override index {i}");
+                    prev = Some(i);
+                    glyph_faces.push((i, f));
+                }
+                let nc = r.u32()? as usize;
+                ensure!(nc <= r.remaining() / 8, "cluster count {nc} exceeds payload");
+                let mut clusters = Vec::with_capacity(nc);
+                let mut prev: Option<u32> = None;
+                for _ in 0..nc {
+                    let i = r.u32()?;
+                    let len = r.u32()? as usize;
+                    ensure!((i as usize) < n && prev.map_or(true, |p| i > p), "bad cluster index {i}");
+                    prev = Some(i);
+                    let text = std::str::from_utf8(r.take(len)?).map_err(|_| anyhow!("cluster text is not UTF-8"))?;
+                    clusters.push((i, Box::<str>::from(text)));
+                }
+                let run = ShapedRun { face, size_px, line_height, baseline, glyph_faces, clusters };
+                DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods, shaped: Some(Box::new(run)) }
             }
             TAG_LEGACY => DisplayItem::Legacy { node: NodeId(r.u32()?), content: r.rect()? },
             TAG_PUSH_CLIP => DisplayItem::PushClip { rect: r.rect()? },
@@ -408,6 +542,7 @@ mod tests {
             fg: AnsiColor::TrueColor(255, 0, 128),
             bg: AnsiColor::Reset,
             mods: Modifiers { bold: true, underline: false, italic: true },
+            shaped: None,
         });
         l.push(DisplayItem::Legacy { node: NodeId(11), content: RectF::new(4.0, 5.0, 6.0, 7.0) });
         l.push(DisplayItem::PushClip { rect: RectF::new(0.0, 0.0, 5.0, 5.0) });
@@ -482,7 +617,7 @@ mod tests {
         let mut bytes = encode(&sample());
         bytes[0] = 1;
         assert!(decode(&bytes).is_err());
-        bytes[0] = 3;
+        bytes[0] = 4;
         assert!(decode(&bytes).is_err());
         bytes[0] = 0;
         assert!(decode(&bytes).is_err());
@@ -594,6 +729,183 @@ mod tests {
         assert!(decode(&f).is_err());
     }
 
+
+    fn shaped_sample() -> DisplayList {
+        let mut l = sample();
+        l.push(DisplayItem::Text {
+            node: NodeId(30),
+            origin: PointF { x: 1.5, y: 2.0 },
+            clip: RectF::new(1.5, 2.0, 20.25, 3.0),
+            glyphs: vec![
+                Glyph { x: 0.0, y: 0.0, ch: 'o', advance: 1.5124999 },
+                Glyph { x: 1.5124999, y: 0.0, ch: 'f', advance: 1.25 },
+                Glyph { x: 2.7625, y: 0.0, ch: '\u{2500}', advance: 1.0 },
+                Glyph { x: 0.0, y: 1.5, ch: 'e', advance: 1.36 },
+            ],
+            fg: AnsiColor::TrueColor(1, 2, 3),
+            bg: AnsiColor::Color256(4),
+            mods: Modifiers { bold: true, underline: true, italic: false },
+            shaped: Some(Box::new(ShapedRun {
+                face: 1,
+                size_px: 24.0,
+                line_height: 1.5,
+                baseline: 1.2156,
+                glyph_faces: vec![(2, 0)],
+                clusters: vec![(1, "ffi".into()), (3, "e\u{301}".into())],
+            })),
+        });
+        // a plain run next to it stays a tag-3 item
+        l.push(DisplayItem::Text {
+            node: NodeId(31),
+            origin: PointF { x: 0.0, y: 0.0 },
+            clip: RectF::new(0.0, 0.0, 4.0, 1.0),
+            glyphs: vec![Glyph { x: 0.0, y: 0.0, ch: 'x', advance: 1.0 }],
+            fg: AnsiColor::Reset,
+            bg: AnsiColor::Reset,
+            mods: Modifiers::default(),
+            shaped: None,
+        });
+        l
+    }
+
+    #[test]
+    fn v3_round_trips_shaped_runs() {
+        let l = shaped_sample();
+        let bytes = encode_for(&l, 3);
+        assert_eq!(bytes[0], 3);
+        assert_eq!(decode(&bytes).unwrap(), l);
+        for item in l.items {
+            let one = DisplayList { items: vec![item] };
+            assert_eq!(decode(&encode_for(&one, 3)).unwrap(), one);
+        }
+    }
+
+    #[test]
+    fn pinned_v3_run_bytes() {
+        let l = DisplayList {
+            items: vec![DisplayItem::Text {
+                node: NodeId(5),
+                origin: PointF { x: 1.0, y: 2.0 },
+                clip: RectF::new(0.0, 0.0, 3.0, 4.0),
+                glyphs: vec![Glyph { x: 0.5, y: 0.0, ch: 'f', advance: 2.0 }],
+                fg: AnsiColor::Reset,
+                bg: AnsiColor::Color256(9),
+                mods: Modifiers { bold: true, underline: false, italic: false },
+                shaped: Some(Box::new(ShapedRun {
+                    face: 1,
+                    size_px: 24.0,
+                    line_height: 1.5,
+                    baseline: 1.0,
+                    glyph_faces: vec![(0, 0)],
+                    clusters: vec![(0, "fi".into())],
+                })),
+            }],
+        };
+        let mut want = vec![3, 1, 0, 0, 0, 9, 5, 0, 0, 0];
+        for v in [1.0f32, 2.0, 0.0, 0.0, 3.0, 4.0] {
+            want.extend_from_slice(&v.to_le_bytes());
+        }
+        want.extend_from_slice(&[0, 2, 9, 1]); // fg, bg, mods(bold)
+        want.push(1); // face
+        for v in [24.0f32, 1.5, 1.0] {
+            want.extend_from_slice(&v.to_le_bytes());
+        }
+        want.extend_from_slice(&1u32.to_le_bytes());
+        want.extend_from_slice(&0.5f32.to_le_bytes());
+        want.extend_from_slice(&0.0f32.to_le_bytes());
+        want.extend_from_slice(&('f' as u32).to_le_bytes());
+        want.extend_from_slice(&2.0f32.to_le_bytes());
+        want.extend_from_slice(&1u32.to_le_bytes()); // face overrides
+        want.extend_from_slice(&0u32.to_le_bytes());
+        want.push(0);
+        want.extend_from_slice(&1u32.to_le_bytes()); // clusters
+        want.extend_from_slice(&0u32.to_le_bytes());
+        want.extend_from_slice(&2u32.to_le_bytes());
+        want.extend_from_slice(b"fi");
+        assert_eq!(encode_for(&l, 3), want);
+    }
+
+    #[test]
+    fn v2_client_gets_the_deterministic_downgrade() {
+        let l = shaped_sample();
+        let v2 = encode_for(&l, 2);
+        assert_eq!(v2, encode(&l));
+        assert_eq!(v2[0], 2);
+        let got = decode(&v2).unwrap();
+        assert_eq!(got, downgrade_v2(&l));
+        let DisplayItem::Text { glyphs, shaped, .. } = &got.items[got.items.len() - 2] else { panic!() };
+        assert!(shaped.is_none());
+        // 4 glyphs: "ffi" cluster at glyph 1 -> 3 chars, "e\u{301}" at glyph 3 -> 2 chars
+        let chars: String = glyphs.iter().map(|g| g.ch).collect();
+        assert_eq!(chars, "offi\u{2500}e\u{301}");
+        // all chars of a cluster share its x/y; only the first keeps the advance
+        assert_eq!((glyphs[1].x, glyphs[2].x, glyphs[3].x), (1.5124999, 1.5124999, 1.5124999));
+        assert_eq!((glyphs[1].advance, glyphs[2].advance, glyphs[3].advance), (1.25, 0.0, 0.0));
+        assert_eq!((glyphs[5].y, glyphs[6].y), (1.5, 1.5));
+        // a v2 decoder (this one, told it is v2) refuses a run tag
+        let mut bad = encode_for(&l, 3);
+        bad[0] = 2;
+        assert!(decode(&bad).is_err());
+    }
+
+    #[test]
+    fn lists_without_shaped_runs_are_identical_for_every_client() {
+        let l = sample();
+        assert_eq!(encode_for(&l, 2), encode(&l));
+        assert_eq!(encode_for(&l, 3), encode(&l));
+        assert_eq!(encode_for(&l, 255), encode(&l));
+        assert_eq!(encode_for(&DisplayList::new(), 3), vec![2, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn every_strict_prefix_of_a_v3_list_is_rejected() {
+        let bytes = encode_for(&shaped_sample(), 3);
+        for n in 0..bytes.len() {
+            assert!(decode(&bytes[..n]).is_err(), "prefix of {n} bytes must not decode");
+        }
+    }
+
+    #[test]
+    fn malformed_shaped_runs_are_rejected() {
+        let one = |run: ShapedRun| {
+            encode_for(
+                &DisplayList {
+                    items: vec![DisplayItem::Text {
+                        node: NodeId(1),
+                        origin: PointF::default(),
+                        clip: RectF::default(),
+                        glyphs: vec![Glyph { x: 0.0, y: 0.0, ch: 'a', advance: 1.0 }; 2],
+                        fg: AnsiColor::Reset,
+                        bg: AnsiColor::Reset,
+                        mods: Modifiers::default(),
+                        shaped: Some(Box::new(run)),
+                    }],
+                },
+                3,
+            )
+        };
+        let base = ShapedRun { face: 1, size_px: 16.0, line_height: 1.0, baseline: 0.8, glyph_faces: vec![], clusters: vec![] };
+        assert!(decode(&one(base.clone())).is_ok());
+        // index out of range, not ascending, duplicated
+        for faces in [vec![(2, 0)], vec![(1, 0), (0, 0)], vec![(1, 0), (1, 0)]] {
+            assert!(decode(&one(ShapedRun { glyph_faces: faces, ..base.clone() })).is_err());
+        }
+        for cl in [vec![(2, "ab".into())], vec![(1, "ab".into()), (0, "cd".into())]] {
+            assert!(decode(&one(ShapedRun { clusters: cl, ..base.clone() })).is_err());
+        }
+        // non-finite size, invalid UTF-8 in a cluster, huge counts
+        assert!(decode(&one(ShapedRun { size_px: f32::NAN, ..base.clone() })).is_err());
+        let mut b = one(ShapedRun { clusters: vec![(0, "ab".into())], ..base.clone() });
+        let n = b.len();
+        b[n - 2] = 0xff;
+        b[n - 1] = 0xfe;
+        assert!(decode(&b).is_err());
+        let mut b = one(base);
+        let n = b.len();
+        b[n - 8..n - 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(decode(&b).is_err());
+    }
+
     #[test]
     fn garbage_never_panics() {
         let mut seed = 0x1234_5678u32;
@@ -603,6 +915,8 @@ mod tests {
                 seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
                 buf.push((seed >> 24) as u8 % 9);
             }
+            let _ = decode(&buf);
+            buf[0] = 3;
             let _ = decode(&buf);
         }
     }

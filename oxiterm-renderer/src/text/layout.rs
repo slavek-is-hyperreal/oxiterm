@@ -1,5 +1,9 @@
-//! Shaped text layout (Phase 6, Stage 6.3): the one result that layout measures and, from 6.4
-//! on, the display-list builder paints.
+//! Shaped text layout (Phase 6, Stage 6.3): the one result that layout measures and (6.4) the
+//! display-list builder paints.
+//!
+//! Whitespace: this module shapes the text it is given verbatim (runs of spaces are kept). The
+//! engine hands it `wrap:word` text already collapsed the way the mono path paints it
+//! ([`crate::text::collapse_word_whitespace`]) and `wrap:none` text untouched.
 //!
 //! # Pipeline
 //! 1. The text is normalised (`\r` and a trailing `\n` dropped, like `str::lines`) and every
@@ -544,6 +548,20 @@ mod tests {
         assert!(!g[1].missing && (g[1].advance - CELL_W_PX).abs() < 1e-4);
         let m = c.base("a\u{2500}b", &ResolvedFont { face: FontFace::Mono, ..sans(16.0) }).unwrap();
         assert!(m.lines[0].glyphs.iter().all(|g| g.face == FontFace::Mono));
+    }
+
+    #[test]
+    fn baseline_offset_per_paragraph_with_a_fallback_glyph() {
+        let mut c = TextCache::new();
+        let b = c.base("ab cd\na\u{2500}b cd", &sans(16.0)).unwrap();
+        let off = |l: &LayoutLine| l.baseline - l.top;
+        // measured: a mono box-drawing fallback glyph in sans does not move the baseline
+        assert_eq!(off(&b.lines[0]), off(&b.lines[1]));
+        // wrapped lines of one paragraph share its offset
+        let w = c.at_width(&b, 2.5);
+        assert_eq!(w.lines.len(), 4);
+        assert_eq!(off(&w.lines[0]), off(&w.lines[1]));
+        assert_eq!(off(&w.lines[2]), off(&w.lines[3]));
     }
 
     #[test]

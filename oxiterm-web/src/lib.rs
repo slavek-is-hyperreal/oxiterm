@@ -166,6 +166,13 @@ impl WebTerminal {
                     self.ctx.set_fill_style_str(color);
                     let _ = self.ctx.fill_text(&ch.to_string(), *x, *y);
                 }
+                paint::PaintOp::Run { text, x, y, font, color } => {
+                    self.ctx.set_text_baseline("alphabetic");
+                    self.ctx.set_font(font);
+                    self.ctx.set_fill_style_str(color);
+                    let _ = self.ctx.fill_text(text, *x, *y);
+                    self.ctx.set_text_baseline("top");
+                }
                 paint::PaintOp::Save => self.ctx.save(),
                 paint::PaintOp::ClipRect { x, y, w, h } => {
                     self.ctx.begin_path();

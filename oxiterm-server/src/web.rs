@@ -330,7 +330,14 @@ pub mod web_impl {
                 return Ok(false);
             }
             let (_epoch_changed, coords_changed) = self.sync_preamble();
-            let encoded = oxiterm_renderer::render::wire::encode(list);
+            // Wire v3 only for a client that announced it (caps bit 1) and only when the list has
+            // a shaped run; otherwise the bytes are exactly the v2 ones.
+            let max_version = if self.session.display_list_v3.load(std::sync::atomic::Ordering::SeqCst) {
+                oxiterm_renderer::render::wire::WIRE_VERSION_3
+            } else {
+                oxiterm_renderer::render::wire::WIRE_VERSION
+            };
+            let encoded = oxiterm_renderer::render::wire::encode_for(list, max_version);
             // Unchanged frame (also resets on epoch change via sync_preamble): nothing to send.
             if self.last_list.as_deref() == Some(encoded.as_slice()) {
                 return Ok(coords_changed);
@@ -889,6 +896,7 @@ pub mod web_impl {
         // diffs and must send 0x12 again. Reset BEFORE the new sender is installed so no
         // display-list frame can reach it; the event is sent only if the flag was set, so the
         // doc is re-parsed in TUI mode.
+        client_session.display_list_v3.store(false, std::sync::atomic::Ordering::SeqCst);
         if client_session.display_list_client.swap(false, std::sync::atomic::Ordering::SeqCst) {
             let _ = client_session.event_tx.try_send(InputEvent::SetDisplayList(false));
         }
@@ -968,6 +976,7 @@ pub mod web_impl {
                 // requested mode instead of sending a cell frame and switching later.
                 if bytes.len() >= 2 && bytes[0] == 0x12 {
                     let on = bytes[1] & 1 != 0;
+                    client_session.display_list_v3.store(on && bytes[1] & 2 != 0, std::sync::atomic::Ordering::SeqCst);
                     let prev = client_session.display_list_client.swap(on, std::sync::atomic::Ordering::SeqCst);
                     // A running event loop (reattach) must re-parse; a loop that is not
                     // running yet reads the flag when it loads the page.
@@ -1187,10 +1196,11 @@ pub mod web_impl {
                         }
                     }
                     0x12 => {
-                        // Capabilities: bit 0 = display-list frames.
+                        // Capabilities: bit 0 = display-list frames, bit 1 = wire v3 (proportional glyph runs).
                         // Ignore caps from a superseded connection (stale 0x12 after takeover).
                         if bytes.len() >= 2 && client_session.connection_epoch.load(std::sync::atomic::Ordering::SeqCst) == new_epoch {
                             let on = bytes[1] & 1 != 0;
+                            client_session.display_list_v3.store(on && bytes[1] & 2 != 0, std::sync::atomic::Ordering::SeqCst);
                             // Only act on a change: clients resend caps on every reconnect and a
                             // reload would reset the scroll position.
                             let prev = client_session.display_list_client.swap(on, std::sync::atomic::Ordering::SeqCst);
@@ -2450,6 +2460,58 @@ pub mod web_impl {
             assert!(got_diff, "taken-over client received no cell-diff frame");
         }
 
+        #[tokio::test]
+        async fn test_caps_bit1_negotiates_wire_v3_and_resets_per_connection() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+            let v3 = |reg: &Arc<SessionRegistry>| {
+                reg.sessions.read().values().next().cloned().expect("session").display_list_v3.load(std::sync::atomic::Ordering::SeqCst)
+            };
+
+            let url = format!("ws://{}/ws", local_addr);
+            let (ws_a, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut a_write, mut a_read) = ws_a.split();
+            // Caps before the first 0x10: handled by the handshake loop.
+            a_write.send(Message::Binary(vec![0x12, 0x03])).await.unwrap();
+            a_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            let mut token = None;
+            let mut got_list = false;
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !(got_list && token.is_some()) && tokio::time::Instant::now() < deadline {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(500), a_read.next()).await else { continue };
+                let d = m.into_data();
+                if d.first() == Some(&0x32) {
+                    token = Some(String::from_utf8(d[1..].to_vec()).unwrap());
+                }
+                got_list |= d.first() == Some(&WS_TAG_DISPLAY_LIST);
+            }
+            assert!(got_list && token.is_some(), "no display list / token");
+            assert!(v3(&reg), "0x12 bit 1 in the handshake loop sets wire v3");
+
+            // Main-loop handler: caps without bit 1 clear it again (display list stays on).
+            a_write.send(Message::Binary(vec![0x12, 0x01])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(!v3(&reg), "0x12 without bit 1 clears wire v3");
+            a_write.send(Message::Binary(vec![0x12, 0x03])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(v3(&reg), "0x12 bit 1 in the main loop sets wire v3");
+            // Bit 1 without bit 0 is meaningless.
+            a_write.send(Message::Binary(vec![0x12, 0x02])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(!v3(&reg));
+            a_write.send(Message::Binary(vec![0x12, 0x03])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(v3(&reg));
+
+            // A takeover without caps starts from the baseline again.
+            let (ws_b, _) = tokio_tungstenite::connect_async(&format!("ws://{}/ws?session={}", local_addr, token.unwrap())).await.unwrap();
+            let (mut b_write, _b_read) = ws_b.split();
+            b_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            assert!(!v3(&reg), "wire v3 is per connection");
+        }
+
         /// Collects the ARIA-mirror (0x37) JSON documents and whether any display list / cell
         /// diff arrived for `window` after the client sent its handshake.
         async fn collect_a11y(gui: bool) -> (Vec<serde_json::Value>, bool) {
@@ -2546,6 +2608,44 @@ pub mod web_impl {
                 saw |= m[0] == WS_TAG_DISPLAY_LIST;
             }
             assert!(saw);
+        }
+
+        #[tokio::test]
+        async fn test_display_list_sink_picks_the_wire_version_from_the_caps() {
+            use oxiterm_proto::style::AnsiColor;
+            use oxiterm_renderer::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, PointF, RectF, ShapedRun};
+            let shaped = DisplayList {
+                items: vec![DisplayItem::Text {
+                    node: oxiterm_proto::dom::NodeId(1),
+                    origin: PointF { x: 0.0, y: 0.0 },
+                    clip: RectF::new(0.0, 0.0, 10.0, 1.0),
+                    glyphs: vec![Glyph { x: 0.0, y: 0.0, ch: 'f', advance: 1.2 }],
+                    fg: AnsiColor::Reset,
+                    bg: AnsiColor::Reset,
+                    mods: Modifiers::default(),
+                    shaped: Some(Box::new(ShapedRun { face: 1, size_px: 16.0, line_height: 1.0, baseline: 0.8, glyph_faces: vec![], clusters: vec![(0, "fi".into())] })),
+                }],
+            };
+            let plain = DisplayList { items: vec![DisplayItem::PopClip] };
+            let version_of = |msg: &[u8]| {
+                let mut raw = Vec::new();
+                std::io::Read::read_to_end(&mut flate2::read::ZlibDecoder::new(&msg[1..]), &mut raw).unwrap();
+                raw[0]
+            };
+            for (v3, want_shaped, want_plain) in [(false, 2u8, 2u8), (true, 3, 2)] {
+                let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+                let session = reg.create_session().unwrap();
+                session.display_list_client.store(true, std::sync::atomic::Ordering::SeqCst);
+                session.display_list_v3.store(v3, std::sync::atomic::Ordering::SeqCst);
+                let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+                *session.web_frame_tx.write() = Some((1, tx));
+                session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+                let mut sink = WsFrameSink::new(session.clone(), None);
+                assert!(sink.send_display_list(&shaped).unwrap());
+                assert_eq!(version_of(&rx.try_recv().unwrap()), want_shaped, "v3 caps = {v3}");
+                assert!(sink.send_display_list(&plain).unwrap());
+                assert_eq!(version_of(&rx.try_recv().unwrap()), want_plain, "a list without shaped runs stays v2");
+            }
         }
 
         #[tokio::test]

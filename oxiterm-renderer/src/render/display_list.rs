@@ -8,7 +8,8 @@
 //! # Coordinate system
 //! One unit = one terminal cell. In TUI mode every coordinate produced by the builder is
 //! integer-valued; in GUI mode (display-list sessions, fractional layout) rects and origins
-//! may be fractional, while glyph offsets inside a text run stay whole cells. Coordinates are
+//! may be fractional, while glyph offsets inside a default-font text run stay whole cells (shaped runs,
+//! see [`ShapedRun`], carry fractional offsets). Coordinates are
 //! absolute (scroll and centering offsets already applied) and may be negative or exceed the
 //! viewport; sinks clip to their surface bounds. `radius` and stroke widths are in cells
 //! measured along the horizontal axis (GUI painters multiply by the cell width); path x/y
@@ -27,6 +28,12 @@
 //!   for `g.advance > 1`, continuation cells `x + 1 .. x + advance` are written as `' '` with
 //!   the same colours, but only those whose x is `< clip.x + clip.w`. The builder only emits
 //!   glyphs whose origin cell lies inside `clip`.
+//!   A text run with `shaped: Some(run)` (proportional text, Phase 6.4; GUI sessions only, the
+//!   TUI never shapes) is written differently: each glyph's FIRST char (`ch`) goes to the single
+//!   cell `(floor(origin.x + g.x), floor(origin.y + g.y))`, nothing else (no continuation
+//!   cells, no cluster tail), clamped to the surface. Later glyphs overwrite earlier ones that
+//!   land in the same cell. This is an approximation for the cell buffer GUI overlays are diffed
+//!   against; the real painting is the client's.
 //! - [`DisplayItem::Path`]: ignored entirely. A terminal cannot draw vectors; paths are
 //!   GUI-only.
 //! - [`DisplayItem::Legacy`]: painted by the legacy cell code for that node (img, video,
@@ -88,6 +95,58 @@ pub struct Glyph {
     pub advance: f32,
 }
 
+/// Face id of the bundled monospace face in [`ShapedRun::face`] (`FontBundle` id `oxi-mono`).
+pub const FACE_MONO: u8 = 0;
+/// Face id of the bundled proportional face (`FontBundle` id `oxi-sans`).
+pub const FACE_SANS: u8 = 1;
+
+/// What a painter needs to draw a proportional (shaped) text run (Phase 6.4). Present only on
+/// text whose font is not the root default (mono, 16 px, 20 px line); default text has
+/// `shaped: None` and keeps the cell-wise glyph run it always had.
+///
+/// Geometry of a shaped run (all positions are cells, relative to the item's `origin`):
+/// - `Glyph::x` is `px / 9.6`, the left edge of the glyph's advance box on its line;
+/// - `Glyph::y` is the **top of the glyph's line box** (`line.top_px / 20`), so `floor(y)` is the
+///   row the line starts in, exactly like the cell path;
+/// - the baseline of every line is `y + baseline`; a line box is `line_height` cells high;
+/// - `Glyph::advance` is `advance_px / 9.6`;
+/// - `Glyph::ch` is the first char of the glyph's cluster; the full cluster text is in
+///   `clusters` when it has more than one char (ligature `ffi`, base + combining mark).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapedRun {
+    /// Face of the run ([`FACE_MONO`] / [`FACE_SANS`]).
+    pub face: u8,
+    /// Font size in px (CSS px at the reference cell; painters scale it by `cell_w / 9.6`).
+    pub size_px: f32,
+    /// Line box height in cells (`line_height_px / 20`).
+    pub line_height: f32,
+    /// Distance from the line top to the baseline in cells.
+    pub baseline: f32,
+    /// Glyphs drawn in another face than `face` (fallback, e.g. box drawing inside sans):
+    /// `(glyph index in Text::glyphs, face)`, ascending by index.
+    pub glyph_faces: Vec<(u32, u8)>,
+    /// Cluster text of glyphs that cover more than their `ch`: `(glyph index, text)`, ascending.
+    pub clusters: Vec<(u32, Box<str>)>,
+}
+
+impl ShapedRun {
+    /// Face of glyph `i` (the override, or the run's face).
+    pub fn face_of(&self, i: usize) -> u8 {
+        match self.glyph_faces.binary_search_by_key(&(i as u32), |e| e.0) {
+            Ok(k) => self.glyph_faces[k].1,
+            Err(_) => self.face,
+        }
+    }
+
+    /// Cluster text of glyph `i`, when it differs from the glyph's single `ch`.
+    pub fn cluster_of(&self, i: usize) -> Option<&str> {
+        match self.clusters.binary_search_by_key(&(i as u32), |e| e.0) {
+            Ok(k) => Some(&self.clusters[k].1),
+            Err(_) => None,
+        }
+    }
+}
+
 /// Text modifiers carried to the sink.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Modifiers {
@@ -140,6 +199,8 @@ pub enum DisplayItem {
         stroke: Option<(AnsiColor, f32)>,
     },
     /// Already laid-out, positioned glyphs (wrapping and masking are resolved by the builder).
+    /// `shaped` is `Some` for proportional text (see [`ShapedRun`]); `None` for the cell-wise
+    /// default font.
     Text {
         node: NodeId,
         origin: PointF,
@@ -148,6 +209,7 @@ pub enum DisplayItem {
         fg: AnsiColor,
         bg: AnsiColor,
         mods: Modifiers,
+        shaped: Option<Box<ShapedRun>>,
     },
     /// Content painted by legacy cell code (img / video / diagram in phase 1).
     Legacy { node: NodeId, content: RectF },

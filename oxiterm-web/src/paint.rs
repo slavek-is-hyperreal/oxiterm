@@ -6,8 +6,9 @@
 
 use oxiterm_proto::style::{AnsiColor, BorderChars};
 use oxiterm_renderer::render::display_list::{
-    DisplayItem, DisplayList, GridCell, Modifiers, PathCmd, PointF, RectF,
+    DisplayItem, DisplayList, GridCell, Modifiers, PathCmd, PointF, RectF, ShapedRun, FACE_MONO,
 };
+use oxiterm_renderer::font::CELL_W_PX;
 use oxiterm_renderer::render::unicode::UnicodeWidthCache;
 
 use crate::get_color_str;
@@ -50,6 +51,9 @@ pub enum PaintOp {
     ClipPath { path: Vec<Seg> },
     /// Glyph drawn with baseline `top` at (x, y).
     Text { ch: char, x: f64, y: f64, font: String, color: String },
+    /// Proportional glyph (cluster) drawn with the `alphabetic` baseline at (x, y): `y` is the
+    /// baseline, not the line top. The executor restores `top` afterwards.
+    Run { text: String, x: f64, y: f64, font: String, color: String },
     Save,
     ClipRect { x: f64, y: f64, w: f64, h: f64 },
     Restore,
@@ -88,6 +92,95 @@ fn font_for(m: &Metrics, mods: Modifiers) -> String {
         if mods.italic { "italic " } else { "" },
         m.base_font
     )
+}
+
+impl Metrics {
+    /// `true` when the server's bundled faces (`oxi-mono`, `oxi-sans`) are what the page paints
+    /// with; `false` after the browser-monospace fallback of stage 6.1.
+    fn bundled_fonts(&self) -> bool {
+        self.base_font.contains("oxi-mono")
+    }
+
+    /// On-screen scale of the reference cell: `cw / 9.6`. The client rounds the cell to device
+    /// pixels (10 px at DPR 1, 9.5 at DPR 2), and proportional glyphs must scale with the very
+    /// same factor as their positions, or spacing drifts.
+    fn scale(&self) -> f64 {
+        self.cw / f64::from(CELL_W_PX)
+    }
+}
+
+/// CSS font of a shaped glyph: `[bold ][italic ]<size * scale>px "<face>", <generic>`. Without
+/// the bundled faces only the generic family is used.
+fn run_font(m: &Metrics, mods: Modifiers, face: u8, size_px: f32) -> String {
+    let px = (f64::from(size_px) * m.scale() * 100.0).round() / 100.0;
+    let family = match (m.bundled_fonts(), face == FACE_MONO) {
+        (true, true) => "\"oxi-mono\", monospace",
+        (true, false) => "\"oxi-sans\", sans-serif",
+        (false, true) => "monospace",
+        (false, false) => "sans-serif",
+    };
+    format!("{}{}{px}px {family}", if mods.bold { "bold " } else { "" }, if mods.italic { "italic " } else { "" })
+}
+
+/// Plans one shaped text run (inside the item's clip): a background box per line when the
+/// background is not the default, each glyph or cluster with its own `fillText` at its exact
+/// position (alphabetic baseline = line top + `run.baseline`), and an underline per line.
+#[allow(clippy::too_many_arguments)]
+fn plan_shaped(
+    ops: &mut Vec<PaintOp>,
+    m: &Metrics,
+    origin: PointF,
+    glyphs: &[oxiterm_renderer::render::display_list::Glyph],
+    run: &ShapedRun,
+    fg: &AnsiColor,
+    bg: &AnsiColor,
+    mods: Modifiers,
+) {
+    let color = get_color_str(fg, true);
+    // Lines are consecutive glyphs sharing a `y`.
+    let mut i = 0;
+    while i < glyphs.len() {
+        let mut j = i;
+        while j < glyphs.len() && glyphs[j].y == glyphs[i].y {
+            j += 1;
+        }
+        let line = &glyphs[i..j];
+        let top = origin.y + line[0].y;
+        let left = origin.x + line[0].x;
+        let right = line.iter().map(|g| origin.x + g.x + g.advance).fold(left, f32::max);
+        if *bg != AnsiColor::Reset {
+            push_fill(ops, m, RectF::new(left, top, right - left, run.line_height), bg);
+        }
+        let base_y = (top + run.baseline) as f64 * m.ch;
+        for (k, g) in line.iter().enumerate() {
+            let text = match run.cluster_of(i + k) {
+                Some(t) => t.to_string(),
+                None => g.ch.to_string(),
+            };
+            if text.chars().all(char::is_whitespace) {
+                continue;
+            }
+            ops.push(PaintOp::Run {
+                text,
+                x: (origin.x + g.x) as f64 * m.cw,
+                y: base_y,
+                font: run_font(m, mods, run.face_of(i + k), run.size_px),
+                color: color.clone(),
+            });
+        }
+        if mods.underline {
+            let px = f64::from(run.size_px) * m.scale();
+            let th = (px * 0.06).max(1.0);
+            ops.push(PaintOp::Fill {
+                x: left as f64 * m.cw,
+                y: base_y + px * 0.12,
+                w: (right - left) as f64 * m.cw,
+                h: th,
+                color: color.clone(),
+            });
+        }
+        i = j;
+    }
 }
 
 fn cell_rect(m: &Metrics, x: f32, y: f32, w: f32, h: f32) -> (f64, f64, f64, f64) {
@@ -379,14 +472,19 @@ pub fn plan(list: &DisplayList, m: &Metrics) -> Vec<PaintOp> {
             DisplayItem::Border { rect, radius, chars, fg, bg, .. } => {
                 plan_border(&mut ops, m, *rect, *radius, chars, fg, bg)
             }
-            DisplayItem::Text { origin, clip, glyphs, fg, bg, mods, .. } => {
+            DisplayItem::Text { origin, clip, glyphs, fg, bg, mods, shaped, .. } => {
                 let (cx, cy, cw, ch) = cell_rect(m, clip.x, clip.y, clip.w, clip.h);
                 ops.push(PaintOp::Save);
                 ops.push(PaintOp::ClipRect { x: cx, y: cy, w: cw, h: ch });
-                for g in glyphs {
-                    push_glyph_cell(
-                        &mut ops, m, origin.x + g.x, origin.y + g.y, g.advance, g.ch, fg, bg, *mods,
-                    );
+                match shaped {
+                    Some(run) => plan_shaped(&mut ops, m, *origin, glyphs, run, fg, bg, *mods),
+                    None => {
+                        for g in glyphs {
+                            push_glyph_cell(
+                                &mut ops, m, origin.x + g.x, origin.y + g.y, g.advance, g.ch, fg, bg, *mods,
+                            );
+                        }
+                    }
                 }
                 ops.push(PaintOp::Restore);
             }
@@ -539,6 +637,7 @@ mod tests {
                 fg: AnsiColor::Reset,
                 bg: AnsiColor::Reset,
                 mods: Modifiers { bold: true, underline: true, italic: false },
+                shaped: None,
             }],
         };
         let ops = plan(&list, &m());
@@ -549,6 +648,122 @@ mod tests {
         assert!(ops.iter().any(|o| matches!(o, PaintOp::Text { ch: '漢', font, .. } if font == "bold 16px monospace")));
         // One underline per drawn glyph.
         assert_eq!(ops.iter().filter(|o| matches!(o, PaintOp::Fill { h, .. } if *h == 2.0)).count(), 2);
+    }
+
+    fn bundled(cw: f64) -> Metrics {
+        Metrics { cw, ch: 20.0, dpr: 1.0, base_font: "16px \"oxi-mono\"".into() }
+    }
+
+    fn shaped_list(bg: AnsiColor, mods: Modifiers) -> DisplayList {
+        DisplayList {
+            items: vec![DisplayItem::Text {
+                node: NodeId(1),
+                origin: PointF { x: 2.0, y: 3.0 },
+                clip: RectF::new(2.0, 3.0, 30.0, 3.0),
+                glyphs: vec![
+                    Glyph { x: 0.0, y: 0.0, ch: 'o', advance: 1.5 },
+                    Glyph { x: 1.5, y: 0.0, ch: 'f', advance: 1.0 },
+                    Glyph { x: 2.5, y: 0.0, ch: ' ', advance: 0.5 },
+                    Glyph { x: 3.0, y: 0.0, ch: '\u{2500}', advance: 1.0 },
+                    Glyph { x: 0.0, y: 1.5, ch: 'e', advance: 1.0 },
+                ],
+                fg: AnsiColor::TrueColor(9, 8, 7),
+                bg,
+                mods,
+                shaped: Some(Box::new(ShapedRun {
+                    face: 1,
+                    size_px: 24.0,
+                    line_height: 1.5,
+                    baseline: 1.2,
+                    glyph_faces: vec![(3, 0)],
+                    clusters: vec![(1, "fi".into())],
+                })),
+            }],
+        }
+    }
+
+    fn runs(ops: &[PaintOp]) -> Vec<(&str, f64, f64, &str)> {
+        ops.iter()
+            .filter_map(|o| match o {
+                PaintOp::Run { text, x, y, font, .. } => Some((text.as_str(), *x, *y, font.as_str())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn shaped_glyphs_are_drawn_at_their_exact_position_and_face() {
+        // cell width 10 px = 9.6 * 1.0417: glyphs scale with the same factor as positions
+        let k = 10.0 / 9.6;
+        let ops = plan(&shaped_list(AnsiColor::Reset, Modifiers { bold: true, underline: false, italic: true }), &bundled(10.0));
+        let size = ((24.0 * k * 100.0f64).round()) / 100.0;
+        let sans = format!("bold italic {size}px \"oxi-sans\", sans-serif");
+        let r = runs(&ops);
+        // the space is not drawn; the cluster "fi" replaces its glyph's char; glyph 3 is a mono
+        // fallback inside the sans run
+        assert_eq!(r.len(), 4, "{r:?}");
+        // baseline y = (origin.y + line top + baseline) * ch
+        let near = |a: f64, b: f64| assert!((a - b).abs() < 1e-3, "{a} vs {b}");
+        assert_eq!(r[0].0, "o");
+        near(r[0].1, 20.0);
+        near(r[0].2, (3.0 + 1.2) * 20.0);
+        assert_eq!(r[0].3, sans);
+        assert_eq!(r[1].0, "fi");
+        near(r[1].1, 35.0);
+        assert_eq!(r[1].3, sans);
+        assert_eq!(r[2].0, "\u{2500}");
+        near(r[2].1, 50.0);
+        assert_eq!(r[2].3, format!("bold italic {size}px \"oxi-mono\", monospace"));
+        // second line: its own top
+        assert_eq!(r[3].0, "e");
+        near(r[3].2, (3.0 + 1.5 + 1.2) * 20.0);
+        // alphabetic runs are inside the clip pair
+        assert_eq!(ops[0], PaintOp::Save);
+        assert_eq!(*ops.last().unwrap(), PaintOp::Restore);
+    }
+
+    #[test]
+    fn shaped_font_scale_follows_the_device_rounded_cell() {
+        // DPR 2: the client rounds 9.6 px to 9.5 px; 16 px text becomes 15.83 px
+        let ops = plan(&shaped_list(AnsiColor::Reset, Modifiers::default()), &bundled(9.5));
+        let f = &runs(&ops)[0].3.to_string();
+        assert_eq!(f, &format!("{}px \"oxi-sans\", sans-serif", ((24.0 * 9.5 / 9.6) * 100.0f64).round() / 100.0));
+        // at exactly 9.6 the size is untouched
+        let ops = plan(&shaped_list(AnsiColor::Reset, Modifiers::default()), &bundled(9.6));
+        assert_eq!(runs(&ops)[0].3, "24px \"oxi-sans\", sans-serif");
+    }
+
+    #[test]
+    fn shaped_run_falls_back_to_generic_families_without_the_bundled_fonts() {
+        let ops = plan(&shaped_list(AnsiColor::Reset, Modifiers::default()), &Metrics { cw: 9.6, ch: 20.0, dpr: 1.0, base_font: "16px monospace".into() });
+        let r = runs(&ops);
+        assert_eq!(r[0].3, "24px sans-serif");
+        assert_eq!(r[2].3, "24px monospace");
+    }
+
+    #[test]
+    fn shaped_background_is_one_box_per_line_and_only_when_not_default() {
+        let fills = |ops: &[PaintOp]| ops.iter().filter(|o| matches!(o, PaintOp::Fill { .. })).count();
+        let none = plan(&shaped_list(AnsiColor::Reset, Modifiers::default()), &m());
+        assert_eq!(fills(&none), 0);
+        let ops = plan(&shaped_list(AnsiColor::TrueColor(1, 2, 3), Modifiers::default()), &m());
+        let boxes: Vec<_> = ops.iter().filter_map(|o| if let PaintOp::Fill { x, y, w, h, .. } = o { Some((*x, *y, *w, *h)) } else { None }).collect();
+        // line 1 spans x 2.0 .. 2.0+4.0 cells, 1.5 cells high; line 2 starts 1.5 cells lower
+        assert_eq!(boxes, vec![(20.0, 60.0, 40.0, 30.0), (20.0, 90.0, 10.0, 30.0)]);
+    }
+
+    #[test]
+    fn shaped_underline_is_one_per_line() {
+        let ops = plan(&shaped_list(AnsiColor::Reset, Modifiers { bold: false, underline: true, italic: false }), &m());
+        let ul: Vec<_> = ops.iter().filter_map(|o| if let PaintOp::Fill { x, w, .. } = o { Some((*x, *w)) } else { None }).collect();
+        assert_eq!(ul, vec![(20.0, 40.0), (20.0, 10.0)]);
+    }
+
+    #[test]
+    fn shaped_list_survives_the_wire() {
+        let list = shaped_list(AnsiColor::Reset, Modifiers::default());
+        let decoded = wire::decode(&wire::encode_for(&list, 3)).unwrap();
+        assert_eq!(plan(&decoded, &bundled(10.0)), plan(&list, &bundled(10.0)));
     }
 
     #[test]

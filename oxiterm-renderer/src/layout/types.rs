@@ -69,6 +69,10 @@ pub struct LayoutResult {
     pub paint_order: Vec<NodeId>,
     /// The total height of the scrollable content, in whole cells (scroll is still cell-based).
     pub total_height: u16,
+    /// Shaped layouts of the text leaves and buttons whose font is not the root default (GUI
+    /// mode only; empty otherwise, and for every mono page). The display-list builder paints
+    /// these nodes from the stored layout and never shapes again (Phase 6.4).
+    pub shaped: HashMap<NodeId, std::sync::Arc<crate::text::layout::TextLayout>>,
 }
 
 impl LayoutResult {

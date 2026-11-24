@@ -4,8 +4,20 @@
     {
       "name": "oxiterm-site",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cargo build -q --release -p oxiterm-cli && exec ./target/release/oxiterm-cli serve examples/index.thtml --port 2222 --web-port 8087 --no-auth"],
+      "runtimeArgs": [
+        "-c",
+        "cargo build -q --release -p oxiterm-cli && exec ./target/release/oxiterm-cli serve examples/index.thtml --port 2222 --web-port 8087 --no-auth"
+      ],
       "port": 8087
+    },
+    {
+      "name": "oxiterm-sans",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cargo build -q --release -p oxiterm-cli && exec ./target/release/oxiterm-cli serve oxiterm-server/benches/pages/sans.thtml --port 2299 --web-port 8091 --no-auth"
+      ],
+      "port": 8091
     }
   ]
 }

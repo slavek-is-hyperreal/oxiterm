@@ -26,8 +26,11 @@ impl CellSink {
                 DisplayItem::Border { rect, chars, fg, bg, .. } => {
                     Self::border(buffer, *rect, chars, *fg, *bg)
                 }
-                DisplayItem::Text { origin, clip, glyphs, fg, bg, mods, .. } => {
+                DisplayItem::Text { origin, clip, glyphs, fg, bg, mods, shaped: None, .. } => {
                     Self::text(buffer, origin.x as i32, origin.y as i32, *clip, glyphs, *fg, *bg, *mods)
+                }
+                DisplayItem::Text { origin, glyphs, fg, bg, mods, shaped: Some(_), .. } => {
+                    Self::shaped_text(buffer, *origin, glyphs, *fg, *bg, *mods)
                 }
                 DisplayItem::Legacy { node, content } => legacy(*node, *content, buffer),
                 DisplayItem::CellGrid { rect, cells } => Self::grid(buffer, *rect, cells),
@@ -172,6 +175,17 @@ impl CellSink {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Shaped (proportional) run: each glyph's first char in the one cell
+    /// `(floor(origin.x + g.x), floor(origin.y + g.y))`; no continuation cells, no cluster tail.
+    fn shaped_text(buffer: &mut CellBuffer, origin: crate::render::display_list::PointF, glyphs: &[Glyph], fg: AnsiColor, bg: AnsiColor, mods: Modifiers) {
+        for g in glyphs {
+            let x = (origin.x + g.x).floor() as i32;
+            let y = (origin.y + g.y).floor() as i32;
+            let cell = Cell { ch: g.ch, fg, bg, bold: mods.bold, underline: mods.underline, italic: mods.italic, skip: false };
+            Self::set(buffer, x, y, cell);
+        }
+    }
+
     fn text(
         buffer: &mut CellBuffer,
         ox: i32,
@@ -328,6 +342,7 @@ mod tests {
             fg: AnsiColor::Color256(3),
             bg: AnsiColor::Color256(4),
             mods: Modifiers::default(),
+            shaped: None,
         });
         // Pre-mark the cell right of the clip to prove it is not touched.
         b.set(4, 0, Cell { ch: '#', ..Default::default() });
@@ -348,11 +363,48 @@ mod tests {
             fg: AnsiColor::Color256(3),
             bg: AnsiColor::Color256(4),
             mods: Modifiers::default(),
+            shaped: None,
         });
         b.set(1, 0, Cell { ch: '#', ..Default::default() });
         CellSink::paint(&l, &mut b, |_, _, _| {});
         assert_eq!(row(&b, 0), "世   ");
         assert_eq!(b.cells[1].bg, AnsiColor::Color256(4));
+    }
+
+    #[test]
+    fn shaped_run_writes_each_first_char_at_floor_of_its_position() {
+        use crate::render::display_list::ShapedRun;
+        let mut b = CellBuffer::new(8, 3);
+        let mut l = DisplayList::new();
+        l.push(DisplayItem::Text {
+            node: nid(),
+            origin: PointF { x: 1.5, y: 0.25 },
+            clip: RectF::new(1.5, 0.25, 6.0, 3.0),
+            glyphs: vec![
+                Glyph { x: 0.0, y: 0.0, ch: 'a', advance: 1.4 },
+                Glyph { x: 1.4, y: 0.0, ch: 'f', advance: 1.2 }, // cluster "fi": only 'f' is written
+                Glyph { x: 2.6, y: 0.0, ch: 'b', advance: 3.0 }, // wide advance: no continuation cells
+                Glyph { x: 0.0, y: 1.5, ch: 'c', advance: 1.0 },
+                Glyph { x: 40.0, y: 0.0, ch: 'z', advance: 1.0 }, // off the surface: clamped
+                Glyph { x: -9.0, y: 0.0, ch: 'y', advance: 1.0 },
+            ],
+            fg: AnsiColor::Color256(3),
+            bg: AnsiColor::Color256(4),
+            mods: Modifiers::default(),
+            shaped: Some(Box::new(ShapedRun {
+                face: 1,
+                size_px: 16.0,
+                line_height: 1.0,
+                baseline: 0.8,
+                glyph_faces: vec![],
+                clusters: vec![(1, "fi".into())],
+            })),
+        });
+        CellSink::paint(&l, &mut b, |_, _, _| {});
+        assert_eq!(row(&b, 0), " af b   ");
+        assert_eq!(row(&b, 1), " c      ");
+        assert_eq!(b.cells[1].fg, AnsiColor::Color256(3));
+        assert_eq!(b.cells[3].ch, ' ', "no continuation cell for the wide advance");
     }
 
     #[test]

@@ -197,7 +197,7 @@ fn bench_page(path: &Path, (cols, rows): (u16, u16), budget: Duration, min_iters
             let saved = vec![(y as u16, gback.cells[y * w..(y + 1) * w].to_vec())];
             black_box(CellSink::diff_grids_rows(&saved, &gback));
         });
-        let (encoded, g_enc) = timed(|| { let e = wire::encode(&list); let same = last_list.as_deref() == Some(e.as_slice()); black_box(same); e });
+        let (encoded, g_enc) = timed(|| { let e = wire::encode_for(&list, wire::WIRE_VERSION_3); let same = last_list.as_deref() == Some(e.as_slice()); black_box(same); e });
         let (zl, g_zlib) = timed(|| {
             let mut enc = flate2::write::ZlibEncoder::new(vec![0x36u8], flate2::Compression::fast());
             std::io::Write::write_all(&mut enc, &encoded).unwrap();
@@ -353,7 +353,7 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
                             let snap = CellBuffer { cells: back.cells.clone(), width: back.width, height: back.height, graphics: Vec::new() };
                             black_box(CellSink::diff_grids(&snap, &back));
                         }
-                        let enc = wire::encode(&list);
+                        let enc = wire::encode_for(&list, wire::WIRE_VERSION_3);
                         let mut z = flate2::write::ZlibEncoder::new(vec![0x36u8], flate2::Compression::fast());
                         std::io::Write::write_all(&mut z, &enc).unwrap();
                         black_box(z.finish().unwrap());
