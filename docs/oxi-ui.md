@@ -455,6 +455,35 @@ Expected result of 1, 2 and 4: a quiet GUI frame goes from about 153 to about 45
 - `font-family`, `font-size`, `line-height` in TCSS, in GUI mode only. TUI ignores them.
 - **Done when:** the same document gives identical glyph positions in local mode and thin-client mode (golden test on the DisplayList), and clicks land on the right node in both.
 
+#### What the code looks like today (surveyed before planning, 2026-11-24)
+- **Cell size comes from the client.** The web client measures `"M"` in the browser's own monospace font (`WebTerminal::new`), derives `cols`/`rows` from canvas pixels and paints with `16px monospace`. There is no server-defined unit. Server-shaped positions would not match what the client paints.
+- **Text is measured in three places, all in whole cells.**
+  1. `wrap:word` text goes through the Taffy measure closure (`measure_wrap_text`).
+  2. `wrap:none` text and buttons get `text_intrinsic_width` pinned in `map_style`.
+  3. `build.rs::text_item` wraps again on its own when it emits glyphs.
+- **`Glyph { x, y, ch, advance }` is already `f32`,** so positioned runs fit the shape of the list. `ch: char` cannot carry clusters (combining marks, ligatures).
+- **Pointer input is cell-quantised** (`0x02 col,row`, hit-tested at the cell centre). Narrow proportional buttons next to each other would get wrong clicks, the same class of click-miss bug as the earlier rendering drift.
+- **No TCSS property inherits before layout.** Colours inherit only at paint time (`precompute_inherited_colors`), and `font-family`/`font-size` are swallowed as `Unknown` (`tcss.rs`). Fonts must inherit, and layout needs them.
+
+#### Rules for the whole phase
+- **The default GUI font stays monospace.** Proportional text is opt-in through `font-family`. On the TUI path and the mono path no shaping runs at all. This keeps golden snapshots and traces byte-identical, and the 5.1 benchmark from regressing.
+- **TUI ignores all font properties.** A terminal has one font.
+- **Measuring and painting read one shaped result.** The Taffy measure, intrinsic widths and the display-list builder share one text-layout cache keyed by (text, face, size, weight, style, max width). Line breaks therefore cannot differ between measuring and painting.
+- **Layout never depends on the client's fonts.** Glyphs missing from the bundle (CJK, emoji) are measured with the Unicode cell width scaled to the reference cell, a deterministic advance on every platform.
+- **Inputs, caret and predictive echo stay monospace in Phase 6.** They are cell-coordinate `CellGrid` overlays. Proportional inputs are a later step.
+- **Out of scope:** system-font fallback, RTL/bidi checking beyond what the shaping library gives for free, and `font-size` in TUI.
+
+#### Stages (one delegated task each, reviewed and committed before the next)
+| Stage | Scope | Gate |
+|---|---|---|
+| 6.0 | **Spike, nothing depends on it yet.** Add the shaping crate (cosmic-text, or parley if it builds smaller) to `oxiterm-renderer` behind a `text-shaping` feature, with system-font loading off (no `fontdb` system scan, no `memmap`). Build `oxiterm-core` for wasm32 and aarch64-linux-android. Measure the wasm bundle size delta. Check that shaping the same string gives bit-identical advances on x86_64 and on wasm32 (under wasmtime). Read the LICENSE file of each candidate font in its repo. | Report: crate choice, size delta, determinism result, font candidates with licences and sizes. **The owner picks the fonts.** |
+| 6.1 | **One unit, set by the server.** `FontBundle` (mono face at first) embedded in the renderer. The GUI reference cell = advance of the bundled mono face × its line height at the default size. The server sends the cell metrics and font URLs to display-list clients (new message after `0x12`). The server serves the font files. The web client loads them with the FontFace API before its first paint, and derives `cols`/`rows` from the server's cell. | Traces and goldens unchanged. GUI pages look the same. `web_coord_tests.js` green. Clicks land right at two DPI scales. |
+| 6.2 | **TCSS fonts with inheritance.** Parse `font-family` (bundle names plus generic `monospace`/`sans-serif`, with the first known name in the list winning), `font-size` (px/dp/ch/lh), `line-height` and `font-weight`/`font-style` (mapped onto the existing bold/italic). A resolved-font pass before layout, inherited from parent to child. GUI only. | Parser and cascade tests (inheritance, unknown names, `@media (render: …)`). Goldens and traces unchanged. |
+| 6.3 | **Shaped text layout.** A text-layout cache in `LayoutEngine`. In GUI mode every text leaf and button with a non-mono font is measured through it (wrap none and word). The mono path is untouched. Font inputs go into the measure context that the incremental reconcile (5.1b) compares, and the layout fuzzer gets font-property mutations. | Fuzzer and the debug cross-check green. Goldens and traces unchanged. Bench not regressed on the mono pages. New tests for wrap widths with a proportional face. |
+| 6.4 | **Positioned glyph runs on the wire.** The builder emits glyphs from the same cache. Wire v3, negotiated through caps: `Text` gains a face index, size and baseline, and a glyph can carry cluster text. The web painter draws each glyph in its face at the given position. | Wire round-trip tests (v2 clients still get v2). Painter tests. A DisplayList golden for a proportional page. |
+| 6.5 | **Fractional pointer.** A new input message for display-list clients with `f32` coordinates in reference cells. Server hit-testing on fractional coordinates. The ARIA-mirror click uses it too. | Test: adjacent narrow proportional buttons, every click hits the right node. A trace test of the new message. |
+| 6.6 | **Both modes agree, demo.** The in-process core list equals the list after wire encode/decode for the same page and input. The shaping test runs on wasm32 in CI (protects Phase 7). Optional: the demo pages switch to `sans-serif` under `@media (render: gui)` (the owner decides). | Phase done: equality tests green in CI. Checked in a browser in GUI mode. |
+
 ### Phase 7: Mobile and framebuffer
 - Android (done before the native GPU work of Phase 5): a thin app shell around a WebView that runs the existing web client, either as a thin client (Phase 3 stream) or as the WASM local core. One APK supports both modes. Includes IME/viewport resize and touch/gesture normalisation in the web client. A native renderer (`winit` Android backend + the Phase 5 wgpu pipeline) replaces the WebView later, once Phase 5 lands.
 - WASM local mode: `oxiterm-core` + the web painter in the browser, offline-capable (alongside the phase 3 thin client).
