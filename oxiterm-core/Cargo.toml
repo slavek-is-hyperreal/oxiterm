@@ -8,7 +8,9 @@ license = "MIT OR Apache-2.0"
 # (enforced by tests/core_boundary.rs).
 [dependencies]
 oxiterm-proto = { path = "../oxiterm-proto" }
-oxiterm-renderer = { path = "../oxiterm-renderer", default-features = false }
+# text-shaping: layout measures proportional text by shaping (Phase 6.3), so the server and the
+# local/WASM core measure identically.
+oxiterm-renderer = { path = "../oxiterm-renderer", default-features = false, features = ["text-shaping"] }
 oxiterm-a11y = { path = "../oxiterm-a11y" }
 tracing = { workspace = true }
 anyhow = { workspace = true }

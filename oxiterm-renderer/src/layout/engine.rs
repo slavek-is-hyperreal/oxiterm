@@ -9,7 +9,10 @@ use crate::layout::types::{LayoutResult, Rect as OxiRect};
 use oxiterm_proto::style::RenderMode;
 use oxiterm_proto::dom::NodeId as OxiNodeId;
 use std::collections::HashMap;
+use std::sync::Arc;
 use anyhow::anyhow;
+use crate::font::{resolve_fonts, ResolvedFont, ResolvedFonts};
+use crate::text::layout::{TextCache, TextLayout};
 
 /// Per-node context handed to Taffy's measure closure for content whose height
 /// depends on the final laid-out width — i.e. `wrap:word` text. Only such leaves
@@ -18,6 +21,52 @@ use anyhow::anyhow;
 pub struct MeasureContext {
     /// Raw text of the node, wrapped at measure time against the available width.
     text: String,
+    /// The node's resolved font when it is NOT on the cell fast path (GUI only: a proportional
+    /// face, another size or line height): the text is then measured by shaping, in px converted
+    /// to cells. `None`: whole cells, as always. Part of the reconcile comparison, so a change
+    /// of the node's own or an inherited font re-measures it.
+    font: Option<ResolvedFont>,
+}
+
+/// Measures a `wrap:word` leaf through the shaped text layout (Stage 6.3). Same contract as
+/// [`measure_wrap_text`]: min-content is the widest word, max-content the widest paragraph, a
+/// definite width resolves to `max.min(avail.max(min))`, and the height comes from the lines at
+/// the resolved width. Widths are px / 9.6, heights lines x line height / 20. Returns `None`
+/// when shaping is unavailable (the caller falls back to the cell measure).
+fn measure_shaped(cache: &mut TextCache, known: Size<Option<f32>>, available: Size<AvailableSpace>, text: &str, font: &ResolvedFont) -> Option<Size<f32>> {
+    let base = cache.base(text, font)?;
+    let (min_c, max_c) = (base.min_content_cells(), base.max_content_cells());
+    let width = match known.width {
+        Some(w) => w,
+        None => match available.width {
+            AvailableSpace::MinContent => min_c,
+            AvailableSpace::MaxContent => max_c,
+            AvailableSpace::Definite(aw) => max_c.min(aw.max(min_c)),
+        },
+    };
+    let height = match known.height {
+        Some(h) => h,
+        None => cache.at_width(&base, width).height_cells(),
+    };
+    Some(Size { width, height })
+}
+
+/// The Taffy measure closure body.
+fn measure_node(cache: &mut TextCache, known: Size<Option<f32>>, available: Size<AvailableSpace>, ctx: &MeasureContext) -> Size<f32> {
+    if let Some(font) = &ctx.font {
+        if let Some(size) = measure_shaped(cache, known, available, &ctx.text, font) {
+            return size;
+        }
+    }
+    measure_wrap_text(known, available, &ctx.text)
+}
+
+/// How a node's final shaped layout is found after the solve (see `LayoutEngine::shaped_text`).
+enum ShapedRef {
+    /// `wrap:none` text or button: no wrapping, the unwrapped layout.
+    Fixed(Arc<TextLayout>),
+    /// `wrap:word` text: shaped again (a cache hit) at the final content width.
+    Word,
 }
 
 /// Total display columns of the widest hard line (before any word wrapping).
@@ -147,6 +196,17 @@ pub struct LayoutEngine {
     last_avail: Option<Size<AvailableSpace>>,
     /// Frame counters (see [`LayoutStats`]); hidden test/benchmark hook.
     stats: LayoutStats,
+    /// Effective fonts of the document, resolved once per `compute` (GUI only; TUI never
+    /// shapes, so there it stays uniform).
+    fonts: ResolvedFonts,
+    /// Shaped text layouts shared by measuring and (from 6.4) painting. Bounded; cleared
+    /// between frames only.
+    text_cache: TextCache,
+    /// Nodes with a non-default font collected by the current `sync_node` pass.
+    shaped_refs: Vec<(OxiNodeId, ShapedRef)>,
+    /// The final shaped layout of every text leaf and button measured by shaping, at its final
+    /// content width, filled after each solve. See [`LayoutEngine::shaped_text`].
+    shaped: HashMap<OxiNodeId, Arc<TextLayout>>,
 }
 
 /// Counters of how `compute` calls were served (stage 5.1b); hidden test/benchmark hook.
@@ -183,6 +243,10 @@ impl LayoutEngine {
             incremental: true,
             last_avail: None,
             stats: LayoutStats::default(),
+            fonts: ResolvedFonts::default(),
+            text_cache: TextCache::default(),
+            shaped_refs: Vec::new(),
+            shaped: HashMap::new(),
         }
     }
 
@@ -246,6 +310,64 @@ impl LayoutEngine {
         self.node_map.clear();
         self.last_layout = None;
         self.last_avail = None;
+        self.shaped.clear();
+        self.shaped_refs.clear();
+    }
+
+    /// The shaped layout of a text leaf or button at its final width, for nodes whose font is
+    /// not on the cell fast path (`None` for every other node, and in TUI mode). It is the very
+    /// layout the node was measured with: the display-list builder (6.4) must paint from it and
+    /// never shape again from the rect. Valid until the next `compute`.
+    pub fn shaped_text(&self, id: OxiNodeId) -> Option<&Arc<TextLayout>> {
+        self.shaped.get(&id)
+    }
+
+    /// Number of nodes that currently have a shaped layout (hidden test hook).
+    #[doc(hidden)]
+    pub fn shaped_count(&self) -> usize {
+        self.shaped.len()
+    }
+
+    /// (layouts, glyphs) held by the text cache (hidden test/diagnostics hook).
+    #[doc(hidden)]
+    #[cfg(feature = "text-shaping")]
+    pub fn text_cache_stats(&self) -> (usize, usize) {
+        (self.text_cache.len(), self.text_cache.glyph_count())
+    }
+
+    /// Builds `shaped` from the nodes collected during the sync, after the solve.
+    fn collect_shaped(&mut self) {
+        self.shaped.clear();
+        for (oxi, r) in std::mem::take(&mut self.shaped_refs) {
+            let layout = match r {
+                ShapedRef::Fixed(l) => Some(l),
+                ShapedRef::Word => self.final_word_layout(oxi),
+            };
+            if let Some(l) = layout {
+                self.shaped.insert(oxi, l);
+            }
+        }
+    }
+
+    /// The layout of a `wrap:word` leaf at the content width Taffy gave it (rect minus padding
+    /// and border), through the same guard function the measure used.
+    fn final_word_layout(&mut self, oxi: OxiNodeId) -> Option<Arc<TextLayout>> {
+        let t = *self.node_map.get(&oxi)?;
+        let style = self.taffy.style(t).ok()?;
+        if style.display == Display::None {
+            return None;
+        }
+        let len = |l: LengthPercentage| match l {
+            LengthPercentage::Length(v) => v,
+            _ => 0.0,
+        };
+        let (p, b) = (style.padding, style.border);
+        let extra = len(p.left) + len(p.right) + len(b.left) + len(b.right);
+        let w = self.taffy.layout(t).ok()?.size.width - extra;
+        let ctx = self.taffy.get_node_context(t)?;
+        let font = ctx.font?;
+        let base = self.text_cache.base(&ctx.text, &font)?;
+        Some(self.text_cache.at_width(&base, w.max(0.0)))
     }
 }
 
@@ -284,6 +406,10 @@ impl LayoutEngine {
         // node, an error) falls back to a full rebuild.
         let mut changed = false;
         let mut incremental = false;
+        self.text_cache.begin_frame();
+        // Fonts only matter in GUI mode; TUI measures whole cells and skips the pass entirely.
+        self.fonts = if self.mode == RenderMode::Gui { resolve_fonts(doc, self.mode) } else { ResolvedFonts::default() };
+        self.shaped_refs.clear();
         if self.incremental && !self.node_map.is_empty() {
             let mut visited = 0usize;
             let mut bail = false;
@@ -298,6 +424,7 @@ impl LayoutEngine {
         } else {
             self.stats.full += 1;
             self.reset_nodes();
+            self.shaped_refs.clear();
             probe(LayoutPhase::Reset);
             let mut visited = 0usize;
             let mut bail = false;
@@ -348,14 +475,16 @@ impl LayoutEngine {
         // Measure closure resolves height-from-width for `wrap:word` text leaves
         // (the only nodes given a MeasureContext); all other nodes fall back to Zero
         // and are sized purely from their style.
+        let cache = &mut self.text_cache;
         self.taffy.compute_layout_with_measure(
             root_taffy_id,
             available_space,
             |known, avail, _node_id, ctx, _style| match ctx {
-                Some(ctx) => measure_wrap_text(known, avail, &ctx.text),
+                Some(ctx) => measure_node(cache, known, avail, ctx),
                 None => Size::ZERO,
             },
         )?;
+        self.collect_shaped();
 
         self.last_avail = Some(available_space);
 
@@ -415,8 +544,9 @@ impl LayoutEngine {
             if let Some(h) = n.style.height { root_h = AvailableSpace::Definite(self.snap_size(h)); }
         }
         let avail = Size { width: AvailableSpace::Definite(root_w), height: root_h };
+        let cache = &mut self.text_cache;
         self.taffy.compute_layout_with_measure(root, avail, |known, avail, _n, ctx, _s| match ctx {
-            Some(ctx) => measure_wrap_text(known, avail, &ctx.text),
+            Some(ctx) => measure_node(cache, known, avail, ctx),
             None => Size::ZERO,
         }).is_ok()
     }
@@ -521,8 +651,8 @@ impl LayoutEngine {
 
     /// The Taffy style of `node`: `map_style`, plus the root-only overrides (explicit width
     /// or the viewport columns, auto height with the viewport rows as minimum).
-    fn style_for(&self, doc: &THTMLDocument, id: OxiNodeId, node: &oxiterm_proto::dom::Node, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
-        let mut style = self.map_style(node, state_evaluator);
+    fn style_for(&self, doc: &THTMLDocument, id: OxiNodeId, node: &oxiterm_proto::dom::Node, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>, shaped: Option<(f32, f32)>) -> Style {
+        let mut style = self.map_style(node, state_evaluator, shaped);
         if id == doc.root {
             if node.style.width.is_none() {
                 style.size.width = taffy::style::Dimension::Length(cols as f32);
@@ -571,8 +701,28 @@ impl LayoutEngine {
             child_ids.push(self.sync_node(doc, child_id, cols, state_evaluator, visited, changed, bail)?);
         }
 
-        let style = self.style_for(doc, oxi_id, node, cols, state_evaluator);
+        // Stage 6.3: a node whose font is not the root default (GUI only) is measured by shaping.
+        let font = self.fonts.get(oxi_id);
+        let shaped_font = self.mode == RenderMode::Gui && !font.uses_cell_metrics();
         let ctx_text = Self::measure_text(node);
+        let ctx_font = if shaped_font && ctx_text.is_some() { Some(font) } else { None };
+        if ctx_font.is_some() {
+            self.shaped_refs.push((oxi_id, ShapedRef::Word));
+        }
+        // `wrap:none` text and buttons pin their size in the style: the shaped max-content width
+        // and line count replace the cell intrinsic size (the style compare then sees a change).
+        let mut shaped_dims = None;
+        if shaped_font
+            && (node.tag == oxiterm_proto::dom::NodeTag::Button || (node.tag == oxiterm_proto::dom::NodeTag::Text && ctx_text.is_none()))
+        {
+            if let Some(text) = node.text.as_deref() {
+                if let Some(base) = self.text_cache.base(text, &font) {
+                    shaped_dims = Some((base.max_content_cells(), base.height_cells()));
+                    self.shaped_refs.push((oxi_id, ShapedRef::Fixed(base)));
+                }
+            }
+        }
+        let style = self.style_for(doc, oxi_id, node, cols, state_evaluator, shaped_dims);
 
         // Taffy's `set_children`/`new_with_children` rewrite parent links unconditionally, so a
         // node adopted by a new parent while its old parent still lists it (moved subtree,
@@ -587,7 +737,7 @@ impl LayoutEngine {
         let Some(taffy_id) = existing else {
             let taffy_id = self.taffy.new_with_children(style, &child_ids)?;
             if let Some(text) = ctx_text {
-                self.taffy.set_node_context(taffy_id, Some(MeasureContext { text: text.to_owned() }))?;
+                self.taffy.set_node_context(taffy_id, Some(MeasureContext { text: text.to_owned(), font: ctx_font }))?;
             }
             self.node_map.insert(oxi_id, taffy_id);
             *visited += 1;
@@ -601,11 +751,11 @@ impl LayoutEngine {
         }
         let same_ctx = match (self.taffy.get_node_context(taffy_id), ctx_text) {
             (None, None) => true,
-            (Some(c), Some(t)) => c.text == t,
+            (Some(c), Some(t)) => c.text == t && c.font == ctx_font,
             _ => false,
         };
         if !same_ctx {
-            self.taffy.set_node_context(taffy_id, ctx_text.map(|t| MeasureContext { text: t.to_owned() }))?;
+            self.taffy.set_node_context(taffy_id, ctx_text.map(|t| MeasureContext { text: t.to_owned(), font: ctx_font }))?;
             *changed = true;
         }
         let same_children = self.taffy.child_count(taffy_id) == child_ids.len()
@@ -635,11 +785,20 @@ impl LayoutEngine {
         if let Some(id) = got.nodes.keys().find(|id| !want.nodes.contains_key(id)) {
             panic!("incremental layout has node {id:?} that the rebuild does not");
         }
+        assert_eq!(self.shaped.len(), fresh.shaped.len(), "incremental shaped-text node set differs from rebuild");
+        for (id, w) in &fresh.shaped {
+            match self.shaped.get(id) {
+                Some(g) if **g == **w => {}
+                other => panic!("incremental shaped text differs from rebuild at node {id:?}: incremental {other:?}, rebuild {w:?}"),
+            }
+        }
         assert_eq!(got.paint_order, want.paint_order, "incremental paint order differs from rebuild");
         assert_eq!(got.total_height, want.total_height, "incremental total_height differs from rebuild");
     }
 
-    fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
+    /// `shaped`: for a `wrap:none` text or button in a non-default font, the shaped
+    /// (max-content width, height) in cells; it replaces the cell intrinsic size.
+    fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>, shaped: Option<(f32, f32)>) -> Style {
         let style = &node.style;
         let mut width = style.width.map(|w| self.snap_size(w));
         let mut height = style.height.map(|h| self.snap_size(h));
@@ -666,7 +825,10 @@ impl LayoutEngine {
                     // first column hit-testable/clickable (e.g. the "← Back" link).
                     let text = node.text.as_deref().unwrap_or("");
                     if width.is_none() {
-                        let mut calculated_width = text_intrinsic_width(text) as f32;
+                        let mut calculated_width = match shaped {
+                            Some((w, _)) => w,
+                            None => text_intrinsic_width(text) as f32,
+                        };
                         if node.tag == oxiterm_proto::dom::NodeTag::Button {
                             if style.border.is_some() {
                                 calculated_width += 2.0;
@@ -677,7 +839,10 @@ impl LayoutEngine {
                         min_width = Some(calculated_width);
                     }
                     if height.is_none() {
-                        let mut calculated_height = (text.lines().count() as f32).max(1.0);
+                        let mut calculated_height = match shaped {
+                            Some((_, h)) => h,
+                            None => (text.lines().count() as f32).max(1.0),
+                        };
                         if node.tag == oxiterm_proto::dom::NodeTag::Button {
                             if style.border.is_some() {
                                 calculated_height += 2.0;
@@ -1219,7 +1384,7 @@ mod tests {
         let engine = LayoutEngine::new();
         let mut node = Node::new(NodeTag::Box);
         node.style.flex = Some(1.0);
-        let style = engine.map_style(&node, None);
+        let style = engine.map_style(&node, None, None);
         assert_eq!(style.flex_grow, 1.0);
         assert_eq!(style.flex_shrink, 1.0);
         assert_eq!(style.flex_basis, taffy::style::Dimension::Length(0.0));
@@ -1474,5 +1639,219 @@ mod tests {
         assert_ne!(tester.find_node(2.5, 0.5), Some(id));
         assert_ne!(tester.find_node(7.5, 0.5), Some(id));
         assert_eq!(engine.hit_test(3, 0), Some(id));
+    }
+}
+
+/// Stage 6.3: shaped text layout through the engine.
+#[cfg(all(test, feature = "text-shaping"))]
+mod shaped_tests {
+    use super::*;
+    use crate::font::{CELL_H_PX, CELL_W_PX};
+    use crate::parser::THTMLParser;
+    use oxiterm_proto::dom::NodeTag;
+
+    fn gui(src: &str) -> THTMLDocument {
+        THTMLParser::parse_with_mode(src, RenderMode::Gui).unwrap()
+    }
+
+    /// Ids of all nodes with `tag`, in arena order.
+    fn nodes(doc: &THTMLDocument, tag: NodeTag) -> Vec<OxiNodeId> {
+        let mut v: Vec<OxiNodeId> = doc.arena.iter().filter(|(_, n)| n.tag == tag).map(|(i, _)| i).collect();
+        v.sort_by_key(|i| format!("{i:?}"));
+        v
+    }
+
+    fn engine() -> LayoutEngine {
+        let mut e = LayoutEngine::with_mode(RenderMode::Gui);
+        e.set_cross_check(true);
+        e
+    }
+
+    const PARA: &str = "The quick brown fox jumps over the lazy dog and then keeps on running far away";
+
+    fn page(style: &str, width: u32) -> String {
+        format!(r#"<box style="width: {width}; flex-direction: column;"><text style="wrap: word; {style}">{PARA}</text></box>"#)
+    }
+
+    #[test]
+    fn default_font_stays_on_the_cell_path_with_no_shaping() {
+        // mono 16 px / 20 px, also bold and italic: today's numbers, nothing shaped or cached
+        for style in ["", "font-weight: bold;", "font-style: italic; font-weight: 700;", "font-family: monospace;"] {
+            let mut doc = gui(&page(style, 30));
+            let mut e = engine();
+            let r = e.compute(&mut doc, 80, 0, None).unwrap();
+            let t = nodes(&doc, NodeTag::Text)[0];
+            let lines = word_wrapped_line_count(PARA, 30);
+            assert_eq!(r.nodes[&t].height, lines as f32, "{style}");
+            assert_eq!(e.shaped_count(), 0, "{style}");
+            assert_eq!(e.text_cache.len(), 0, "{style}");
+        }
+    }
+
+    #[test]
+    fn mono_at_another_size_or_line_height_is_shaped() {
+        let mut doc = gui(r#"<box><text style="font-size: 24px;">abcdef</text></box>"#);
+        let mut e = engine();
+        let r = e.compute(&mut doc, 80, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        assert_eq!(e.shaped_count(), 1);
+        // 6 chars x 14.4 px = 86.4 px = 9 cells; line height 30 px = 1.5 cells
+        assert!((r.nodes[&t].width - 9.0).abs() < 1e-3, "{}", r.nodes[&t].width);
+        assert!((r.nodes[&t].height - 1.5).abs() < 1e-4);
+        let mut doc = gui(r#"<box><text style="line-height: 40px;">abc</text></box>"#);
+        let mut e = engine();
+        let r = e.compute(&mut doc, 80, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        assert_eq!(e.shaped_count(), 1, "non-default line height leaves the fast path");
+        assert!((r.nodes[&t].width - 3.0).abs() < 1e-3);
+        assert_eq!(r.nodes[&t].height, 2.0);
+    }
+
+    #[test]
+    fn sans_wrap_widths_and_stored_layout_agree_with_the_box() {
+        for size in [14.0f32, 16.0, 20.0, 24.0] {
+            let mut last_lines = usize::MAX;
+            for width in [14u32, 20, 28, 40, 60, 120] {
+                let mut doc = gui(&page(&format!("font-family: sans-serif; font-size: {size}px;"), width));
+                let mut e = engine();
+                let r = e.compute(&mut doc, 160, 0, None).unwrap();
+                let t = nodes(&doc, NodeTag::Text)[0];
+                let rect = r.nodes[&t];
+                let l = e.shaped_text(t).expect("shaped layout stored");
+                // the stored layout is the one the box was measured with
+                let lh = size * 1.25;
+                assert_eq!(rect.height, l.lines.len() as f32 * lh / CELL_H_PX, "size {size} width {width}");
+                assert_eq!(rect.height, l.height_cells());
+                assert!(rect.width <= f32::max(width as f32, l.min_content_cells()) + 1e-3);
+                let widest = l.lines.iter().map(|x| x.width).fold(0.0, f32::max);
+                assert!(widest <= rect.width * CELL_W_PX + 0.02, "no line wider than its box (size {size} width {width}): {widest} vs {}", rect.width * CELL_W_PX);
+                if size == 16.0 {
+                    assert!(l.lines.len() <= last_lines, "wider box, no more lines");
+                    last_lines = l.lines.len();
+                }
+                // all words survive, none split
+                let words: Vec<&str> = l.lines.iter().flat_map(|x| l.text[x.start as usize..x.end as usize].split_whitespace()).collect();
+                assert_eq!(words.join(" "), PARA);
+            }
+        }
+    }
+
+    #[test]
+    fn stored_layout_uses_the_content_box_of_a_padded_bordered_leaf() {
+        // padding 1 and a single border on the text leaf itself: the content box is the rect
+        // minus 2 columns of padding and 2 of border horizontally, 2 + 2 rows vertically.
+        for width in [18u32, 26, 34, 50, 90] {
+            let src = format!(r#"<box style="width: {width}; flex-direction: column;"><text style="wrap: word; font-family: sans-serif; font-size: 20px; padding: 1; border-style: single;">{PARA}</text></box>"#);
+            let mut doc = gui(&src);
+            let mut e = engine();
+            let r = e.compute(&mut doc, 160, 0, None).unwrap();
+            let t = nodes(&doc, NodeTag::Text)[0];
+            let (rect, l) = (r.nodes[&t], e.shaped_text(t).unwrap().clone());
+            assert_eq!(rect.height, l.height_cells() + 4.0, "width {width}");
+            let content_w = rect.width - 4.0;
+            let widest = l.lines.iter().map(|x| x.width).fold(0.0, f32::max);
+            assert!(widest <= content_w * CELL_W_PX + 0.02, "width {width}: widest {widest} px in a {} px content box", content_w * CELL_W_PX);
+            assert!(l.max_width.is_none_or(|m| (m - content_w * CELL_W_PX).abs() < 0.05), "wrapped at the content width, not the border box");
+        }
+    }
+
+    #[test]
+    fn wide_box_gets_one_line_and_exact_max_content() {
+        let mut doc = gui(&page("font-family: sans-serif;", 200));
+        let mut e = engine();
+        let r = e.compute(&mut doc, 200, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        let l = e.shaped_text(t).unwrap();
+        assert_eq!(l.lines.len(), 1, "float guard: the last word never wraps on rounding");
+        assert_eq!(r.nodes[&t].width, l.max_content_cells());
+        assert_eq!(r.nodes[&t].height, 1.0);
+    }
+
+    #[test]
+    fn nowrap_text_and_buttons_use_the_shaped_width() {
+        let src = r#"<box style="flex-direction: row;">
+            <text style="font-family: sans-serif;">Hello proportional world</text>
+            <button style="font-family: sans-serif; border-style: single; padding-left: 2; padding-right: 2;">Resume</button>
+        </box>"#;
+        let mut doc = gui(src);
+        let mut e = engine();
+        let r = e.compute(&mut doc, 80, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        let b = nodes(&doc, NodeTag::Button)[0];
+        let tl = e.shaped_text(t).unwrap().clone();
+        let bl = e.shaped_text(b).unwrap().clone();
+        assert_eq!(r.nodes[&t].width, tl.max_content_cells());
+        assert_ne!(r.nodes[&t].width, 24.0, "not the cell width of 24 chars");
+        assert_eq!(r.nodes[&b].width, bl.max_content_cells() + 2.0 + 4.0, "text + border + padding");
+        assert_eq!(r.nodes[&b].height, bl.height_cells() + 2.0);
+        // the floor: a narrow row cannot squeeze the text below its shaped width
+        let mut doc = gui(&format!(r#"<box style="width: 5; flex-direction: row;"><text style="font-family: sans-serif;">{PARA}</text></box>"#));
+        let mut e = engine();
+        let r = e.compute(&mut doc, 80, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        assert_eq!(r.nodes[&t].width, e.shaped_text(t).unwrap().max_content_cells());
+    }
+
+    #[test]
+    fn missing_glyphs_have_a_font_independent_advance() {
+        for (txt, cells) in [("日本語", 6.0f32), ("😀", 2.0)] {
+            let mut doc = gui(&format!(r#"<box><text style="font-family: sans-serif;">{txt}</text></box>"#));
+            let mut e = engine();
+            let r = e.compute(&mut doc, 80, 0, None).unwrap();
+            let t = nodes(&doc, NodeTag::Text)[0];
+            assert!((r.nodes[&t].width - cells).abs() < 1e-3, "{txt}: {}", r.nodes[&t].width);
+            assert!(e.shaped_text(t).unwrap().lines[0].glyphs.iter().all(|g| g.missing));
+        }
+    }
+
+    #[test]
+    fn tui_never_shapes() {
+        let mut doc = THTMLParser::parse_with_mode(&page("font-family: sans-serif; font-size: 30px;", 30), RenderMode::Tui).unwrap();
+        let mut e = LayoutEngine::with_mode(RenderMode::Tui);
+        e.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(e.shaped_count(), 0);
+        assert_eq!(e.text_cache.len(), 0);
+    }
+
+    #[test]
+    fn font_changes_re_measure_through_the_incremental_reconcile() {
+        let src = format!(r#"<box style="width: 40; flex-direction: column;"><box style="flex-direction: column;"><text style="wrap: word;">{PARA}</text><button style="border-style: single;">Go on</button></box></box>"#);
+        let mut doc = gui(&src);
+        let mut e = engine(); // cross-check on: every compute is compared with a rebuild
+        let t = nodes(&doc, NodeTag::Text)[0];
+        let b = nodes(&doc, NodeTag::Button)[0];
+        let boxes = nodes(&doc, NodeTag::Box);
+        let inner = boxes.into_iter().find(|&i| doc.arena.get(i).unwrap().children.contains(&t)).unwrap();
+        let r0 = e.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(e.shaped_count(), 0);
+        let h0 = r0.nodes[&t].height;
+        // only the PARENT's font changes: descendants must re-measure
+        doc.arena.get_mut(inner).unwrap().style.font.family = Some(oxiterm_proto::style::FontFace::Sans);
+        let r1 = e.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(e.shaped_count(), 2, "text and button are shaped now");
+        assert_eq!(r1.nodes[&t].height, e.shaped_text(t).unwrap().height_cells());
+        let w1 = r1.nodes[&b].width;
+        doc.arena.get_mut(inner).unwrap().style.font.size = Some(oxiterm_proto::style::FontSize::Px(24.0));
+        let r2 = e.compute(&mut doc, 80, 0, None).unwrap();
+        assert!(r2.nodes[&b].width > w1, "bigger font, wider button");
+        assert!(r2.nodes[&t].height > r1.nodes[&t].height, "bigger font, taller text");
+        // back to the default: shaped state is gone and the old numbers return
+        doc.arena.get_mut(inner).unwrap().style.font = Default::default();
+        let r3 = e.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(e.shaped_count(), 0);
+        assert_eq!(r3.nodes[&t].height, h0);
+        let s = e.stats();
+        assert!(s.incremental >= 3 && s.full == 1, "{s:?}");
+    }
+
+    #[test]
+    fn bold_only_change_does_not_dirty_a_fast_path_node() {
+        let mut doc = gui(&format!(r#"<box style="width: 30;"><text id="t" style="wrap: word;">{PARA}</text></box>"#));
+        let mut e = engine();
+        e.compute(&mut doc, 80, 0, None).unwrap();
+        let t = nodes(&doc, NodeTag::Text)[0];
+        doc.arena.get_mut(t).unwrap().style.font.weight = Some(oxiterm_proto::style::FontWeight::Absolute(700));
+        e.compute(&mut doc, 80, 0, None).unwrap();
+        assert_eq!(e.stats().quiet, 1, "bold alone changes nothing the layout reads");
     }
 }

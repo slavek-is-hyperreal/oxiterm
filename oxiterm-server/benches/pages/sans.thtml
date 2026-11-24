@@ -1,0 +1,34 @@
+<style>
+.page { flex-direction: column; width: 80; bg: #0f172a; font-family: sans-serif; padding: 1; }
+.card { flex-direction: column; border-style: rounded; border-color: #334155; padding: 1; margin-bottom: 1; }
+.title { fg: #f59e0b; font-size: 24px; font-weight: bold; margin-bottom: 1; }
+.lead { fg: #94a3b8; margin-bottom: 1; wrap: word; }
+.row { flex-direction: row; }
+.btn { border-style: single; border-color: #475569; fg: #e2e8f0; padding-left: 2; padding-right: 2; margin-right: 2; }
+.mono { wrap: word; font-family: monospace; fg: #4ade80; }
+</style>
+
+<box class="page">
+    <text class="title">Proportional text benchmark page</text>
+    <box class="card">
+        <text class="lead">This paragraph is set in the sans-serif face. It is long enough to wrap over several lines at the default page width, so measuring it goes through the shaped layout and not through the cell counter.</text>
+        <text class="lead">A second paragraph with more words than fit on one line, including a few longer words such as internationalisation, characterisation and unbelievably.</text>
+        <text class="mono">monospace at the default size stays on the cell path</text>
+    </box>
+    <box class="card">
+        <text class="lead">Third paragraph. Narrow columns force many short lines, and a flex row with several buttons exercises the max-content width of wrap-none buttons in the proportional face.</text>
+        <box class="row">
+            <button class="btn" event-htmx="inc:counter">Increment</button>
+            <button class="btn" event-htmx="dec:counter">Decrement</button>
+            <button class="btn" event-htmx="clear:counter">Reset everything</button>
+        </box>
+    </box>
+    <box class="row">
+        <box class="card" style="flex: 1; margin-right: 1;">
+            <text class="lead">Left column text that has to wrap inside half of the page width.</text>
+        </box>
+        <box class="card" style="flex: 1;">
+            <text class="lead">Right column text that also wraps, with different words so the cache sees distinct keys.</text>
+        </box>
+    </box>
+</box>

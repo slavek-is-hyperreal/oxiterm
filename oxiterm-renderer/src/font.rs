@@ -42,6 +42,20 @@ pub struct ResolvedFont {
     pub italic: bool,
 }
 
+impl ResolvedFont {
+    /// `true` when text in this font is measured in whole cells with no shaping: the root default
+    /// (mono, 16 px, line height 20 px). Bold and italic alone do not leave this path: the mono
+    /// face is fixed-advance and a synthetic bold or slant in a client does not change advances.
+    /// The whole font is compared (face, size and line height), not just the face: mono at
+    /// 24 px or with a taller line is not on the cell grid.
+    #[inline]
+    pub fn uses_cell_metrics(&self) -> bool {
+        self.face == FontFace::Mono
+            && self.size_px == DEFAULT_FONT_SIZE_PX
+            && self.line_height_px == CELL_H_PX
+    }
+}
+
 impl Default for ResolvedFont {
     /// The root default: mono, 16 px, line height = the reference cell height (20 px).
     fn default() -> Self {

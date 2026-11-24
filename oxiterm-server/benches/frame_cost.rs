@@ -400,6 +400,9 @@ fn main() {
     let mut pages = Vec::new();
     collect_pages(&root, &mut pages);
     if let Some(f) = &filter { pages.retain(|p| p.to_string_lossy().contains(f.as_str())); }
+    let mut fixtures = Vec::new();
+    collect_pages(&Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/pages"), &mut fixtures);
+    if let Some(f) = &filter { fixtures.retain(|p| p.to_string_lossy().contains(f.as_str())); }
 
     for size in SIZES {
         let mut results = Vec::new();
@@ -414,6 +417,15 @@ fn main() {
         }
         print_size(size, &results);
         print_aggregate(size, &results);
+        // Stage 6.3 fixtures (benches/pages, e.g. a proportional page): reported on their own, not
+        // part of the aggregate above, so the mono numbers stay comparable across stages.
+        let mut fx = Vec::new();
+        for p in &fixtures {
+            let mut r = bench_page(p, size, budget, min_iters);
+            r.name = format!("[fixture] {}", p.file_name().unwrap_or_default().to_string_lossy());
+            fx.push(r);
+        }
+        if !fx.is_empty() { print_size(size, &fx); }
     }
     println!("\n=== counter click scenario ===");
     for size in SIZES { counter_scenario(&root, size, 400); }

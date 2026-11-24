@@ -39,9 +39,39 @@ pub struct ShapedLine {
 /// Line height as a multiple of the font size (spike default).
 pub const LINE_HEIGHT_FACTOR: f32 = 1.25;
 
+/// One glyph of a [`RawParagraph`] (unwrapped, as the shaping library returns it).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RawGlyph {
+    /// Left edge from the start of the paragraph.
+    pub x: f32,
+    /// Advance as the font gives it (a missing glyph keeps the font's `.notdef` advance here).
+    pub advance: f32,
+    pub glyph_id: u16,
+    /// Index (in the slice given to [`Shaper::new`]) of the font the glyph id belongs to. It
+    /// differs from the requested font when the library fell back to another loaded face for a
+    /// character the requested one lacks (box drawing in the sans face comes from the mono face).
+    /// `usize::MAX` if the font is not one of them.
+    pub font: usize,
+    /// Byte range of the cluster in the paragraph text.
+    pub start: usize,
+    pub end: usize,
+}
+
+/// One hard line (paragraph) shaped without any width limit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawParagraph {
+    pub glyphs: Vec<RawGlyph>,
+    /// Baseline below the top of the line box.
+    pub baseline_off: f32,
+}
+
 pub struct Shaper {
     fs: FontSystem,
     family: String,
+    /// Family name of each font passed to [`Shaper::new`], in order.
+    families: Vec<String>,
+    /// fontdb id of each font passed to [`Shaper::new`], in order.
+    ids: Vec<fontdb::ID>,
 }
 
 impl Shaper {
@@ -49,12 +79,64 @@ impl Shaper {
     /// Returns `None` if no face parses.
     pub fn new(fonts: &[&'static [u8]]) -> Option<Self> {
         let mut db = fontdb::Database::new();
+        let mut families = Vec::new();
+        let mut font_ids = Vec::new();
         for f in fonts {
-            db.load_font_source(fontdb::Source::Binary(Arc::new(*f)));
+            let ids = db.load_font_source(fontdb::Source::Binary(Arc::new(*f)));
+            let id = *ids.first()?;
+            font_ids.push(id);
+            families.push(db.face(id)?.families.first()?.0.clone());
         }
-        let family = db.faces().next()?.families.first()?.0.clone();
+        let family = families.first()?.clone();
         let fs = FontSystem::new_with_locale_and_db("en-US".to_string(), db);
-        Some(Self { fs, family })
+        Some(Self { fs, family, families, ids: font_ids })
+    }
+
+    /// Shapes every `\n`-separated paragraph of `text` with font number `font` (the index in
+    /// the slice given to [`Shaper::new`]) without a width limit. The result is indexed by
+    /// paragraph; a paragraph the library produced no line for is `None`. Line breaking is
+    /// done by the caller (`text::layout`), so it can use its own advances for missing glyphs.
+    pub fn shape_paragraphs(
+        &mut self,
+        font: usize,
+        text: &str,
+        size_px: f32,
+        line_height_px: f32,
+        bold: bool,
+    ) -> Vec<Option<RawParagraph>> {
+        let family = self.families.get(font).unwrap_or(&self.family).clone();
+        let metrics = Metrics::new(size_px, line_height_px);
+        let mut buf = Buffer::new(&mut self.fs, metrics);
+        buf.set_wrap(Wrap::None);
+        buf.set_size(None, None);
+        let weight = if bold { Weight::BOLD } else { Weight::NORMAL };
+        let attrs = Attrs::new().family(Family::Name(&family)).weight(weight);
+        buf.set_text(text, &attrs, Shaping::Advanced, None);
+        buf.shape_until_scroll(&mut self.fs, false);
+        let ids = &self.ids;
+        let mut out: Vec<Option<RawParagraph>> = vec![None; text.split('\n').count()];
+        for run in buf.layout_runs() {
+            let Some(slot) = out.get_mut(run.line_i) else { continue };
+            if slot.is_some() {
+                continue;
+            }
+            *slot = Some(RawParagraph {
+                baseline_off: run.line_y - run.line_top,
+                glyphs: run
+                    .glyphs
+                    .iter()
+                    .map(|g| RawGlyph {
+                        x: g.x,
+                        advance: g.w,
+                        glyph_id: g.glyph_id,
+                        font: ids.iter().position(|&i| i == g.font_id).unwrap_or(usize::MAX),
+                        start: g.start,
+                        end: g.end,
+                    })
+                    .collect(),
+            });
+        }
+        out
     }
 
     /// Shapes `text` at `size_px`, breaking lines at `max_width` (if any). `\n` starts a new
