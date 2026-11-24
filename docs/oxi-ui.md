@@ -625,7 +625,7 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 | 8.5 | Safety profile and qualification evidence | 12+ months |
 
 **Open questions for the owner** (details in section 13 of the research)
-1. Memory model: reference counting with compiler elision or tracing GC. The research is split (Static TypeScript measured its GC about 2x faster than its RC, but that RC had no elision); a 2–3 week prototype of both is proposed in 8.0.
+1. Memory model. **Leading hypothesis (owner, 2026-11-24): reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style)** — GC-like convenience (closures in event handlers form cycles; no `weak` bookkeeping for JS developers) with mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths, so the collector never runs there. Stage 8.0 must confirm it against a tracing GC on a real ESP32 (Static TypeScript measured its GC about 2x faster than its RC, but that RC had no elision). Risks to measure: counter overhead without elision, atomic counts across threads (mitigated by isolating data per thread/isolate), code size on ESP32.
 2. Own TS-looking grammar (recommended) or parsing real TypeScript.
 3. On-device engine for live mode on ESP32: wasmi (fastest interpreter in the treVM measurements, largest flash) or WAMR (smaller, an official Espressif component, but ran out of memory on one benchmark). Settled by the 8.0 bake-off.
 4. GPU kernels in v1, or CPU SIMD + multi-core first.
