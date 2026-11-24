@@ -595,6 +595,7 @@ Expected result of 1, 2 and 4: a quiet GUI frame goes from about 153 to about 45
 |---|---|---|
 | 7.1 | **WASM local mode.** `oxiterm-core` runs in the browser inside the web client (`?local=1`): pages and assets fetched into a `MemPageSource`, the step API driven by timers from `next_deadline`, the same painter as thin-client GUI, actions to the App Server over `fetch` (built-in state actions run locally). Fonts: the client loads them once (no second download of the bytes embedded in the core). | Same page and input give the same display list in local wasm and thin client (test); counter demo keeps working with the server stopped (browser check); wasm bundle size recorded. |
 | 7.2 | **OxiDE software sink** (`oxiterm-fb`): rasterize a DisplayList into RGBA (fills, rounded borders, paths, glyphs from the bundled fonts), output to PNG; `/dev/fb0` and DRM dumb-buffer backends behind a flag, never run by agents (they are the owner's real display). | PNG goldens of the sans fixture and the counter demo, deterministic; device output run only manually with the owner's OK. |
+| 7.2b | **OxiDE runner** (after 7.1 and 7.2): `oxide run page.thtml` — the core in local mode on the Linux console without X11/Wayland: output through the 7.2 sink to `/dev/fb0` or DRM, keyboard/mouse/touch from evdev, the event loop on the step API, actions to an App Server (later a Unix socket). This is OxiDE's Phase 1+4 from [retro-desktop-environment.md](retro-desktop-environment.md); windows, taskbar, system daemon and PTY apps stay later OxiDE work. | Runs a demo page full screen in a VM or on spare hardware with the owner's OK (never on the owner's display by an agent); input mapping tested with recorded evdev events. |
 | 7.3 | **Android shell** (`android/`, Kotlin, WebView): thin-client URL first; bundled local mode after 7.1. | `assembleDebug` builds; unit tests; no device run (none attached). |
 | 7.4 | **Touch, IME and viewport** in the web client (after 7.1, same files): touch → `0x03` pointer, virtual keyboard input, `visualViewport` resize. | Coordinate tests; mobile viewport checked in the browser pane. |
 | 7.5 | **Close Phase 7:** local-vs-thin equality in CI, docs. | CI green; BAD ACTOR pass. |
@@ -638,7 +639,7 @@ Each slice has a measurable gate and ends with a BAD ACTOR pass. Crates live und
 | 8.L Lowering | check/ir | Typed AST → OxiIR, end-to-end `.oxs` → Wasm | End-to-end corpus runs in wasmi | 8.T, 8.G, 8.M |
 | 8.S1 First visible slice | integration | `<script lang="oxs">` in OxiUI pages: event handlers and state, server-driven and browser-local | Demo page scripted in both modes | 8.L, 8.R, 7.1 |
 | 8.S2 Editor | lsp | LSP (diagnostics, hover, inlay hints), live reload from VS Code | Edit → reload loop measured | 8.T, 8.R |
-| 8.S3 First board | device | ESP32 flash in one command, USB live reload | Toy demo on a real board | 8.S1, hardware |
+| 8.S3 First board | device | ESP32 flash in one command, USB live reload | Toy demo on a real board (ESP32-S3 4.3" 800x480 touch, bought after 2026-12-10) | 8.S1, hardware |
 | 8.S4 Laws + report | check, wasm | Laws level 1 (property testing), placement report v0 | Laws find seeded bugs; report stable across builds | 8.L |
 
 Later stages keep the research's order and estimates: 8.2 AOT release path and profiles v0, 8.3 SIMD/parallel layers and `@expect`, 8.3b GPU kernels, 8.4 concurrency and ecosystem, 8.5 safety profile.
@@ -648,7 +649,7 @@ Later stages keep the research's order and estimates: 8.2 AOT release path and p
 #### Parallel schedule (machine: 4 cores, ~12 GB free RAM → at most 3 concurrent agents, BAD ACTOR runs included)
 - **Wave 1:** 7.1, 7.2, 8.C.
 - **Wave 2:** 8.P, 8.R, 7.3 (as slots free).
-- **Wave 3:** 8.T, 8.G, 8.M, 7.4.
+- **Wave 3:** 8.T, 8.G, 8.M, 7.4, 7.2b.
 - **Wave 4:** 8.L, 8.S2, 7.5.
 - **Wave 5:** 8.S1, 8.S4; 8.S3 once a board is available.
 
