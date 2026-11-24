@@ -89,6 +89,77 @@ pub struct ComputedStyle {
     /// Corner radius in cell units (horizontal axis), GUI renderers only. `None` = square.
     #[serde(default)]
     pub border_radius: Option<f32>,
+    /// Font properties as declared (before inheritance). See [`FontDecl`].
+    #[serde(default)]
+    pub font: FontDecl,
+}
+
+/// A face of the font bundle (Phase 6). Only these two exist; see `docs/oxi-ui.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum FontFace {
+    /// `oxi-mono` (Noto Sans Mono): the default, one cell per column.
+    #[default]
+    Mono,
+    /// `oxi-sans` (Noto Sans): proportional.
+    Sans,
+}
+
+/// A declared `font-size`, kept relative until the inheritance pass.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FontSize {
+    /// An absolute size in px (`px`, `dp`, `ch` and `lh` are converted at parse time).
+    Px(f32),
+    /// A factor of the inherited size (`em`, `%`).
+    Em(f32),
+}
+
+/// A declared `line-height`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum LineHeight {
+    /// A factor of the node's own font size (unitless number, `em`, `%`, `normal` = 1.25).
+    Multiplier(f32),
+    /// An absolute height in px.
+    Px(f32),
+}
+
+/// A declared `font-weight`. `Bolder`/`Lighter` are relative to the inherited weight.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FontWeight {
+    /// 1 to 1000 (`normal` = 400, `bold` = 700). 600 and above counts as bold.
+    Absolute(u16),
+    /// One step bolder than the inherited weight (CSS table).
+    Bolder,
+    /// One step lighter than the inherited weight (CSS table).
+    Lighter,
+}
+
+/// The font properties a node declares itself. `None` means "inherit".
+///
+/// `family`, `size` and `line_height` are GUI only; `weight` and `italic` also reach the TUI
+/// (bold/italic cell modifiers).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct FontDecl {
+    /// `font-family`: first name in the list that maps to a bundle face.
+    pub family: Option<FontFace>,
+    /// `font-size`.
+    pub size: Option<FontSize>,
+    /// `line-height`.
+    pub line_height: Option<LineHeight>,
+    /// `font-weight`.
+    pub weight: Option<FontWeight>,
+    /// `font-style`: `true` for `italic`/`oblique`.
+    pub italic: Option<bool>,
+}
+
+impl FontDecl {
+    /// `true` when the node declares no font property at all.
+    pub fn is_empty(&self) -> bool {
+        self.family.is_none()
+            && self.size.is_none()
+            && self.line_height.is_none()
+            && self.weight.is_none()
+            && self.italic.is_none()
+    }
 }
 
 /// Animatable CSS style property for transitions.

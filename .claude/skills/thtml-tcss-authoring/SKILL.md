@@ -18,7 +18,7 @@ This is the single most important fact about TCSS. In `oxiterm-renderer/src/pars
 - An **unrecognised property** triggers a `tracing::warn!("Unknown TCSS property: {}", key)` and is **discarded**.
 - A **malformed integer value** triggers a warning and becomes **`0`**.
 
-So properties not in TCSS like `overflow: hidden`, `display: flex`, `gap: 2`, `text-align: center`, `font-weight: bold` are discarded. And `height: auto` fails integer parsing and becomes `height: 0`, collapsing the element to nothing.
+So properties not in TCSS like `overflow: hidden`, `display: flex`, `gap: 2`, `text-align: center` are discarded. (Exceptions: `font-weight` and `font-style` work in both modes as bold/italic; `font-family`, `font-size`, `line-height` and `border-radius` are GUI-only and silently ignored in the terminal, see docs/tcss-reference.md.) And `height: auto` fails integer parsing and becomes `height: 0`, collapsing the element to nothing.
 
 **Therefore: only use properties from the table in §2. If you want a property that is not in that table, it does not exist, and you must achieve the effect with explicit integers instead.**
 
@@ -235,7 +235,7 @@ Use ASCII for anything interactive: `<` not `←`, `>` not `→`, `x` not `×`. 
 So after `check` passes, do this by hand:
 
 1. **Re-derive every explicit height.** For each container with a declared `height`, sum its children's heights plus vertical margins plus 2 if it is bordered. Compare. Fix mismatches.
-2. **Grep your own diff for phantom properties.** `grep -nE '(display|gap|overflow|font-|text-align|border-radius|line-height)\s*:' <file>` should return nothing.
+2. **Grep your own diff for phantom properties.** `grep -nE '(display|gap|overflow|text-align)\s*:' <file>` should return nothing. GUI-only properties (`font-family`, `font-size`, `line-height`, `border-radius`) are fine but change nothing in the terminal, so never rely on them for TUI layout.
 3. **Grep for `height: auto` and `width: auto`.** Should return nothing.
 4. **Check every bordered element is at least 3 rows tall.**
 5. **Confirm every `<text>` that could be long has either `wrap: word` plus a bounded parent width, or a guarantee of being short.**

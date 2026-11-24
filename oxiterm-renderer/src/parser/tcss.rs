@@ -4,7 +4,7 @@
 //! and applies computed style rules cascadingly to the DOM document tree.
 
 use anyhow::Result;
-use oxiterm_proto::style::{RenderMode, AnsiColor, FlexDirection, AlignItems, JustifyContent};
+use oxiterm_proto::style::{RenderMode, AnsiColor, FlexDirection, AlignItems, JustifyContent, FontFace, FontSize, FontWeight, LineHeight};
 use nom::{
     bytes::complete::take_while1,
     character::complete::{multispace0, char as nom_char},
@@ -89,6 +89,16 @@ pub enum Declaration {
     BorderRadius(f32),
     /// Transition specification declarations.
     Transition(Vec<oxiterm_proto::style::TransitionSpec>),
+    /// `font-family`: the bundle face of the first known name in the list (GUI only).
+    FontFamily(FontFace),
+    /// `font-size` (GUI only).
+    FontSize(FontSize),
+    /// `line-height` (GUI only).
+    LineHeight(LineHeight),
+    /// `font-weight` (maps onto the bold flag, TUI too).
+    FontWeight(FontWeight),
+    /// `font-style`: `true` for `italic`/`oblique` (maps onto the italic flag, TUI too).
+    FontStyle(bool),
     /// Unrecognized property or invalid property value.
     Unknown(String),
 }
@@ -120,20 +130,7 @@ const REF_CELL_H_PX: f32 = 16.0;
 /// (including `nan`, `inf` and exponent forms).
 pub fn parse_length(s: &str, axis: Axis) -> Option<f32> {
     let lower = s.trim().to_ascii_lowercase();
-    let (num, unit) = match lower.find(|c: char| c.is_ascii_alphabetic()) {
-        Some(i) => lower.split_at(i),
-        None => (lower.as_str(), ""),
-    };
-    // Plain decimal only: optional sign, digits, at most one dot (rejects nan/inf/1e3).
-    let digits = num.strip_prefix(['-', '+']).unwrap_or(num);
-    if digits.is_empty()
-        || digits.matches('.').count() > 1
-        || !digits.chars().all(|c| c.is_ascii_digit() || c == '.')
-        || !digits.chars().any(|c| c.is_ascii_digit())
-    {
-        return None;
-    }
-    let v: f32 = num.parse().ok()?;
+    let (v, unit) = split_number(&lower)?;
     let (w, h) = (REF_CELL_W_PX, REF_CELL_H_PX);
     let cells = match (unit, axis) {
         ("", _) => v,
@@ -145,6 +142,25 @@ pub fn parse_length(s: &str, axis: Axis) -> Option<f32> {
         _ => return None,
     };
     if cells.is_finite() { Some(cells) } else { None }
+}
+
+/// Splits an already lower-cased `<number><unit>` into its parts. The number is plain
+/// decimal only: optional sign, digits, at most one dot (rejects nan/inf/1e3).
+fn split_number(lower: &str) -> Option<(f32, &str)> {
+    let (num, unit) = match lower.find(|c: char| c.is_ascii_alphabetic() || c == '%') {
+        Some(i) => lower.split_at(i),
+        None => (lower, ""),
+    };
+    let digits = num.strip_prefix(['-', '+']).unwrap_or(num);
+    if digits.is_empty()
+        || digits.matches('.').count() > 1
+        || !digits.chars().all(|c| c.is_ascii_digit() || c == '.')
+        || !digits.chars().any(|c| c.is_ascii_digit())
+    {
+        return None;
+    }
+    let v: f32 = num.parse().ok()?;
+    Some((v, unit))
 }
 
 /// Like [`parse_length`] but rejects any value with a leading `-` (including `-0`),
@@ -304,6 +320,11 @@ pub fn apply_declaration(style: &mut oxiterm_proto::style::ComputedStyle, decl: 
         Declaration::ZIndex(v) => style.z_index = Some(*v),
         Declaration::BorderRadius(v) => style.border_radius = Some(*v),
         Declaration::Transition(v) => style.transitions = v.clone(),
+        Declaration::FontFamily(f) => style.font.family = Some(*f),
+        Declaration::FontSize(v) => style.font.size = Some(*v),
+        Declaration::LineHeight(v) => style.font.line_height = Some(*v),
+        Declaration::FontWeight(v) => style.font.weight = Some(*v),
+        Declaration::FontStyle(v) => style.font.italic = Some(*v),
         Declaration::Unknown(_) => {},
     }
 }
@@ -635,9 +656,25 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
                 Some(Declaration::Unknown(format!("{key}: {val_str}")))
             }
         },
-        "box-shadow" | "font-family" | "font-size" => {
-            Some(Declaration::Unknown(format!("{key}: {val_str}")))
+        // Font properties (Phase 6.2). An invalid value is ignored (`Unknown`) with a debug log
+        // only: no warning spam for something that is valid CSS but not understood here.
+        "font-family" | "font-size" | "line-height" | "font-weight" | "font-style" => {
+            let parsed = match key {
+                "font-family" => parse_font_family(val_str).map(Declaration::FontFamily),
+                "font-size" => parse_font_size(val_str).map(Declaration::FontSize),
+                "line-height" => parse_line_height(val_str).map(Declaration::LineHeight),
+                "font-weight" => parse_font_weight(val_str).map(Declaration::FontWeight),
+                _ => parse_font_style(val_str).map(Declaration::FontStyle),
+            };
+            match parsed {
+                Some(d) => Some(d),
+                None => {
+                    tracing::debug!("Ignoring TCSS {}: {}", key, val_str);
+                    Some(Declaration::Unknown(format!("{key}: {val_str}")))
+                }
+            }
         }
+        "box-shadow" => Some(Declaration::Unknown(format!("{key}: {val_str}"))),
         _ => {
             tracing::warn!("Unknown TCSS property: {}", key);
             Some(Declaration::Unknown(format!("{key}: {val_str}")))
@@ -645,6 +682,132 @@ fn parse_declaration(input: &str) -> IResult<&str, Option<Declaration>> {
     };
     
     Ok((input, decl))
+}
+
+/// Maps one `font-family` name (already unquoted) onto a bundle face. Matching is
+/// case-insensitive. `serif` has no bundled face and maps to the proportional one.
+fn font_face_for_name(name: &str) -> Option<FontFace> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "monospace" | "ui-monospace" | "oxi-mono" | "noto sans mono" => Some(FontFace::Mono),
+        "sans-serif" | "system-ui" | "ui-sans-serif" | "oxi-sans" | "noto sans" | "serif" | "ui-serif" => {
+            Some(FontFace::Sans)
+        }
+        _ => None,
+    }
+}
+
+/// Parses a `font-family` list (comma separated, names quoted or bare). The first name that
+/// maps to a bundle face wins; `None` when no name is known (the declaration is then ignored
+/// and the inherited family stays). Commas inside quotes do not split.
+pub fn parse_font_family(value: &str) -> Option<FontFace> {
+    let mut quote: Option<char> = None;
+    let mut start = 0;
+    let mut names: Vec<&str> = Vec::new();
+    for (i, c) in value.char_indices() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None => match c {
+                '"' | '\'' => quote = Some(c),
+                ',' => {
+                    names.push(&value[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            },
+        }
+    }
+    names.push(&value[start..]);
+    names.into_iter().find_map(|raw| {
+        let raw = raw.trim();
+        let bytes = raw.as_bytes();
+        let name = if raw.len() >= 2 && (bytes[0] == b'"' || bytes[0] == b'\'') && bytes[raw.len() - 1] == bytes[0] {
+            &raw[1..raw.len() - 1]
+        } else {
+            raw
+        };
+        font_face_for_name(name)
+    })
+}
+
+/// Parses `font-size`: `px`/`dp` (px), `ch` (reference cell width), `lh` (reference cell
+/// height), `em` and `%` (relative to the inherited size). Must be finite and greater than
+/// zero; a bare number is rejected (a TCSS bare number means cells, which is ambiguous here).
+pub fn parse_font_size(value: &str) -> Option<FontSize> {
+    let lower = value.trim().to_ascii_lowercase();
+    let (v, unit) = split_number(&lower)?;
+    if !v.is_finite() || v <= 0.0 {
+        return None;
+    }
+    let size = match unit {
+        "px" | "dp" => FontSize::Px(v),
+        "ch" => FontSize::Px(v * crate::font::CELL_W_PX),
+        "lh" => FontSize::Px(v * crate::font::CELL_H_PX),
+        "em" => FontSize::Em(v),
+        "%" => FontSize::Em(v / 100.0),
+        _ => return None,
+    };
+    match size {
+        FontSize::Px(p) | FontSize::Em(p) if !p.is_finite() => None,
+        s => Some(s),
+    }
+}
+
+/// Parses `line-height`: `normal` (1.25 times the font size), a unitless multiplier, `em`/`%`
+/// (a multiplier too) or a length in `px`/`dp`/`ch`/`lh` (stored in px).
+pub fn parse_line_height(value: &str) -> Option<LineHeight> {
+    let lower = value.trim().to_ascii_lowercase();
+    if lower == "normal" {
+        return Some(LineHeight::Multiplier(crate::font::LINE_HEIGHT_FACTOR));
+    }
+    let (v, unit) = split_number(&lower)?;
+    if !v.is_finite() || v <= 0.0 {
+        return None;
+    }
+    match unit {
+        "" => Some(LineHeight::Multiplier(v)),
+        "em" => Some(LineHeight::Multiplier(v)),
+        "%" => Some(LineHeight::Multiplier(v / 100.0)),
+        "px" | "dp" => Some(LineHeight::Px(v)),
+        "ch" => Some(LineHeight::Px(v * crate::font::CELL_W_PX)),
+        "lh" => Some(LineHeight::Px(v * crate::font::CELL_H_PX)),
+        _ => None,
+    }
+    .filter(|lh| match lh {
+        LineHeight::Multiplier(m) | LineHeight::Px(m) => m.is_finite(),
+    })
+}
+
+/// Parses `font-weight`: `normal` (400), `bold` (700), `bolder`, `lighter` or a number
+/// from 1 to 1000. 600 and above counts as bold downstream.
+pub fn parse_font_weight(value: &str) -> Option<FontWeight> {
+    let lower = value.trim().to_ascii_lowercase();
+    match lower.as_str() {
+        "normal" => Some(FontWeight::Absolute(400)),
+        "bold" => Some(FontWeight::Absolute(700)),
+        "bolder" => Some(FontWeight::Bolder),
+        "lighter" => Some(FontWeight::Lighter),
+        _ => {
+            let (v, unit) = split_number(&lower)?;
+            if !unit.is_empty() || !(1.0..=1000.0).contains(&v) {
+                return None;
+            }
+            Some(FontWeight::Absolute(v.round() as u16))
+        }
+    }
+}
+
+/// Parses `font-style`: `normal` is `false`; `italic` and `oblique` (with or without an
+/// angle) are `true`.
+pub fn parse_font_style(value: &str) -> Option<bool> {
+    let lower = value.trim().to_ascii_lowercase();
+    let first = lower.split_whitespace().next()?;
+    match first {
+        "normal" if lower == "normal" => Some(false),
+        "italic" if lower == "italic" => Some(true),
+        "oblique" => Some(true),
+        _ => None,
+    }
 }
 
 fn parse_color(value: &str) -> AnsiColor {
@@ -957,6 +1120,170 @@ mod tests {
         assert_eq!(style.margin.top, 0.0);
     }
 
+    // ---- Stage 6.2: font properties ------------------------------------------------------
+
+    fn one(src: &str) -> Declaration {
+        let d = parse_inline_tcss(src).unwrap();
+        assert_eq!(d.len(), 1, "{src}");
+        d.into_iter().next().unwrap()
+    }
+    fn is_unknown(src: &str) -> bool {
+        matches!(one(src), Declaration::Unknown(_))
+    }
+
+    #[test]
+    fn font_family_lists_quotes_and_generics() {
+        let fam = |v: &str| parse_font_family(v);
+        assert_eq!(fam("monospace"), Some(FontFace::Mono));
+        assert_eq!(fam("ui-monospace"), Some(FontFace::Mono));
+        assert_eq!(fam("\"oxi-mono\""), Some(FontFace::Mono));
+        assert_eq!(fam("'Noto Sans Mono'"), Some(FontFace::Mono));
+        assert_eq!(fam("Noto Sans Mono"), Some(FontFace::Mono), "bare multi-word name");
+        assert_eq!(fam("sans-serif"), Some(FontFace::Sans));
+        assert_eq!(fam("system-ui"), Some(FontFace::Sans));
+        assert_eq!(fam("ui-sans-serif"), Some(FontFace::Sans));
+        assert_eq!(fam("oxi-sans"), Some(FontFace::Sans));
+        assert_eq!(fam("\"Noto Sans\""), Some(FontFace::Sans));
+        assert_eq!(fam("serif"), Some(FontFace::Sans), "no serif face bundled: falls back to sans");
+        assert_eq!(fam("SANS-SERIF"), Some(FontFace::Sans), "case-insensitive");
+        // The first known name wins, unknown ones are skipped.
+        assert_eq!(fam("\"Inter\", 'Helvetica; Neue', sans-serif, monospace"), Some(FontFace::Sans));
+        assert_eq!(fam("Menlo, monospace, sans-serif"), Some(FontFace::Mono));
+        assert_eq!(fam("  Inter ,  oxi-mono  "), Some(FontFace::Mono));
+        // A comma inside quotes does not split.
+        assert_eq!(fam("\"a, monospace\""), None);
+        // No known name, empty list, stray commas.
+        assert_eq!(fam("Inter, Helvetica"), None);
+        assert_eq!(fam(""), None);
+        assert_eq!(fam(",,"), None);
+        assert_eq!(fam("\"unterminated, monospace"), None);
+        assert!(matches!(one("font-family: sans-serif"), Declaration::FontFamily(FontFace::Sans)));
+        assert!(is_unknown("font-family: Inter"), "unknown list is kept as Unknown (ignored)");
+    }
+
+    #[test]
+    fn font_size_units() {
+        let sz = |v: &str| parse_font_size(v);
+        assert_eq!(sz("14px"), Some(FontSize::Px(14.0)));
+        assert_eq!(sz("14DP"), Some(FontSize::Px(14.0)));
+        assert_eq!(sz("2ch"), Some(FontSize::Px(19.2)));
+        assert_eq!(sz("1lh"), Some(FontSize::Px(20.0)));
+        assert_eq!(sz("1.5em"), Some(FontSize::Em(1.5)));
+        assert_eq!(sz("150%"), Some(FontSize::Em(1.5)));
+        assert_eq!(sz(" 0.5em "), Some(FontSize::Em(0.5)));
+        for bad in ["", "14", "0px", "-1px", "0%", "px", "1e3px", "nan", "12pt", "large", "1..2px", "12 px", "1rem"] {
+            assert_eq!(sz(bad), None, "{bad:?}");
+        }
+        assert!(matches!(one("font-size: 20px"), Declaration::FontSize(FontSize::Px(v)) if v == 20.0));
+        assert!(is_unknown("font-size: huge"));
+    }
+
+    #[test]
+    fn line_height_forms() {
+        let lh = |v: &str| parse_line_height(v);
+        assert_eq!(lh("normal"), Some(LineHeight::Multiplier(1.25)));
+        assert_eq!(lh("1.5"), Some(LineHeight::Multiplier(1.5)));
+        assert_eq!(lh("2"), Some(LineHeight::Multiplier(2.0)));
+        assert_eq!(lh("1.5em"), Some(LineHeight::Multiplier(1.5)));
+        assert_eq!(lh("150%"), Some(LineHeight::Multiplier(1.5)));
+        assert_eq!(lh("24px"), Some(LineHeight::Px(24.0)));
+        assert_eq!(lh("24dp"), Some(LineHeight::Px(24.0)));
+        assert_eq!(lh("2lh"), Some(LineHeight::Px(40.0)));
+        assert_eq!(lh("1ch"), Some(LineHeight::Px(9.6)));
+        for bad in ["", "0", "-1", "-5px", "tall", "1e2", "12pt"] {
+            assert_eq!(lh(bad), None, "{bad:?}");
+        }
+        assert!(matches!(one("line-height: 1.4"), Declaration::LineHeight(LineHeight::Multiplier(_))));
+        assert!(is_unknown("line-height: big"));
+    }
+
+    #[test]
+    fn font_weight_keywords_and_numbers() {
+        let w = |v: &str| parse_font_weight(v);
+        assert_eq!(w("normal"), Some(FontWeight::Absolute(400)));
+        assert_eq!(w("BOLD"), Some(FontWeight::Absolute(700)));
+        assert_eq!(w("bolder"), Some(FontWeight::Bolder));
+        assert_eq!(w("lighter"), Some(FontWeight::Lighter));
+        assert_eq!(w("100"), Some(FontWeight::Absolute(100)));
+        assert_eq!(w("900"), Some(FontWeight::Absolute(900)));
+        assert_eq!(w("550"), Some(FontWeight::Absolute(550)));
+        for bad in ["", "0", "1001", "-100", "heavy", "700px", "1e2"] {
+            assert_eq!(w(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn font_style_values() {
+        assert_eq!(parse_font_style("normal"), Some(false));
+        assert_eq!(parse_font_style("italic"), Some(true));
+        assert_eq!(parse_font_style("Oblique"), Some(true));
+        assert_eq!(parse_font_style("oblique 10deg"), Some(true));
+        for bad in ["", "slanted", "italic bold", "normal italic"] {
+            assert_eq!(parse_font_style(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn font_declarations_apply_to_style_and_malformed_ones_do_not_panic() {
+        let mut st = oxiterm_proto::style::ComputedStyle::default();
+        for d in parse_inline_tcss(
+            "font-family: sans-serif; font-size: 2em; line-height: 24px; font-weight: bold; font-style: italic; \
+             font-size: bogus; font-family: ;; font-weight:; line-height",
+        )
+        .unwrap()
+        {
+            apply_declaration(&mut st, &d);
+        }
+        let f = st.font;
+        assert_eq!(f.family, Some(FontFace::Sans));
+        assert_eq!(f.size, Some(FontSize::Em(2.0)), "later invalid font-size is ignored");
+        assert_eq!(f.line_height, Some(LineHeight::Px(24.0)));
+        assert_eq!(f.weight, Some(FontWeight::Absolute(700)));
+        assert_eq!(f.italic, Some(true));
+    }
+
+    fn font_doc(tcss: &str, mode: RenderMode) -> (crate::document::THTMLDocument, oxiterm_proto::dom::NodeId) {
+        let mut doc = crate::document::THTMLDocument::new();
+        let mut n = oxiterm_proto::dom::Node::new(oxiterm_proto::dom::NodeTag::Text);
+        n.attrs.id = Some("t".to_string());
+        n.attrs.class = vec!["a".to_string(), "b".to_string()];
+        let root = doc.root;
+        let id = doc.arena.alloc(n);
+        doc.append_child(root, id).unwrap();
+        apply_styles_for_mode(&mut doc, &parse_tcss(tcss).unwrap(), mode);
+        (doc, id)
+    }
+
+    #[test]
+    fn font_cascade_follows_specificity_and_source_order() {
+        let (doc, id) = font_doc(
+            "text { font-family: monospace; font-size: 10px; }
+             .a { font-family: sans-serif; font-size: 12px; }
+             .b { font-size: 14px; }
+             #t { font-size: 18px; }",
+            RenderMode::Gui,
+        );
+        let f = doc.arena.get(id).unwrap().style.font;
+        assert_eq!(f.family, Some(FontFace::Sans), "class beats tag");
+        assert_eq!(f.size, Some(FontSize::Px(18.0)), "id beats class");
+        // An unknown family list in a later rule does not clear an earlier valid one.
+        let (doc, id) = font_doc(".a { font-family: sans-serif } .b { font-family: Inter }", RenderMode::Gui);
+        assert_eq!(doc.arena.get(id).unwrap().style.font.family, Some(FontFace::Sans));
+    }
+
+    #[test]
+    fn font_cascade_respects_media_render() {
+        let src = "text { font-size: 10px }
+                   @media (render: gui) { text { font-size: 20px; font-family: sans-serif } }
+                   @media (render: tui) { text { font-size: 30px; font-weight: bold } }";
+        let (doc, id) = font_doc(src, RenderMode::Gui);
+        let f = doc.arena.get(id).unwrap().style.font;
+        assert_eq!((f.size, f.family, f.weight), (Some(FontSize::Px(20.0)), Some(FontFace::Sans), None));
+        let (doc, id) = font_doc(src, RenderMode::Tui);
+        let f = doc.arena.get(id).unwrap().style.font;
+        assert_eq!((f.size, f.family, f.weight), (Some(FontSize::Px(30.0)), None, Some(FontWeight::Absolute(700))));
+    }
+
     #[test]
     fn test_apply_styles_cascading() {
         let mut doc = crate::document::THTMLDocument::new();
@@ -1018,9 +1345,12 @@ mod tests {
         let decls = parse_inline_tcss("nonexistent-prop: 5").unwrap();
         assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "nonexistent-prop: 5"));
 
-        // T-5: font-weight: bold -> Declaration::Unknown("font-weight: bold")
+        // T-5 (changed in 6.2): font-weight: bold is now understood (see font_* tests below);
+        // an invalid weight stays Unknown.
         let decls = parse_inline_tcss("font-weight: bold").unwrap();
-        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "font-weight: bold"));
+        assert!(matches!(decls.first(), Some(Declaration::FontWeight(FontWeight::Absolute(700)))));
+        let decls = parse_inline_tcss("font-weight: heavy").unwrap();
+        assert!(matches!(decls.first(), Some(Declaration::Unknown(s)) if s == "font-weight: heavy"));
 
         // T-6: height: auto -> Declaration::Unknown("height: auto")
         let decls = parse_inline_tcss("height: auto").unwrap();

@@ -39,7 +39,7 @@ Rules can be restricted to one render backend with a media block in the `<style>
 * **Cascade:** rules inside a block keep their source position, so an unconditional rule before or after the block wins or loses by the usual order-of-appearance rule.
 * **Unknown queries are skipped:** any other query (`screen`, `(render: hologram)`, `(render: tui) and ...`) skips the whole block silently and parsing continues after its closing `}`.
 * **No nesting:** `@media` inside `@media` is not supported.
-* **GUI-only properties:** `border-radius` is parsed (see below) but only display-list (GUI) clients draw it; `box-shadow`, `font-family` and `font-size` are ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
+* **GUI-only properties:** `border-radius` is parsed (see below) but only display-list (GUI) clients draw it; `font-family`, `font-size` and `line-height` are parsed and inherited (see the font rows in section 2) but do not change layout or painting yet (Stage 6.2 of Phase 6); `box-shadow` is ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
 
 ---
 
@@ -62,6 +62,11 @@ Rules can be restricted to one render backend with a media block in the `<style>
 | `border-style` | `single`, `double`, `rounded` | The character style used to draw the border (Unicode box drawing characters). |
 | `border-color` | Color | Specifies or overrides the border color. |
 | `border-radius` | Length >= 0 (cells, `px`, `dp`) | GUI only: corner radius of the fill and border (see the `@media` section). Ignored in the terminal. |
+| `font-family` | Comma list, quoted or bare | **GUI only.** The first name that maps to a bundled face wins: `monospace`, `ui-monospace`, `oxi-mono`, `Noto Sans Mono` select the mono face; `sans-serif`, `system-ui`, `ui-sans-serif`, `oxi-sans`, `Noto Sans` select the proportional face; `serif` also selects it (no serif face is bundled). Names are case-insensitive. A list with no known name is ignored and the inherited family stays. Inherited. |
+| `font-size` | `px`, `dp`, `ch`, `lh`, `em`, `%` | **GUI only.** `ch`/`lh` are the GUI reference cell (9.6 x 20 px); `em` and `%` are relative to the inherited size. A bare number, zero and negative values are ignored. Default 16px. Inherited. |
+| `line-height` | `normal`, number, `em`, `%`, `px`, `dp`, `ch`, `lh` | **GUI only.** A number, `em` or `%` is a multiplier of the node's own font size (`normal` = 1.25, so 20px at the default size); a length is absolute. Inherited. |
+| `font-weight` | `normal`, `bold`, `bolder`, `lighter`, 1 to 1000 | 600 and above is bold. Works in the terminal too (bold cells). Inherited. |
+| `font-style` | `normal`, `italic`, `oblique` | `italic` and `oblique` give italic cells, in the terminal too. Inherited. |
 | `flex` | Number > 0 (e.g. `1`, `2.5`) | Flex shorthand. Sets `flex-grow` factor, `flex-shrink: 1.0`, and `flex-basis: 0`. Expands element along container's main axis. |
 | `wrap` | `word` | Enables word-wrapping of `<text>` content to the element's width. With `wrap: word` (and a constrained width) the text flows onto multiple rows at word boundaries; without it text stays on a single row. |
 | `position` | `static` (default), `relative`, `absolute`, `fixed` | Positioning model. `absolute` removes element from normal flow, positioned relative to nearest positioned ancestor. `fixed` positions relative to viewport origin and does not expand scroll range. |
@@ -189,7 +194,7 @@ When any transition is active, the OxiTerm event loop ticks at 60 FPS (16ms). Wh
 
 * **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
 * **`border-radius` (GUI only):** one non-negative length (cells, or `px`/`dp` through the provisional 8x16 cell, so `16px` = 2 cells; measured along the horizontal axis). It is carried to the display list as the `radius` of that node's fill and border. Terminals ignore it completely; the rule `.card { border-radius: 8px; }` inside `@media (render: gui)` is the intended use. Multi-value forms (`4px 8px`) and negative values are rejected with a warning.
-* **Unknown Property Warnings:** Any unrecognized property name (e.g. `font-weight`, `font-style`) or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. The GUI-only properties `box-shadow`, `font-family` and `font-size` are ignored without a warning.
+* **Unknown Property Warnings:** Any unrecognized property name or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. `box-shadow` is ignored without a warning, and an invalid value of a font property (`font-family`, `font-size`, `line-height`, `font-weight`, `font-style`) is ignored with a debug-level log only.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.
-* **No Font Sizing/Families:** Properties like `font-size` or `font-family` are not supported because the terminal enforces a fixed-width monospace font.
+* **Fonts are GUI only:** `font-family`, `font-size` and `line-height` are ignored in the terminal, which enforces one fixed-width font. `font-weight` and `font-style` map onto bold and italic cells there.
 * **No Corner Rounding in TUI:** `border-radius` has no effect in the terminal; the only way to get rounded corners there is `border-style: rounded;`.

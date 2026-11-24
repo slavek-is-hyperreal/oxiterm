@@ -138,7 +138,8 @@ impl Renderer {
         let start_y = (offset_y as i32) - (scroll_offset as i32);
 
         let colors = precompute_inherited_colors(doc);
-        let built = build_display_list(doc, layout, &colors, (start_x, start_y), (offset_x, offset_y), mode);
+        let fonts = crate::font::resolve_fonts(doc, mode);
+        let built = build_display_list(doc, layout, &colors, &fonts, (start_x, start_y), (offset_x, offset_y), mode);
 
         // 2. Completely clear the buffer to spaces (prevents artifacts/ghosting from previous
         //    frames). Expressed as a leading Fill so the list is self-contained.

@@ -11,6 +11,7 @@
 //! whole cells relative to the (possibly fractional) origin.
 
 use crate::document::THTMLDocument;
+use crate::font::ResolvedFonts;
 use crate::layout::types::{to_cells, LayoutResult};
 use crate::render::display_list::{DisplayItem, DisplayList, Glyph, Modifiers, PointF, RectF};
 use crate::render::unicode::UnicodeWidthCache;
@@ -59,6 +60,7 @@ pub(crate) fn build_display_list(
     doc: &THTMLDocument,
     layout: &LayoutResult,
     colors: &ResolvedColors,
+    fonts: &ResolvedFonts,
     start: (i32, i32),
     offset: (u16, u16),
     mode: RenderMode,
@@ -67,11 +69,11 @@ pub(crate) fn build_display_list(
     if !layout.paint_order.is_empty() {
         for &node_id in &layout.paint_order {
             if let Some(&(fg, bg)) = colors.get(&node_id) {
-                emit_node(&mut list, doc, layout, node_id, start, offset, mode, fg, bg);
+                emit_node(&mut list, doc, layout, fonts, node_id, start, offset, mode, fg, bg);
             }
         }
     } else {
-        walk(&mut list, doc, layout, colors, doc.root, start, offset, mode);
+        walk(&mut list, doc, layout, colors, fonts, doc.root, start, offset, mode);
     }
     list
 }
@@ -81,6 +83,7 @@ fn walk(
     doc: &THTMLDocument,
     layout: &LayoutResult,
     colors: &ResolvedColors,
+    fonts: &ResolvedFonts,
     node_id: NodeId,
     start: (i32, i32),
     offset: (u16, u16),
@@ -88,10 +91,10 @@ fn walk(
 ) {
     let Some(node) = doc.arena.get(node_id) else { return };
     if let Some(&(fg, bg)) = colors.get(&node_id) {
-        emit_node(list, doc, layout, node_id, start, offset, mode, fg, bg);
+        emit_node(list, doc, layout, fonts, node_id, start, offset, mode, fg, bg);
     }
     for &child_id in &node.children {
-        walk(list, doc, layout, colors, child_id, start, offset, mode);
+        walk(list, doc, layout, colors, fonts, child_id, start, offset, mode);
     }
 }
 
@@ -100,6 +103,7 @@ fn emit_node(
     list: &mut DisplayList,
     doc: &THTMLDocument,
     layout: &LayoutResult,
+    fonts: &ResolvedFonts,
     node_id: NodeId,
     start: (i32, i32),
     offset: (u16, u16),
@@ -151,7 +155,9 @@ fn emit_node(
     let (cw, ch) = if has_border { ((rw - 2.0).max(0.0), (rh - 2.0).max(0.0)) } else { (rw, rh) };
     match node.tag {
         NodeTag::Text | NodeTag::Button => {
-            if let Some(item) = text_item(node, node_id, cx, cy, cw, ch, mode, fg, bg) {
+            let font = fonts.get(node_id);
+            let mods = Modifiers { bold: font.bold, underline: false, italic: font.italic };
+            if let Some(item) = text_item(node, node_id, cx, cy, cw, ch, mode, fg, bg, mods) {
                 list.push(item);
             }
         }
@@ -176,6 +182,7 @@ fn text_item(
     mode: RenderMode,
     fg: AnsiColor,
     bg: AnsiColor,
+    mods: Modifiers,
 ) -> Option<DisplayItem> {
     let text = node.text.as_ref()?;
     // Padding: whole cells in TUI, as styled in GUI. (Integer-valued f32 maths is exact.)
@@ -266,7 +273,7 @@ fn text_item(
         glyphs,
         fg,
         bg,
-        mods: Modifiers::default(),
+        mods,
     })
 }
 
@@ -329,7 +336,7 @@ mod tests {
     fn word_wrap_produces_glyph_rows() {
         let mut n = text_node(NodeTag::Text, "ab cd ef");
         n.style.wrap = WrapMode::Word;
-        let item = text_item(&n, NodeId(0), 0.0, 0.0, 5.0, 3.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 0.0, 0.0, 5.0, 3.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset, Modifiers::default()).unwrap();
         let g = glyph_str(&item);
         assert_eq!(
             g,
@@ -340,7 +347,7 @@ mod tests {
     #[test]
     fn wide_glyph_wraps_at_edge() {
         let n = text_node(NodeTag::Text, "a\u{4e16}");
-        let item = text_item(&n, NodeId(0), 2.0, 1.0, 2.0, 2.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 2.0, 1.0, 2.0, 2.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset, Modifiers::default()).unwrap();
         let DisplayItem::Text { glyphs, origin, .. } = &item else { unreachable!() };
         assert_eq!((origin.x, origin.y), (2.0, 1.0));
         assert_eq!(glyphs.len(), 2);
@@ -361,7 +368,7 @@ mod tests {
         let mut n = text_node(NodeTag::Button, "ok");
         n.style.padding.left = 2.0;
         n.style.padding.top = 1.0;
-        let item = text_item(&n, NodeId(0), 3.0, 4.0, 10.0, 5.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 3.0, 4.0, 10.0, 5.0, RenderMode::Tui, AnsiColor::Reset, AnsiColor::Reset, Modifiers::default()).unwrap();
         let DisplayItem::Text { origin, clip, .. } = &item else { unreachable!() };
         assert_eq!((origin.x, origin.y), (5.0, 5.0));
         assert_eq!(*clip, RectF::new(5.0, 5.0, 8.0, 4.0));
@@ -382,7 +389,8 @@ mod tests {
         let mut doc = crate::parser::thtml::THTMLParser::parse_with_mode(src, mode).unwrap();
         let layout = LayoutEngine::with_mode(mode).compute(&mut doc, 21, 0, None).unwrap();
         let colors = precompute_inherited_colors(&doc);
-        build_display_list(&doc, &layout, &colors, (0, 0), (0, 0), mode)
+        let fonts = crate::font::resolve_fonts(&doc, mode);
+        build_display_list(&doc, &layout, &colors, &fonts, (0, 0), (0, 0), mode)
     }
 
     #[test]
@@ -416,7 +424,7 @@ mod tests {
     fn gui_text_wraps_on_floor_of_fractional_width() {
         let mut n = text_node(NodeTag::Text, "abcdef");
         n.style.wrap = WrapMode::Word;
-        let item = text_item(&n, NodeId(0), 0.5, 0.0, 3.7, 3.0, RenderMode::Gui, AnsiColor::Reset, AnsiColor::Reset).unwrap();
+        let item = text_item(&n, NodeId(0), 0.5, 0.0, 3.7, 3.0, RenderMode::Gui, AnsiColor::Reset, AnsiColor::Reset, Modifiers::default()).unwrap();
         let DisplayItem::Text { origin, glyphs, .. } = &item else { unreachable!() };
         assert_eq!(origin.x, 0.5);
         assert_eq!(glyphs.len(), 3, "floor(3.7) = 3 columns");

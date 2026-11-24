@@ -13,6 +13,7 @@ pub mod render;
 pub mod layout;
 pub mod diagram;
 pub mod text;
+pub mod font;
 
 pub use arena::NodeArena;
 pub use document::THTMLDocument;
