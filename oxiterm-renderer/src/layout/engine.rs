@@ -846,12 +846,12 @@ impl LayoutEngine {
                             Some((w, _)) => w,
                             None => text_intrinsic_width(text) as f32,
                         };
-                        if node.tag == oxiterm_proto::dom::NodeTag::Button {
-                            if style.border.is_some() {
-                                calculated_width += 2.0;
-                            }
-                            calculated_width += self.snap_size(style.padding.left) + self.snap_size(style.padding.right);
+                        // Content width plus padding and border, for buttons and plain text
+                        // alike (a bordered `<text>` used as a control would clip its label).
+                        if style.border.is_some() {
+                            calculated_width += 2.0;
                         }
+                        calculated_width += self.snap_size(style.padding.left) + self.snap_size(style.padding.right);
                         width = Some(calculated_width);
                         min_width = Some(calculated_width);
                     }
@@ -860,12 +860,10 @@ impl LayoutEngine {
                             Some((_, h)) => h,
                             None => (text.lines().count() as f32).max(1.0),
                         };
-                        if node.tag == oxiterm_proto::dom::NodeTag::Button {
-                            if style.border.is_some() {
-                                calculated_height += 2.0;
-                            }
-                            calculated_height += self.snap_size(style.padding.top) + self.snap_size(style.padding.bottom);
+                        if style.border.is_some() {
+                            calculated_height += 2.0;
                         }
+                        calculated_height += self.snap_size(style.padding.top) + self.snap_size(style.padding.bottom);
                         height = Some(calculated_height);
                     }
                 }
@@ -1552,6 +1550,23 @@ mod tests {
         let video_rect = found_video.expect("video node must be in layout");
         assert_eq!(video_rect.width, 38.0);
         assert_eq!(video_rect.height, 9.0);
+    }
+
+    #[test]
+    fn bordered_padded_text_auto_size_includes_border_and_padding() {
+        // A `<text>` styled as a control (border + padding, no width) must be as wide as its
+        // label plus padding and border, like a `<button>`; it used to clip "[toggle]".
+        let a = "border-style: single; padding-left: 1; padding-right: 1;";
+        let src = format!(r#"<box style="flex-direction: row; width: 40;"><text style="{a}">[toggle]</text><button style="{a}">[toggle]</button></box>"#);
+        let mut doc = crate::parser::THTMLParser::parse(&src).unwrap();
+        let result = LayoutEngine::new().compute(&mut doc, 40, 0, None).unwrap();
+        let rect_of = |tag: NodeTag| {
+            // The bordered one (the parser may add plain text children elsewhere).
+            result.nodes.iter().find(|(id, _)| doc.arena.get(**id).is_some_and(|n| n.tag == tag && n.style.border.is_some())).map(|(_, r)| r.clone()).unwrap()
+        };
+        let (t, b) = (rect_of(NodeTag::Text), rect_of(NodeTag::Button));
+        assert_eq!((t.width, t.height), (12.0, 3.0), "8 glyphs + 2 padding + 2 border, 1 line + 2 border");
+        assert_eq!((t.width, t.height), (b.width, b.height), "text and button size alike");
     }
 
     #[test]

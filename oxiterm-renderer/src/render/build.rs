@@ -205,8 +205,9 @@ fn text_item(
         RenderMode::Tui => to_cells(v) as f32,
         RenderMode::Gui => v.max(0.0),
     };
-    let pad_x = if node.tag == NodeTag::Button { pad(node.style.padding.left) } else { 0.0 };
-    let pad_y = if node.tag == NodeTag::Button { pad(node.style.padding.top) } else { 0.0 };
+    // Text and buttons alike: the layout already reserves the padding (Taffy adds it around
+    // measured text, and the auto size of wrap:none nodes includes it).
+    let (pad_x, pad_y) = (pad(node.style.padding.left), pad(node.style.padding.top));
     let draw_x = content_x + pad_x;
     let draw_y = content_y + pad_y;
     let inner_wf = (content_w - pad_x).max(0.0);
@@ -337,8 +338,9 @@ fn shaped_text_item(
         RenderMode::Tui => to_cells(v) as f32,
         RenderMode::Gui => v.max(0.0),
     };
-    let pad_x = if node.tag == NodeTag::Button { pad(node.style.padding.left) } else { 0.0 };
-    let pad_y = if node.tag == NodeTag::Button { pad(node.style.padding.top) } else { 0.0 };
+    // Text and buttons alike: the layout already reserves the padding (Taffy adds it around
+    // measured text, and the auto size of wrap:none nodes includes it).
+    let (pad_x, pad_y) = (pad(node.style.padding.left), pad(node.style.padding.top));
     let (draw_x, draw_y) = (content_x + pad_x, content_y + pad_y);
     let (inner_wf, inner_hf) = ((content_w - pad_x).max(0.0), (content_h - pad_y).max(0.0));
 
