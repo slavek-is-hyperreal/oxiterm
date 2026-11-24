@@ -57,12 +57,19 @@ impl EventBus {
     ///
     /// Performs hit-testing if the event is a mouse motion coordinate.
     pub fn dispatch(&self, event: &HtmxEvent, doc: &mut THTMLDocument, layout: Option<&oxiterm_renderer::layout::types::LayoutResult>) -> Result<()> {
+        self.dispatch_at(event, None, doc, layout)
+    }
+
+    /// [`Self::dispatch`] with an explicit hit-test point (fractional layout cells) for a
+    /// `Mouse` event; `None` probes the centre of the event's cell.
+    pub fn dispatch_at(&self, event: &HtmxEvent, point: Option<(f32, f32)>, doc: &mut THTMLDocument, layout: Option<&oxiterm_renderer::layout::types::LayoutResult>) -> Result<()> {
         let node_id = match event {
             HtmxEvent::Click(id) | HtmxEvent::Input(id, _) | HtmxEvent::Focus(id) | HtmxEvent::Blur(id) => Some(*id),
             HtmxEvent::Mouse(m) => {
                 if let Some(layout) = layout {
                     let tester = oxiterm_renderer::HitTester::new(layout);
-                    tester.find_node(m.col as f32 + 0.5, m.row as f32 + 0.5)
+                    let (x, y) = point.unwrap_or((m.col as f32 + 0.5, m.row as f32 + 0.5));
+                    tester.find_node(x, y)
                 } else {
                     None
                 }
@@ -83,6 +90,12 @@ impl EventBus {
     /// Anchored by spec [QUAL-01].
     pub fn dispatch_mouse(&self, mouse: oxiterm_proto::input::MouseInput, doc: &mut THTMLDocument, layout: &oxiterm_renderer::layout::types::LayoutResult) -> Result<()> {
         self.dispatch(&HtmxEvent::Mouse(mouse), doc, Some(layout))
+    }
+
+    /// [`Self::dispatch_mouse`] for a fractional pointer: `mouse` carries the containing cell,
+    /// `(x, y)` the exact point (layout cells) that is hit-tested.
+    pub fn dispatch_mouse_at(&self, mouse: oxiterm_proto::input::MouseInput, x: f32, y: f32, doc: &mut THTMLDocument, layout: &oxiterm_renderer::layout::types::LayoutResult) -> Result<()> {
+        self.dispatch_at(&HtmxEvent::Mouse(mouse), Some((x, y)), doc, Some(layout))
     }
 }
 

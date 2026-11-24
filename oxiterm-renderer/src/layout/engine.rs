@@ -645,9 +645,16 @@ impl LayoutEngine {
     /// Respects stacking contexts and visual paint order (`z-index`), selecting
     /// the top-most visible element covering the coordinates.
     pub fn hit_test(&self, x: u16, y: u16) -> Option<OxiNodeId> {
-        let layout = self.last_layout.as_ref()?;
         // Cell (col, row) is probed at its centre.
-        crate::layout::types::HitTester::new(layout).find_node(x as f32 + 0.5, y as f32 + 0.5)
+        self.hit_test_point(x as f32 + 0.5, y as f32 + 0.5)
+    }
+
+    /// Like [`Self::hit_test`] for a fractional point in layout cells (the pointer of a GUI
+    /// client, OxiUI Phase 6.5): the top-most node whose rect contains `(x, y)`, each rect
+    /// half-open `[x, x+w) x [y, y+h)`, in paint (z) order.
+    pub fn hit_test_point(&self, x: f32, y: f32) -> Option<OxiNodeId> {
+        let layout = self.last_layout.as_ref()?;
+        crate::layout::types::HitTester::new(layout).find_node(x, y)
     }
 
     /// The Taffy style of `node`: `map_style`, plus the root-only overrides (explicit width

@@ -1,0 +1,16 @@
+<style>
+.page { flex-direction: column; width: 80; bg: #0f172a; font-family: sans-serif; padding: 1; }
+.row { flex-direction: row; margin-top: 1; margin-bottom: 1; }
+.b { border-style: single; border-color: #475569; fg: #e2e8f0; padding-left: 1; padding-right: 1; }
+</style>
+
+<box class="page">
+    <text style="fg: #94a3b8;">Narrow proportional buttons</text>
+    <box class="row">
+        <button class="b" event-htmx="set:hit=i">i</button>
+        <button class="b" event-htmx="set:hit=m">mm</button>
+        <button class="b" event-htmx="set:hit=l">ll</button>
+        <button class="b" style="margin-left: 1;" event-htmx="set:hit=w">Wide one</button>
+    </box>
+    <text bind-state="hit" style="fg: #4ade80;">-</text>
+</box>

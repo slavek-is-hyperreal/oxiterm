@@ -47,7 +47,7 @@ use parking_lot::{Condvar, Mutex};
 
 use crate::clock::{FakeClock, MonoTime};
 
-use oxiterm_proto::input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseAction, MouseButton, MouseInput};
+use oxiterm_proto::input::{InputEvent, KeyEvent, KeyKind, KeyModifiers, MouseAction, MouseButton, MouseInput, PointerInput};
 use oxiterm_proto::style::{AnsiColor, RenderMode};
 use oxiterm_renderer::render::buffer::Cell;
 use oxiterm_renderer::render::cell_sink::CellSink;
@@ -91,6 +91,7 @@ const TRACES: &[&str] = &[
     "appserver-gui",
     "transition-cell",
     "transition-patch-cell",
+    "pointer-sans-gui",
 ];
 
 // ---------------------------------------------------------------------------------------
@@ -316,6 +317,11 @@ fn key(codepoint: char) -> InputEvent {
 
 fn mouse(col: u16, row: u16, action: MouseAction) -> InputEvent {
     InputEvent::MouseEvent(MouseInput { col, row, button: MouseButton::Left, action, modifiers: KeyModifiers::default() })
+}
+
+/// Fractional pointer event (`0x03`, display-list sessions): `x`/`y` are 0-based screen cells.
+fn pointer(x: f32, y: f32, action: MouseAction) -> InputEvent {
+    InputEvent::PointerEvent(PointerInput { x, y, button: MouseButton::Left, action, modifiers: KeyModifiers::default() })
 }
 
 impl Run {
@@ -584,6 +590,41 @@ impl Run {
             .unwrap_or_else(|| panic!("no visible node with event-htmx {target:?}"));
         let r = layout.nodes.get(&id).unwrap().cells();
         (ox + r.x + r.width / 2 + 1, oy + r.y + r.height / 2 + 1)
+    }
+
+    /// Screen position (0-based, fractional cells) of the point `dx` cells right of the left
+    /// edge and half way down the first visible node whose `event-htmx` equals `target`, taken
+    /// from the exact (fractional) rect of a layout that mirrors the loop's. `dx = None` is the
+    /// rect's centre.
+    fn locate_exact(&self, target: &str, dx: Option<f32>) -> (f32, f32) {
+        let page = self.session.current_page.read().clone().expect("current page known after first frame");
+        let path = self.app_base.join(page);
+        let render_mode = if self.mode == Mode::Gui { RenderMode::Gui } else { RenderMode::Tui };
+        let mut doc = crate::loader::load_thtml_file_mode(&path, render_mode).unwrap();
+        let state = self.session.state.read();
+        EventLoop::inject_initial_state(&mut doc, &*state);
+        let mut engine = LayoutEngine::with_mode(render_mode);
+        engine.set_viewport_rows(ROWS);
+        let layout = engine.compute(&mut doc, COLS, 0, Some(&*state)).unwrap();
+        let (ox, oy) = layout.get_centering_offset(&doc, COLS, ROWS);
+        let id = doc
+            .arena
+            .iter()
+            .filter(|(_, n)| n.attrs.event_htmx.as_deref() == Some(target))
+            .map(|(id, _)| id)
+            .find(|id| layout.nodes.get(id).map_or(false, |r| r.width > 0.0 && r.height > 0.0))
+            .unwrap_or_else(|| panic!("no visible node with event-htmx {target:?}"));
+        let r = layout.nodes.get(&id).unwrap();
+        let x = dx.map_or(r.x + r.width / 2.0, |d| if d >= 0.0 { r.x + d } else { r.x + r.width + d });
+        (f32::from(ox) + x, f32::from(oy) + r.y + r.height / 2.0)
+    }
+
+    /// Fractional pointer press + release `dx` cells inside the left edge (`dx >= 0`) or the
+    /// right edge (`dx < 0`) of the node, or at its exact centre (`None`).
+    fn click_exact(&mut self, target: &str, dx: Option<f32>) {
+        let (x, y) = self.locate_exact(target, dx);
+        self.send(pointer(x, y, MouseAction::Press));
+        self.send(pointer(x, y, MouseAction::Release));
     }
 
     /// Mouse press + release at the centre of the node with the given `event-htmx`.
@@ -969,6 +1010,36 @@ fn script_counter(mode: Mode) -> String {
     run.press_key('\r');
     run.snap("Enter on focused node");
     run.finish()
+}
+
+/// pointer_sans.thtml: adjacent proportional buttons whose shared edges fall inside a cell,
+/// clicked with the fractional pointer message at their exact centres and at points 0.05 cell
+/// inside an edge, in the one cell two buttons share. (A cell event would have sent the
+/// whole cell to a single button.)
+fn script_pointer_sans() -> String {
+    let mut run = Run::start(Mode::Gui, &pages_dir(), "pointer_sans.thtml", false);
+    run.watch(&["hit"]);
+    run.snap("initial frame");
+    run.click_exact("set:hit=i", None);
+    run.snap("pointer at the centre of i");
+    run.click_exact("set:hit=m", None);
+    run.snap("pointer at the centre of mm");
+    run.click_exact("set:hit=l", None);
+    run.snap("pointer at the centre of ll");
+    run.click_exact("set:hit=w", None);
+    run.snap("pointer at the centre of Wide one");
+    // The shared cell of i and mm: just inside the right edge of i, then just inside the
+    // left edge of mm.
+    run.click_exact("set:hit=i", Some(-0.05));
+    run.snap("pointer 0.05 inside the right edge of i");
+    run.click_exact("set:hit=m", Some(0.05));
+    run.snap("pointer 0.05 inside the left edge of mm");
+    run.finish()
+}
+
+#[test]
+fn trace_pointer_sans_gui() {
+    check_baseline("pointer-sans-gui", &script_pointer_sans());
 }
 
 #[test]

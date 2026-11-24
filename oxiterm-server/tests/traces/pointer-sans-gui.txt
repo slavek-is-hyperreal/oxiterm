@@ -1,0 +1,630 @@
+##### step 1: initial frame
+page: pointer_sans.thtml
+notices: (none)
+state: hit=-
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | -|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 0.54x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 0.54x1.00) fg=#4ade80 bg=#0f172a mods= "-"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 0.54x1.00) id=8 label="-"
+##### step 2: pointer at the centre of i
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("i")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | i|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 0.43x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 0.43x1.00) fg=#4ade80 bg=#0f172a mods= "i"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 0.43x1.00) id=8 label="i"
+##### step 3: pointer at the centre of mm
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("m")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | m|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 1.56x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 1.56x1.00) fg=#4ade80 bg=#0f172a mods= "m"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 1.56x1.00) id=8 label="m"
+##### step 4: pointer at the centre of ll
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("l")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | l|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 0.43x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 0.43x1.00) fg=#4ade80 bg=#0f172a mods= "l"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 0.43x1.00) id=8 label="l"
+##### step 5: pointer at the centre of Wide one
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("w")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | w|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 1.31x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 1.31x1.00) fg=#4ade80 bg=#0f172a mods= "w"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 1.31x1.00) id=8 label="w"
+##### step 6: pointer 0.05 inside the right edge of i
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("i")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | i|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 0.43x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 0.43x1.00) fg=#4ade80 bg=#0f172a mods= "i"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 0.43x1.00) id=8 label="i"
+##### step 7: pointer 0.05 inside the left edge of mm
+page: pointer_sans.thtml
+notices: (none)
+state: hit=Str("m")
+grid:
+  size 80x24
+  ||
+  | Narow poportonalbutons|
+  ||
+  | ┌──┐┌─────┐┌──┐  ┌─────────┐|
+  |>│ i│< mm  ││ l│  │ Wideone │|
+  | └──┘└─────┘└──┘  └─────────┘|
+  ||
+  | m|
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  ||
+  style 0: 0-79 fg=c15 bg=#0f172a
+  style 1: 0-0 fg=c15 bg=#0f172a | 1-22 fg=#94a3b8 bg=#0f172a | 23-79 fg=c15 bg=#0f172a
+  style 2: 0-79 fg=c15 bg=#0f172a
+  style 3: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 4: 0-0 fg=c51 bg=reset bold | 1-1 fg=#475569 bg=#0f172a | 2-3 fg=#e2e8f0 bg=#0f172a | 4-4 fg=#475569 bg=#0f172a | 5-5 fg=c51 bg=reset bold | 6-10 fg=#e2e8f0 bg=#0f172a | 11-12 fg=#475569 bg=#0f172a | 13-14 fg=#e2e8f0 bg=#0f172a | 15-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-18 fg=#475569 bg=#0f172a | 19-27 fg=#e2e8f0 bg=#0f172a | 28-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 5: 0-0 fg=c15 bg=#0f172a | 1-15 fg=#475569 bg=#0f172a | 16-17 fg=c15 bg=#0f172a | 18-28 fg=#475569 bg=#0f172a | 29-79 fg=c15 bg=#0f172a
+  style 6: 0-79 fg=c15 bg=#0f172a
+  style 7: 0-0 fg=c15 bg=#0f172a | 1-1 fg=#4ade80 bg=#0f172a | 2-79 fg=c15 bg=#0f172a
+  style 8: 0-79 fg=c15 bg=#0f172a
+  style 9: 0-79 fg=c15 bg=#0f172a
+  style 10: 0-79 fg=c15 bg=#0f172a
+  style 11: 0-79 fg=c15 bg=#0f172a
+  style 12: 0-79 fg=c15 bg=#0f172a
+  style 13: 0-79 fg=c15 bg=#0f172a
+  style 14: 0-79 fg=c15 bg=#0f172a
+  style 15: 0-79 fg=c15 bg=#0f172a
+  style 16: 0-79 fg=c15 bg=#0f172a
+  style 17: 0-79 fg=c15 bg=#0f172a
+  style 18: 0-79 fg=c15 bg=#0f172a
+  style 19: 0-79 fg=c15 bg=#0f172a
+  style 20: 0-79 fg=c15 bg=#0f172a
+  style 21: 0-79 fg=c15 bg=#0f172a
+  style 22: 0-79 fg=c15 bg=#0f172a
+  style 23: 0-79 fg=c15 bg=#0f172a
+display_list:
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n0 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=c0
+  Fill n1 (0.00,0.00 80.00x24.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n2 (1.00,1.00 22.64x1.00) r=0.00 fg=#94a3b8 bg=#0f172a
+  Text n2 @(1.00,1.00) clip=(1.00,1.00 22.64x1.00) fg=#94a3b8 bg=#0f172a mods= "Narrow proportional buttons"
+  Fill n3 (1.00,3.00 78.00x3.00) r=0.00 fg=c15 bg=#0f172a
+  Fill n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n4 (1.00,3.00 4.43x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n4 @(3.00,4.00) clip=(3.00,4.00 1.43x1.00) fg=#e2e8f0 bg=#0f172a mods= "i"
+  Fill n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n5 (5.43,3.00 7.12x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n5 @(7.43,4.00) clip=(7.43,4.00 4.12x1.00) fg=#e2e8f0 bg=#0f172a mods= "mm"
+  Fill n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n6 (12.55,3.00 4.86x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n6 @(14.55,4.00) clip=(14.55,4.00 1.86x1.00) fg=#e2e8f0 bg=#0f172a mods= "ll"
+  Fill n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#e2e8f0 bg=#0f172a
+  Border n7 (18.41,3.00 11.36x3.00) r=0.00 fg=#475569 bg=#0f172a
+  Text n7 @(20.41,4.00) clip=(20.41,4.00 8.36x1.00) fg=#e2e8f0 bg=#0f172a mods= "Wide one"
+  Fill n8 (1.00,7.00 1.56x1.00) r=0.00 fg=#4ade80 bg=#0f172a
+  Text n8 @(1.00,7.00) clip=(1.00,7.00 1.56x1.00) fg=#4ade80 bg=#0f172a mods= "m"
+  CellGrid (0.00,4.00 1.00x1.00) cells=1
+    |>|
+  CellGrid (5.00,4.00 1.00x1.00) cells=1
+    |<|
+aria:
+  v=1 focus=4
+  application (0.00,0.00 80.00x24.00) id=0 label=""
+    group (0.00,0.00 80.00x24.00) id=1 label=""
+      text (1.00,1.00 22.64x1.00) id=2 label="Narrow proportional buttons"
+      group (1.00,3.00 78.00x3.00) id=3 label=""
+        button (1.00,3.00 4.43x3.00) id=4 label="i"
+        button (5.43,3.00 7.12x3.00) id=5 label="mm"
+        button (12.55,3.00 4.86x3.00) id=6 label="ll"
+        button (18.41,3.00 11.36x3.00) id=7 label="Wide one"
+      text (1.00,7.00 1.56x1.00) id=8 label="m"

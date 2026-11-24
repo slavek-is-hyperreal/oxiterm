@@ -383,6 +383,10 @@
         // — not the raw font metric — or clicks drift off their targets toward the edges.
         function clientXToCol(clientX, rectLeft, cw) { return Math.floor((clientX - rectLeft) / cw) + 1; }
         function clientYToRow(clientY, rectTop,  ch) { return Math.floor((clientY - rectTop)  / ch) + 1; }
+        // Fractional, 0-based pointer position in reference cells (px / on-screen cell size),
+        // for display-list (GUI) sessions (0x03). clientXToCol(x) === floor(clientXToCell(x)) + 1.
+        function clientXToCell(clientX, rectLeft, cw) { return (clientX - rectLeft) / cw; }
+        function clientYToCell(clientY, rectTop,  ch) { return (clientY - rectTop)  / ch; }
         let currentCols = 0, currentRows = 0;
         let isMobile = window.innerWidth < 800;
         let dpr = window.devicePixelRatio || 1;
@@ -518,10 +522,12 @@
         // Screen readers dispatch click on the mirrored button; turn it into the same
         // press + release a pointer click at the centre of the node would send.
         function activateA11yNode(n) {
-            const col = Math.floor(n.x + n.w / 2), row = Math.floor(n.y + n.h / 2);
-            if (col < 0 || row < 0 || col >= currentCols || row >= currentRows) return;
-            sendMouseEvent(col, row, 0, 0, false, false, false);
-            sendMouseEvent(col, row, 0, 1, false, false, false);
+            // Exact centre in reference cells (fractional layout), sent as a 0x03 pointer so a
+            // narrow or off-grid node is hit at its middle, not at the cell its centre rounds to.
+            const x = n.x + n.w / 2, y = n.y + n.h / 2;
+            if (!(x >= 0 && y >= 0 && x < currentCols && y < currentRows)) return;
+            sendPointerEvent(x, y, 0, 0, false, false, false);
+            sendPointerEvent(x, y, 0, 1, false, false, false);
             canvas.focus();
         }
 
@@ -1107,6 +1113,33 @@
             currentSocket.send(buf);
         }
 
+        // Fractional pointer (0x03), display-list sessions only: [0x03, x:f32le, y:f32le,
+        // button, action, flags], x/y 0-based canvas cells (px / on-screen cell size).
+        function sendPointerEvent(x, y, button, action, shift, ctrl, alt) {
+            if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+            const buf = new Uint8Array(12);
+            const dv = new DataView(buf.buffer);
+            buf[0] = 0x03;
+            dv.setFloat32(1, x, true);
+            dv.setFloat32(5, y, true);
+            buf[9] = button; buf[10] = action;
+            let flags = 0;
+            if (shift) flags |= 1; if (ctrl) flags |= 2; if (alt) flags |= 4;
+            buf[11] = flags;
+            currentSocket.send(buf);
+        }
+
+        // One pointer sample: a GUI session sends the exact position, everyone else the
+        // 1-based cell (0x02) exactly as before. `rect` is the canvas bounding box.
+        function sendPointer(e, rect, col, row, button, action) {
+            if (guiMode) {
+                sendPointerEvent(clientXToCell(e.clientX, rect.left, cellW), clientYToCell(e.clientY, rect.top, cellH),
+                    button, action, e.shiftKey, e.ctrlKey, e.altKey);
+            } else {
+                sendMouseEvent(col, row, button, action, e.shiftKey, e.ctrlKey, e.altKey);
+            }
+        }
+
         // ── Event handlers — registered ONCE in boot() ────────────────────────
         function onKeyDown(e) {
             if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
@@ -1155,7 +1188,7 @@
             lastDragRow = row;
             e.preventDefault();
             canvas.focus();
-            sendMouseEvent(col, row, button, 0, e.shiftKey, e.ctrlKey, e.altKey);
+            sendPointer(e, rect, col, row, button, 0);
         }
 
         function onMouseMove(e) {
@@ -1166,7 +1199,7 @@
             if (col !== lastDragCol || row !== lastDragRow) {
                 lastDragCol = col;
                 lastDragRow = row;
-                sendMouseEvent(col, row, currentMouseButton, 2, e.shiftKey, e.ctrlKey, e.altKey);
+                sendPointer(e, rect, col, row, currentMouseButton, 2);
             }
         }
 
@@ -1181,7 +1214,7 @@
             if (e.button === 1) button = 1;
             if (e.button === 2) button = 2;
             e.preventDefault();
-            sendMouseEvent(col, row, button, 1, e.shiftKey, e.ctrlKey, e.altKey);
+            sendPointer(e, rect, col, row, button, 1);
         }
 
         // R2: mouse wheel → line-step scroll. Sends a wheel mouse event (buttons 3/4 =
@@ -1203,7 +1236,7 @@
             const col = clientXToCol(e.clientX, rect.left, cellW);
             const row = clientYToRow(e.clientY, rect.top, cellH);
             // button 3 = WheelUp, 4 = WheelDown (see web.rs decode); action 0 = Press.
-            sendMouseEvent(col, row, e.deltaY > 0 ? 4 : 3, 0, e.shiftKey, e.ctrlKey, e.altKey);
+            sendPointer(e, rect, col, row, e.deltaY > 0 ? 4 : 3, 0);
         }
 
         function onPopState() {

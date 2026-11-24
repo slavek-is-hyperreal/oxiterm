@@ -29,7 +29,7 @@ pub mod web_impl {
     use futures::{StreamExt, SinkExt};
     use tracing::{info, warn, error};
     use crate::session::{SessionRegistry, PtyDimensions, EventLoop, ClientSession};
-    use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction};
+    use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction, PointerInput};
     use oxiterm_renderer::FrameSink;
     use oxiterm_renderer::CellBuffer;
     use oxiterm_renderer::DiffEngine;
@@ -70,6 +70,43 @@ pub mod web_impl {
 
 
     /// Simple hash path utility.
+    /// Decodes the fractional pointer message `0x03` (OxiUI Phase 6.5):
+    /// `[0x03, x:f32le, y:f32le, button:u8, action:u8, flags:u8]` (12 bytes). `x`/`y` are
+    /// 0-based canvas cells (`px / on-screen cell size`), fractional. Button, action and flag
+    /// bytes mean what they mean in `0x02`. Anything shorter than 12 bytes or with a
+    /// non-finite coordinate is dropped (`None`); trailing bytes are ignored.
+    pub fn decode_pointer(bytes: &[u8]) -> Option<PointerInput> {
+        if bytes.len() < 12 || bytes[0] != 0x03 {
+            return None;
+        }
+        let x = f32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+        let y = f32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        let button = match bytes[9] {
+            0 => MouseButton::Left,
+            1 => MouseButton::Middle,
+            2 => MouseButton::Right,
+            3 => MouseButton::WheelUp,
+            4 => MouseButton::WheelDown,
+            _ => MouseButton::None,
+        };
+        let action = match bytes[10] {
+            0 => MouseAction::Press,
+            1 => MouseAction::Release,
+            _ => MouseAction::Move,
+        };
+        let flags = bytes[11];
+        Some(PointerInput {
+            x,
+            y,
+            button,
+            action,
+            modifiers: KeyModifiers { shift: flags & 1 != 0, ctrl: flags & 2 != 0, alt: flags & 4 != 0, ..Default::default() },
+        })
+    }
+
     pub fn hash_path(path: &str) -> u32 {
         let mut hash: u32 = 5381;
         for c in path.chars() {
@@ -1181,6 +1218,19 @@ pub mod web_impl {
                             let _ = client_session.event_tx.try_send(InputEvent::MouseEvent(mouse_event));
                         }
                     }
+                    0x03 => {
+                        // Fractional pointer (Phase 6.5). Only display-list sessions lay out in
+                        // fractional cells; any other session gets the containing cell as an
+                        // ordinary 0x02 event, so nothing is lost if a client sends it anyway.
+                        if let Some(p) = decode_pointer(&bytes) {
+                            let ev = if client_session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
+                                InputEvent::PointerEvent(p)
+                            } else {
+                                InputEvent::MouseEvent(p.to_cell_mouse())
+                            };
+                            let _ = client_session.event_tx.try_send(ev);
+                        }
+                    }
                     0x10 => {
                         if bytes.len() >= 5 {
                             let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
@@ -1227,6 +1277,56 @@ pub mod web_impl {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        fn pointer_msg(x: f32, y: f32, button: u8, action: u8, flags: u8) -> Vec<u8> {
+            let mut v = vec![0x03];
+            v.extend_from_slice(&x.to_le_bytes());
+            v.extend_from_slice(&y.to_le_bytes());
+            v.extend_from_slice(&[button, action, flags]);
+            v
+        }
+
+        #[test]
+        fn test_decode_pointer_0x03() {
+            let p = decode_pointer(&pointer_msg(12.25, 3.5, 0, 0, 0b101)).unwrap();
+            assert_eq!((p.x, p.y), (12.25, 3.5));
+            assert_eq!(p.button, MouseButton::Left);
+            assert_eq!(p.action, MouseAction::Press);
+            assert!(p.modifiers.shift && !p.modifiers.ctrl && p.modifiers.alt);
+            let p = decode_pointer(&pointer_msg(-0.5, 1e6, 4, 1, 2)).unwrap();
+            assert_eq!((p.x, p.y), (-0.5, 1e6), "off-canvas coordinates are legal");
+            assert_eq!(p.button, MouseButton::WheelDown);
+            assert_eq!(p.action, MouseAction::Release);
+            assert!(p.modifiers.ctrl);
+            assert_eq!(decode_pointer(&pointer_msg(1.0, 1.0, 9, 7, 0)).unwrap().button, MouseButton::None);
+            assert_eq!(decode_pointer(&pointer_msg(1.0, 1.0, 0, 7, 0)).unwrap().action, MouseAction::Move);
+            // Trailing bytes are ignored; short or malformed messages are dropped.
+            let mut long = pointer_msg(1.0, 2.0, 0, 0, 0);
+            long.extend_from_slice(&[9, 9]);
+            assert!(decode_pointer(&long).is_some());
+            let full = pointer_msg(1.0, 2.0, 0, 0, 0);
+            for n in 0..full.len() {
+                assert!(decode_pointer(&full[..n]).is_none(), "{n} bytes");
+            }
+            for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                assert!(decode_pointer(&pointer_msg(bad, 1.0, 0, 0, 0)).is_none());
+                assert!(decode_pointer(&pointer_msg(1.0, bad, 0, 0, 0)).is_none());
+            }
+            assert!(decode_pointer(&[0x02; 12]).is_none(), "wrong tag");
+        }
+
+        #[test]
+        fn test_pointer_falls_back_to_the_one_based_cell_event() {
+            // What a non-display-list session gets for a stray 0x03: the cell containing the
+            // point, in 0x02's 1-based convention.
+            let p = decode_pointer(&pointer_msg(5.99, 0.0, 0, 0, 0)).unwrap();
+            let m = p.to_cell_mouse();
+            assert_eq!((m.col, m.row), (6, 1));
+            let p = decode_pointer(&pointer_msg(-3.0, -0.2, 2, 1, 0)).unwrap();
+            let m = p.to_cell_mouse();
+            assert_eq!((m.col, m.row), (1, 1), "negative points clamp to the first cell");
+            assert_eq!((m.button, m.action), (MouseButton::Right, MouseAction::Release));
+        }
 
         #[test]
         fn test_hash_path() {

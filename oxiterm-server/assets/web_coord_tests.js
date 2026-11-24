@@ -60,6 +60,44 @@
     "pointer handlers do NOT divide by the raw font metric (charWidth/charHeight)",
     "a handler divides by charWidth/charHeight — clicks will drift");
 
+  // 4. Fractional pointer (0x03, Phase 6.5): px / on-screen cell size, the exact inverse of
+  //    the painter's `origin + x * cell`, and consistent with the 1-based cell mapping.
+  {
+    let good = true;
+    for (const cw of cells) {
+      for (const origin of origins) {
+        for (let c = 0; c <= 200; c++) {
+          for (const f of fracs) {
+            const px = origin + (c + f) * cw;
+            const x = clientXToCell(px, origin, cw);
+            if (Math.abs(x - (c + f)) > 1e-9 || Math.floor(x) + 1 !== clientXToCol(px, origin, cw)) good = false;
+          }
+        }
+      }
+    }
+    assert(good, "clientXToCell is the fractional inverse of the cell mapping", "fractional pointer drifts from the cell mapping");
+    assert(clientYToCell(40 + 2.5 * 18, 40, 18) === 2.5, "clientYToCell basic", "fractional row off");
+
+    // Wire layout: [0x03, x:f32le, y:f32le, button, action, flags].
+    const saved = currentSocket;
+    const sent = [];
+    currentSocket = { readyState: WebSocket.OPEN, send: (b) => sent.push(new Uint8Array(b)) };
+    try {
+      sendPointerEvent(12.25, 3.5, 1, 1, true, false, true);
+    } finally {
+      currentSocket = saved;
+    }
+    const m = sent[0];
+    const dv = m && new DataView(m.buffer, m.byteOffset, m.byteLength);
+    assert(m && m.length === 12 && m[0] === 0x03 && dv.getFloat32(1, true) === 12.25 && dv.getFloat32(5, true) === 3.5 &&
+      m[9] === 1 && m[10] === 1 && m[11] === 5, "sendPointerEvent encodes 0x03 x:f32 y:f32 button action flags",
+      "bad 0x03 layout: " + (m ? Array.from(m).join(",") : "nothing sent"));
+    assert(onMouseDown.toString().includes("sendPointer(") && onWheel.toString().includes("sendPointer("),
+      "GUI pointer handlers go through sendPointer", "a handler still sends 0x02 directly");
+    assert(activateA11yNode.toString().includes("sendPointerEvent") && !activateA11yNode.toString().includes("sendMouseEvent"),
+      "the ARIA-mirror click sends the exact centre as a 0x03 pointer", "activateA11yNode still uses 0x02");
+  }
+
   // Report: console, a page banner, and a global for any automated harness.
   const failed = results.filter((r) => !r.pass);
   window.__OXITERM_WEB_TEST_RESULT__ = { passed: results.length - failed.length, failed: failed.length, results };

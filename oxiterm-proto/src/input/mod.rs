@@ -23,6 +23,10 @@ pub enum InputEvent {
     KeyPress(KeyEvent),
     /// A mouse interaction event (clicks, dragging, or scrolling).
     MouseEvent(MouseInput),
+    /// A pointer event of a display-list (GUI) client with fractional coordinates
+    /// (OxiUI Phase 6.5, wire message `0x03`). Same button/action/modifier semantics as
+    /// `MouseEvent`; the position is in reference cells (0-based, canvas origin).
+    PointerEvent(PointerInput),
     /// Triggered when the client window columns or rows resize.
     Resize {
         /// The new width of the screen in characters.
@@ -155,6 +159,51 @@ pub struct MouseInput {
     pub action: MouseAction,
     /// Active keyboard modifiers during the mouse click/drag.
     pub modifiers: KeyModifiers,
+}
+
+/// A pointer event with a fractional position (OxiUI Phase 6.5).
+///
+/// `x` / `y` are in reference cells measured from the top-left of the client's canvas
+/// (`px / on-screen cell width`, `px / on-screen cell height`), 0-based and fractional: the
+/// cell `(c, r)` covers `[c, c+1) x [r, r+1)`. Unlike [`MouseInput`] there is no 1-based
+/// convention. Both coordinates are finite (the wire decoder rejects anything else); they may
+/// be negative or beyond the viewport (a drag that left the canvas).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PointerInput {
+    /// Horizontal position in reference cells.
+    pub x: f32,
+    /// Vertical position in reference cells.
+    pub y: f32,
+    /// The mouse button associated with the interaction.
+    pub button: MouseButton,
+    /// The type of action performed (press, release, move).
+    pub action: MouseAction,
+    /// Active keyboard modifiers.
+    pub modifiers: KeyModifiers,
+}
+
+// Sound because every constructor in the tree (the wire decoder) rejects NaN, so equality is
+// reflexive; same argument as `AppPatch`.
+impl Eq for PointerInput {}
+
+impl PointerInput {
+    /// The whole cell containing the point, in the 0-based, clamped-at-zero convention.
+    pub fn cell(&self) -> (u16, u16) {
+        (self.x.floor().max(0.0) as u16, self.y.floor().max(0.0) as u16)
+    }
+
+    /// The equivalent legacy cell event: 1-based `col`/`row` of the containing cell (what
+    /// `0x02` carries), for sessions that are not display-list clients.
+    pub fn to_cell_mouse(&self) -> MouseInput {
+        let (c, r) = self.cell();
+        MouseInput {
+            col: c.saturating_add(1),
+            row: r.saturating_add(1),
+            button: self.button,
+            action: self.action,
+            modifiers: self.modifiers,
+        }
+    }
 }
 
 /// Mouse buttons representing clicks and scroll wheel events.

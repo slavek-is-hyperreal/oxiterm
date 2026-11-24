@@ -54,6 +54,9 @@ pub struct EventLoop {
     pub frame_limiter: crate::frame_limiter::FrameRateLimiter,
     /// Pending mouse events map.
     pub pending_mouse: Option<oxiterm_proto::input::MouseInput>,
+    /// The exact (fractional, layout-cell) point of `pending_mouse` when it came from a
+    /// pointer event; `None` for a cell event (probed at the cell centre).
+    pub pending_point: Option<(f32, f32)>,
     /// Template file path supporting hot reloads.
     pub source_path: Option<std::path::PathBuf>,
     /// The non-mobile variant of the template path.
@@ -137,6 +140,16 @@ pub struct DragState {
 /// visible text off its hit box on ambiguous-wide terminals (see the focus-ring draw).
 pub const FOCUS_RING_LEFT: char = '>';
 pub const FOCUS_RING_RIGHT: char = '<';
+
+/// Layout row (before centering and scroll) that carries the focus-ring markers of a node: the
+/// row containing the vertical centre of its exact rect. The cell-snapped rect (`Rect::cells`,
+/// `round` on y and on height separately) is wrong for the fractional GUI layout: a node at
+/// `y = 0.4`, `h = 1.2` snaps to `y = 0`, `h = 1`, so `0 + 1 / 2` put the markers on row 0 while
+/// the label is centred in row 1. On the snapped TUI rects (whole numbers) this is the same
+/// `y + h / 2` (integer division) as before.
+pub(crate) fn focus_ring_row(rect: &oxiterm_renderer::layout::types::Rect) -> i32 {
+    (rect.y + rect.height / 2.0).floor() as i32
+}
 
 /// Scroll status indicator under the "position" model: the line fraction, the bar
 /// fill, and the percentage are all derived from a single `scroll_offset / max_scroll`
@@ -308,6 +321,7 @@ impl EventLoop {
             now,
             clock,
             pending_mouse: None,
+            pending_point: None,
             source_path: None,
             base_source_path: None,
             page_source,
@@ -983,17 +997,79 @@ impl EventLoop {
             _ => {}
         }
         if let Some(layout) = &self.layout_engine.last_layout {
-            let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-            tracing::trace!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
-            mouse.col = mouse.col.saturating_sub(offset_x).saturating_sub(1);
-            mouse.row = mouse.row.saturating_sub(offset_y).saturating_sub(1).saturating_add(self.scroll_offset);
+            let (col, row) = self.cell_event_to_layout(layout, mouse.col, mouse.row, dims);
+            mouse.col = col;
+            mouse.row = row;
             tracing::trace!("Adjusted MouseEvent: col={}, row={}", mouse.col, mouse.row);
         } else {
             tracing::trace!("No last layout found — pre-swap mouse event, dropping hit-test");
         }
 
+        self.handle_adjusted_pointer(mouse, None)
+    }
+
+    /// Screen cell of a `0x02` event (1-based `col`/`row`) to layout cells: remove the
+    /// centering offset and the 1-based origin (saturating at 0), add the scroll.
+    pub fn cell_event_to_layout(&self, layout: &oxiterm_renderer::layout::types::LayoutResult, col: u16, row: u16, dims: crate::session_state::PtyDimensions) -> (u16, u16) {
+        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+        tracing::trace!("Document centering offset: offset_x={}, offset_y={}", offset_x, offset_y);
+        (
+            col.saturating_sub(offset_x).saturating_sub(1),
+            row.saturating_sub(offset_y).saturating_sub(1).saturating_add(self.scroll_offset),
+        )
+    }
+
+    /// Screen point of a pointer event (0-based fractional cells) to layout cells: the same
+    /// centering offset and scroll as [`Self::cell_event_to_layout`] (both whole cells), no
+    /// rounding and no clamping.
+    pub fn pointer_to_layout(&self, layout: &oxiterm_renderer::layout::types::LayoutResult, x: f32, y: f32, dims: crate::session_state::PtyDimensions) -> (f32, f32) {
+        let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
+        (x - f32::from(offset_x), y - f32::from(offset_y) + f32::from(self.scroll_offset))
+    }
+
+    /// A fractional pointer (OxiUI Phase 6.5, wire `0x03`; display-list clients only).
+    ///
+    /// `(x, y)` are 0-based screen cells; the centering offset and the scroll are applied
+    /// exactly as `handle_mouse_event` applies them (both are whole cells), but without
+    /// rounding: the layout-space point `(x - offset_x, y - offset_y + scroll)` is hit-tested
+    /// as is, against the fractional rects. Consumers that need a cell (drag deltas, the
+    /// `.riv` hover/click) get its floor, clamped at zero. A point left of or above the page
+    /// is negative in layout space and hits nothing (the cell path clamps it to cell 0).
+    pub fn handle_pointer_event(&mut self, pointer: oxiterm_proto::input::PointerInput) -> bool {
+        let dims = *self.session.dims.read();
+        tracing::trace!("Received PointerEvent: x={}, y={}, action={:?}", pointer.x, pointer.y, pointer.action);
+        match pointer.button {
+            oxiterm_proto::input::MouseButton::WheelUp => {
+                self.scroll_wheel_lines(true);
+                return true;
+            }
+            oxiterm_proto::input::MouseButton::WheelDown => {
+                self.scroll_wheel_lines(false);
+                return true;
+            }
+            _ => {}
+        }
+        let (lx, ly) = match &self.layout_engine.last_layout {
+            Some(layout) => self.pointer_to_layout(layout, pointer.x, pointer.y, dims),
+            None => (pointer.x, pointer.y),
+        };
+        let mouse = oxiterm_proto::input::MouseInput {
+            col: lx.floor().max(0.0) as u16,
+            row: ly.floor().max(0.0) as u16,
+            button: pointer.button,
+            action: pointer.action,
+            modifiers: pointer.modifiers,
+        };
+        self.handle_adjusted_pointer(mouse, Some((lx, ly)))
+    }
+
+    /// Shared tail of the cell and the fractional path. `mouse` holds layout-space cells;
+    /// `point` is the exact layout-space point, or `None` to probe the centre of the cell.
+    fn handle_adjusted_pointer(&mut self, mouse: oxiterm_proto::input::MouseInput, point: Option<(f32, f32)>) -> bool {
+        let hit_point = point.unwrap_or((f32::from(mouse.col) + 0.5, f32::from(mouse.row) + 0.5));
         self.update_interactive_animations(&mouse);
         self.pending_mouse = Some(mouse.clone());
+        self.pending_point = point;
 
         // Pointer Drag Move (pointer capture)
         if mouse.action == oxiterm_proto::input::MouseAction::Move {
@@ -1036,7 +1112,7 @@ impl EventLoop {
         if mouse.action == oxiterm_proto::input::MouseAction::Press {
             // Press = activation: unconditional. hit_test + handle_htmx_target always run.
             // NAV bucket inside handle_htmx_target caps the actual page-load rate.
-            if let Some(node_id) = self.layout_engine.hit_test(mouse.col, mouse.row) {
+            if let Some(node_id) = self.layout_engine.hit_test_point(hit_point.0, hit_point.1) {
                 tracing::trace!("Hit test found node: {:?}", node_id);
                 if let Some((drag_target, state_x, state_y, on_drag_end)) = self.find_draggable_target(node_id) {
                     let initial_left = self.doc.get_node(drag_target)
@@ -1447,6 +1523,13 @@ impl EventLoop {
                     needs_render = true;
                 }
             }
+            // Fractional pointer of a display-list client (Phase 6.5): same Press-vs-flood
+            // split, same unconditional arm.
+            InputEvent::PointerEvent(pointer) => {
+                if self.handle_pointer_event(pointer) {
+                    needs_render = true;
+                }
+            }
             InputEvent::CapabilityResponse(raw) => {
                 info!("Received DA1 response: {}", String::from_utf8_lossy(&raw));
                 self.session.terminal_profile.write().parse_da1_response(&raw);
@@ -1612,7 +1695,10 @@ impl EventLoop {
 
         // Anchored by spec [QUAL-01]. Dispatch deferred mouse inputs once a valid layout is available.
         if let Some(mouse) = self.pending_mouse.take() {
-            let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout);
+            match self.pending_point.take() {
+                Some((x, y)) => { let _ = self.event_bus.dispatch_mouse_at(mouse, x, y, &mut self.doc, &layout); }
+                None => { let _ = self.event_bus.dispatch_mouse(mouse, &mut self.doc, &layout); }
+            }
         }
 
         let mut profile = self.session.terminal_profile.read().clone();
@@ -1647,7 +1733,7 @@ impl EventLoop {
         if let Some(focused_id) = self.focused_node {
             let (offset_x, offset_y) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
             if let Some(rect) = layout.nodes.get(&focused_id).map(|r| r.cells()) {
-                let mid_row_offset = (rect.y + rect.height / 2 + offset_y) as i32 - self.scroll_offset as i32;
+                let mid_row_offset = focus_ring_row(&layout.nodes[&focused_id]) + i32::from(offset_y) - i32::from(self.scroll_offset);
                 if mid_row_offset >= 0 && mid_row_offset < viewport_h as i32 {
                     let mid_row = mid_row_offset as u16;
                     let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
@@ -4080,4 +4166,172 @@ mod tests {
         assert_eq!(el.next_deadline(slot), Some(slot + Duration::from_millis(1000)), "no spin: back to the idle cadence");
     }
 
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 6.5 — fractional pointer, focus-ring row
+    // ────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_focus_ring_row_uses_the_exact_rect() {
+        use oxiterm_renderer::layout::types::Rect;
+        let r = |y: f32, h: f32| Rect { x: 0.0, y, width: 5.0, height: h };
+        // The bug: y = 0.4, h = 1.2 snaps (round each) to y = 0, h = 1, so the old
+        // `y + h / 2` gave row 0 while the label is centred in row 1.
+        let snapped = r(0.4, 1.2).cells();
+        assert_eq!(snapped.y + snapped.height / 2, 0, "what the cell-snapped rect gave");
+        assert_eq!(focus_ring_row(&r(0.4, 1.2)), 1);
+        // Half-up cases around a row boundary.
+        assert_eq!(focus_ring_row(&r(1.4, 1.0)), 1);
+        assert_eq!(focus_ring_row(&r(1.6, 1.0)), 2);
+        assert_eq!(focus_ring_row(&r(2.5, 1.0)), 3);
+        // Whole-number rects (every TUI layout): identical to `y + h / 2`.
+        for y in 0u16..30 {
+            for h in 0u16..8 {
+                let cells = r(f32::from(y), f32::from(h)).cells();
+                assert_eq!(focus_ring_row(&r(f32::from(y), f32::from(h))), i32::from(cells.y + cells.height / 2), "y={y} h={h}");
+            }
+        }
+    }
+
+    /// Two adjacent buttons with fractional edges (`a` = [10, 13.5), `b` = [13.5, 18)) in a
+    /// container that is centred horizontally (60 of 80 columns) and taller than the viewport
+    /// (scrolled by 3 rows). Everything is a power of two, so the arithmetic below is exact.
+    fn pointer_fixture() -> (EventLoop, Arc<SessionState>) {
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let session = test_session();
+        *session.dims.write() = PtyDimensions { cols: 80, rows: 24 };
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut a = Node::new(NodeTag::Button);
+        a.attrs.event_htmx = Some("set:hit=a".to_string());
+        let a_id = arena.alloc(a);
+        let mut b = Node::new(NodeTag::Button);
+        b.attrs.event_htmx = Some("set:hit=b".to_string());
+        let b_id = arena.alloc(b);
+        let mut c = Node::new(NodeTag::Box);
+        c.children = vec![a_id, b_id];
+        let c_id = arena.alloc(c);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![c_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut el = new_el(&session, Arc::new(crate::events::EventBus::new()), doc);
+        el.rebuild_parent_map();
+        let rect = |x: f32, y: f32, w: f32, h: f32| oxiterm_renderer::layout::types::Rect { x, y, width: w, height: h };
+        let mut nodes = std::collections::HashMap::new();
+        nodes.insert(c_id, rect(0.0, 0.0, 60.0, 40.0));
+        nodes.insert(a_id, rect(10.0, 5.0, 3.5, 1.5));
+        nodes.insert(b_id, rect(13.5, 5.0, 4.5, 1.5));
+        el.layout_engine.last_layout = Some(oxiterm_renderer::layout::types::LayoutResult {
+            nodes,
+            total_height: 40,
+            paint_order: vec![c_id, a_id, b_id],
+            ..Default::default()
+        });
+        el.scroll_offset = 3;
+        (el, session)
+    }
+
+    fn pointer_press(x: f32, y: f32) -> InputEvent {
+        InputEvent::PointerEvent(oxiterm_proto::input::PointerInput {
+            x,
+            y,
+            button: oxiterm_proto::input::MouseButton::Left,
+            action: oxiterm_proto::input::MouseAction::Press,
+            modifiers: Default::default(),
+        })
+    }
+
+    fn hit_state(session: &Arc<SessionState>) -> Option<String> {
+        match session.state.read().get("hit") {
+            Some(crate::state::StateValue::Str(s)) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn test_pointer_hits_use_the_fractional_rects_with_centering_and_scroll() {
+        use crate::clock::MonoTime;
+        let (mut el, session) = pointer_fixture();
+        // Screen point = layout point + (ox = 10, -scroll = -3): a spans screen x [20, 23.5),
+        // b [23.5, 28), both on screen rows [2, 3.5).
+        let mut n = 0;
+        for xi in 0..=(35 * 8) {
+            let sx = 16.0 + xi as f32 * 0.125; // 16 .. 51
+            for sy in [1.875f32, 2.0, 2.875, 3.375, 3.5] {
+                session.state.write().set("hit".to_string(), crate::state::StateValue::Str("none".into()));
+                el.handle_event(pointer_press(sx, sy), MonoTime::from_millis(1000));
+                let in_row = (2.0..3.5).contains(&sy);
+                let expect = if !in_row {
+                    "none"
+                } else if (20.0..23.5).contains(&sx) {
+                    "a"
+                } else if (23.5..28.0).contains(&sx) {
+                    "b"
+                } else {
+                    "none"
+                };
+                assert_eq!(hit_state(&session).as_deref(), Some(expect), "pointer at ({sx}, {sy})");
+                n += 1;
+            }
+        }
+        assert!(n > 1000);
+        // Just inside and just outside the shared edge (23.5), where the cell-centre path
+        // cannot tell the buttons apart (cell 23 spans both; its centre 23.5 is in b).
+        for (sx, expect) in [(23.4375f32, "a"), (23.5, "b"), (23.5625, "b")] {
+            session.state.write().set("hit".to_string(), crate::state::StateValue::Str("none".into()));
+            el.handle_event(pointer_press(sx, 2.5), MonoTime::from_millis(1000));
+            assert_eq!(hit_state(&session).as_deref(), Some(expect), "at {sx}");
+        }
+        // Left of the centred page (negative in layout space) and above it: nothing, and no
+        // clamp onto cell 0.
+        for (sx, sy) in [(-3.0f32, 2.5f32), (9.5, 2.5), (20.5, -4.0)] {
+            session.state.write().set("hit".to_string(), crate::state::StateValue::Str("none".into()));
+            el.handle_event(pointer_press(sx, sy), MonoTime::from_millis(1000));
+            assert_eq!(hit_state(&session).as_deref(), Some("none"), "outside at ({sx}, {sy})");
+        }
+    }
+
+    #[test]
+    fn test_pointer_at_cell_centres_equals_the_cell_event() {
+        use crate::clock::MonoTime;
+        use oxiterm_proto::input::{MouseAction, MouseButton, MouseInput};
+        // Integral rects (what a TUI layout holds): every cell centre must resolve like the
+        // 0x02 event for that cell, centering offset and scroll included.
+        let (mut el, session) = pointer_fixture();
+        {
+            let l = el.layout_engine.last_layout.as_mut().unwrap();
+            for r in l.nodes.values_mut() {
+                r.x = r.x.round();
+                r.y = r.y.round();
+                r.width = r.width.round();
+                r.height = r.height.round();
+            }
+        }
+        let (ox, oy) = (10u16, 0u16);
+        let mut seen = std::collections::HashSet::new();
+        for row in 0u16..24 {
+            for col in 0u16..80 {
+                let mut results = Vec::new();
+                for pointer in [false, true] {
+                    session.state.write().set("hit".to_string(), crate::state::StateValue::Str("none".into()));
+                    let ev = if pointer {
+                        pointer_press(f32::from(col) + 0.5, f32::from(row) + 0.5)
+                    } else {
+                        InputEvent::MouseEvent(MouseInput {
+                            col: col + 1,
+                            row: row + 1,
+                            button: MouseButton::Left,
+                            action: MouseAction::Press,
+                            modifiers: Default::default(),
+                        })
+                    };
+                    el.handle_event(ev, MonoTime::from_millis(1000));
+                    results.push(hit_state(&session));
+                }
+                assert_eq!(results[0], results[1], "cell ({col}, {row}) offset ({ox}, {oy})");
+                seen.insert(results[0].clone());
+            }
+        }
+        assert!(seen.contains(&Some("a".to_string())) && seen.contains(&Some("b".to_string())));
+    }
 }
