@@ -137,6 +137,30 @@ pub struct LayoutEngine {
     /// Viewport height in rows. A root without an explicit height gets this as its
     /// minimum height (it still grows with its content); `None` sizes it to content.
     viewport_rows: Option<u16>,
+    /// Debug cross-check: every `compute` is verified against a from-scratch layout of a
+    /// clone of the document and panics on any difference. On by default in debug builds.
+    cross_check: bool,
+    /// Whether the kept tree is reconciled (default) or rebuilt on every call (benchmark
+    /// baseline, `set_incremental(false)`).
+    incremental: bool,
+    /// Available space of the last successful solve on the kept tree (`None`: no valid solve).
+    last_avail: Option<Size<AvailableSpace>>,
+    /// Frame counters (see [`LayoutStats`]); hidden test/benchmark hook.
+    stats: LayoutStats,
+}
+
+/// Counters of how `compute` calls were served (stage 5.1b); hidden test/benchmark hook.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LayoutStats {
+    /// Calls that rebuilt the Taffy tree from scratch.
+    pub full: u64,
+    /// Calls that reconciled the kept tree.
+    pub incremental: u64,
+    /// Calls verified against a from-scratch layout.
+    pub cross_checked: u64,
+    /// Of the incremental calls, those that changed nothing in the Taffy tree.
+    pub quiet: u64,
 }
 
 impl LayoutEngine {
@@ -155,12 +179,36 @@ impl LayoutEngine {
             last_layout: None,
             mode,
             viewport_rows: None,
+            cross_check: cfg!(debug_assertions),
+            incremental: true,
+            last_avail: None,
+            stats: LayoutStats::default(),
         }
     }
 
     /// Sets the viewport height used as the root's minimum height (see `compute`).
     pub fn set_viewport_rows(&mut self, rows: u16) {
         self.viewport_rows = Some(rows);
+    }
+
+    /// Enables or disables the from-scratch cross-check of every `compute` (default: on in
+    /// debug builds, off in release).
+    #[doc(hidden)]
+    pub fn set_cross_check(&mut self, on: bool) {
+        self.cross_check = on;
+    }
+
+    /// Turns the kept-tree reconcile off (`false`: every `compute` rebuilds, the pre-5.1b
+    /// behaviour) or on. Benchmark baseline and escape hatch.
+    #[doc(hidden)]
+    pub fn set_incremental(&mut self, on: bool) {
+        self.incremental = on;
+    }
+
+    /// How `compute` calls were served so far.
+    #[doc(hidden)]
+    pub fn stats(&self) -> LayoutStats {
+        self.stats
     }
 
     /// The mode this engine lays out in.
@@ -197,6 +245,7 @@ impl LayoutEngine {
         self.taffy = Self::new_tree(self.mode);
         self.node_map.clear();
         self.last_layout = None;
+        self.last_avail = None;
     }
 }
 
@@ -227,59 +276,45 @@ impl LayoutEngine {
     /// behaviour change.
     #[doc(hidden)]
     pub fn compute_probed<P: FnMut(LayoutPhase)>(&mut self, doc: &mut THTMLDocument, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>, mut probe: P) -> anyhow::Result<LayoutResult> {
-        // Clearing nodes on each run forces rebuild of the Taffy tree.
-        // This ensures correctness for elements whose visibility (bind-show)
-        // might have toggled since the last frame.
-        self.reset_nodes();
-        probe(LayoutPhase::Reset);
-
-        self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
-
-        for &oxi_id in &doc.dirty_nodes {
-            if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
-                if let Some(node) = doc.arena.get(oxi_id) {
-                    let style = self.map_style(node, state_evaluator);
-                    self.taffy.set_style(taffy_id, style)?;
-
-                    let mut taffy_children = Vec::new();
-                    for &child_id in &node.children {
-                        if let Some(&t_child) = self.node_map.get(&child_id) {
-                            taffy_children.push(t_child);
-                        } else {
-                            let t_child = self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?;
-                            taffy_children.push(t_child);
-                        }
-                    }
-                    self.taffy.set_children(taffy_id, &taffy_children)?;
-                }
+        // Stage 5.1b: the Taffy tree is kept between calls and reconciled against the document.
+        // The reconcile compares EVERY node's inputs to Taffy (mapped style, measure context,
+        // child list) with what Taffy already holds and touches only what differs, so it does
+        // not depend on the document's dirty list (many mutations, e.g. bound text and
+        // animated styles, never reach it). Whatever it cannot prove (an unreachable stale
+        // node, an error) falls back to a full rebuild.
+        let mut changed = false;
+        let mut incremental = false;
+        if self.incremental && !self.node_map.is_empty() {
+            let mut visited = 0usize;
+            let mut bail = false;
+            match self.sync_node(doc, doc.root, cols, state_evaluator, &mut visited, &mut changed, &mut bail) {
+                Ok(_) if !bail && visited == self.node_map.len() => incremental = true,
+                _ => {}
             }
+        }
+        if incremental {
+            self.stats.incremental += 1;
+            probe(LayoutPhase::Reset);
+        } else {
+            self.stats.full += 1;
+            self.reset_nodes();
+            probe(LayoutPhase::Reset);
+            let mut visited = 0usize;
+            let mut bail = false;
+            self.sync_node(doc, doc.root, cols, state_evaluator, &mut visited, &mut changed, &mut bail)?;
         }
 
         let root_taffy_id = *self.node_map.get(&doc.root).unwrap();
-        
-        let mut root_w = cols as f32;
-        // Without an explicit root height the available height is unbounded and the root
-        // is sized to its content, with the viewport as its minimum height. (A fixed
-        // u16::MAX-tall root used to stretch children to 65535 rows, which made the
-        // scroll extent meaningless.)
-        let mut root_h_available = AvailableSpace::MaxContent;
 
+        let mut root_w = cols as f32;
+        let mut root_h_available = AvailableSpace::MaxContent;
         if let Some(root_node) = doc.arena.get(doc.root) {
-            let mut style = self.map_style(root_node, state_evaluator);
             if let Some(w) = root_node.style.width {
                 root_w = self.snap_size(w);
-            } else {
-                style.size.width = taffy::style::Dimension::Length(cols as f32);
             }
             if let Some(h) = root_node.style.height {
                 root_h_available = AvailableSpace::Definite(self.snap_size(h));
-            } else {
-                style.size.height = taffy::style::Dimension::Auto;
-                if let Some(rows) = self.viewport_rows {
-                    style.min_size.height = taffy::style::Dimension::Length(f32::from(rows));
-                }
             }
-            self.taffy.set_style(root_taffy_id, style)?;
         }
 
         probe(LayoutPhase::Build);
@@ -288,6 +323,27 @@ impl LayoutEngine {
             width: AvailableSpace::Definite(root_w),
             height: root_h_available,
         };
+
+        // A kept Taffy cache is NOT equivalent to a rebuild. Observed (fuzz, examples/index
+        // in GUI mode, after a viewport height change, a flex-direction flip and an append):
+        // every style, child list, parent link and measure context matched a fresh tree,
+        // marking every node dirty and re-solving gave the rebuild's result, yet the
+        // incrementally dirtied solve left stale positions. Whether the cause is Taffy's
+        // size-matching cache heuristic or a dirty-propagation gap was not isolated. So the
+        // kept tree is solved from an empty cache whenever anything changed (a rebuild minus
+        // the node allocations), and the cache is kept only when NOTHING changed since the
+        // last solve, where a hit returns that very result.
+        let avail_same = self.last_avail.as_ref() == Some(&available_space);
+        self.last_avail = None;
+        if incremental && !changed && avail_same {
+            self.stats.quiet += 1;
+        }
+        if incremental && (changed || !avail_same) {
+            let leaves: Vec<taffy::NodeId> = self.node_map.values().copied().filter(|&t| self.taffy.child_count(t) == 0).collect();
+            for t in leaves {
+                self.taffy.mark_dirty(t)?;
+            }
+        }
 
         // Measure closure resolves height-from-width for `wrap:word` text leaves
         // (the only nodes given a MeasureContext); all other nodes fall back to Zero
@@ -300,6 +356,8 @@ impl LayoutEngine {
                 None => Size::ZERO,
             },
         )?;
+
+        self.last_avail = Some(available_space);
 
         probe(LayoutPhase::Solve);
 
@@ -331,6 +389,10 @@ impl LayoutEngine {
             total_height: max_bottom.ceil() as u16 };
         self.last_layout = Some(result.clone());
         probe(LayoutPhase::Finish);
+        if self.cross_check {
+            self.stats.cross_checked += 1;
+            self.verify_against_rebuild(doc, cols, state_evaluator, &result);
+        }
         Ok(result)
     }
 
@@ -341,6 +403,7 @@ impl LayoutEngine {
     #[doc(hidden)]
     pub fn resolve_only(&mut self, doc: &THTMLDocument, cols: u16, dirty: Option<OxiNodeId>) -> bool {
         let Some(&root) = self.node_map.get(&doc.root) else { return false };
+        self.last_avail = None;
         if let Some(d) = dirty.and_then(|d| self.node_map.get(&d).copied()) {
             let _ = self.taffy.mark_dirty(d);
         }
@@ -456,38 +519,124 @@ impl LayoutEngine {
         crate::layout::types::HitTester::new(layout).find_node(x as f32 + 0.5, y as f32 + 0.5)
     }
 
-    fn ensure_nodes_exist_recursive(
-        &mut self, 
-        doc: &THTMLDocument, 
+    /// The Taffy style of `node`: `map_style`, plus the root-only overrides (explicit width
+    /// or the viewport columns, auto height with the viewport rows as minimum).
+    fn style_for(&self, doc: &THTMLDocument, id: OxiNodeId, node: &oxiterm_proto::dom::Node, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {
+        let mut style = self.map_style(node, state_evaluator);
+        if id == doc.root {
+            if node.style.width.is_none() {
+                style.size.width = taffy::style::Dimension::Length(cols as f32);
+            }
+            if node.style.height.is_none() {
+                style.size.height = taffy::style::Dimension::Auto;
+                if let Some(rows) = self.viewport_rows {
+                    style.min_size.height = taffy::style::Dimension::Length(f32::from(rows));
+                }
+            }
+        }
+        style
+    }
+
+    /// The measure-context text of `node` (only `wrap:word` text leaves have one).
+    fn measure_text(node: &oxiterm_proto::dom::Node) -> Option<&str> {
+        if node.tag == oxiterm_proto::dom::NodeTag::Text && node.style.wrap == oxiterm_proto::style::WrapMode::Word {
+            node.text.as_deref()
+        } else {
+            None
+        }
+    }
+
+    /// Brings the Taffy node for `oxi_id` (and its subtree) in line with the document,
+    /// creating it when unknown and otherwise updating only what differs. Sets `changed`
+    /// when anything in the Taffy tree was touched. `visited` counts reached nodes.
+    fn sync_node(
+        &mut self,
+        doc: &THTMLDocument,
         oxi_id: OxiNodeId,
+        cols: u16,
         state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>,
+        visited: &mut usize,
+        changed: &mut bool,
+        bail: &mut bool,
     ) -> anyhow::Result<taffy::NodeId> {
-        if let Some(&taffy_id) = self.node_map.get(&oxi_id) {
-            return Ok(taffy_id);
-        }
-
         let node = doc.arena.get(oxi_id).ok_or_else(|| anyhow::anyhow!("Node not found"))?;
-        
-        let mut children = Vec::new();
-        for &child_id in &node.children {
-            children.push(self.ensure_nodes_exist_recursive(doc, child_id, state_evaluator)?);
+        let existing = self.node_map.get(&oxi_id).copied();
+        if existing.is_some() {
+            // A node reached twice (shared child) cannot be reconciled twice: force a rebuild.
+            *visited += 1;
         }
 
-        let style = self.map_style(node, state_evaluator);
-        let taffy_id = self.taffy.new_with_children(style, &children)?;
+        let mut child_ids: Vec<taffy::NodeId> = Vec::with_capacity(node.children.len());
+        for &child_id in &node.children {
+            child_ids.push(self.sync_node(doc, child_id, cols, state_evaluator, visited, changed, bail)?);
+        }
 
-        // Only `wrap:word` text leaves need width-dependent height resolution, so only
-        // they receive a measure context; everything else is sized from its style alone.
-        if node.tag == oxiterm_proto::dom::NodeTag::Text
-            && node.style.wrap == oxiterm_proto::style::WrapMode::Word
-        {
-            if let Some(text) = &node.text {
-                self.taffy.set_node_context(taffy_id, Some(MeasureContext { text: text.clone() }))?;
+        let style = self.style_for(doc, oxi_id, node, cols, state_evaluator);
+        let ctx_text = Self::measure_text(node);
+
+        // Taffy's `set_children`/`new_with_children` rewrite parent links unconditionally, so a
+        // node adopted by a new parent while its old parent still lists it (moved subtree,
+        // reused arena id) would lose its dirty propagation. Never reconcile that: rebuild.
+        if child_ids.iter().any(|&c| self.taffy.parent(c).is_some()) {
+            let adopter = existing;
+            if child_ids.iter().any(|&c| self.taffy.parent(c).is_some_and(|p| Some(p) != adopter)) {
+                *bail = true;
             }
         }
 
-        self.node_map.insert(oxi_id, taffy_id);
+        let Some(taffy_id) = existing else {
+            let taffy_id = self.taffy.new_with_children(style, &child_ids)?;
+            if let Some(text) = ctx_text {
+                self.taffy.set_node_context(taffy_id, Some(MeasureContext { text: text.to_owned() }))?;
+            }
+            self.node_map.insert(oxi_id, taffy_id);
+            *visited += 1;
+            *changed = true;
+            return Ok(taffy_id);
+        };
+
+        if *self.taffy.style(taffy_id)? != style {
+            self.taffy.set_style(taffy_id, style)?;
+            *changed = true;
+        }
+        let same_ctx = match (self.taffy.get_node_context(taffy_id), ctx_text) {
+            (None, None) => true,
+            (Some(c), Some(t)) => c.text == t,
+            _ => false,
+        };
+        if !same_ctx {
+            self.taffy.set_node_context(taffy_id, ctx_text.map(|t| MeasureContext { text: t.to_owned() }))?;
+            *changed = true;
+        }
+        let same_children = self.taffy.child_count(taffy_id) == child_ids.len()
+            && child_ids.iter().enumerate().all(|(i, &c)| self.taffy.child_at_index(taffy_id, i).ok() == Some(c));
+        if !same_children {
+            self.taffy.set_children(taffy_id, &child_ids)?;
+            *changed = true;
+        }
         Ok(taffy_id)
+    }
+
+    /// Debug cross-check: lays `doc` out from scratch on a fresh engine and panics unless the
+    /// result is bit-identical to `got`, naming the first differing node.
+    fn verify_against_rebuild(&self, doc: &THTMLDocument, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>, got: &LayoutResult) {
+        let mut fresh = LayoutEngine::with_mode(self.mode);
+        fresh.cross_check = false;
+        fresh.viewport_rows = self.viewport_rows;
+        let mut scratch = doc.clone();
+        let want = fresh.compute(&mut scratch, cols, 0, state_evaluator).expect("cross-check rebuild failed");
+        let bits = |r: &OxiRect| [r.x.to_bits(), r.y.to_bits(), r.width.to_bits(), r.height.to_bits()];
+        for (id, w) in &want.nodes {
+            match got.nodes.get(id) {
+                Some(g) if bits(g) == bits(w) => {}
+                other => panic!("incremental layout differs from rebuild at node {id:?}: incremental {other:?}, rebuild {w:?}"),
+            }
+        }
+        if let Some(id) = got.nodes.keys().find(|id| !want.nodes.contains_key(id)) {
+            panic!("incremental layout has node {id:?} that the rebuild does not");
+        }
+        assert_eq!(got.paint_order, want.paint_order, "incremental paint order differs from rebuild");
+        assert_eq!(got.total_height, want.total_height, "incremental total_height differs from rebuild");
     }
 
     fn map_style(&self, node: &oxiterm_proto::dom::Node, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> Style {

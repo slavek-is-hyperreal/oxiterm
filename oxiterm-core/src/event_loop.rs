@@ -2696,6 +2696,53 @@ mod tests {
 
 
     #[test]
+    fn layout_is_incremental_and_cross_checked_across_real_frames() {
+        // Drives the real render_frame (state sync, animation tick, mode and viewport handling)
+        // with a kept layout engine through state changes: a bound text, a bind-show flip, a
+        // resize. The engine's debug cross-check panics on any difference from a rebuild; the
+        // counters prove the incremental and the quiet path were taken.
+        use oxiterm_proto::dom::{Node, NodeTag};
+        let session = test_session();
+        *session.dims.write() = PtyDimensions { cols: 40, rows: 12 };
+        let event_bus = Arc::new(crate::events::EventBus::new());
+
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut label = Node::new(NodeTag::Text);
+        label.text = Some("0".to_string());
+        label.attrs.bind_state = Some("n".to_string());
+        let label_id = arena.alloc(label);
+        let mut shown = Node::new(NodeTag::Text);
+        shown.text = Some("shown when flag".to_string());
+        shown.attrs.bind_show = Some("flag=true".to_string());
+        let shown_id = arena.alloc(shown);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![label_id, shown_id];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let mut el = new_el(&session, event_bus, doc);
+        el.layout_engine.set_cross_check(true);
+
+        for i in 0..12i64 {
+            {
+                let mut st = session.state.write();
+                st.set("n".to_string(), crate::state::StateValue::Int(i * 111));
+                st.set("flag".to_string(), crate::state::StateValue::Bool(i % 4 < 2));
+            }
+            el.doc.arena.get_mut(label_id).unwrap().text = Some((i * 111).to_string());
+            if i == 7 {
+                *session.dims.write() = PtyDimensions { cols: 60, rows: 20 };
+            }
+            el.render_frame();
+            el.render_frame(); // quiet frame: nothing changed
+        }
+        let s = el.layout_engine.stats();
+        assert_eq!(s.cross_checked, 24, "{s:?}");
+        assert!(s.incremental >= 20, "{s:?}");
+        assert!(s.quiet >= 10, "{s:?}");
+        assert_eq!(s.full, 1, "only the first frame builds from scratch: {s:?}");
+    }
+
+    #[test]
     fn test_t_death_reason_default_is_2() {
         // Guard: newly created sessions always default death_reason=2 (restart/unknown)
         let session = test_session();

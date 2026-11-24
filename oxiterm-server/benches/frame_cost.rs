@@ -1,6 +1,9 @@
 //! OxiUI stage 5.0: per-frame cost of the render pipeline on the example pages.
 //!
 //! Run: `cargo bench -p oxiterm-server --bench frame_cost`
+//! Stage 5.1b: layout keeps its Taffy tree between frames (a quiet frame reconciles and hits
+//! Taffy's cache, a click frame reconciles and re-solves). `FRAME_COST_FULL=1` turns that off
+//! (rebuild on every call, the pre-5.1b behaviour) for before/after numbers with one binary.
 //! Env: `FRAME_COST_FILTER=counter` (path substring), `FRAME_COST_MS=500` (min ms per page/size),
 //!      `FRAME_COST_MIN_ITERS=300`, `FRAME_COST_VIDEO=1` (also run pages with `<video`).
 //!
@@ -29,6 +32,8 @@ use oxiterm_renderer::render::renderer::Renderer;
 use oxiterm_server::loader::load_thtml_file_mode;
 
 const SIZES: [(u16, u16); 3] = [(80, 24), (120, 40), (200, 60)];
+
+fn full_rebuild() -> bool { std::env::var("FRAME_COST_FULL").is_ok() }
 
 fn us(d: u128) -> f64 { d as f64 / 1000.0 }
 
@@ -119,6 +124,9 @@ fn bench_page(path: &Path, (cols, rows): (u16, u16), budget: Duration, min_iters
     let mut geng = LayoutEngine::with_mode(RenderMode::Gui);
     teng.set_viewport_rows(rows);
     geng.set_viewport_rows(rows);
+    teng.set_cross_check(false);
+    geng.set_cross_check(false);
+    if full_rebuild() { teng.set_incremental(false); geng.set_incremental(false); }
 
     let mut tback = CellBuffer::new(cols, rows);
     let mut gback = CellBuffer::new(cols, rows);
@@ -233,8 +241,8 @@ fn print_aggregate(size: (u16, u16), rs: &[PageResult]) {
     println!("\n--- {}x{} aggregate over {} non-media pages: median-of-page-medians (p95 of totals: median of page p95) ---", size.0, size.1, nm.len());
     let rows: Vec<(&str, f64, Option<f64>)> = vec![
         ("TUI layout", m(&|r| r.t_layout.med()), None),
-        ("  reset (drop tree)", m(&|r| r.t_ph[0]), None),
-        ("  build (map_style + tree)", m(&|r| r.t_ph[1]), None),
+        ("  reset (full: drop tree; kept: reconcile)", m(&|r| r.t_ph[0]), None),
+        ("  build (full: map_style + tree; kept: root setup)", m(&|r| r.t_ph[1]), None),
         ("  solve (taffy)", m(&|r| r.t_ph[2]), None),
         ("  finish (flatten+order+clone)", m(&|r| r.t_ph[3]), None),
         ("TUI render_node (clear+paint)", m(&|r| r.t_render.med()), None),
@@ -243,8 +251,8 @@ fn print_aggregate(size: (u16, u16), rs: &[PageResult]) {
         ("TUI total, unchanged", m(&|r| r.t_tot_same.med()), Some(m(&|r| r.t_tot_same.p95()))),
         ("TUI total, full repaint", m(&|r| r.t_tot_full.med()), Some(m(&|r| r.t_tot_full.p95()))),
         ("GUI layout", m(&|r| r.g_layout.med()), None),
-        ("  reset (drop tree)", m(&|r| r.g_ph[0]), None),
-        ("  build (map_style + tree)", m(&|r| r.g_ph[1]), None),
+        ("  reset (full: drop tree; kept: reconcile)", m(&|r| r.g_ph[0]), None),
+        ("  build (full: map_style + tree; kept: root setup)", m(&|r| r.g_ph[1]), None),
         ("  solve (taffy)", m(&|r| r.g_ph[2]), None),
         ("  finish (flatten+order+clone)", m(&|r| r.g_ph[3]), None),
         ("GUI render_frame_mode (list+raster)", m(&|r| r.g_render.med()), None),
@@ -288,13 +296,15 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
         for &id in &subs { st.subscribe("counter".into(), id); }
         let mut eng = LayoutEngine::with_mode(mode);
         eng.set_viewport_rows(rows);
+        eng.set_cross_check(false);
+        if full_rebuild() { eng.set_incremental(false); }
         let mut back = CellBuffer::new(cols, rows);
         let mut prev = CellBuffer::new(cols, rows);
         let _ = layout_probed(&mut eng, &mut doc, cols, &st);
 
         let mut full = Series::new(); let mut lay = Series::new(); let mut rest = Series::new();
         let mut ph = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
-        let mut resolve_hit = Vec::new(); let mut resolve_dirty = Vec::new();
+        let mut resolve_hit = Vec::new(); let mut resolve_dirty = Vec::new(); let mut quiet_v = Vec::new();
         let (mut full_s, mut lay_s, mut rest_s) = (Series::new(), Series::new(), Series::new());
         for i in 0..(n + 20) {
             // like sync_dirty_state: set text + mark dirty
@@ -327,13 +337,15 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
                     }
                 }
             });
+            // a quiet frame right after the click frame: nothing changed (kept tree: cache hit)
+            let (_, t_quiet) = timed(|| layout_probed(&mut eng, &mut doc, cols, &st));
             // incremental best case on the tree just built
             let (_, t_hit) = timed(|| eng.resolve_only(&doc, cols, None));
             let (_, t_dirty) = timed(|| eng.resolve_only(&doc, cols, subs.first().copied()));
             if i >= 20 {
                 full_s.push(t_l + t_rest); lay_s.push(t_l); rest_s.push(t_rest);
                 for k in 0..4 { ph[k].push(p[k].as_nanos()); }
-                resolve_hit.push(t_hit.as_nanos()); resolve_dirty.push(t_dirty.as_nanos());
+                quiet_v.push(t_quiet.as_nanos()); resolve_hit.push(t_hit.as_nanos()); resolve_dirty.push(t_dirty.as_nanos());
             }
         }
         let _ = (&mut full, &mut lay, &mut rest);
@@ -341,6 +353,7 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
         println!("{label} {cols}x{rows} counter click, full frame: median {m:.0} us (p95 {:.0}); layout {l:.0} us ({:.0}%), rest {r:.0} us", full_s.p95(), 100.0 * l / m);
         println!("    layout phases: reset {:.0}, build {:.0}, solve {:.0}, finish {:.0} us;  solve-only on kept tree: cache hit {:.1} us, after mark_dirty(counter text) {:.1} us",
             med_u(&ph[0]), med_u(&ph[1]), med_u(&ph[2]), med_u(&ph[3]), med_u(&resolve_hit), med_u(&resolve_dirty));
+        println!("    quiet layout frame right after a click frame: {:.1} us", med_u(&quiet_v));
         println!("    => rebuild (reset+build+finish) vs incremental solve: {:.0} us vs {:.1} us", med_u(&ph[0]) + med_u(&ph[1]) + med_u(&ph[3]), med_u(&resolve_dirty));
     }
 }
