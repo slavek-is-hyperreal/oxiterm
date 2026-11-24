@@ -132,6 +132,8 @@ The owner chose to support both execution modes. §3.2 describes how: a shared `
 > 4. **The rest of Phase 5 last (5.2–5.7):** the native window with GPU rendering, which then also gives Android a native renderer.
 > 5. **Phase 8 (OxiScript)** starts after Phase 7; its Stage 8.0 research spike can overlap with Phase 5.2+. Its order relative to 5.2–5.7 is the owner's call.
 
+> **Process rule (owner, 2026-11-24, all phases from now on):** after every finished stage, before its commit is admitted, a separate **BAD ACTOR** agent tries to break it: fuzzing, sandbox/path escapes, malformed protocol input, resource exhaustion, crashes, wrong output, differential checks between modes. Findings are fixed or logged, and each becomes a regression test.
+
 ### Phase 0: Golden snapshot harness (safety net first) — ✅ done
 
 Implemented in `oxiterm-renderer/tests/golden_cells.rs`, with 72 baselines in `oxiterm-renderer/tests/golden/` (36 pages × 2 sizes). Rendering is static, as in the web playground: no state injection, so `bind-show` nodes are visible. Regenerate with `OXI_BLESS=1 cargo test -p oxiterm-renderer --test golden_cells`. Stale baselines for deleted pages also fail the test.
