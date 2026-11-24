@@ -2,7 +2,7 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
-> **Status:** Phases 0–2, 3a–3c, 4 and 6 done; Phase 5 stages 5.0–5.1 done; Phase 7 and Phase 5 stages 5.2–5.7 planned.
+> **Status:** Phases 0–2, 3a–3c, 4 and 6 done; Phase 5 stages 5.0–5.1 done; Phase 7, Phase 5 stages 5.2–5.7 and Phase 8 (OxiScript) planned.
 
 ---
 
@@ -130,6 +130,7 @@ The owner chose to support both execution modes. §3.2 describes how: a shared `
 > 2. **Phase 6:** proportional text.
 > 3. **Phase 7:** WASM local mode, OxiDE framebuffer sink, and Android as a thin WebView shell around the web client (thin-client or WASM-local).
 > 4. **The rest of Phase 5 last (5.2–5.7):** the native window with GPU rendering, which then also gives Android a native renderer.
+> 5. **Phase 8 (OxiScript)** starts after Phase 7; its Stage 8.0 research spike can overlap with Phase 5.2+. Its order relative to 5.2–5.7 is the owner's call.
 
 ### Phase 0: Golden snapshot harness (safety net first) — ✅ done
 
@@ -586,6 +587,54 @@ Expected result of 1, 2 and 4: a quiet GUI frame goes from about 153 to about 45
 - Android (done before the native GPU work of Phase 5): a thin app shell around a WebView that runs the existing web client, either as a thin client (Phase 3 stream) or as the WASM local core. One APK supports both modes. Includes IME/viewport resize and touch/gesture normalisation in the web client. A native renderer (`winit` Android backend + the Phase 5 wgpu pipeline) replaces the WebView later, once Phase 5 lands.
 - WASM local mode: `oxiterm-core` + the web painter in the browser, offline-capable (alongside the phase 3 thin client).
 - **OxiDE**: a software sink (the GPU sink only after Phase 5) writing to DRM/KMS dumb buffers or `/dev/fb0` (see [retro-desktop-environment.md](retro-desktop-environment.md) and [embedded-iot-platform.md](embedded-iot-platform.md)). OxiDE becomes an application/shell on top of OxiUI rather than a separate fork, running in local mode.
+
+### Phase 8: OxiScript, a general-purpose typed language with OxiUI as its first host (planned)
+Research basis: [research/oxiscript-language.md](research/oxiscript-language.md) (2026-11-24; claims tagged verified / search-only / estimate / opinion). This section records the owner's goals, the principles that follow from them, and the decisions still open. Nothing here is implemented.
+
+**Owner's goals (2026-11-24)**
+- **Feels like TypeScript, runs like a compiled language.** TS-like syntax, inference and editor support, but statically and soundly typed.
+- **Two ways to run one program:** "write and run" live (compile in milliseconds inside the core, hot reload) and compiled for release, natively, down to microcontrollers.
+- **Primary persona:** a JS/TS frontend or Node developer who builds a toy with their kid on an ESP32 must feel at home: one-command flash, live reload, browser simulator, VS Code.
+- **No artificial limits.** OxiUI is only the first host. The language must stay general enough that someone could later build safety-critical software (the owner's test case: a rocket) on it.
+- **Modern hardware without assembler knowledge:** SIMD/SWAR, multi-core and GPU are used automatically by default, with explicit control for those who want it.
+- **No wall between the language and graphics/GPU:** data-parallel code is written as ordinary functions, not in a separate shader language glued on through an API.
+- **Automatic, but never silent:** after every build the compiler says what it placed where and why, so nothing slows down by surprise.
+
+**Principles (decided)**
+1. **The core language has no domain concepts.** UI, real time, safety and GPU are profiles, libraries and host APIs.
+2. **Sound static types.** No `any`, no unchecked casts, explicit numeric types (integers distinct from floats, overflow traps by default), one absence value (`T | null`), `Result` with `?` instead of exceptions, UTF-8 strings, discriminated unions with narrowing. Bidirectional local inference keeps it light to write.
+3. **One language, compiler-checked profiles, never dialects** (the SPARK/Ravenscar principle). Profiles such as `realtime`, `safety` and `kernel` are restriction sets the compiler checks (no allocation, no recursion, bounded loops, no ambient authority, ...), with the same semantics as unrestricted code.
+4. **Data parallelism is general, GPU is a backend.** Parallel and SIMD constructs have the semantics of sequential code. Layers: (0) automatic data-parallel combinators over arrays/images/grids; (1) explicit `Simd<T, N>` types; (2) opt-in schedules, tasks and isolates. `kernel` functions are ordinary functions under the `kernel` profile; backends in order: CPU SIMD + threads, then WGSL/WebGPU, then SPIR-V/MSL via naga. Device residency and CPU↔GPU transfers are visible in types (hidden transfers killed C++ AMP). Graphics (pixel/vertex shaders, a "paint with this kernel" display-list item) is a library on top.
+5. **Placement report and performance assertions.** Every build writes a versioned, human-readable report: what went to GPU, multi-core, which SIMD width, scalar, transfers per call, allocations on hot paths, with a stable reason code whenever the fast path was not taken. The LSP shows it as inlay hints next to the code. `@expect(simd | gpu | no_alloc | no_transfer | ...)` turns a silent de-optimisation into a compile error; only language-defined facts are assertable, heuristics are reported but not assertable (so compiler upgrades do not break builds). The same assertions serve as certification evidence.
+6. **Capabilities, not ambient authority.** A program sees only the host APIs it is given (no files, network or clock unless passed in), declared in a small own IDL that compiles to plain Wasm imports. The WASM Component Model can be an adapter later.
+7. **Own typed SSA IR, Core WebAssembly as the first backend and distribution format.** No dependency on Wasm proposals that some target engine lacks (WasmGC, threads, exception handling: wasmi lacks them; AssemblyScript was hurt by this). Live mode runs the module in an embedded interpreter (wasmi in the core; on the device wasmi or WAMR, see open questions). Release: Wasmtime AOT on 64-bit hosts, wasm→C (w2c2, MIT) plus the target's C compiler for 32-bit boards, ESP32 and the likely safety route, the browser's own engine on the web.
+8. **Hot reload by instance swap.** A reload builds a new instance and swaps atomically; module-local state resets, persistent state lives in host-managed, schema-versioned state (OxiUI's StateManager), following Dart's rules.
+9. **Determinism and a written spec from day one:** no undefined behaviour, defined overflow and float behaviour across targets, reproducible compiler output. These are what make qualification (DO-178C, IEC 61508, ISO 26262, IEC 62443) possible later.
+10. **Tooling is part of the language:** one query-based front end in Rust (also built for wasm32, because the compiler ships inside the core) shared by the compiler, LSP and formatter; LSP and formatter at launch; good error messages; a `package.json`-like manifest without promising that npm packages run. The device tooling (flash, live reload over USB then WiFi, browser simulator on the wasm32 core, host-side REPL) lives around the compiler, so a safety build can drop it without losing language features.
+11. **Permissive licences only** for every component (the on-device runtime included). Moddable XS, the Toit VM and Jaculus are GPL/LGPL, so they are references, not dependencies.
+
+**Stages (sizes are the research's estimates, ±2x; each stage gets its own plan and gates before it starts)**
+| Stage | Scope | Estimate |
+|---|---|---|
+| 8.0 | Spike and decisions: memory-model prototypes (RC with elision vs tracing GC), wasmi vs WAMR bake-off on a real ESP32, wasmi compile latency for small modules, grammar sketch | 8–12 weeks |
+| 8.1 | MVP language + OxiUI host API + a thin ESP32 slice (flash, USB live reload, browser simulator), LSP and formatter | 9–14 months |
+| 8.2 | AOT release path, more boards, profiles v0 | 4–6 months |
+| 8.3 | SIMD and parallel layers, placement report, `@expect` | 4–6 months |
+| 8.3b | GPU kernels (optional) | 4–8 months |
+| 8.4 | Concurrency (tasks, isolates) and ecosystem | 4–6 months |
+| 8.5 | Safety profile and qualification evidence | 12+ months |
+
+**Open questions for the owner** (details in section 13 of the research)
+1. Memory model: reference counting with compiler elision or tracing GC. The research is split (Static TypeScript measured its GC about 2x faster than its RC, but that RC had no elision); a 2–3 week prototype of both is proposed in 8.0.
+2. Own TS-looking grammar (recommended) or parsing real TypeScript.
+3. On-device engine for live mode on ESP32: wasmi (fastest interpreter in the treVM measurements, largest flash) or WAMR (smaller, an official Espressif component, but ran out of memory on one benchmark). Settled by the 8.0 bake-off.
+4. GPU kernels in v1, or CPU SIMD + multi-core first.
+5. Blocks editor (MakeCode-style) and web flasher in v1 or later.
+6. Which safety standard is the first realistic customer target.
+7. Who owns the compiler front end long term (the critical path; DeviceScript and Mun show the risk of a stalled owner).
+8. npm positioning: naming and semver compatibility only (recommended) or source compatibility.
+9. Is "module-local state resets on reload, persistent state lives in the host" acceptable.
+10. Keep an own-bytecode interpreter as plan B if Wasm engines disappoint on small boards.
 
 ---
 
