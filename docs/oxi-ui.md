@@ -626,13 +626,13 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 
 **Decisions (owner, 2026-11-24 — decided now, deliberately, accepting that some may be regretted later)**
 1. **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
-2. **Grammar:** our own TypeScript-looking grammar, files `.oxs`. Real TypeScript is not parsed (no accepting syntax we then reject).
+2. **Grammar:** our own grammar, files `.oxs`, designed so that a TypeScript developer simply *reads* it without learning it (same keywords, braces, arrow functions, `import`/`export`, type annotations after `:`; differences only where soundness requires them, and then with familiar spellings). Real TypeScript is not parsed (no accepting syntax we then reject).
 3. **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted.
-4. **GPU in v1:** no. v1 is CPU SIMD + multi-core. The `kernel` profile and device-buffer types are designed from day 1; the GPU backend comes in 8.3b.
+4. **GPU in v1:** no, and the `kernel` profile is not in the MVP either. But the language must be designed so that adding it later is easy, not hard: no feature in the MVP may make data-parallel kernels or device buffers awkward to add (the GPU backend comes in 8.3b).
 5. **Tools in v1:** web flasher (WebSerial) yes; blocks editor later.
 6. **First standards target:** IEC 62443 and the EU CRA (the business model); IEC 61508 as the first functional-safety standard, later.
-7. **Ownership:** the OxiUI project owns the compiler, in this repository (`oxiscript-*` crates), with the same workflow as the rest (owner decides, agents implement, lead reviews).
-8. **npm:** naming and semver conventions only; a `package.json`-like manifest without promising that npm packages run.
+7. **Ownership and method:** the OxiUI project owns the compiler, in this repository (`oxiscript-*` crates), with the same workflow as the rest (owner decides, agents implement, lead reviews). **After every finished stage a BAD ACTOR agent runs** whose only goal is to break it: escape the sandbox, exhaust resources, crash the compiler or runtime, make it miscompile, defeat the type system. Fuzzing (compiler front end, IR, Wasm output, runtime host API), differential testing (interpreter vs AOT) and adversarial programs are part of admitting a commit, not an afterthought; whatever the bad actor finds becomes a regression test.
+8. **npm:** the idea, not compatibility: naming and semver conventions and a `package.json`-like manifest; npm packages are not promised to run.
 9. **Hot reload state:** module-local state resets on reload; persistent state lives in the host's StateManager.
 10. **No plan B bytecode:** WebAssembly is the only IR backend and distribution format.
 
