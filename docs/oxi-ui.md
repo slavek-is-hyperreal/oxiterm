@@ -635,6 +635,19 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 8. **npm:** the idea, not compatibility: naming and semver conventions and a `package.json`-like manifest; npm packages are not promised to run.
 9. **Hot reload state:** module-local state resets on reload; persistent state lives in the host's StateManager.
 10. **No plan B bytecode:** WebAssembly is the only IR backend and distribution format.
+11. **Laws (inspired by Bend 2's `LAWS.bend`, without its dependent types).** A `law` is a first-class declaration of a property the code must satisfy, written in ordinary OxiScript and readable by a TS developer:
+    ```ts
+    law sorted_stays_sorted(xs: i32[]) {
+      isSorted(sort(xs))
+    }
+    ```
+    One syntax, three levels of checking:
+    1. **Tested (default, every build in dev):** the compiler generates many inputs from the parameter types and searches for a counterexample (QuickCheck/Hypothesis-style property testing, shrinking the failing case). Cheap and immediate; also the BAD ACTOR agent's fuel.
+    2. **Proven automatically (`safety` profile):** an SMT solver (Z3, MIT, or cvc5, BSD) tries to prove the law without hand-written proofs, as SPARK, Dafny and Verus do.
+    3. **Proofs written by AI or a human, only when the solver cannot:** lemmas and hints are added next to the law. In the `safety` profile an unproven law is a compile error (the Bend 2 mechanism, as the last resort rather than the norm).
+
+    Lesson from Bend 2 kept in mind: laws only protect what is written down (an under-specified law let its demo agent change the game rules), so law review is part of code review. Full dependent types are rejected: they would break "a TS developer simply reads it" and slow compilation.
+12. **AI-friendliness as a design goal:** an unambiguous grammar; error messages with stable reason codes and a suggested fix, readable by people and models; a stable specification with model-oriented docs (`llms.txt`); the placement report and `@expect`; laws as machine-checkable targets for agents; a deterministic compiler, so an agent can rely on its own experiments.
 
 Remaining unknowns are measured, not re-decided, in Stage 8.0: wasmi compile latency for small modules, fuel overhead and `no_std` flash size on ESP32, RC overhead with elision.
 
