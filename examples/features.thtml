@@ -11,9 +11,15 @@ text { fg: #e2e8f0; }
     justify-content: space-between;
     margin-bottom: 1;
 }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2; border-style: single; border-color: #1e293b;">
@@ -96,7 +102,7 @@ text { fg: #e2e8f0; }
 
     <!-- Footer -->
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
-        <text class="muted">[Tab] Select Demo  [Enter] Open Live Demo</text>
+        <text class="muted mono">[Tab] Select Demo  [Enter] Open Live Demo</text>
     </box>
 
 </box>

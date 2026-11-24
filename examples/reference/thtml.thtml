@@ -7,9 +7,15 @@ text { fg: #e2e8f0; }
 .val      { fg: #fbbf24; height: 1; }
 .section  { fg: #94a3b8; height: 1; margin-bottom: 1; }
 .row { flex-direction: row; align-items: center; height: 1; margin-bottom: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #0f172a; align-items: center;
@@ -25,14 +31,14 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; width: 24; margin-right: 2;">
             <text class="section">Tags (8 total):</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
-                <box class="row"><text class="tag">&lt;box&gt;    </text><text class="muted">flex div</text></box>
-                <box class="row"><text class="tag">&lt;text&gt;   </text><text class="muted">text label</text></box>
-                <box class="row"><text class="tag">&lt;input&gt;  </text><text class="muted">field/pwd</text></box>
-                <box class="row"><text class="tag">&lt;button&gt; </text><text class="muted">clickable</text></box>
-                <box class="row"><text class="tag">&lt;img&gt;    </text><text class="muted">SVG/Lottie/Riv</text></box>
-                <box class="row"><text class="tag">&lt;video&gt;  </text><text class="muted">mp4 player</text></box>
-                <box class="row"><text class="tag">&lt;for&gt;    </text><text class="muted">list loop</text></box>
-                <box class="row"><text class="tag">&lt;style&gt;  </text><text class="muted">TCSS block</text></box>
+                <box class="row"><text class="tag mono">&lt;box&gt;    </text><text class="muted">flex div</text></box>
+                <box class="row"><text class="tag mono">&lt;text&gt;   </text><text class="muted">text label</text></box>
+                <box class="row"><text class="tag mono">&lt;input&gt;  </text><text class="muted">field/pwd</text></box>
+                <box class="row"><text class="tag mono">&lt;button&gt; </text><text class="muted">clickable</text></box>
+                <box class="row"><text class="tag mono">&lt;img&gt;    </text><text class="muted">SVG/Lottie/Riv</text></box>
+                <box class="row"><text class="tag mono">&lt;video&gt;  </text><text class="muted">mp4 player</text></box>
+                <box class="row"><text class="tag mono">&lt;for&gt;    </text><text class="muted">list loop</text></box>
+                <box class="row"><text class="tag mono">&lt;style&gt;  </text><text class="muted">TCSS block</text></box>
             </box>
         </box>
 
@@ -40,12 +46,12 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; width: 26; margin-right: 2;">
             <text class="section">Attributes &amp; Keys:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
-                <box class="row"><text class="attr">style=      </text><text class="muted">inline TCSS</text></box>
-                <box class="row"><text class="attr">class= / id=</text><text class="muted">TCSS selectors</text></box>
-                <box class="row"><text class="attr">event-htmx= </text><text class="muted">action / nav</text></box>
-                <box class="row"><text class="attr">type=       </text><text class="muted">password input</text></box>
-                <box class="row"><text class="attr">bind-state= </text><text class="muted">reactive text</text></box>
-                <box class="row"><text class="attr">_key        </text><text class="muted">reserved internal</text></box>
+                <box class="row"><text class="attr mono">style=      </text><text class="muted">inline TCSS</text></box>
+                <box class="row"><text class="attr mono">class= / id=</text><text class="muted">TCSS selectors</text></box>
+                <box class="row"><text class="attr mono">event-htmx= </text><text class="muted">action / nav</text></box>
+                <box class="row"><text class="attr mono">type=       </text><text class="muted">password input</text></box>
+                <box class="row"><text class="attr mono">bind-state= </text><text class="muted">reactive text</text></box>
+                <box class="row"><text class="attr mono">_key        </text><text class="muted">reserved internal</text></box>
             </box>
         </box>
 
@@ -53,13 +59,13 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; flex: 1;">
             <text class="section">event-htmx Actions:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
-                <box class="row"><text class="code">inc: / dec: </text><text class="muted">+1/-1 Int</text></box>
-                <box class="row"><text class="code">toggle:key </text><text class="muted">flip Bool</text></box>
-                <box class="row"><text class="code">set:k=v    </text><text class="muted">set Str</text></box>
-                <box class="row"><text class="code">append:k=v </text><text class="muted">push to List</text></box>
-                <box class="row"><text class="code">clear:key  </text><text class="muted">reset existing</text></box>
-                <box class="row"><text class="code">open:URL   </text><text class="muted">web http/https</text></box>
-                <box class="row"><text class="code">action_name</text><text class="muted">→ App Server</text></box>
+                <box class="row"><text class="code mono">inc: / dec: </text><text class="muted">+1/-1 Int</text></box>
+                <box class="row"><text class="code mono">toggle:key </text><text class="muted">flip Bool</text></box>
+                <box class="row"><text class="code mono">set:k=v    </text><text class="muted">set Str</text></box>
+                <box class="row"><text class="code mono">append:k=v </text><text class="muted">push to List</text></box>
+                <box class="row"><text class="code mono">clear:key  </text><text class="muted">reset existing</text></box>
+                <box class="row"><text class="code mono">open:URL   </text><text class="muted">web http/https</text></box>
+                <box class="row"><text class="code mono">action_name</text><text class="muted">→ App Server</text></box>
             </box>
         </box>
 
@@ -73,7 +79,7 @@ text { fg: #e2e8f0; }
     </box>
 
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Navigate</text>
+        <text class="muted mono">[Q] Exit  [Tab] Navigate</text>
     </box>
 
 </box>

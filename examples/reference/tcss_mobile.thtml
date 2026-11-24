@@ -2,9 +2,15 @@
 text { fg: #e2e8f0; }
 .muted { fg: #475569; height: 1; }
 .prop  { fg: #c084fc; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
         <text style="fg: #c084fc; height: 1;">🎨 TCSS Ref</text>
         <text class="muted" event-htmx="../index.thtml">&lt; Back</text>
@@ -12,11 +18,11 @@ text { fg: #e2e8f0; }
 
     <box style="flex-direction: column; padding: 1; flex: 1;">
         <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Key Properties:</text>
-        <text class="prop">width, height, flex</text>
-        <text class="prop">align-items, justify-content</text>
-        <text class="prop">border-style: single|rounded</text>
-        <text class="prop">wrap: word</text>
-        <text class="prop">fg, bg, border-color</text>
+        <text class="prop mono">width, height, flex</text>
+        <text class="prop mono">align-items, justify-content</text>
+        <text class="prop mono">border-style: single|rounded</text>
+        <text class="prop mono">wrap: word</text>
+        <text class="prop mono">fg, bg, border-color</text>
     </box>
 
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 1;">

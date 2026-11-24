@@ -15,9 +15,15 @@ text { fg: #e2e8f0; }
     height: 5;
 }
 .tile-title { height: 1; margin-bottom: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
 
     <!-- Top Header -->
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 2; padding-right: 2; border-style: single; border-color: #1e293b;">
@@ -27,7 +33,7 @@ text { fg: #e2e8f0; }
         </box>
         <box style="flex-direction: row; align-items: center;">
             <text class="green">● live  </text>
-            <text style="fg: #38bdf8; height: 1;">ssh ssh.slavekm.pl -p 20236</text>
+            <text class="mono" style="fg: #38bdf8; height: 1;">ssh ssh.slavekm.pl -p 20236</text>
         </box>
     </box>
 

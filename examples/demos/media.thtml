@@ -7,9 +7,15 @@
 }
 .panel-title { height: 1; margin-bottom: 1; }
 .caption     { fg: #64748b; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #0f172a;">
 
     <box style="height: 3; bg: #1e293b; align-items: center;
                 justify-content: space-between; padding-left: 2; padding-right: 2;
@@ -65,13 +71,13 @@
         </box>
         <box style="width: 1; bg: #334155;"></box>
         <box style="flex: 1; align-items: center; flex-direction: column;">
-            <text style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
+            <text class="mono" style="fg: #94a3b8; height: 1;">Unicode ▀▄█</text>
             <text style="fg: #334155; height: 1;">All terminals</text>
         </box>
     </box>
 
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation</text>
+        <text class="mono" style="fg: #475569; height: 1;">[Q] Exit  [Tab] Navigation</text>
     </box>
 
 </box>

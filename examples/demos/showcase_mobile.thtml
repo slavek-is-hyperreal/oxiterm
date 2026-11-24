@@ -9,7 +9,7 @@ button { border-style: single; }
     margin-bottom: 1;
 }
 .section-title { fg: #94a3b8; height: 1; margin-bottom: 1; }
-.mono          { fg: #a3e635; height: 1; }
+.mono          { fg: #a3e635; height: 1; font-family: monospace; }
 .muted         { fg: #475569; height: 1; }
 .ok            { fg: #4ade80; height: 1; }
 
@@ -17,9 +17,14 @@ button { border-style: single; }
 #border-panel  { border-color: #38bdf8; }
 #state-panel   { border-color: #f59e0b; }
 #layout-panel  { border-color: #f87171; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
 </style>
 
-<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+<box class="page-sans" style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center;
@@ -60,9 +65,9 @@ button { border-style: single; }
             <box style="flex-direction: row; align-items: center; margin-bottom: 1; height: 3;">
                 <text class="muted" style="width: 8;">cnt:</text>
                 <text style="fg: #fbbf24; height: 1; width: 4;" bind-state="sc">0</text>
-                <button style="border-color: #4ade80; padding-left: 1; padding-right: 1;
+                <button class="mono" style="border-color: #4ade80; padding-left: 1; padding-right: 1;
                                height: 3; fg: #4ade80; margin-right: 1;" event-htmx="inc:sc">[+]</button>
-                <button style="border-color: #f87171; padding-left: 1; padding-right: 1;
+                <button class="mono" style="border-color: #f87171; padding-left: 1; padding-right: 1;
                                height: 3; fg: #f87171;" event-htmx="dec:sc">[-]</button>
             </box>
         </box>
@@ -81,7 +86,7 @@ button { border-style: single; }
 
     <!-- Footer -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Nav  [Enter] Select</text>
+        <text class="muted mono">[Q] Exit  [Tab] Nav  [Enter] Select</text>
     </box>
 
 </box>

@@ -6,9 +6,15 @@
 .txt-white    { fg: #FFFFFF; height: 1; }
 .txt-muted    { fg: #B3B3B3; height: 1; }
 .txt-err      { fg: #FF5555; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 48; height: 30; bg: #121212;">
+<box class="page-sans" style="flex-direction: column; width: 48; height: 30; bg: #121212;">
 
     <!-- Hidden State Bindings for URI Resolution & Controls -->
     <box bind-show="never_true">
@@ -52,7 +58,7 @@
                     <text class="txt-green">[ 🔑 Generuj Link ]</text>
                 </box>
                 <text class="txt-muted">Direct OAuth Link:</text>
-                <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
+                <text class="txt-green mono" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
             </box>
 
         </box>
@@ -75,11 +81,11 @@
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
                 <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
-                    <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+                    <text class="txt-muted mono" bind-state="progress_cur" style="width: 5;">00:00</text>
                     <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
                         <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols_mob"></box>
                     </box>
-                    <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
+                    <text class="txt-muted mono" bind-state="progress_dur" style="width: 5;">00:00</text>
                 </box>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="margin-top: 1;"></text>
@@ -95,11 +101,11 @@
                 <text class="txt-green" bind-state="track_name">Tytuł utworu</text>
                 <text class="txt-white" bind-state="artist_name" style="margin-top: 1;">Wykonawca</text>
                 <box style="flex-direction: row; align-items: center; height: 1; margin-top: 1;">
-                    <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+                    <text class="txt-muted mono" bind-state="progress_cur" style="width: 5;">00:00</text>
                     <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
                         <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols_mob"></box>
                     </box>
-                    <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
+                    <text class="txt-muted mono" bind-state="progress_dur" style="width: 5;">00:00</text>
                 </box>
                 <text class="txt-green" bind-show="player_info" bind-state="player_info" style="margin-top: 1;"></text>
                 <text class="txt-err" bind-show="player_error" bind-state="player_error" style="margin-top: 1;"></text>

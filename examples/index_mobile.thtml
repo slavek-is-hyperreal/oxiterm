@@ -13,9 +13,15 @@ text { fg: #e2e8f0; }
     justify-content: center;
     margin-bottom: 1;
 }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
         <text class="brand">⬡ OxiTerm</text>
         <text class="green">v0.5.0</text>
@@ -24,7 +30,7 @@ text { fg: #e2e8f0; }
     <box style="flex-direction: column; padding: 1; flex: 1; align-items: center;">
         <img src="assets/mascot.svg" alt="OxiTerm Mascot" style="width: 14; height: 6;" />
         <text style="fg: #f8fafc; height: 1; margin-top: 1;">Build TUI apps like websites</text>
-        <text class="muted" style="margin-bottom: 1;">ssh ssh.slavekm.pl -p 20236</text>
+        <text class="muted mono" style="margin-bottom: 1;">ssh ssh.slavekm.pl -p 20236</text>
 
         <box class="btn" style="width: 36; border-color: #38bdf8;" event-htmx="features.thtml">
             <text style="fg: #38bdf8; height: 1;">✦ Features &amp; Demos</text>

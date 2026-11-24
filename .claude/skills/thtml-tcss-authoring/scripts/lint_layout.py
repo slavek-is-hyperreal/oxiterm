@@ -60,7 +60,10 @@ FLOAT_PROPS = {"flex", "opacity"}
 
 TRANSITION_PROPS = {"transition"}
 
-KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS | TRANSITION_PROPS
+# Parsed in both modes but only drawn by GUI clients (the terminal ignores them); values not checked.
+GUI_ONLY_PROPS = {"font-family", "font-size", "line-height", "font-weight", "font-style", "border-radius"}
+
+KNOWN_PROPS = INT_PROPS | FLOAT_PROPS | set(ENUM_PROPS) | COLOR_PROPS | TRANSITION_PROPS | GUI_ONLY_PROPS
 
 BORDER_PROPS = {"border", "border-color", "border-style"}
 

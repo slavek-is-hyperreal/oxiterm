@@ -1,0 +1,16 @@
+<screen>
+  <style>
+    .header { width: 80; height: 3; border-style: single; align-items: center; justify-content: center; }
+    .title { width: 40; height: 1; fg: #1DB954; }
+    .main { width: 80; height: 16; align-items: center; justify-content: center; }
+    .diag { width: 60; height: 14; border-style: single; }
+  </style>
+
+  <box class="header">
+    <text class="title">OxiTerm Diagram Demo</text>
+  </box>
+
+  <box class="main">
+    <diagram class="diag" src="examples/assets/flow.mmd" alt="Architektura OxiTerm" preview="minimap" />
+  </box>
+</screen>

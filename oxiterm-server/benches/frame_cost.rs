@@ -396,12 +396,19 @@ fn main() {
     let filter = std::env::var("FRAME_COST_FILTER").ok();
     let with_video = std::env::var("FRAME_COST_VIDEO").is_ok();
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    // The frozen monospace copy of `examples/` (the demo pages are proportional in GUI mode now):
+    // keeps the aggregate comparable with the numbers in docs/oxi-ui.md. The live pages are
+    // reported as fixtures below.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/traces/pages/examples_mono");
+    let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
     let mut pages = Vec::new();
     collect_pages(&root, &mut pages);
     if let Some(f) = &filter { pages.retain(|p| p.to_string_lossy().contains(f.as_str())); }
     let mut fixtures = Vec::new();
     collect_pages(&Path::new(env!("CARGO_MANIFEST_DIR")).join("benches/pages"), &mut fixtures);
+    for rel in ["index.thtml", "demos/counter.thtml"] {
+        fixtures.push(live.join(rel));
+    }
     if let Some(f) = &filter { fixtures.retain(|p| p.to_string_lossy().contains(f.as_str())); }
 
     for size in SIZES {
@@ -422,7 +429,8 @@ fn main() {
         let mut fx = Vec::new();
         for p in &fixtures {
             let mut r = bench_page(p, size, budget, min_iters);
-            r.name = format!("[fixture] {}", p.file_name().unwrap_or_default().to_string_lossy());
+            let shown = p.strip_prefix(&live).unwrap_or(p);
+            r.name = format!("[fixture] {}", if shown == p.as_path() { p.file_name().unwrap_or_default().to_string_lossy().into_owned() } else { format!("examples/{}", shown.display()) });
             fx.push(r);
         }
         if !fx.is_empty() { print_size(size, &fx); }

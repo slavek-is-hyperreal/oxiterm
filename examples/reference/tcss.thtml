@@ -8,9 +8,15 @@ text { fg: #e2e8f0; }
 .color-b { fg: #4ade80; height: 1; }
 .color-c { fg: #fbbf24; height: 1; }
 .row     { flex-direction: row; align-items: center; height: 1; margin-bottom: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #0f172a; align-items: center;
@@ -26,14 +32,14 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; width: 24; margin-right: 2;">
             <text class="section">Layout Properties:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
-                <box class="row"><text class="prop">width        </text><text class="muted">N cols</text></box>
-                <box class="row"><text class="prop">height       </text><text class="muted">N rows</text></box>
-                <box class="row"><text class="prop">flex-direction</text><text class="muted">row|column</text></box>
-                <box class="row"><text class="prop">flex         </text><text class="muted">grow ratio</text></box>
-                <box class="row"><text class="prop">align-items  </text><text class="muted">flex-start…</text></box>
-                <box class="row"><text class="prop">justify-content</text><text class="muted">flex-start…</text></box>
-                <box class="row"><text class="prop">padding      </text><text class="muted">N cells all</text></box>
-                <box class="row"><text class="prop">margin       </text><text class="muted">N cells all</text></box>
+                <box class="row"><text class="prop mono">width        </text><text class="muted">N cols</text></box>
+                <box class="row"><text class="prop mono">height       </text><text class="muted">N rows</text></box>
+                <box class="row"><text class="prop mono">flex-direction</text><text class="muted">row|column</text></box>
+                <box class="row"><text class="prop mono">flex         </text><text class="muted">grow ratio</text></box>
+                <box class="row"><text class="prop mono">align-items  </text><text class="muted">flex-start…</text></box>
+                <box class="row"><text class="prop mono">justify-content</text><text class="muted">flex-start…</text></box>
+                <box class="row"><text class="prop mono">padding      </text><text class="muted">N cells all</text></box>
+                <box class="row"><text class="prop mono">margin       </text><text class="muted">N cells all</text></box>
             </box>
         </box>
 
@@ -41,13 +47,13 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; width: 24; margin-right: 2;">
             <text class="section">Borders:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
-                <box class="row"><text class="prop">border-color  </text><text class="muted">color</text></box>
-                <box class="row"><text class="prop">border-style  </text><text class="muted">single|double|rounded</text></box>
+                <box class="row"><text class="prop mono">border-color  </text><text class="muted">color</text></box>
+                <box class="row"><text class="prop mono">border-style  </text><text class="muted">single|double|rounded</text></box>
             </box>
             <text class="section">Text &amp; Wrap:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
-                <box class="row"><text class="prop">flex: 1      </text><text class="muted">grow ratio</text></box>
-                <box class="row"><text class="prop">wrap: word   </text><text class="muted">word wrap</text></box>
+                <box class="row"><text class="prop mono">flex: 1      </text><text class="muted">grow ratio</text></box>
+                <box class="row"><text class="prop mono">wrap: word   </text><text class="muted">word wrap</text></box>
             </box>
         </box>
 
@@ -55,9 +61,9 @@ text { fg: #e2e8f0; }
         <box style="flex-direction: column; flex: 1;">
             <text class="section">Color Formats:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column; margin-bottom: 1;">
-                <box class="row"><text class="color-a">#38bdf8       </text><text class="muted">HEX TrueColor</text></box>
-                <box class="row"><text class="color-b">226           </text><text class="muted">ANSI 256</text></box>
-                <box class="row"><text class="color-c">red / cyan    </text><text class="muted">Named color</text></box>
+                <box class="row"><text class="color-a mono">#38bdf8       </text><text class="muted">HEX TrueColor</text></box>
+                <box class="row"><text class="color-b mono">226           </text><text class="muted">ANSI 256</text></box>
+                <box class="row"><text class="color-c mono">red / cyan    </text><text class="muted">Named color</text></box>
             </box>
             <text class="section">Sizing Rules:</text>
             <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
@@ -78,7 +84,7 @@ text { fg: #e2e8f0; }
 
     <!-- Footer -->
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Navigate</text>
+        <text class="muted mono">[Q] Exit  [Tab] Navigate</text>
     </box>
 
 </box>

@@ -3,9 +3,15 @@ text { fg: #e2e8f0; }
 .muted  { fg: #475569; height: 1; }
 .yellow { fg: #fbbf24; height: 1; }
 .green  { fg: #4ade80; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
         <text style="fg: #fbbf24; height: 1;">🏗 Architecture</text>
         <text class="muted" event-htmx="../index.thtml">&lt; Back</text>
@@ -13,7 +19,7 @@ text { fg: #e2e8f0; }
 
     <box style="flex-direction: column; padding: 1; flex: 1;">
         <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Pipeline:</text>
-        <text class="yellow">THTML → nom → Taffy → CellBuffer</text>
+        <text class="yellow mono">THTML → nom → Taffy → CellBuffer</text>
 
         <text style="fg: #94a3b8; height: 1; margin-top: 1; margin-bottom: 1;">A11y Status:</text>
         <text class="green">Linear render: Active</text>

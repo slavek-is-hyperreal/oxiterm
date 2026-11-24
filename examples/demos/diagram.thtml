@@ -1,9 +1,15 @@
-<screen>
+<screen class="page-sans">
   <style>
     .header { width: 80; height: 3; border-style: single; align-items: center; justify-content: center; }
     .title { width: 40; height: 1; fg: #1DB954; }
     .main { width: 80; height: 16; align-items: center; justify-content: center; }
     .diag { width: 60; height: 14; border-style: single; }
+
+    /* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+    @media (render: gui) {
+      .page-sans { font-family: sans-serif; }
+    }
+    .mono { font-family: monospace; }
   </style>
 
   <box class="header">

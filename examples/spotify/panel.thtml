@@ -8,9 +8,15 @@
 .txt-white    { fg: #FFFFFF; height: 1; }
 .txt-muted    { fg: #B3B3B3; height: 1; }
 .txt-err      { fg: #FF5555; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #121212;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #121212;">
 
     <!-- Hidden State Bindings for URI Resolution & Controls -->
     <box bind-show="never_true">
@@ -76,7 +82,7 @@
                 </box>
                 <box style="flex-direction: column; border-style: single; border-color: #282828; padding: 1; margin-top: 1;">
                     <text class="txt-muted">Direct OAuth Link (zaznacz i skopiuj z terminala):</text>
-                    <text class="txt-green" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
+                    <text class="txt-green mono" bind-state="auth_url" style="margin-top: 1; wrap: word;"></text>
                 </box>
             </box>
 
@@ -184,11 +190,11 @@
     <box style="height: 7; bg: #181818; flex-direction: column; padding-left: 2; padding-right: 2; border-style: single; border-color: #282828;">
         <!-- Row 1: Full-width Animated Progress Bar -->
         <box style="flex-direction: row; align-items: center; height: 1;">
-            <text class="txt-muted" bind-state="progress_cur" style="width: 5;">00:00</text>
+            <text class="txt-muted mono" bind-state="progress_cur" style="width: 5;">00:00</text>
             <box style="flex: 1; height: 1; bg: #282828; margin-left: 1; margin-right: 1;">
                 <box style="height: 1; bg: #1DB954; transition: width 1s linear;" bind-width="progress_cols"></box>
             </box>
-            <text class="txt-muted" bind-state="progress_dur" style="width: 5;">00:00</text>
+            <text class="txt-muted mono" bind-state="progress_dur" style="width: 5;">00:00</text>
         </box>
         <!-- Row 2: Buttons on Left, Title & Artist on Right (height: 3 per §7.2 — contains .btn) -->
         <box style="flex-direction: row; align-items: center; justify-content: space-between; height: 3; margin-top: 1;">

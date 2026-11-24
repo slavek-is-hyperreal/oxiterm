@@ -141,8 +141,46 @@ fn thtml_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Pages with only default-font text: no shaped run, and every client version gets the very same
-/// bytes (v3 clients too: the version stays 2 unless a shaped run exists).
+/// Renders `file` like `default_pages_encode_identically_for_every_client` does.
+fn render_example(file: &Path, examples: &Path, mode: RenderMode) -> Option<DisplayList> {
+    let src = std::fs::read_to_string(file).unwrap();
+    let mut doc = THTMLParser::parse_with_mode(&src, mode).ok()?;
+    let mut engine = LayoutEngine::with_mode(mode);
+    engine.set_viewport_rows(24);
+    let layout = engine.compute(&mut doc, 80, 0, None).ok()?;
+    let mut buf = CellBuffer::new(80, 24);
+    let mut profile = TerminalProfile::default();
+    profile.is_web = true;
+    Some(Renderer::render_frame_mode(&doc, &layout, &mut buf, &profile, file.parent(), Some(examples), 0, mode))
+}
+
+/// A list without shaped runs: every client version gets the very same bytes (v3 clients too: the
+/// version stays 2 unless a shaped run exists).
+fn assert_identical_for_every_client(list: &DisplayList, what: &str) {
+    assert!(runs(list).is_empty(), "{what}");
+    let v2 = wire::encode(list);
+    assert_eq!(v2[0], 2);
+    assert_eq!(wire::encode_for(list, 2), v2);
+    assert_eq!(wire::encode_for(list, 3), v2, "{what}");
+    assert_eq!(wire::decode(&v2).unwrap(), *list);
+}
+
+/// A list with shaped runs: v3 round-trips, v2 clients get the downgraded list.
+fn assert_v3_round_trip(list: &DisplayList, what: &str) {
+    assert!(!runs(list).is_empty(), "{what}");
+    let v3 = wire::encode_for(list, 3);
+    assert_eq!(v3[0], 3, "{what}");
+    assert_eq!(wire::decode(&v3).unwrap(), *list, "{what}");
+    let v2 = wire::encode_for(list, 2);
+    assert_eq!(v2[0], 2);
+    assert_eq!(v2, wire::encode(list));
+    assert_eq!(wire::decode(&v2).unwrap(), wire::downgrade_v2(list), "{what}");
+}
+
+/// The demo pages are proportional in GUI mode (Phase 6 closing step), monospace in TUI. Pages
+/// without shaped runs keep the identity guarantee for every client; pages with shaped runs
+/// round-trip as v3 and downgrade for v2. The monospace path of the very same pages is pinned
+/// by `frozen_mono_example_pages_encode_identically_for_every_client`.
 #[test]
 fn default_pages_encode_identically_for_every_client() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -150,28 +188,73 @@ fn default_pages_encode_identically_for_every_client() {
     let mut files = Vec::new();
     thtml_files(&examples, &mut files);
     files.sort();
+    let (mut mono, mut shaped) = (0, 0);
+    for file in &files {
+        for mode in [RenderMode::Tui, RenderMode::Gui] {
+            let Some(list) = render_example(file, &examples, mode) else { continue };
+            let what = format!("{file:?} {mode:?}");
+            if runs(&list).is_empty() {
+                assert_identical_for_every_client(&list, &what);
+                mono += 1;
+            } else {
+                assert_eq!(mode, RenderMode::Gui, "TUI never shapes: {what}");
+                assert_v3_round_trip(&list, &what);
+                shaped += 1;
+            }
+        }
+    }
+    assert!(mono > 20, "TUI pages and anything left monospace: {mono}");
+    assert!(shaped > 10, "most demo pages are proportional in GUI mode: {shaped}");
+}
+
+/// The frozen pre-switch copy of the demo pages (`oxiterm-server/tests/traces/pages/examples_mono`,
+/// which the GUI traces and the other mono-path tests read): default-font text only, so no
+/// shaped run in either mode and one byte stream for every client.
+#[test]
+fn frozen_mono_example_pages_encode_identically_for_every_client() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let examples = root.join("../oxiterm-server/tests/traces/pages/examples_mono").canonicalize().unwrap();
+    let mut files = Vec::new();
+    thtml_files(&examples, &mut files);
+    files.sort();
     let mut checked = 0;
     for file in &files {
-        let src = std::fs::read_to_string(file).unwrap();
         for mode in [RenderMode::Tui, RenderMode::Gui] {
-            let Ok(mut doc) = THTMLParser::parse_with_mode(&src, mode) else { continue };
-            let mut engine = LayoutEngine::with_mode(mode);
-            engine.set_viewport_rows(24);
-            let Ok(layout) = engine.compute(&mut doc, 80, 0, None) else { continue };
-            let mut buf = CellBuffer::new(80, 24);
-            let mut profile = TerminalProfile::default();
-            profile.is_web = true;
-            let list = Renderer::render_frame_mode(&doc, &layout, &mut buf, &profile, file.parent(), Some(&examples), 0, mode);
-            assert!(runs(&list).is_empty(), "{file:?} {mode:?}");
-            let v2 = wire::encode(&list);
-            assert_eq!(v2[0], 2);
-            assert_eq!(wire::encode_for(&list, 2), v2);
-            assert_eq!(wire::encode_for(&list, 3), v2, "{file:?} {mode:?}");
-            assert_eq!(wire::decode(&v2).unwrap(), list);
+            let Some(list) = render_example(file, &examples, mode) else { continue };
+            assert_identical_for_every_client(&list, &format!("{file:?} {mode:?}"));
             checked += 1;
         }
     }
     assert!(checked > 20, "{checked}");
+}
+
+/// Display-list golden of the demo pages in GUI mode at 80x24 (proportional text, `.mono` blocks).
+/// Bless with `OXI_BLESS_DL=1 cargo test -p oxiterm-renderer --features text-shaping --test
+/// shaped_display_list demo_pages_display_list_golden`. `OXI_DL_GOLDEN_DIR` overrides the directory.
+#[test]
+fn demo_pages_display_list_golden() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let examples = root.join("../examples").canonicalize().unwrap();
+    let dir = std::env::var_os("OXI_DL_GOLDEN_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("tests/golden_dl"));
+    for (page, name) in [("index.thtml", "demo-index@80x24.txt"), ("demos/counter.thtml", "demo-counter@80x24.txt")] {
+        let list = render_example(&examples.join(page), &examples, RenderMode::Gui).unwrap();
+        assert!(runs(&list).len() > 5, "{page}: the page must produce shaped runs (is text-shaping on, does the sans rule match?)");
+        assert!(
+            list.items.iter().any(|i| matches!(i, DisplayItem::Text { shaped: None, glyphs, .. } if !glyphs.is_empty())),
+            "{page}: the .mono blocks must stay on the monospace path"
+        );
+        let got = dump(&list);
+        let file = dir.join(name);
+        if std::env::var_os("OXI_BLESS_DL").is_some() {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&file, &got).unwrap();
+            continue;
+        }
+        let want = std::fs::read_to_string(&file).unwrap_or_else(|_| {
+            panic!("missing {file:?}; bless it with: OXI_BLESS_DL=1 cargo test -p oxiterm-renderer --features text-shaping --test shaped_display_list demo_pages_display_list_golden")
+        });
+        assert!(want == got, "display list of {page} changed; review and re-bless with OXI_BLESS_DL=1");
+    }
 }
 
 #[test]

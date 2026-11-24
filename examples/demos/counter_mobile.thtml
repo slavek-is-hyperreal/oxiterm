@@ -16,9 +16,15 @@
 .btn-green { border-color: #4ade80; fg: #4ade80; }
 .btn-gray  { border-color: #475569; fg: #94a3b8; }
 .muted { fg: #475569; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+<box class="page-sans" style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center;
@@ -55,9 +61,9 @@
         <!-- Compact Description -->
         <box class="panel" style="border-color: #334155; width: 44; height: 12;">
             <text style="fg: #94a3b8; height: 1; margin-bottom: 1;">Actions (event-htmx):</text>
-            <text style="fg: #4ade80;  height: 1;">inc:counter   — increment</text>
-            <text style="fg: #f87171;  height: 1;">dec:counter   — decrement</text>
-            <text style="fg: #94a3b8;  height: 1;">clear:counter — reset to 0</text>
+            <text class="mono" style="fg: #4ade80;  height: 1;">inc:counter   — increment</text>
+            <text class="mono" style="fg: #f87171;  height: 1;">dec:counter   — decrement</text>
+            <text class="mono" style="fg: #94a3b8;  height: 1;">clear:counter — reset to 0</text>
             <box style="height: 1;"></box>
             <text style="fg: #64748b; height: 1;">Interactive state updates</text>
             <text style="fg: #64748b; height: 1;">live in Server StateManager.</text>
@@ -67,7 +73,7 @@
 
     <!-- Footer -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Nav  [Enter] Press</text>
+        <text class="muted mono">[Q] Exit  [Tab] Nav  [Enter] Press</text>
     </box>
 
 </box>

@@ -203,6 +203,12 @@ fn run_seed(seed: u64) {
     let mut pages = Vec::new();
     collect_pages(&root, &mut pages);
     assert!(pages.len() >= 30, "example pages not found");
+    // The frozen monospace copy of a few demo pages (they are proportional in GUI mode now): keeps
+    // the all-mono GUI layout path under random edits. A handful, not the tree: the test is slow.
+    let mono = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/traces/pages/examples_mono");
+    for rel in ["index.thtml", "features.thtml", "demos/counter.thtml", "demos/state.thtml", "demos/navigation.thtml", "demos/showcase.thtml"] {
+        pages.push(mono.join(rel));
+    }
     pages.push(sans_fixture());
     let st = StateManager::new();
     let (mut full, mut inc, mut quiet, mut checked, mut computes, mut shaped) = (0, 0, 0, 0, 0, 0usize);

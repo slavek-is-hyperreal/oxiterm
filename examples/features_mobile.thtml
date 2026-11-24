@@ -8,9 +8,15 @@ text { fg: #e2e8f0; }
     height: 3;
     margin-bottom: 1;
 }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 40; height: 24; bg: #080f1a;">
     <box style="height: 3; bg: #0f172a; align-items: center; justify-content: space-between; padding-left: 1; padding-right: 1; border-style: single; border-color: #1e293b;">
         <text style="fg: #38bdf8; height: 1;">✦ Features</text>
         <text class="muted" event-htmx="index.thtml">&lt; Back</text>

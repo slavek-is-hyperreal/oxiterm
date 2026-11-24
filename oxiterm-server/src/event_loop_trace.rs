@@ -930,6 +930,18 @@ fn pages_dir() -> PathBuf {
     traces_dir().join("pages")
 }
 
+/// Where the demo pages come from for a script. GUI traces use `pages/examples_mono`, a frozen
+/// copy of `examples/` from before the demo pages switched to a proportional font in GUI mode
+/// (Phase 6 closing step): they keep covering the monospace path. The cell (TUI) traces read
+/// the live `examples/`, which also proves the demo pages did not change in TUI.
+fn demo_dir(mode: Mode) -> PathBuf {
+    if mode == Mode::Gui {
+        pages_dir().join("examples_mono")
+    } else {
+        examples_dir()
+    }
+}
+
 /// Compares `actual` with `tests/traces/<name>.txt`, or rewrites it when `OXI_TRACE_BLESS` is set.
 fn check_baseline(name: &str, actual: &str) {
     assert!(TRACES.contains(&name), "trace '{name}' is not listed in TRACES");
@@ -989,7 +1001,7 @@ fn trace_baselines_have_no_stale_files() {
 
 /// counter.thtml: three buttons clicked by mouse, then by Tab focus + Enter.
 fn script_counter(mode: Mode) -> String {
-    let mut run = Run::start(mode, &examples_dir(), "demos/counter.thtml", false);
+    let mut run = Run::start(mode, &demo_dir(mode), "demos/counter.thtml", false);
     run.watch(&["counter"]);
     run.snap("initial frame");
     run.click("inc:counter");
@@ -1152,7 +1164,7 @@ fn trace_input_demo_cell() {
 /// (both must give the same generic notice), and back. `<page>/../x` paths are recorded
 /// as they are (the loop does not normalise `current_page`).
 fn script_navigation(mode: Mode) -> String {
-    let mut run = Run::start(mode, &examples_dir(), "features.thtml", false);
+    let mut run = Run::start(mode, &demo_dir(mode), "features.thtml", false);
     run.watch(&["tab", "counter"]);
     run.snap("initial frame (features)");
     run.click("demos/navigation.thtml");
@@ -1202,7 +1214,7 @@ fn trace_throttle_cell() {
 /// (reserved keys are refused), `open_url` and `set_app_token` in a patch (the token sync
 /// is dispatched again), and the HTTP push-patch path (`POST /sessions/{id}/patch`).
 fn script_appserver(mode: Mode) -> String {
-    let mut run = Run::start(mode, &examples_dir(), "demos/counter.thtml", true);
+    let mut run = Run::start(mode, &demo_dir(mode), "demos/counter.thtml", true);
     run.watch(&["counter", "banner", "_hacked", "_app_token"]);
     run.snap("initial frame");
     run.click("inc:counter");

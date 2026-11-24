@@ -19,9 +19,15 @@
     flex: 1;
 }
 .muted { fg: #64748b; height: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
+<box class="page-sans" style="flex-direction: column; width: 48; height: 30; bg: #0f172a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #1e293b; align-items: center;
@@ -85,27 +91,27 @@
         <!-- Tab: keys -->
         <box class="content-panel" bind-show="tab=keys">
             <text style="fg: #fbbf24; height: 1; margin-bottom: 1;">Keyboard Navigation</text>
-            <text class="muted">Tab / ↓ / → — next focusable node</text>
-            <text class="muted">Shift+Tab / ↑ / ← — previous node</text>
-            <text class="muted">Enter — activate event-htmx</text>
-            <text class="muted">Q — exit session</text>
+            <text class="muted mono">Tab / ↓ / → — next focusable node</text>
+            <text class="muted mono">Shift+Tab / ↑ / ← — previous node</text>
+            <text class="muted mono">Enter — activate event-htmx</text>
+            <text class="muted mono">Q — exit session</text>
         </box>
 
         <!-- Tab: bind -->
         <box class="content-panel" bind-show="tab=bind">
             <text style="fg: #c084fc; height: 1; margin-bottom: 1;">bind-show Syntax</text>
-            <text class="muted">bind-show="key" — true when Bool(true)</text>
-            <text class="muted">bind-show="key=true" — explicit true</text>
-            <text class="muted">bind-show="key=false" — opposite</text>
-            <text class="muted">bind-show="tab=home" — Str equality</text>
-            <text class="muted">bind-show="count=0" — Int equality</text>
+            <text class="muted mono">bind-show="key" — true when Bool(true)</text>
+            <text class="muted mono">bind-show="key=true" — explicit true</text>
+            <text class="muted mono">bind-show="key=false" — opposite</text>
+            <text class="muted mono">bind-show="tab=home" — Str equality</text>
+            <text class="muted mono">bind-show="count=0" — Int equality</text>
         </box>
 
     </box>
 
     <!-- Footer -->
     <box style="height: 1; bg: #1e293b; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Nav  [Enter] Change Tab</text>
+        <text class="muted mono">[Q] Exit  [Tab] Nav  [Enter] Change Tab</text>
     </box>
 
 </box>

@@ -9,9 +9,15 @@ text { fg: #e2e8f0; }
 .pink    { fg: #f472b6; height: 1; }
 .dim     { fg: #334155; height: 1; }
 .section { fg: #94a3b8; height: 1; margin-bottom: 1; }
+
+/* GUI: proportional text for the whole page; .mono keeps column-aligned content monospace. */
+@media (render: gui) {
+    .page-sans { font-family: sans-serif; }
+}
+.mono { font-family: monospace; }
 </style>
 
-<box style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
+<box class="page-sans" style="flex-direction: column; width: 80; height: 24; bg: #080f1a;">
 
     <!-- Header -->
     <box style="height: 3; bg: #0f172a; align-items: center;
@@ -26,7 +32,7 @@ text { fg: #e2e8f0; }
         <!-- Pipeline diagram -->
         <box style="flex-direction: column; width: 28; margin-right: 2; justify-content: center;">
             <text class="section">SSR Pipeline:</text>
-            <box style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
+            <box class="mono" style="border-style: rounded; border-color: #1e293b; padding: 1; flex-direction: column;">
                 <text class="blue">  THTML File</text>
                 <text class="dim">      ↓</text>
                 <text class="purple">  nom Parser → DOM Arena</text>
@@ -70,7 +76,7 @@ text { fg: #e2e8f0; }
 
     <!-- Footer -->
     <box style="height: 1; bg: #0f172a; align-items: center; padding-left: 2;">
-        <text class="muted">[Q] Exit  [Tab] Navigate</text>
+        <text class="muted mono">[Q] Exit  [Tab] Navigate</text>
     </box>
 
 </box>

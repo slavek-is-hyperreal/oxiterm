@@ -216,6 +216,10 @@ Optional preview modes: `preview="minimap"` (default), `preview="fit"`, `preview
 
 ---
 
+### 5.3 Proportional text in GUI mode (`.mono`)
+
+The pages in `examples/` are proportional in the browser GUI and monospace in the terminal. Convention: the root element carries `class="page-sans"`, and the style block ends with `@media (render: gui) { .page-sans { font-family: sans-serif; } }` followed by `.mono { font-family: monospace; }` (the terminal ignores both). Add `mono` to every element that relies on column alignment or a monospace look: code samples and command lines (`ssh ...`), key-hint footers (`[Q] Exit  [Tab] ...`), space-aligned tables, ASCII art, progress bars. Fonts inherit, so `mono` on a container is enough. Only add `class` values and style rules for this, never wrap or reorder elements (TUI output, a11y labels and trace baselines must not move). Never select fonts by tag, a tag rule beats an inherited `.mono`. Inputs stay monospace anyway. Tests that need the monospace GUI path read the frozen copy in `oxiterm-server/tests/traces/pages/examples_mono/`, not `examples/`.
+
 ## 6. Glyph choice in clickable labels
 
 Ambiguous-width characters — `←` `→` `×` and the box-drawing set — count as one column in the layout model but may render two columns wide in a client font. When one sits in a clickable label, the visible text shifts off its hit box and **clicks miss**.

@@ -33,7 +33,11 @@ use oxiterm_renderer::FrameSink;
 use parking_lot::Mutex;
 
 const SANS_PAGE: &str = include_str!("../../oxiterm-server/benches/pages/sans.thtml");
-const COUNTER_PAGE: &str = include_str!("../../examples/demos/counter.thtml");
+/// The counter demo as it was before the demo pages went proportional in GUI mode: the monospace
+/// page of these tests (frozen copy, see `oxiterm-server/tests/traces/pages/examples_mono`).
+const COUNTER_PAGE: &str = include_str!("../../oxiterm-server/tests/traces/pages/examples_mono/demos/counter.thtml");
+/// The live demo page: proportional in GUI mode.
+const DEMO_COUNTER_PAGE: &str = include_str!("../../examples/demos/counter.thtml");
 /// A proportional page with a state binding: the counter text is re-shaped when the action's
 /// reply patches `c`.
 const STATE_PAGE: &str = r#"<style>
@@ -82,6 +86,7 @@ impl Local {
             ("state.thtml", STATE_PAGE),
             ("sans.thtml", SANS_PAGE),
             ("counter.thtml", COUNTER_PAGE),
+            ("demo_counter.thtml", DEMO_COUNTER_PAGE),
         ]));
         let clock = Arc::new(FakeClock::new());
         let session = Arc::new(SessionState::new(0, clock.clone()));
@@ -385,4 +390,25 @@ fn local_and_thin_client_agree_on_the_sans_fixture_and_a_mono_page() {
     assert_eq!(bytes[0], 2);
     assert_eq!(bytes, wire::encode_for(&mono, 2));
     thin_view(&mono, "counter page");
+}
+
+/// The shipped counter demo is proportional in GUI mode (Phase 6 closing step): shaped runs, wire
+/// v3, local and thin-client frames equal, glyph centres hit the node that drew them, and the
+/// proportional buttons activate their actions.
+#[test]
+fn local_and_thin_client_agree_on_the_proportional_counter_demo() {
+    let mut s = Local::new("demo_counter.thtml");
+    s.step(0, None);
+    let first = s.last();
+    assert!(!shaped_items(&first).is_empty(), "the counter demo is proportional in GUI mode");
+    assert_eq!(wire::encode_for(&first, 3)[0], 3);
+    let d = thin_view(&first, "counter demo");
+    let (n, own) = check_glyph_hits(&s.el, &d);
+    assert!(n > 50 && own > 20, "{n} {own}");
+    let (x, y) = button_point(&s.el, &d, "inc:counter");
+    s.click(x, y);
+    assert_eq!(s.actions.lock().last().map(String::as_str), Some("inc:counter"));
+    s.resize(120, 40);
+    let d = thin_view(&s.last(), "counter demo, 120x40");
+    check_glyph_hits(&s.el, &d);
 }
