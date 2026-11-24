@@ -112,20 +112,18 @@ pub enum Axis {
     Vertical,
 }
 
-/// Provisional reference cell width in px (1 cell = 8 px wide).
-///
-/// PROVISIONAL until phase 6 of docs/oxi-ui.md supplies real font metrics.
-const REF_CELL_W_PX: f32 = 8.0;
-/// Provisional reference cell height in px (1 cell = 16 px tall). See [`REF_CELL_W_PX`].
-const REF_CELL_H_PX: f32 = 16.0;
+/// Reference cell width in px: the GUI cell of the bundled mono face (Phase 6, Stage 6.1).
+const REF_CELL_W_PX: f32 = crate::font::CELL_W_PX;
+/// Reference cell height in px (see [`REF_CELL_W_PX`]).
+const REF_CELL_H_PX: f32 = crate::font::CELL_H_PX;
 
 /// Parses a TCSS length into cell units (f32).
 ///
 /// Accepted forms (units are case-insensitive): a bare number (cells), `ch` (one cell
 /// horizontally), `lh` (one cell vertically), and `px` / `dp` (converted with the
-/// provisional 8x16 px reference cell, per `axis`). `ch` and `lh` are converted through
+/// GUI reference cell of the bundled mono face, 9.6 x 20 px, per `axis`). `ch` and `lh` are converted through
 /// the same reference cell, so on the "wrong" axis they scale by the cell aspect ratio
-/// (`2ch` vertically = 1 cell, `2lh` horizontally = 4 cells). Negative values are allowed
+/// (`2ch` vertically = 0.96 cells, `2lh` horizontally = 4.17 cells). Negative values are allowed
 /// here; see [`parse_length_unsigned`]. Returns `None` for anything malformed
 /// (including `nan`, `inf` and exponent forms).
 pub fn parse_length(s: &str, axis: Axis) -> Option<f32> {
@@ -1067,8 +1065,8 @@ mod tests {
     fn test_border_radius_parsing() {
         assert_eq!(radius_of("2"), Some(2.0));
         assert_eq!(radius_of("1.5"), Some(1.5));
-        assert_eq!(radius_of("16px"), Some(2.0));
-        assert_eq!(radius_of("4dp"), Some(0.5));
+        assert!(matches!(radius_of("19.2px"), Some(r) if (r - 2.0).abs() < 1e-5));
+        assert!(matches!(radius_of("4.8dp"), Some(r) if (r - 0.5).abs() < 1e-5));
         assert_eq!(radius_of("-1"), None);
         assert_eq!(radius_of("-4px"), None);
         assert_eq!(radius_of("4px 8px"), None);
@@ -1383,14 +1381,15 @@ mod tests {
         // ch / lh on their own axes are cells; case-insensitive.
         assert_eq!(parse_length("4ch", H), Some(4.0));
         assert_eq!(parse_length("3LH", V), Some(3.0));
-        // Provisional 8x16 px reference cell.
-        assert_eq!(parse_length("16px", H), Some(2.0));
-        assert_eq!(parse_length("16px", V), Some(1.0));
-        assert_eq!(parse_length("24dp", H), Some(3.0));
-        assert_eq!(parse_length("24DP", V), Some(1.5));
+        // 9.6 x 20 px reference cell (the bundled mono face).
+        let near = |got: Option<f32>, want: f32| matches!(got, Some(g) if (g - want).abs() < 1e-5);
+        assert!(near(parse_length("19.2px", H), 2.0));
+        assert!(near(parse_length("20px", V), 1.0));
+        assert!(near(parse_length("28.8dp", H), 3.0));
+        assert!(near(parse_length("30DP", V), 1.5));
         // Cross-axis ch/lh go through the reference cell.
-        assert_eq!(parse_length("2ch", V), Some(1.0));
-        assert_eq!(parse_length("2lh", H), Some(4.0));
+        assert!(near(parse_length("2ch", V), 0.96));
+        assert!(near(parse_length("2lh", H), 40.0 / 9.6));
         // Garbage.
         for bad in ["", "abc", "10em", "nan", "inf", "1e3", "1.2.3", "--1", "px", "10 px", "%"] {
             assert_eq!(parse_length(bad, H), None, "{bad:?} must be rejected");
@@ -1399,13 +1398,14 @@ mod tests {
 
     #[test]
     fn test_length_declarations() {
-        let decls = parse_inline_tcss("width: 10ch; height: 32px; padding: 16px; top: -2; margin-left: 1.5").unwrap();
+        let decls = parse_inline_tcss("width: 10ch; height: 40px; padding: 20px; top: -2; margin-left: 1.5").unwrap();
         let mut style = oxiterm_proto::style::ComputedStyle::default();
         for d in &decls { apply_declaration(&mut style, d); }
         assert_eq!(style.width, Some(10.0));
-        assert_eq!(style.height, Some(2.0));
-        assert_eq!((style.padding.top, style.padding.left), (1.0, 2.0));
-        assert_eq!((style.padding.bottom, style.padding.right), (1.0, 2.0));
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(near(style.height.unwrap(), 2.0));
+        assert!(near(style.padding.top, 1.0) && near(style.padding.left, 20.0 / 9.6), "{:?}", style.padding);
+        assert!(near(style.padding.bottom, 1.0) && near(style.padding.right, 20.0 / 9.6), "{:?}", style.padding);
         assert_eq!(style.top, Some(-2.0));
         assert_eq!(style.margin.left, 1.5);
 

@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn gui_mode_keeps_fractional_geometry_tui_stays_integral() {
-        let src = r#"<screen style="width: 21; height: 3; flex-direction: row;"><box style="flex: 1; border-radius: 4px;"><text>a</text></box><box style="flex: 1;"><text>b</text></box></screen>"#;
+        let src = r#"<screen style="width: 21; height: 3; flex-direction: row;"><box style="flex: 1; border-radius: 4.8px;"><text>a</text></box><box style="flex: 1;"><text>b</text></box></screen>"#;
         let gui = build_doc(src, RenderMode::Gui);
         let xs = fill_rects(&gui);
         assert!(xs.iter().any(|&(x, w)| x == 10.5 && w == 10.5), "gui: {xs:?}");
@@ -404,13 +404,13 @@ mod tests {
         for (x, w) in fill_rects(&tui) {
             assert_eq!((x.fract(), w.fract()), (0.0, 0.0), "tui must stay integral");
         }
-        // border-radius reaches Fill (0.5 cell = 4px / 8px) and is square elsewhere.
+        // border-radius reaches Fill (0.5 cell = 4.8px / 9.6px) and is square elsewhere.
         let radii: Vec<f32> = gui
             .items
             .iter()
             .filter_map(|i| if let DisplayItem::Fill { radius, .. } = i { Some(*radius) } else { None })
             .collect();
-        assert!(radii.contains(&0.5) && radii.contains(&0.0), "{radii:?}");
+        assert!(radii.iter().any(|r| (r - 0.5).abs() < 1e-5) && radii.contains(&0.0), "{radii:?}");
     }
 
     #[test]
