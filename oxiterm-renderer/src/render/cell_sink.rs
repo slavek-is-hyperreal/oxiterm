@@ -48,23 +48,45 @@ impl CellSink {
         }
         let w = fin.width as usize;
         for y in 0..fin.height as usize {
-            let mut x = 0;
-            while x < w {
-                if base.cells[y * w + x] == fin.cells[y * w + x] {
-                    x += 1;
-                    continue;
-                }
-                let start = x;
-                while x < w && base.cells[y * w + x] != fin.cells[y * w + x] {
-                    x += 1;
-                }
-                out.push(DisplayItem::CellGrid {
-                    rect: RectF::new(start as f32, y as f32, (x - start) as f32, 1.0),
-                    cells: fin.cells[y * w + start..y * w + x].iter().map(|c| GridCell::from(*c)).collect(),
-                });
-            }
+            Self::diff_row(&base.cells[y * w..(y + 1) * w], &fin.cells[y * w..(y + 1) * w], y, &mut out);
         }
         out
+    }
+
+    /// Same result as [`Self::diff_grids`], restricted to the rows in `saved`, where each entry
+    /// holds the full original content (`fin.width` cells) of one row of `base`. Every row not
+    /// listed must be equal in `base` and `fin` (then the output is identical to the full
+    /// diff). Rows must be strictly ascending; out-of-range or ill-sized entries are skipped.
+    pub fn diff_grids_rows(saved: &[(u16, Vec<Cell>)], fin: &CellBuffer) -> Vec<DisplayItem> {
+        let mut out = Vec::new();
+        let w = fin.width as usize;
+        for (y, base_row) in saved {
+            let y = *y as usize;
+            if y >= fin.height as usize || base_row.len() != w {
+                continue;
+            }
+            Self::diff_row(base_row, &fin.cells[y * w..(y + 1) * w], y, &mut out);
+        }
+        out
+    }
+
+    fn diff_row(base: &[Cell], fin: &[Cell], y: usize, out: &mut Vec<DisplayItem>) {
+        let w = fin.len();
+        let mut x = 0;
+        while x < w {
+            if base[x] == fin[x] {
+                x += 1;
+                continue;
+            }
+            let start = x;
+            while x < w && base[x] != fin[x] {
+                x += 1;
+            }
+            out.push(DisplayItem::CellGrid {
+                rect: RectF::new(start as f32, y as f32, (x - start) as f32, 1.0),
+                cells: fin[start..x].iter().map(|c| GridCell::from(*c)).collect(),
+            });
+        }
     }
 
     #[inline]
@@ -202,6 +224,20 @@ mod tests {
         CellSink::paint(&DisplayList { items: grids }, &mut out, |_, _, _| {});
         assert_eq!(out.cells, fin.cells);
         assert!(CellSink::diff_grids(&fin, &fin).is_empty());
+    }
+
+    #[test]
+    fn diff_grids_rows_equals_full_diff_when_only_saved_rows_changed() {
+        let mut fin = CellBuffer::new(10, 5);
+        for (x, y, ch) in [(1u16, 0u16, 'a'), (2, 0, 'b'), (5, 0, 'c'), (9, 3, 'z'), (0, 3, 'y')] {
+            fin.set(x, y, Cell { ch, bold: true, ..Default::default() });
+        }
+        let base = CellBuffer::new(10, 5);
+        let w = 10usize;
+        let saved: Vec<(u16, Vec<Cell>)> = [0u16, 3, 4, 40].iter().map(|&y| (y, base.cells[(y as usize % 5) * w..(y as usize % 5 + 1) * w].to_vec())).collect();
+        // row 40 is out of range and skipped; row 4 is unchanged and emits nothing.
+        assert_eq!(CellSink::diff_grids_rows(&saved, &fin), CellSink::diff_grids(&base, &fin));
+        assert!(CellSink::diff_grids_rows(&[], &fin).is_empty());
     }
 
     #[test]

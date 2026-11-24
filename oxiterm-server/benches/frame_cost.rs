@@ -4,6 +4,8 @@
 //! Stage 5.1b: layout keeps its Taffy tree between frames (a quiet frame reconciles and hits
 //! Taffy's cache, a click frame reconciles and re-solves). `FRAME_COST_FULL=1` turns that off
 //! (rebuild on every call, the pre-5.1b behaviour) for before/after numbers with one binary.
+//! Stage 5.1c: GUI frames skip the snapshot + `diff_grids` when no overlay painted and reuse the
+//! ARIA JSON when its inputs are unchanged (`AriaCache`); `FRAME_COST_EAGER=1` restores the old work.
 //! Env: `FRAME_COST_FILTER=counter` (path substring), `FRAME_COST_MS=500` (min ms per page/size),
 //!      `FRAME_COST_MIN_ITERS=300`, `FRAME_COST_VIDEO=1` (also run pages with `<video`).
 //!
@@ -34,6 +36,8 @@ use oxiterm_server::loader::load_thtml_file_mode;
 const SIZES: [(u16, u16); 3] = [(80, 24), (120, 40), (200, 60)];
 
 fn full_rebuild() -> bool { std::env::var("FRAME_COST_FULL").is_ok() }
+/// Stage 5.1c off: eager snapshot clone + `diff_grids` and an uncached `build_aria_json` on every GUI frame.
+fn eager_gui() -> bool { std::env::var("FRAME_COST_EAGER").is_ok() }
 
 fn us(d: u128) -> f64 { d as f64 / 1000.0 }
 
@@ -70,7 +74,7 @@ struct PageResult {
     parse_tui: f64, parse_gui: f64,
     t_layout: Series, t_render: Series, t_diff_same: Series, t_diff_full: Series,
     t_tot_same: Series, t_tot_full: Series,
-    g_layout: Series, g_render: Series, g_snap: Series, g_enc: Series, g_zlib: Series, g_aria: Series,
+    g_layout: Series, g_render: Series, g_snap: Series, g_enc: Series, g_zlib: Series, g_aria: Series, g_snap_row: Series,
     g_tot_unch: Series, g_tot_chg: Series,
     // layout phase medians (us): reset, build, solve, finish for TUI and GUI
     t_ph: [f64; 4], g_ph: [f64; 4],
@@ -132,12 +136,14 @@ fn bench_page(path: &Path, (cols, rows): (u16, u16), budget: Duration, min_iters
     let mut gback = CellBuffer::new(cols, rows);
     let mut tfront: Option<CellBuffer> = None;
     let mut last_list: Option<Vec<u8>> = None;
+    let mut aria_cache = oxiterm_a11y::AriaCache::new();
+    let eager = eager_gui();
 
     let mut r = PageResult {
         name: String::new(), media: false, parse_tui, parse_gui,
         t_layout: Series::new(), t_render: Series::new(), t_diff_same: Series::new(), t_diff_full: Series::new(),
         t_tot_same: Series::new(), t_tot_full: Series::new(),
-        g_layout: Series::new(), g_render: Series::new(), g_snap: Series::new(), g_enc: Series::new(), g_zlib: Series::new(), g_aria: Series::new(),
+        g_layout: Series::new(), g_render: Series::new(), g_snap: Series::new(), g_enc: Series::new(), g_zlib: Series::new(), g_aria: Series::new(), g_snap_row: Series::new(),
         g_tot_unch: Series::new(), g_tot_chg: Series::new(),
         t_ph: [0.0; 4], g_ph: [0.0; 4], ansi_full: 0, wire_len: 0, zlib_len: 0, iters: 0,
     };
@@ -175,27 +181,41 @@ fn bench_page(path: &Path, (cols, rows): (u16, u16), budget: Duration, min_iters
         let g_lay: Duration = gph.iter().sum();
         gback.clear();
         let (list, g_ren) = timed(|| Renderer::render_frame_mode(&gdoc, &glayout, &mut gback, &profile, base_dir, None, 0, RenderMode::Gui));
-        let ((snapshot, extra), g_snap) = timed(|| {
-            let s = CellBuffer { cells: gback.cells.clone(), width: gback.width, height: gback.height, graphics: Vec::new() };
-            let e = CellSink::diff_grids(&s, &gback);
-            (s, e)
+        // 5.1c: a frame with no overlay needs neither the snapshot nor the diff (the bench frames
+        // carry no overlays). EAGER restores the pre-5.1c work.
+        let (_, g_snap) = timed(|| {
+            if eager {
+                let s = CellBuffer { cells: gback.cells.clone(), width: gback.width, height: gback.height, graphics: Vec::new() };
+                let e = CellSink::diff_grids(&s, &gback);
+                black_box((&s, &e));
+            }
         });
-        black_box((&snapshot, &extra));
+        // A frame with the focus ring painted: save one row, then diff that row only.
+        let (_, g_snap_row) = timed(|| {
+            let w = gback.width as usize;
+            let y = (gback.height / 2) as usize;
+            let saved = vec![(y as u16, gback.cells[y * w..(y + 1) * w].to_vec())];
+            black_box(CellSink::diff_grids_rows(&saved, &gback));
+        });
         let (encoded, g_enc) = timed(|| { let e = wire::encode(&list); let same = last_list.as_deref() == Some(e.as_slice()); black_box(same); e });
         let (zl, g_zlib) = timed(|| {
             let mut enc = flate2::write::ZlibEncoder::new(vec![0x36u8], flate2::Compression::fast());
             std::io::Write::write_all(&mut enc, &encoded).unwrap();
             enc.finish().unwrap()
         });
-        let (json, g_aria) = timed(|| oxiterm_a11y::build_aria_json(&gdoc, &glayout, None, (0, 0), (0, 0)));
-        black_box(&json);
+        let (json_len, g_aria) = timed(|| if eager {
+            oxiterm_a11y::build_aria_json(&gdoc, &glayout, None, (0, 0), (0, 0)).len()
+        } else {
+            aria_cache.json(&gdoc, &glayout, None, (0, 0), (0, 0)).len()
+        });
+        black_box(json_len);
         let (wire_len, zlib_len) = (encoded.len(), zl.len());
         last_list = Some(encoded);
 
         if !warm {
             r.t_layout.push(t_lay); r.t_render.push(t_ren); r.t_diff_same.push(t_same); r.t_diff_full.push(t_full);
             r.t_tot_same.push(t_lay + t_ren + t_same); r.t_tot_full.push(t_lay + t_ren + t_full);
-            r.g_layout.push(g_lay); r.g_render.push(g_ren); r.g_snap.push(g_snap); r.g_enc.push(g_enc); r.g_zlib.push(g_zlib); r.g_aria.push(g_aria);
+            r.g_layout.push(g_lay); r.g_render.push(g_ren); r.g_snap.push(g_snap); r.g_enc.push(g_enc); r.g_zlib.push(g_zlib); r.g_aria.push(g_aria); r.g_snap_row.push(g_snap_row);
             let base = g_lay + g_ren + g_snap + g_enc + g_aria;
             r.g_tot_unch.push(base); r.g_tot_chg.push(base + g_zlib);
             stg.t_reset.push(ph[0].as_nanos()); stg.t_build.push(ph[1].as_nanos()); stg.t_solve.push(ph[2].as_nanos()); stg.t_finish.push(ph[3].as_nanos());
@@ -259,7 +279,8 @@ fn print_aggregate(size: (u16, u16), rs: &[PageResult]) {
         ("GUI snapshot clone + diff_grids", m(&|r| r.g_snap.med()), None),
         ("GUI wire::encode (+cmp)", m(&|r| r.g_enc.med()), None),
         ("GUI zlib fast", m(&|r| r.g_zlib.med()), None),
-        ("GUI build_aria_json", m(&|r| r.g_aria.med()), None),
+        ("GUI build_aria_json (cached key+hit)", m(&|r| r.g_aria.med()), None),
+        ("  (info) one overlay row: save+diff", m(&|r| r.g_snap_row.med()), None),
         ("GUI total, unchanged (no zlib)", m(&|r| r.g_tot_unch.med()), Some(m(&|r| r.g_tot_unch.p95()))),
         ("GUI total, changed (with zlib)", m(&|r| r.g_tot_chg.med()), Some(m(&|r| r.g_tot_chg.p95()))),
         ("parse TUI (once per page)", m(&|r| r.parse_tui), None),
@@ -300,6 +321,7 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
         if full_rebuild() { eng.set_incremental(false); }
         let mut back = CellBuffer::new(cols, rows);
         let mut prev = CellBuffer::new(cols, rows);
+        let mut aria_cache = oxiterm_a11y::AriaCache::new();
         let _ = layout_probed(&mut eng, &mut doc, cols, &st);
 
         let mut full = Series::new(); let mut lay = Series::new(); let mut rest = Series::new();
@@ -327,13 +349,19 @@ fn counter_scenario(root: &Path, size: (u16, u16), n: usize) {
                     }
                     RenderMode::Gui => {
                         let list = Renderer::render_frame_mode(&doc, &layout, &mut back, &profile, base_dir, None, 0, RenderMode::Gui);
-                        let snap = CellBuffer { cells: back.cells.clone(), width: back.width, height: back.height, graphics: Vec::new() };
-                        black_box(CellSink::diff_grids(&snap, &back));
+                        if eager_gui() {
+                            let snap = CellBuffer { cells: back.cells.clone(), width: back.width, height: back.height, graphics: Vec::new() };
+                            black_box(CellSink::diff_grids(&snap, &back));
+                        }
                         let enc = wire::encode(&list);
                         let mut z = flate2::write::ZlibEncoder::new(vec![0x36u8], flate2::Compression::fast());
                         std::io::Write::write_all(&mut z, &enc).unwrap();
                         black_box(z.finish().unwrap());
-                        black_box(oxiterm_a11y::build_aria_json(&doc, &layout, None, (0, 0), (0, 0)));
+                        if eager_gui() {
+                            black_box(oxiterm_a11y::build_aria_json(&doc, &layout, None, (0, 0), (0, 0)));
+                        } else {
+                            black_box(aria_cache.json(&doc, &layout, None, (0, 0), (0, 0)).len());
+                        }
                     }
                 }
             });

@@ -280,6 +280,121 @@ pub fn build_aria_json(
     serde_json::to_string(&AriaDoc { v: ARIA_MIRROR_VERSION, focus, nodes: &nodes }).unwrap_or_default()
 }
 
+/// Caches the ARIA-mirror JSON between frames (OxiUI stage 5.1c).
+///
+/// [`build_aria_json`] is a pure function of the document nodes it reaches, their layout
+/// rects, the focus and the two origins. `AriaCache` encodes exactly those inputs into a byte
+/// key (a walk that mirrors `build_a11y_tree`/`aria_node`, no JSON, no allocation after
+/// warm-up) and compares it with the previous frame's key; on equality the cached JSON is
+/// returned unchanged. The comparison is exact (no hash), so a hit can never be a collision.
+///
+/// If `aria_node` or `build_a11y_node` ever start reading another field, add it to
+/// [`AriaCache::encode_key`]; debug builds re-build on every hit and assert equality.
+#[derive(Default)]
+pub struct AriaCache {
+    key: Vec<u8>,
+    scratch: Vec<u8>,
+    json: Option<String>,
+    builds: u64,
+}
+
+impl AriaCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Same result as [`build_aria_json`] with the same arguments.
+    pub fn json(
+        &mut self,
+        doc: &THTMLDocument,
+        layout: &oxiterm_renderer::LayoutResult,
+        focus: Option<NodeId>,
+        start: (i32, i32),
+        fixed_origin: (u16, u16),
+    ) -> &str {
+        Self::encode_key(&mut self.scratch, doc, layout, focus, start, fixed_origin);
+        if self.json.is_some() && self.scratch == self.key {
+            #[cfg(debug_assertions)]
+            assert_eq!(
+                self.json.as_deref(),
+                Some(build_aria_json(doc, layout, focus, start, fixed_origin).as_str()),
+                "ARIA cache hit differs from a fresh build: the key misses an input"
+            );
+        } else {
+            self.json = Some(build_aria_json(doc, layout, focus, start, fixed_origin));
+            self.builds += 1;
+            std::mem::swap(&mut self.key, &mut self.scratch);
+        }
+        self.json.as_deref().unwrap_or_default()
+    }
+
+    /// Number of full builds so far (cache misses); for tests and benches.
+    pub fn builds(&self) -> u64 {
+        self.builds
+    }
+
+    fn put_str(out: &mut Vec<u8>, s: &Option<String>) {
+        match s {
+            None => out.push(0),
+            Some(s) => {
+                out.push(1);
+                out.extend_from_slice(&(s.len() as u32).to_le_bytes());
+                out.extend_from_slice(s.as_bytes());
+            }
+        }
+    }
+
+    fn encode_key(
+        out: &mut Vec<u8>,
+        doc: &THTMLDocument,
+        layout: &oxiterm_renderer::LayoutResult,
+        focus: Option<NodeId>,
+        start: (i32, i32),
+        fixed_origin: (u16, u16),
+    ) {
+        out.clear();
+        out.extend_from_slice(&focus.map_or(u32::MAX, |f| f.0 as u32).to_le_bytes());
+        out.push(focus.is_some() as u8);
+        out.extend_from_slice(&start.0.to_le_bytes());
+        out.extend_from_slice(&start.1.to_le_bytes());
+        out.extend_from_slice(&fixed_origin.0.to_le_bytes());
+        out.extend_from_slice(&fixed_origin.1.to_le_bytes());
+        // Same traversal as `build_a11y_tree`: from the root through `children`, in order,
+        // skipping ids the arena cannot resolve. The tree shape is encoded by the child
+        // count of each node.
+        let mut stack = vec![doc.root];
+        while let Some(id) = stack.pop() {
+            let Some(node) = doc.arena.get(id) else { continue };
+            out.extend_from_slice(&(id.0 as u64).to_le_bytes());
+            out.push(node.tag as u8);
+            Self::put_str(out, &node.text);
+            Self::put_str(out, &node.attrs.placeholder);
+            Self::put_str(out, &node.attrs.name);
+            Self::put_str(out, &node.attrs.alt);
+            Self::put_str(out, &node.attrs.input_type);
+            out.push(node.attrs.event_htmx.is_some() as u8);
+            out.push((node.style.position == oxiterm_proto::style::Position::Fixed) as u8);
+            match layout.nodes.get(&id) {
+                None => out.push(0),
+                Some(r) => {
+                    out.push(1);
+                    out.extend_from_slice(&r.x.to_bits().to_le_bytes());
+                    out.extend_from_slice(&r.y.to_bits().to_le_bytes());
+                    out.extend_from_slice(&r.width.to_bits().to_le_bytes());
+                    out.extend_from_slice(&r.height.to_bits().to_le_bytes());
+                }
+            }
+            // Only children the arena resolves take part in the walk (and in the tree shape), so
+            // count those; a dangling id must not shift a sibling's place in the encoding.
+            let resolvable = node.children.iter().filter(|c| doc.arena.get(**c).is_some()).count();
+            out.extend_from_slice(&(resolvable as u32).to_le_bytes());
+            for &c in node.children.iter().rev() {
+                stack.push(c);
+            }
+        }
+    }
+}
+
 /// Local D-Bus tunnel bridge to propagate screen reader focus updates.
 pub struct DBusBridge {
     /// Connection status of the D-Bus socket.
@@ -633,6 +748,85 @@ mod tests {
         assert_eq!(v["v"], 1);
         // The password text must not appear anywhere for the password node.
         assert_eq!(json.matches("hunter2").count(), 1);
+    }
+
+    /// `AriaCache` returns exactly what `build_aria_json` returns after every kind of input
+    /// change, and skips the build when nothing changed.
+    #[test]
+    fn aria_cache_matches_fresh_build_for_every_input_class() {
+        let (mut doc, mut layout) = aria_fixture(ARIA_HTML);
+        let mut cache = AriaCache::new();
+        let mut focus: Option<NodeId> = None;
+        let mut start = (0, 0);
+        let mut fixed = (0u16, 0u16);
+        macro_rules! check {
+            ($expect_build:expr) => {{
+                let before = cache.builds();
+                let got = cache.json(&doc, &layout, focus, start, fixed).to_string();
+                assert_eq!(got, build_aria_json(&doc, &layout, focus, start, fixed));
+                assert_eq!(cache.builds() - before, $expect_build as u64);
+            }};
+        }
+        check!(true);
+        check!(false);
+        check!(false);
+        let ids = |tag: NodeTag, doc: &THTMLDocument| {
+            doc.arena.iter().filter(|(_, n)| n.tag == tag).map(|(id, _)| id).collect::<Vec<_>>()
+        };
+        let text = ids(NodeTag::Text, &doc)[0];
+        let input = ids(NodeTag::Input, &doc)[0];
+        let img = ids(NodeTag::Img, &doc)[0];
+        let button = ids(NodeTag::Button, &doc)[0];
+        // text
+        doc.arena.get_mut(text).unwrap().text = Some("Changed".into());
+        check!(true);
+        check!(false);
+        // placeholder, name, alt, input type, event-htmx, position
+        doc.arena.get_mut(input).unwrap().attrs.placeholder = Some("Other".into());
+        check!(true);
+        doc.arena.get_mut(input).unwrap().attrs.name = None;
+        check!(true);
+        doc.arena.get_mut(img).unwrap().attrs.alt = Some("Other alt".into());
+        check!(true);
+        doc.arena.get_mut(input).unwrap().attrs.input_type = Some("password".into());
+        check!(true);
+        doc.arena.get_mut(button).unwrap().attrs.event_htmx = Some("go".into());
+        check!(true);
+        doc.arena.get_mut(button).unwrap().style.position = oxiterm_proto::style::Position::Fixed;
+        check!(true);
+        // focus and origins
+        focus = Some(button);
+        check!(true);
+        focus = Some(NodeId(9999));
+        check!(true);
+        start = (1, -1);
+        check!(true);
+        fixed = (2, 3);
+        check!(true);
+        // layout rect changes and a node losing its rect (hidden)
+        layout.nodes.get_mut(&img).unwrap().x += 1.0;
+        check!(true);
+        layout.nodes.remove(&text);
+        check!(true);
+        // structure: drop the input from its parent
+        let parent = doc.arena.iter().find(|(_, n)| n.children.contains(&input)).map(|(id, _)| id).unwrap();
+        doc.arena.get_mut(parent).unwrap().children.retain(|c| *c != input);
+        check!(true);
+        check!(false);
+        // a dangling child id (arena id reuse / detach) is skipped by the mirror, so it neither
+        // changes the output nor the key; it must also not shift a sibling's place in the
+        // encoding: re-parent a visible node under a dangling-bearing sibling.
+        doc.arena.get_mut(parent).unwrap().children.push(NodeId(60_000));
+        check!(false);
+        let kids = doc.arena.get(parent).unwrap().children.clone();
+        if kids.len() >= 3 {
+            let (a, b) = (kids[0], kids[1]);
+            // A: [a, b, dangling] -> A: [a, dangling], a: [.., b]
+            doc.arena.get_mut(parent).unwrap().children = vec![a, NodeId(60_000)];
+            doc.arena.get_mut(a).unwrap().children.push(b);
+            check!(true);
+        }
+        check!(false);
     }
 
     #[test]

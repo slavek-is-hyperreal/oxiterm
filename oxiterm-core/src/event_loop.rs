@@ -63,6 +63,8 @@ pub struct EventLoop {
     pub page_source: Arc<dyn crate::page_source::PageSource>,
     /// dbus a11y coordination bridge.
     pub dbus_bridge: Option<oxiterm_a11y::DBusBridge>,
+    /// Last ARIA-mirror JSON and the exact inputs it was built from (stage 5.1c).
+    aria_cache: oxiterm_a11y::AriaCache,
     /// Correlation table maps child nodes to parent IDs.
     pub parent_map: HashMap<NodeId, NodeId>,
     /// Active interactive nodes array.
@@ -310,6 +312,7 @@ impl EventLoop {
             base_source_path: None,
             page_source,
             dbus_bridge: None,
+            aria_cache: oxiterm_a11y::AriaCache::new(),
             parent_map: HashMap::new(),
             focusable_nodes: Vec::new(),
             focused_node: None,
@@ -1617,21 +1620,28 @@ impl EventLoop {
         let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
         let app_base_dir = self.session.app_base_dir.read().clone();
         self.buffer.back.clear();
-        // Display-list clients get the painted list plus a snapshot of the buffer
-        // right after it, so the overlays below can be appended as CellGrids.
+        // Display-list clients get the painted list; the overlays below are appended to it as
+        // CellGrids. Only the rows an overlay is about to write are saved first (`saved_rows`,
+        // taken from the buffer exactly as the list left it), and only those rows are diffed
+        // afterwards: every other row is untouched, so the result equals a full snapshot diff.
         let gui_frame = if self.session.display_list_client.load(std::sync::atomic::Ordering::SeqCst) {
             let list = Renderer::render_frame_mode(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset, self.layout_engine.mode());
-            let snapshot = oxiterm_renderer::CellBuffer {
-                cells: self.buffer.back.cells.clone(),
-                width: self.buffer.back.width,
-                height: self.buffer.back.height,
-                graphics: Vec::new(),
-            };
-            Some((list, snapshot))
+            Some(list)
         } else {
             Renderer::render_node(&self.doc, &layout, &mut self.buffer.back, &profile, base_dir, app_base_dir.as_deref(), self.scroll_offset);
             None
         };
+
+        let is_gui = gui_frame.is_some();
+        let mut saved_rows: Vec<(u16, Vec<oxiterm_renderer::render::buffer::Cell>)> = Vec::new();
+        // Debug builds also keep the eager full snapshot and assert both diffs agree.
+        #[cfg(debug_assertions)]
+        let full_snapshot = is_gui.then(|| oxiterm_renderer::CellBuffer {
+            cells: self.buffer.back.cells.clone(),
+            width: self.buffer.back.width,
+            height: self.buffer.back.height,
+            graphics: Vec::new(),
+        });
 
         // Focus ring: draw markers on left/right edge of focused node
         if let Some(focused_id) = self.focused_node {
@@ -1642,6 +1652,9 @@ impl EventLoop {
                     let mid_row = mid_row_offset as u16;
                     let focus_fg = oxiterm_proto::style::AnsiColor::Color256(51); // bright cyan
                     let focus_bg = oxiterm_proto::style::AnsiColor::Reset;
+                    if is_gui {
+                        Self::save_row(&mut saved_rows, &self.buffer.back, mid_row);
+                    }
                     // Markers MUST be unambiguous width-1 glyphs: a wide glyph
                     // (e.g. ▶/◀, which are East-Asian Ambiguous) drawn in the
                     // cell before the label pushes the visible text right off
@@ -1692,6 +1705,9 @@ impl EventLoop {
             }
 
             if cursor_y < viewport_h {
+                if is_gui {
+                    Self::save_row(&mut saved_rows, &self.buffer.back, cursor_y);
+                }
                 for ch in echo.buffer.chars() {
                     if cursor_x < self.buffer.back.width {
                         self.buffer.back.set(cursor_x, cursor_y, oxiterm_renderer::render::buffer::Cell {
@@ -1708,6 +1724,9 @@ impl EventLoop {
         // Renders a visual scroll progress indicator at the bottom of the viewport if content exceeds terminal rows.
         if self.total_height > dims.rows {
             let last_row = dims.rows.saturating_sub(1);
+            if is_gui {
+                Self::save_row(&mut saved_rows, &self.buffer.back, last_row);
+            }
             let mut status_parts = Vec::new();
                         
             let max_scroll = self.total_height.saturating_sub(viewport_h);
@@ -1767,13 +1786,22 @@ impl EventLoop {
         }
                     
         let _ = self.frame_sink.update_document(&self.doc);
-        let sent = if let Some((mut list, snapshot)) = gui_frame {
-            list.items.extend(oxiterm_renderer::render::cell_sink::CellSink::diff_grids(&snapshot, &self.buffer.back));
+        let sent = if let Some(mut list) = gui_frame {
+            saved_rows.sort_by_key(|(y, _)| *y);
+            let extra = oxiterm_renderer::render::cell_sink::CellSink::diff_grids_rows(&saved_rows, &self.buffer.back);
+            #[cfg(debug_assertions)]
+            if let Some(ref snap) = full_snapshot {
+                assert!(
+                    extra == oxiterm_renderer::render::cell_sink::CellSink::diff_grids(snap, &self.buffer.back),
+                    "row-restricted overlay diff differs from the full snapshot diff"
+                );
+            }
+            list.items.extend(extra);
             let r = self.frame_sink.send_display_list(&list);
             // ARIA mirror (0x37): same origin the display-list builder used
             // (centering offset, minus scroll for non-fixed nodes).
             let (ax, ay) = layout.get_centering_offset(&self.doc, dims.cols, dims.rows);
-            let json = oxiterm_a11y::build_aria_json(
+            let json = self.aria_cache.json(
                 &self.doc,
                 &layout,
                 self.focused_node,
@@ -1790,6 +1818,16 @@ impl EventLoop {
             self.frame_limiter.record_frame(self.now);
         }
     }
+    }
+
+    /// Remembers the current content of row `y` (once) before an overlay writes into it.
+    fn save_row(saved: &mut Vec<(u16, Vec<oxiterm_renderer::render::buffer::Cell>)>, back: &oxiterm_renderer::CellBuffer, y: u16) {
+        let w = back.width as usize;
+        let y_us = y as usize;
+        if y >= back.height || saved.iter().any(|(r, _)| *r == y) || back.cells.len() < (y_us + 1) * w {
+            return;
+        }
+        saved.push((y, back.cells[y_us * w..(y_us + 1) * w].to_vec()));
     }
 
     fn has_active_animations(&self) -> bool {
@@ -2740,6 +2778,89 @@ mod tests {
         assert!(s.incremental >= 20, "{s:?}");
         assert!(s.quiet >= 10, "{s:?}");
         assert_eq!(s.full, 1, "only the first frame builds from scratch: {s:?}");
+    }
+
+    #[test]
+    fn gui_overlays_are_appended_as_row_diffs() {
+        // A GUI frame with all three overlays (focus ring on an auto-focused button, predictive
+        // echo, scroll indicator on a page taller than the viewport). Debug builds assert in
+        // render_frame that the row-restricted overlay diff equals the full snapshot diff; here
+        // the captured list proves each overlay produced trailing CellGrids, a frame without
+        // overlays produces none, and a repeated frame gives the same list and ARIA JSON.
+        use oxiterm_proto::dom::{Node, NodeTag};
+        use oxiterm_renderer::render::display_list::{DisplayItem, DisplayList};
+        struct Capture(Arc<parking_lot::Mutex<(Vec<DisplayList>, Vec<Vec<u8>>)>>);
+        impl FrameSink for Capture {
+            fn send_frame(&mut self, _f: &CellBuffer, _b: &CellBuffer) -> anyhow::Result<bool> { Ok(false) }
+            fn send_display_list(&mut self, l: &DisplayList) -> anyhow::Result<bool> {
+                self.0.lock().0.push(l.clone());
+                Ok(false)
+            }
+            fn send_a11y(&mut self, j: &[u8]) -> anyhow::Result<bool> {
+                self.0.lock().1.push(j.to_vec());
+                Ok(false)
+            }
+        }
+        let trailing_grids = |l: &DisplayList| l.items.iter().rev().take_while(|i| matches!(i, DisplayItem::CellGrid { .. })).count();
+
+        let session = test_session();
+        *session.dims.write() = PtyDimensions { cols: 40, rows: 8 };
+        session.display_list_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut kids = Vec::new();
+        let mut btn = Node::new(NodeTag::Button);
+        btn.text = Some("Go".to_string());
+        btn.attrs.event_htmx = Some("go".to_string());
+        btn.style.width = Some(10.0);
+        let btn_id = arena.alloc(btn);
+        let mut first = Node::new(NodeTag::Text);
+        first.text = Some("first".to_string());
+        kids.push(arena.alloc(first));
+        kids.push(btn_id);
+        let mut tall = Node::new(NodeTag::Text);
+        tall.text = Some((0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
+        kids.push(arena.alloc(tall));
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = kids;
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let cap = Arc::new(parking_lot::Mutex::new((Vec::new(), Vec::new())));
+        let mut el = new_el(&session, Arc::new(crate::events::EventBus::new()), doc);
+        el.frame_sink = Box::new(Capture(cap.clone()));
+        {
+            let mut e = session.predictive_echo.write();
+            e.buffer = "abc".to_string();
+            e.active_node = Some(btn_id);
+        }
+        el.render_frame();
+        el.render_frame();
+        assert_eq!(el.focused_node, Some(btn_id));
+        {
+            let c = cap.lock();
+            assert_eq!(c.0.len(), 2);
+            assert!(trailing_grids(&c.0[0]) >= 2, "focus/echo/scroll overlays must be appended: {}", trailing_grids(&c.0[0]));
+            assert_eq!(c.0[0], c.0[1]);
+            assert_eq!(c.1[0], c.1[1]);
+        }
+        // No overlay at all: no focus (nothing interactive), no echo, page fits.
+        let session = test_session();
+        *session.dims.write() = PtyDimensions { cols: 40, rows: 8 };
+        session.display_list_client.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut arena = oxiterm_renderer::arena::NodeArena::new();
+        let mut t = Node::new(NodeTag::Text);
+        t.text = Some("plain".to_string());
+        let tid = arena.alloc(t);
+        let mut root = Node::new(NodeTag::Screen);
+        root.children = vec![tid];
+        let root_id = arena.alloc(root);
+        let doc = THTMLDocument { arena, root: root_id, dirty_nodes: Vec::new() };
+        let cap2 = Arc::new(parking_lot::Mutex::new((Vec::new(), Vec::new())));
+        let mut el = new_el(&session, Arc::new(crate::events::EventBus::new()), doc);
+        el.frame_sink = Box::new(Capture(cap2.clone()));
+        el.render_frame();
+        let c = cap2.lock();
+        assert_eq!(c.0.len(), 1);
+        assert_eq!(trailing_grids(&c.0[0]), 0, "a frame without overlays appends nothing");
     }
 
     #[test]
