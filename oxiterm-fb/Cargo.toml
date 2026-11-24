@@ -1,0 +1,8 @@
+[package]
+name = "oxiterm-fb"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "OxiDE software sink: rasterizes an OxiUI DisplayList into an RGBA framebuffer (Phase 7.2)."
+
+[dependencies]

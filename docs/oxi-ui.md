@@ -590,6 +590,15 @@ Expected result of 1, 2 and 4: a quiet GUI frame goes from about 153 to about 45
 - WASM local mode: `oxiterm-core` + the web painter in the browser, offline-capable (alongside the phase 3 thin client).
 - **OxiDE**: a software sink (the GPU sink only after Phase 5) writing to DRM/KMS dumb buffers or `/dev/fb0` (see [retro-desktop-environment.md](retro-desktop-environment.md) and [embedded-iot-platform.md](embedded-iot-platform.md)). OxiDE becomes an application/shell on top of OxiUI rather than a separate fork, running in local mode.
 
+#### Phase 7 stages (planned 2026-11-24; run in parallel with Phase 8, see "Parallel schedule")
+| Stage | Scope | Gate |
+|---|---|---|
+| 7.1 | **WASM local mode.** `oxiterm-core` runs in the browser inside the web client (`?local=1`): pages and assets fetched into a `MemPageSource`, the step API driven by timers from `next_deadline`, the same painter as thin-client GUI, actions to the App Server over `fetch` (built-in state actions run locally). Fonts: the client loads them once (no second download of the bytes embedded in the core). | Same page and input give the same display list in local wasm and thin client (test); counter demo keeps working with the server stopped (browser check); wasm bundle size recorded. |
+| 7.2 | **OxiDE software sink** (`oxiterm-fb`): rasterize a DisplayList into RGBA (fills, rounded borders, paths, glyphs from the bundled fonts), output to PNG; `/dev/fb0` and DRM dumb-buffer backends behind a flag, never run by agents (they are the owner's real display). | PNG goldens of the sans fixture and the counter demo, deterministic; device output run only manually with the owner's OK. |
+| 7.3 | **Android shell** (`android/`, Kotlin, WebView): thin-client URL first; bundled local mode after 7.1. | `assembleDebug` builds; unit tests; no device run (none attached). |
+| 7.4 | **Touch, IME and viewport** in the web client (after 7.1, same files): touch → `0x03` pointer, virtual keyboard input, `visualViewport` resize. | Coordinate tests; mobile viewport checked in the browser pane. |
+| 7.5 | **Close Phase 7:** local-vs-thin equality in CI, docs. | CI green; BAD ACTOR pass. |
+
 ### Phase 8: OxiScript, a general-purpose typed language with OxiUI as its first host (planned)
 Research basis: [research/oxiscript-language.md](research/oxiscript-language.md) (2026-11-24; claims tagged verified / search-only / estimate / opinion). This section records the owner's goals, the principles that follow from them, and the decisions still open. Nothing here is implemented.
 
@@ -615,16 +624,35 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 10. **Tooling is part of the language:** one query-based front end in Rust (also built for wasm32, because the compiler ships inside the core) shared by the compiler, LSP and formatter; LSP and formatter at launch; good error messages; a `package.json`-like manifest without promising that npm packages run. The device tooling (flash, live reload over USB then WiFi, browser simulator on the wasm32 core, host-side REPL) lives around the compiler, so a safety build can drop it without losing language features.
 11. **Permissive licences only** for every component (the on-device runtime included). Moddable XS, the Toit VM and Jaculus are GPL/LGPL, so they are references, not dependencies.
 
-**Stages (sizes are the research's estimates, ±2x; each stage gets its own plan and gates before it starts)**
-| Stage | Scope | Estimate |
-|---|---|---|
-| 8.0 | Spike: RC + elision + cycle collector prototype and its costs, wasmi on a real ESP32 (compile latency, fuel overhead, flash size), grammar and IR sketch, host IDL sketch | 6–10 weeks |
-| 8.1 | MVP language + OxiUI host API + a thin ESP32 slice (flash, USB live reload, browser simulator), LSP and formatter | 9–14 months |
-| 8.2 | AOT release path, more boards, profiles v0 | 4–6 months |
-| 8.3 | SIMD and parallel layers, placement report, `@expect` | 4–6 months |
-| 8.3b | GPU kernels (optional) | 4–8 months |
-| 8.4 | Concurrency (tasks, isolates) and ecosystem | 4–6 months |
-| 8.5 | Safety profile and qualification evidence | 12+ months |
+**Deliverable slices (owner, 2026-11-24: measurable, shippable pieces, maximally parallel)**
+Each slice has a measurable gate and ends with a BAD ACTOR pass. Crates live under `oxiscript/` and do not depend on `oxiterm-*` until the integration slice (fast, independent builds).
+
+| Slice | Crate(s) | Scope | Gate | Depends on |
+|---|---|---|---|---|
+| 8.C Contracts | syntax, ir, abi | Grammar skeleton (EBNF), AST types, OxiIR types and text form, value/memory layout (RC header, UTF-8 strings, arrays, closures), host ABI/IDL and Wasm module conventions, reason-code registry | Crates compile; IR text round-trip tests; contracts doc reviewed | — |
+| 8.P Parser + formatter | syntax | MVP grammar, error recovery, formatter | Corpus parse/format idempotent; fuzz without panics; parse speed measured | 8.C |
+| 8.R Runtime | runtime | wasmi host, host IDL bindings, capabilities, fuel/limits, instance-swap reload; tested with hand-written WAT | Sandbox tests (no ambient authority), fuel stops runaway loops, reload keeps host state | 8.C |
+| 8.M Memory | rc | RC + elision hooks + cycle collector in Wasm linear memory | Leak tests incl. cycles, stress, overhead measured | 8.C |
+| 8.T Type checker | check | MVP types (integers/floats, bool, string, arrays, structs, classes, unions, null, `Result`, monomorphised generics, local inference), diagnostics with reason codes | Pass/fail corpus with expected diagnostics | 8.P |
+| 8.G Codegen | wasm | OxiIR → Core Wasm, validated, executed in wasmi | IR test programs produce correct results | 8.C |
+| 8.L Lowering | check/ir | Typed AST → OxiIR, end-to-end `.oxs` → Wasm | End-to-end corpus runs in wasmi | 8.T, 8.G, 8.M |
+| 8.S1 First visible slice | integration | `<script lang="oxs">` in OxiUI pages: event handlers and state, server-driven and browser-local | Demo page scripted in both modes | 8.L, 8.R, 7.1 |
+| 8.S2 Editor | lsp | LSP (diagnostics, hover, inlay hints), live reload from VS Code | Edit → reload loop measured | 8.T, 8.R |
+| 8.S3 First board | device | ESP32 flash in one command, USB live reload | Toy demo on a real board | 8.S1, hardware |
+| 8.S4 Laws + report | check, wasm | Laws level 1 (property testing), placement report v0 | Laws find seeded bugs; report stable across builds | 8.L |
+
+Later stages keep the research's order and estimates: 8.2 AOT release path and profiles v0, 8.3 SIMD/parallel layers and `@expect`, 8.3b GPU kernels, 8.4 concurrency and ecosystem, 8.5 safety profile.
+
+**Critical path:** 8.C → 8.P → 8.T → 8.L → 8.S1. It, not the number of agents, sets the date of the first visible result; 8.R, 8.M, 8.G and 7.x run beside it.
+
+#### Parallel schedule (machine: 4 cores, ~12 GB free RAM → at most 3 concurrent agents, BAD ACTOR runs included)
+- **Wave 1:** 7.1, 7.2, 8.C.
+- **Wave 2:** 8.P, 8.R, 7.3 (as slots free).
+- **Wave 3:** 8.T, 8.G, 8.M, 7.4.
+- **Wave 4:** 8.L, 8.S2, 7.5.
+- **Wave 5:** 8.S1, 8.S4; 8.S3 once a board is available.
+
+Mechanics: each agent works in its own git worktree (`CARGO_BUILD_JOBS=2`, per-package tests only); shared files (`docs/oxi-ui.md`, `docs/ARCHITECTURE.md`, `ci.yml`, root `Cargo.toml`) are edited only by the lead; the lead reviews the diff, a BAD ACTOR agent attacks the branch (confined to its worktree, no network targets, no device writes, time-boxed, reports only), findings become tests, then the lead commits, merges to main, runs the full workspace gates serially and pushes.
 
 **Decisions (owner, 2026-11-24 — decided now, deliberately, accepting that some may be regretted later)**
 1. **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.

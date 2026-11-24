@@ -8,6 +8,14 @@ members = [
     "oxiterm-web",
     "oxiterm-a11y",
     "apps/oxiterm-reader",
+    "oxiterm-fb",
+    "oxiscript/oxiscript-syntax",
+    "oxiscript/oxiscript-check",
+    "oxiscript/oxiscript-ir",
+    "oxiscript/oxiscript-abi",
+    "oxiscript/oxiscript-wasm",
+    "oxiscript/oxiscript-rc",
+    "oxiscript/oxiscript-runtime",
 ]
 resolver = "2"
 
