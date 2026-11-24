@@ -38,3 +38,8 @@ web = ["dep:tokio-tungstenite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+
+# Stage 5.0 per-frame cost benchmark: `cargo bench -p oxiterm-server --bench frame_cost`.
+[[bench]]
+name = "frame_cost"
+harness = false

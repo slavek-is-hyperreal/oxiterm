@@ -363,6 +363,62 @@ Each stage is one delegated task with its own gate, reviewed and committed befor
 | 5.6 | `Path` via lyon; images as textures | New PNG goldens |
 | 5.7 | Accessibility via AccessKit; Raspberry Pi 4/5 run | AT tree visible to the OS; app runs on a Pi |
 
+#### Stage 5.0 baseline (per-frame cost)
+Measured 2026-11-24 on Intel Core i5-3450 @ 3.10 GHz (4 cores, 2012 Ivy Bridge), rustc 1.98.0, default `release`/`bench` profile (opt-level 3, no LTO, 16 codegen units; the workspace sets no `[profile]`). Single thread, warm, at least 300 iterations and 0.5 s per page and size.
+
+Reproduce: `cargo bench -p oxiterm-server --bench frame_cost` (about one minute; `FRAME_COST_FILTER=counter`, `FRAME_COST_MS`, `FRAME_COST_VIDEO=1` narrow or extend it). Source: `oxiterm-server/benches/frame_cost.rs` (a `harness = false` bench; it does nothing unless `--bench` is passed, so `cargo test --all-targets` stays fast). The layout timing uses a `#[doc(hidden)]` phase probe on `LayoutEngine` (`compute_probed`, `resolve_only`); `compute` passes an empty closure, so it compiles to the same code as before and `oxiterm-renderer` still has no `Instant`.
+
+What a frame covers (the steady state of `EventLoop::render_frame`, page already loaded and parsed in the matching mode with the same `load_thtml_file_mode` as `FsPageSource`): layout compute, paint, and the sink's work.
+- **TUI:** `compute(Tui)`, `Renderer::render_node`, `DiffEngine::diff` + `encode_ansi` (the SSH sink's encoder), against an identical previous frame ("unchanged"; the bench asserts the diff is empty) and against a blank forced-dirty one ("full repaint", the epoch path).
+- **GUI:** `compute(Gui)`, `render_frame_mode` (display-list build, `CellSink` raster and legacy content in one call; they cannot be separated from outside the crate), buffer snapshot + `diff_grids`, `wire::encode` + comparison with the last list, zlib (`Compression::fast()`, as `web.rs`), `build_aria_json`. "Unchanged" skips only zlib, which is the real behaviour; everything else still runs on every frame.
+- Not measured: `apply_state_to_doc`, animation tick, focus rebuild and the active-media tree walk, focus ring and scroll-bar overlays (all whole-tree or whole-buffer walks, so not free), and the sink's own per-frame work in `web.rs` (`update_document` sends a `0x21` message every GUI frame, `sync_preamble` does path and media-coordinate bookkeeping, then the channel send). They need a live session and are the first things to add to the harness if 5.1 results look short of the prediction.
+- Pages: all 36 under `examples/` at 80x24, 120x40 and 200x60. The 2 `<video>` pages are skipped (they may start ffmpeg); 4 pages with `<img>` are listed but excluded from the aggregates. `<for>` lists are not expanded (they need session state).
+
+Aggregate over the 30 non-media pages, median of the per-page medians, microseconds (p95 of the per-iteration total in brackets):
+
+| Stage | 80x24 | 120x40 | 200x60 |
+|---|---|---|---|
+| layout (TUI) | 84 | 86 | 87 |
+| of which: reset / build / solve / finish | 2 / 19 / 49 / 5 | 2 / 19 / 50 / 6 | 2 / 19 / 52 / 6 |
+| `render_node` (TUI) | 36 | 50 | 77 |
+| diff + ansi, unchanged | 61 | 151 | 381 |
+| diff + ansi, full repaint | 155 | 307 | 632 |
+| **TUI total, unchanged** | **183** (209) | **290** (323) | **546** (592) |
+| **TUI total, full repaint** | **263** (297) | **445** (485) | **802** (860) |
+| layout (GUI) | 80 | 82 | 85 |
+| `render_frame_mode` (list + raster) | 33 | 43 | 62 |
+| snapshot clone + `diff_grids` | 14 | 32 | 73 |
+| `wire::encode` + compare | 4 | 5 | 5 |
+| zlib fast | 58 | 60 | 63 |
+| `build_aria_json` | 20 | 21 | 22 |
+| **GUI total, unchanged (no zlib)** | **153** (179) | **185** (214) | **250** (285) |
+| **GUI total, changed (with zlib)** | **210** (242) | **243** (279) | **311** (357) |
+| parse, once per page | 343 | 343 | 333 |
+
+Heaviest pages at 80x24: by GUI total (changed) `reference/tcss` 640, `quickstart` 469, `reference/thtml` 441, `demos/showcase` 419, `features` 366; by TUI total (full repaint) `reference/tcss` 651, `quickstart` 525, `demos/showcase` 465, `reference/thtml` 458, `spotify/panel` 397. At 200x60 the top five are the same (GUI 746 to 462, TUI 1226 to 970). Wire size is 2 to 15 KB, zlib output 0.3 to 4 KB. Every frame is far below a 16.7 ms budget, so the gain from 5.1 is idle CPU/battery and cheap quiet frames on slow hosts, not reaching 60 fps.
+
+**Incremental scenario** (`demos/counter.thtml`, one `bind-state` text changes like a click, then a full frame including the sink's diff against the previous frame; median, 80x24 / 120x40 / 200x60):
+
+| Path | Frame | Layout share |
+|---|---|---|
+| TUI | 188 / 300 / 560 us | 83 us = 44% / 28% / 16% |
+| GUI (changed, with zlib and aria) | 229 / 255 / 327 us | 87 us = 38% / 34% / 27% |
+
+A click frame costs about the same as a quiet one, because layout rebuilds the tree either way (TUI is a little more than a quiet frame, the diff now emits the changed digits only). Inside layout: reset 1, build 19, solve 56 to 59, finish 6 us. Keeping the tree and re-solving after `mark_dirty` on the changed text node takes 27 to 31 us (nothing dirty: 0.4 to 2.6 us). So incremental layout would save about 55 us of the 85 us on a click (the solve halves, the 26 us rebuild goes away) and about 82 us on a frame where nothing is dirty.
+
+**Where the time goes.**
+- GUI frame at 80x24 (changed): layout 38% (the solve alone 22%), zlib 28%, render 16%, aria 10%, snapshot 7%. At 200x60 layout is 27% and render + snapshot 43%.
+- TUI frame at 80x24: layout 46% and diff 33% of an unchanged frame. At 200x60 the diff of an unchanged frame alone is 70% (381 us for 12 000 cells, about 32 ns per cell, and it emits nothing). The cause is in `DiffEngine::diff`: it calls `UnicodeWidthCache::get().width(ch)` for every cell before comparing, and that is a `parking_lot` `RwLock` read plus a SipHash `HashMap` lookup per cell. The cell comparison itself is cheap.
+
+**Recommendation for 5.1** (largest expected gain first):
+1. **TUI diff: cheapen the per-cell width lookup.** An ASCII fast path (`ch < 0x80` is width 1, or a flat table for the BMP) before the cache, or computing the width only for cells that differ. Behaviour-neutral, a few lines. Saves about 60 us at 80x24 and 380 us at 200x60 on every TUI frame, so it is also the largest single win at large sizes. Do it first.
+2. **Do not redo layout that did not change.** Keep the Taffy tree, use `mark_dirty` for the nodes `sync_dirty_state` touches, rebuild only on structural or `bind-show` changes, and skip layout entirely when nothing is dirty. `needs_render` is set by key and mouse input (focus moves, scrolling), `Refresh`, resize, navigation, app patches and reload, plus animation ticks; focus moves and scroll do not change layout at all, which is the "nothing dirty" case. Saves about 82 us on such frames (about half of a GUI frame at 80x24) and about 55 us on a bound-value change. The solve (about 50 to 60 us) is bigger than the tree build (about 19 us), so keeping Taffy's cache is what pays, not avoiding allocations.
+3. **TUI render:** `render_node` builds the display list, rasterizes it into the buffer (required) and also captures every legacy paint as a `CellGrid` and returns the list, which the TUI discards. Only that capture is redundant. TUI render (36 us) is close to the GUI figure (33 us), so expect a fraction of `render_node`, perhaps 10 to 30%, not all of it. Needs its own measurement when attacked.
+4. **GUI extras:** skip the buffer clone + `diff_grids` (14 to 73 us) when no overlay was drawn, and skip the ARIA JSON (20 us) when document and focus did not change. These two alone are 22% of a quiet 80x24 GUI frame and 37% at 200x60.
+5. Zlib (58 us) is already skipped for identical lists; leave it for the 5.3 wire discussion.
+
+Expected result of 1, 2 and 4: a quiet GUI frame goes from about 153 to about 45 us at 80x24 and from about 250 to about 65 us at 200x60; a quiet TUI frame from about 183 to about 45 us (80x24) and from about 546 to about 90 us (200x60, mostly the diff left at a few ns per cell plus render); a click-driven frame gains about 55 us from layout.
+
 ### Phase 6: Proportional text (both modes at once)
 - Ship `FontBundle` (one monospace and one proportional family) with the server, the native app and the WASM build.
 - Taffy measure function backed by `cosmic-text`/`parley`, used by `oxiterm-core` wherever it runs.

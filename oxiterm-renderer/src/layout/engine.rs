@@ -110,6 +110,20 @@ fn measure_wrap_text(known: Size<Option<f32>>, available: Size<AvailableSpace>, 
     Size { width, height }
 }
 
+/// Phase boundaries reported to the probe of [`LayoutEngine::compute_probed`].
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutPhase {
+    /// Old Taffy tree dropped and node map cleared.
+    Reset,
+    /// Taffy tree rebuilt from the DOM (styles mapped, root style set).
+    Build,
+    /// `compute_layout_with_measure` finished.
+    Solve,
+    /// Rects flattened, paint order built, `last_layout` stored.
+    Finish,
+}
+
 /// Engine managing layout calculations and synchronization with the Taffy trees.
 pub struct LayoutEngine {
     /// Internal Taffy tree used for layout calculations.
@@ -202,10 +216,22 @@ impl LayoutEngine {
     ///
     /// Returns an error if Taffy fails to build or calculate styles inside the tree.
     pub fn compute(&mut self, doc: &mut THTMLDocument, cols: u16, _scroll_offset: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>) -> anyhow::Result<LayoutResult> {
+        self.compute_probed(doc, cols, state_evaluator, |_| {})
+    }
+
+    /// [`Self::compute`] with a phase probe, for the frame-cost benchmark (stage 5.0).
+    ///
+    /// `probe` is called at the end of each [`LayoutPhase`]; the caller reads its own clock
+    /// there (this crate never touches `Instant`, it must build for wasm32). `compute` passes
+    /// an empty closure, so after monomorphization the probe calls vanish: zero cost and no
+    /// behaviour change.
+    #[doc(hidden)]
+    pub fn compute_probed<P: FnMut(LayoutPhase)>(&mut self, doc: &mut THTMLDocument, cols: u16, state_evaluator: Option<&dyn oxiterm_proto::dom::StateEvaluator>, mut probe: P) -> anyhow::Result<LayoutResult> {
         // Clearing nodes on each run forces rebuild of the Taffy tree.
         // This ensures correctness for elements whose visibility (bind-show)
         // might have toggled since the last frame.
         self.reset_nodes();
+        probe(LayoutPhase::Reset);
 
         self.ensure_nodes_exist_recursive(doc, doc.root, state_evaluator)?;
 
@@ -256,6 +282,8 @@ impl LayoutEngine {
             self.taffy.set_style(root_taffy_id, style)?;
         }
 
+        probe(LayoutPhase::Build);
+
         let available_space = Size {
             width: AvailableSpace::Definite(root_w),
             height: root_h_available,
@@ -272,6 +300,8 @@ impl LayoutEngine {
                 None => Size::ZERO,
             },
         )?;
+
+        probe(LayoutPhase::Solve);
 
         let mut nodes = HashMap::new();
         self.flatten_layout_recursive(doc, doc.root, 0.0, 0.0, &mut nodes)?;
@@ -300,7 +330,32 @@ impl LayoutEngine {
         let result = LayoutResult { nodes, paint_order, // Scroll is still cell-based, so the extent stays whole cells.
             total_height: max_bottom.ceil() as u16 };
         self.last_layout = Some(result.clone());
+        probe(LayoutPhase::Finish);
         Ok(result)
+    }
+
+    /// Re-runs only the Taffy solve on the tree built by the last `compute` (benchmark hook,
+    /// stage 5.0). Measures the incremental-layout best case: no rebuild, Taffy's own cache
+    /// decides how much work is left. `dirty_text_leaf` optionally dirties one node first.
+    /// Returns false if there is no tree yet.
+    #[doc(hidden)]
+    pub fn resolve_only(&mut self, doc: &THTMLDocument, cols: u16, dirty: Option<OxiNodeId>) -> bool {
+        let Some(&root) = self.node_map.get(&doc.root) else { return false };
+        if let Some(d) = dirty.and_then(|d| self.node_map.get(&d).copied()) {
+            let _ = self.taffy.mark_dirty(d);
+        }
+        // Same root constraints as `compute`.
+        let mut root_w = cols as f32;
+        let mut root_h = AvailableSpace::MaxContent;
+        if let Some(n) = doc.arena.get(doc.root) {
+            if let Some(w) = n.style.width { root_w = self.snap_size(w); }
+            if let Some(h) = n.style.height { root_h = AvailableSpace::Definite(self.snap_size(h)); }
+        }
+        let avail = Size { width: AvailableSpace::Definite(root_w), height: root_h };
+        self.taffy.compute_layout_with_measure(root, avail, |known, avail, _n, ctx, _s| match ctx {
+            Some(ctx) => measure_wrap_text(known, avail, &ctx.text),
+            None => Size::ZERO,
+        }).is_ok()
     }
 
     fn flatten_layout_recursive(
