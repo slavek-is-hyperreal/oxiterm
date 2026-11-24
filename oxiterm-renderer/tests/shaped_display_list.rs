@@ -4,10 +4,9 @@
 //! compiles this file to nothing, run it with `--features text-shaping`).
 #![cfg(feature = "text-shaping")]
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use oxiterm_proto::style::{AnsiColor, RenderMode, TerminalProfile};
+use oxiterm_proto::style::{RenderMode, TerminalProfile};
 use oxiterm_renderer::font::{CELL_H_PX, CELL_W_PX};
 use oxiterm_renderer::layout::engine::LayoutEngine;
 use oxiterm_renderer::parser::THTMLParser;
@@ -17,18 +16,9 @@ use oxiterm_renderer::render::renderer::Renderer;
 use oxiterm_renderer::render::wire;
 use oxiterm_renderer::CellBuffer;
 
-/// Renders `src` in `mode` like a session does and returns the list and the engine.
-fn render(src: &str, mode: RenderMode, w: u16, h: u16) -> (DisplayList, LayoutEngine, oxiterm_renderer::document::THTMLDocument) {
-    let mut doc = THTMLParser::parse_with_mode(src, mode).unwrap();
-    let mut engine = LayoutEngine::with_mode(mode);
-    engine.set_viewport_rows(h);
-    let layout = engine.compute(&mut doc, w, 0, None).unwrap();
-    let mut buf = CellBuffer::new(w, h);
-    let mut profile = TerminalProfile::default();
-    profile.is_web = true;
-    let list = Renderer::render_frame_mode(&doc, &layout, &mut buf, &profile, None, None, 0, mode);
-    (list, engine, doc)
-}
+#[path = "support/dl_dump.rs"]
+mod dl_dump;
+use dl_dump::{dump, render};
 
 fn runs(list: &DisplayList) -> Vec<&DisplayItem> {
     list.items.iter().filter(|i| matches!(i, DisplayItem::Text { shaped: Some(_), .. })).collect()
@@ -209,42 +199,6 @@ fn shaped_page_round_trips_v3_and_downgrades_for_v2() {
 
 // ---------------------------------------------------------------------------------------------
 // Golden: the display list of the proportional benchmark page (GUI, 80x24).
-
-fn color(c: AnsiColor) -> String {
-    match c {
-        AnsiColor::TrueColor(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
-        AnsiColor::Color256(i) => format!("c{i}"),
-        AnsiColor::Reset => "reset".to_string(),
-    }
-}
-
-/// Stable text form of a list: every item with its numbers; shaped runs with face, size, line
-/// height, baseline, face overrides, clusters and every glyph (bits-exact f32 via `{:?}`).
-fn dump(list: &DisplayList) -> String {
-    let mut out = String::new();
-    for item in &list.items {
-        match item {
-            DisplayItem::Fill { node, rect, radius, fg, bg } => {
-                writeln!(out, "Fill n{} {:?} r={:?} fg={} bg={}", node.0, rect, radius, color(*fg), color(*bg)).unwrap()
-            }
-            DisplayItem::Border { node, rect, radius, fg, bg, .. } => {
-                writeln!(out, "Border n{} {:?} r={:?} fg={} bg={}", node.0, rect, radius, color(*fg), color(*bg)).unwrap()
-            }
-            DisplayItem::Text { node, origin, clip, glyphs, fg, bg, mods, shaped } => {
-                writeln!(out, "Text n{} origin=({:?},{:?}) clip={:?} fg={} bg={} mods={:?} glyphs={}", node.0, origin.x, origin.y, clip, color(*fg), color(*bg), mods, glyphs.len()).unwrap();
-                if let Some(r) = shaped {
-                    writeln!(out, "  run face={} size={:?} line_height={:?} baseline={:?} faces={:?} clusters={:?}", r.face, r.size_px, r.line_height, r.baseline, r.glyph_faces, r.clusters).unwrap();
-                }
-                for g in glyphs {
-                    writeln!(out, "  {:?} x={:?} y={:?} adv={:?}", g.ch, g.x, g.y, g.advance).unwrap();
-                }
-            }
-            DisplayItem::CellGrid { rect, cells } => writeln!(out, "CellGrid {:?} cells={}", rect, cells.len()).unwrap(),
-            other => writeln!(out, "{other:?}").unwrap(),
-        }
-    }
-    out
-}
 
 /// `OXI_DL_GOLDEN_DIR` overrides the directory (used to check determinism without touching the
 /// committed files); `OXI_BLESS_DL=1` writes the file instead of comparing.

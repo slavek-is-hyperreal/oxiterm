@@ -47,6 +47,22 @@ jobs:
         rustup target add aarch64-linux-android
         cargo build -p oxiterm-core --target wasm32-unknown-unknown
         cargo build -p oxiterm-core --target aarch64-linux-android
+    # Phase 6.6: the text pipeline must give the same bits on wasm32 (the browser/local core
+    # target) as natively. WASI + wasmtime stands in for the browser: shaping determinism table
+    # (6.0) plus the whole pipeline (line breaker, .notdef substitution, px to cell, display-list
+    # build) against the committed golden. `--dir=.` lets the tests read their (embedded) data.
+    - name: Install wasm32-wasip1 target
+      run: rustup target add wasm32-wasip1
+    - name: Install wasmtime
+      uses: taiki-e/install-action@v2
+      with:
+        tool: wasmtime@51.0.0
+    - name: Text pipeline determinism on wasm32 (wasmtime)
+      env:
+        CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime --dir=.
+      run: >
+        cargo test -p oxiterm-renderer --no-default-features --features text-shaping
+        --test text_shaping --test wasm_pipeline --target wasm32-wasip1
 
   audit:
     if: github.event_name != 'workflow_dispatch' || !inputs.coverage
