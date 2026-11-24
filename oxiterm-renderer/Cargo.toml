@@ -18,6 +18,9 @@ base64 = "0.22.1"
 image = "0.25"
 resvg = { version = "0.50", optional = true }
 rlottie = { version = "0.5.4", optional = true }
+# Proportional text shaping (Phase 6 spike). `no_std` mode = libm math (same bits on every target)
+# and no fontdb system scan / memmap; fonts only ever come from embedded bytes.
+cosmic-text = { version = "0.19", default-features = false, features = ["no_std"], optional = true }
 
 [features]
 # Native media: Lottie (rlottie C bindings), SVG (resvg), ffmpeg video, the filesystem asset
@@ -25,3 +28,5 @@ rlottie = { version = "0.5.4", optional = true }
 # render the same placeholder path the wasm build always used.
 default = ["native-media"]
 native-media = ["dep:rlottie", "dep:resvg"]
+# Phase 6 text shaping (cosmic-text). Not wired into layout or rendering yet.
+text-shaping = ["dep:cosmic-text"]
