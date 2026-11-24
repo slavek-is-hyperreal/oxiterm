@@ -616,7 +616,7 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 **Stages (sizes are the research's estimates, ±2x; each stage gets its own plan and gates before it starts)**
 | Stage | Scope | Estimate |
 |---|---|---|
-| 8.0 | Spike and decisions: memory-model prototypes (RC with elision vs tracing GC), wasmi vs WAMR bake-off on a real ESP32, wasmi compile latency for small modules, grammar sketch | 8–12 weeks |
+| 8.0 | Spike: RC + elision + cycle collector prototype and its costs, wasmi on a real ESP32 (compile latency, fuel overhead, flash size), grammar and IR sketch, host IDL sketch | 6–10 weeks |
 | 8.1 | MVP language + OxiUI host API + a thin ESP32 slice (flash, USB live reload, browser simulator), LSP and formatter | 9–14 months |
 | 8.2 | AOT release path, more boards, profiles v0 | 4–6 months |
 | 8.3 | SIMD and parallel layers, placement report, `@expect` | 4–6 months |
@@ -624,17 +624,19 @@ Research basis: [research/oxiscript-language.md](research/oxiscript-language.md)
 | 8.4 | Concurrency (tasks, isolates) and ecosystem | 4–6 months |
 | 8.5 | Safety profile and qualification evidence | 12+ months |
 
-**Open questions for the owner** (details in section 13 of the research)
-1. Memory model. **Leading hypothesis (owner, 2026-11-24): reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style)** — GC-like convenience (closures in event handlers form cycles; no `weak` bookkeeping for JS developers) with mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths, so the collector never runs there. Stage 8.0 must confirm it against a tracing GC on a real ESP32 (Static TypeScript measured its GC about 2x faster than its RC, but that RC had no elision). Risks to measure: counter overhead without elision, atomic counts across threads (mitigated by isolating data per thread/isolate), code size on ESP32.
-2. Own TS-looking grammar (recommended) or parsing real TypeScript.
-3. On-device engine for live mode on ESP32: wasmi (fastest interpreter in the treVM measurements, largest flash) or WAMR (smaller, an official Espressif component, but ran out of memory on one benchmark). Settled by the 8.0 bake-off.
-4. GPU kernels in v1, or CPU SIMD + multi-core first.
-5. Blocks editor (MakeCode-style) and web flasher in v1 or later.
-6. Which safety standard is the first realistic customer target.
-7. Who owns the compiler front end long term (the critical path; DeviceScript and Mun show the risk of a stalled owner).
-8. npm positioning: naming and semver compatibility only (recommended) or source compatibility.
-9. Is "module-local state resets on reload, persistent state lives in the host" acceptable.
-10. Keep an own-bytecode interpreter as plan B if Wasm engines disappoint on small boards.
+**Decisions (owner, 2026-11-24 — decided now, deliberately, accepting that some may be regretted later)**
+1. **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
+2. **Grammar:** our own TypeScript-looking grammar, files `.oxs`. Real TypeScript is not parsed (no accepting syntax we then reject).
+3. **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted.
+4. **GPU in v1:** no. v1 is CPU SIMD + multi-core. The `kernel` profile and device-buffer types are designed from day 1; the GPU backend comes in 8.3b.
+5. **Tools in v1:** web flasher (WebSerial) yes; blocks editor later.
+6. **First standards target:** IEC 62443 and the EU CRA (the business model); IEC 61508 as the first functional-safety standard, later.
+7. **Ownership:** the OxiUI project owns the compiler, in this repository (`oxiscript-*` crates), with the same workflow as the rest (owner decides, agents implement, lead reviews).
+8. **npm:** naming and semver conventions only; a `package.json`-like manifest without promising that npm packages run.
+9. **Hot reload state:** module-local state resets on reload; persistent state lives in the host's StateManager.
+10. **No plan B bytecode:** WebAssembly is the only IR backend and distribution format.
+
+Remaining unknowns are measured, not re-decided, in Stage 8.0: wasmi compile latency for small modules, fuel overhead and `no_std` flash size on ESP32, RC overhead with elision.
 
 ---
 
