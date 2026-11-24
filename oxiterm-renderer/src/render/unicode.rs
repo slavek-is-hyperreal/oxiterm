@@ -3,39 +3,51 @@
 //! Provides a thread-safe cache to determine cell widths of characters,
 //! and handles injection of PUA-B Virtual Terminal Modifiers (VTM) for terminal layout synchronization.
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use unicode_width::UnicodeWidthChar;
-use std::collections::HashMap;
-use parking_lot::RwLock;
-use std::sync::OnceLock;
 
-/// Cache keeping track of visual column width of Unicode characters.
-pub struct UnicodeWidthCache {
-    cache: RwLock<HashMap<char, u8>>,
+/// The one definition of a character's column width (control chars and
+/// zero-width marks are 0). Every fast path below is derived from it.
+fn compute_width(ch: char) -> u8 {
+    u8::try_from(ch.width().unwrap_or(0)).unwrap_or(0)
 }
 
-static CACHE: OnceLock<UnicodeWidthCache> = OnceLock::new();
+/// Number of Basic Multilingual Plane code points held in the lazy table.
+const BMP: usize = 0x1_0000;
+
+/// Lock-free lazy table for the BMP: `0` means "not computed yet", otherwise the
+/// stored value is `width + 1`. Zero-initialised, so it lives in .bss. Writes are
+/// idempotent, so `Relaxed` ordering is enough.
+static BMP_WIDTHS: [AtomicU8; BMP] = [const { AtomicU8::new(0) }; BMP];
+
+/// Lock-free cache of the visual column width of Unicode characters.
+pub struct UnicodeWidthCache {
+    _private: (),
+}
+
+static CACHE: UnicodeWidthCache = UnicodeWidthCache { _private: () };
 
 impl UnicodeWidthCache {
     /// Returns the global thread-safe singleton instance of the width cache.
     pub fn get() -> &'static Self {
-        CACHE.get_or_init(|| Self {
-            cache: RwLock::new(HashMap::new()),
-        })
+        &CACHE
     }
 
     /// Fetches the visual column width of the given character, computing and caching it if not found.
+    #[inline]
     pub fn width(&self, ch: char) -> u8 {
-        {
-            let read = self.cache.read();
-            if let Some(&w) = read.get(&ch) {
-                return w;
+        let cp = ch as usize;
+        if let Some(slot) = BMP_WIDTHS.get(cp) {
+            let v = slot.load(Ordering::Relaxed);
+            if v != 0 {
+                return v - 1;
             }
+            let w = compute_width(ch);
+            slot.store(w + 1, Ordering::Relaxed);
+            w
+        } else {
+            compute_width(ch)
         }
-
-        let w = u8::try_from(ch.width().unwrap_or(0)).unwrap_or(0);
-        let mut write = self.cache.write();
-        write.insert(ch, w);
-        w
     }
 }
 
@@ -74,6 +86,35 @@ mod tests {
         assert_eq!(cache.width('A'), 1);
         assert_eq!(cache.width('🚀'), 2);
         assert_eq!(cache.width('\n'), 0);
+    }
+
+    #[test]
+    fn width_matches_reference_for_every_codepoint() {
+        let cache = UnicodeWidthCache::get();
+        // Two passes: the first fills the lazy table, the second reads it back.
+        for pass in 0..2 {
+            for ch in (0..=0x10FFFFu32).filter_map(char::from_u32) {
+                assert_eq!(cache.width(ch), compute_width(ch), "U+{:04X} pass {pass}", ch as u32);
+            }
+        }
+    }
+
+    #[test]
+    fn width_known_classes() {
+        let cache = UnicodeWidthCache::get();
+        for c in (0u8..0x20).map(char::from).chain(['\u{7f}']).chain((0x80u32..0xA0).filter_map(char::from_u32)) {
+            assert_eq!(cache.width(c), 0, "control U+{:04X}", c as u32);
+        }
+        for c in (0x20u8..0x7f).map(char::from) {
+            assert_eq!(cache.width(c), 1);
+        }
+        assert_eq!(cache.width('\u{301}'), 0); // combining
+        assert_eq!(cache.width('\u{200d}'), 0); // ZWJ
+        assert_eq!(cache.width('\u{2500}'), 1); // box drawing
+        assert_eq!(cache.width('\u{4e00}'), 2); // CJK
+        assert_eq!(cache.width('\u{1f680}'), 2); // emoji (non-BMP)
+        assert_eq!(cache.width('\u{2190}'), 1); // ambiguous
+        assert_eq!(cache.width('\u{d7}'), 1); // ambiguous
     }
 
     #[test]
