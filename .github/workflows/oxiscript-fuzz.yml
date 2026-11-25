@@ -1,0 +1,31 @@
+name: OxiScript fuzz (nightly)
+
+# The long fuzz campaigns are #[ignore]d in normal `cargo test` (too slow for every
+# push and for the owner's machine). They run here every night with seeds taken
+# from the date, and on demand from the Actions tab.
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v4
+    - uses: Swatinem/rust-cache@v2
+    - name: OxiScript gate (nightly level)
+      run: |
+        mkdir -p "$RUNNER_TEMP/gate"
+        TMPDIR="$RUNNER_TEMP/gate" CARGO_BUILD_JOBS=4 scripts/oxiscript-gate.sh nightly
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: oxiscript-gate-logs
+        path: ${{ runner.temp }}/gate/gate-*.log
+        if-no-files-found: ignore
