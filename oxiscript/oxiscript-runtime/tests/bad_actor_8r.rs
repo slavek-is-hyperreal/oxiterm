@@ -8,6 +8,12 @@ use common::*;
 use oxiscript_runtime::{Error, Grants, Limits, Runtime, Value};
 use std::time::Instant;
 
+/// Fuzz-loop size: full counts in optimised builds or with OXI_FULL_FUZZ=1; 1/20 in debug
+/// builds so `cargo test --workspace` (CI, debug) stays fast.
+fn cases(full: u64) -> u64 {
+    if !cfg!(debug_assertions) || std::env::var_os("OXI_FULL_FUZZ").is_some() { full } else { (full / 20).max(100) }
+}
+
 fn i(x: i32) -> Value {
     Value::I32(x)
 }
@@ -516,7 +522,7 @@ fn run_trampoline_fuzz(cases: u64, seed: u64) -> (u64, u64, u64) {
 
 #[test]
 fn f5_trampoline_invariant_fuzz() {
-    let (oks, traps, st1) = run_trampoline_fuzz(150_000, 0x9E37_79B9_7F4A_7C15);
+    let (oks, traps, st1) = run_trampoline_fuzz(cases(150_000) as _, 0x9E37_79B9_7F4A_7C15);
     eprintln!("F5 cases=150000 ok={oks} trap={traps} status1={st1}");
 }
 
@@ -643,7 +649,7 @@ fn f6_wasm_smith_all_features_no_host_panic() {
     let n: u64 = std::env::var("BA_SMITH_CASES")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(20_000);
+        .unwrap_or(cases(20_000));
     let (mut gen, mut engine_panics, mut codes) =
         (0u64, 0u64, std::collections::BTreeMap::<String, u64>::new());
     let mut panicked_seeds = vec![];
@@ -702,7 +708,7 @@ fn f6b_mutation_fuzz_load_and_call() {
     let n: u64 = std::env::var("BA_MUT_CASES")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(30_000);
+        .unwrap_or(cases(30_000));
     let (mut loaded, mut called, mut panics) = (0u64, 0u64, vec![]);
     let edge = [
         0i32,
