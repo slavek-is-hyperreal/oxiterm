@@ -2570,6 +2570,14 @@ dependencies = [
 [[package]]
 name = "oxiterm-fb"
 version = "0.1.0"
+dependencies = [
+ "libc",
+ "oxiterm-proto",
+ "oxiterm-renderer",
+ "oxiterm-web",
+ "swash",
+ "tiny-skia",
+]
 
 [[package]]
 name = "oxiterm-proto"
