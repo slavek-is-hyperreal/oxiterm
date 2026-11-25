@@ -1,0 +1,69 @@
+oxiir 1
+module "structs"
+
+type Point = struct { x: f64, y: f64 }
+type Shape = union { Circle { r: f64 }, Rect { w: f64, h: f64 }, Empty }
+type Node #cyclic = struct { value: i32, next: ref Node? }
+
+; Returns an owned reference.
+export func @make(%x: f64, %y: f64) -> ref Point {
+entry:
+  %p: ref Point = alloc Point
+  setfield.init Point.x %p, %x
+  setfield.init Point.y %p, %y
+  ret %p
+}
+
+export func @norm2(%p: ref Point) -> f64 {
+entry:
+  %x: f64 = getfield Point.x %p
+  %y: f64 = getfield Point.y %p
+  %xx: f64 = mul %x, %x
+  %yy: f64 = mul %y, %y
+  %s: f64 = add %xx, %yy
+  ret %s
+}
+
+; value semantics through copy-on-write: mutate in place only when unique
+export func @move_x(%p: own ref Point, %dx: f64) -> ref Point {
+entry:
+  %u: bool = is_unique %p
+  br_if %u, write(%p), copy()
+copy:
+  %c: ref Point = clone %p
+  release %p
+  br write(%c)
+write(%q: ref Point):
+  %x: f64 = getfield Point.x %q
+  %nx: f64 = add %x, %dx
+  setfield Point.x %q, %nx
+  ret %q
+}
+
+export func @area(%s: ref Shape) -> f64 {
+entry:
+  %t: u32 = tag %s
+  switch %t, [0: circle(), 1: rect(), 2: empty()], default bad()
+circle:
+  %r: f64 = getfield Shape::Circle.r %s
+  %rr: f64 = mul %r, %r
+  ret %rr
+rect:
+  %w: f64 = getfield Shape::Rect.w %s
+  %h: f64 = getfield Shape::Rect.h %s
+  %a: f64 = mul %w, %h
+  ret %a
+empty:
+  %z: f64 = const 0.0
+  ret %z
+bad:
+  trap unreachable
+}
+
+export func @new_rect(%w: f64, %h: f64) -> ref Shape {
+entry:
+  %s: ref Shape = alloc Shape::Rect
+  setfield.init Shape::Rect.w %s, %w
+  setfield.init Shape::Rect.h %s, %h
+  ret %s
+}

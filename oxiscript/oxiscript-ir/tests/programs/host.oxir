@@ -1,0 +1,67 @@
+oxiir 1
+module "host" #profile(default)
+
+; Host imports are typed at the boundary (no integer addresses in untrusted IR):
+; the capability handle is always the first argument, `str` and `[u8]` are borrowed
+; (codegen flattens them to (ptr, len)), a `fn` parameter is consumed (the host keeps
+; the closure), results are flat scalars (multi-value).
+import @log_write = "host:log@1" "write" (i32, u8, str) -> void
+import @state_open = "host:state@1" "open" (i32, str) -> (i32, i32)
+import @state_read = "host:state@1" "read_str" (i32, i32, [u8]) -> (i32, i32)
+import @state_watch = "host:state@1" "watch" (i32, i32, fn(i32, str) -> void) -> void
+
+data @hello = "hello, \"world\"\n"
+data @key = "counter\u{1}é"
+
+global @slot: i32 = 0
+global @name: str?
+
+export func @main(%log: i32, %state: i32) -> void {
+entry:
+  %s: str = str.const @hello
+  %lvl: u8 = const 2
+  call @log_write(%log, %lvl, %s)
+  %k: str = str.const @key
+  %status: i32, %slot: i32 = call @state_open(%state, %k) !0:10-42
+  %zero: i32 = const 0
+  %ok: bool = eq %status, %zero
+  br_if %ok, store(), fail()
+store:
+  global.set @slot, %slot
+  ret
+fail:
+  trap panic !0:50-60
+}
+
+export func @get_slot() -> i32 {
+entry:
+  %s: i32 = global.get @slot
+  ret %s
+}
+
+; out-buffer protocol: the host writes at most len([u8]) bytes and returns the full length
+export func @read(%state: i32, %slot: i32) -> str? {
+entry:
+  %cap: i32 = const 256
+  %buf: [u8] = array.new %cap
+  %st: i32, %len: i32 = call @state_read(%state, %slot, %buf)
+  %zero: i32 = const 0
+  %ok: bool = eq %st, %zero
+  br_if %ok, done(), fail()
+done:
+  %s: str = str.from_utf8 %buf, %len
+  release %buf
+  %o: str? = opt %s
+  ret %o
+fail:
+  release %buf
+  %n: str? = null
+  ret %n
+}
+
+; passing a closure to the host transfers the owned reference
+export func @watch(%state: i32, %slot: i32, %cb: own fn(i32, str) -> void) -> void {
+entry:
+  call @state_watch(%state, %slot, %cb)
+  ret
+}

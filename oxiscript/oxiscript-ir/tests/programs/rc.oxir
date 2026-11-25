@@ -1,0 +1,47 @@
+oxiir 1
+module "rc"
+
+type Cell = struct { v: i32, name: str, kids: [ref Cell] }
+
+; explicit reference counting: the lowering emits retain/release, an elision
+; pass removes redundant pairs. `getfield` results are borrowed.
+; (`setfield` consumes the new value and releases the previous one)
+export func @swap_name(%c: ref Cell, %new: own str) -> void {
+entry:
+  setfield Cell.name %c, %new
+  ret
+}
+
+export func @add_kid(%c: ref Cell, %kid: own ref Cell) -> i32 {
+entry:
+  %kids: [ref Cell] = getfield Cell.kids %c
+  array.push %kids, %kid
+  %n: i32 = array.len %kids
+  ret %n
+}
+
+export func @first_kid(%c: ref Cell) -> ref Cell? {
+entry:
+  %kids: [ref Cell] = getfield Cell.kids %c
+  %n: i32 = array.len %kids
+  %z: i32 = const 0
+  %empty: bool = le %n, %z
+  br_if %empty, none(), some()
+none:
+  %null: ref Cell? = null
+  ret %null
+some:
+  %k: ref Cell = array.get %kids, %z
+  retain %k
+  %o: ref Cell? = opt %k
+  ret %o
+}
+
+export func @fill(%n: i32) -> [i32] {
+entry:
+  %a: [i32] = array.new %n
+  %i: i32 = const 0
+  %v: i32 = const 7
+  array.set %a, %i, %v
+  ret %a
+}

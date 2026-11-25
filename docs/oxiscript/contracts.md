@@ -1,0 +1,83 @@
+# OxiScript contracts: what each slice may rely on
+
+Slice 8.C (2026-11-25). Companion documents: [grammar.md](grammar.md), [ir.md](ir.md), [abi.md](abi.md). Crates: `oxiscript/oxiscript-{syntax,ir,abi}`.
+
+## 1. Crate dependency direction
+
+```
+oxiscript-abi        (leaf: layout constants, export table, IDL, manifest, trap kinds, reason codes)
+     ^
+oxiscript-ir         (depends on abi: TrapKind, runtime export signatures for `intrinsic`)
+oxiscript-syntax     (leaf: AST, visitor, keyword lists; knows nothing of IR or ABI)
+
+later:  check -> syntax, abi            wasm -> ir, abi            rc -> ir, abi
+        runtime -> abi (and wasmi)      lowering (8.L, in check) -> syntax, ir, abi
+```
+No `oxiscript-*` crate depends on any `oxiterm-*` crate until the integration slice (8.S1). The only cross-crate shared data are the ABI crate's constants and the reason-code registry. These three crates have no third-party dependencies.
+
+## 2. Per-slice contract
+
+### 8.P Parser + formatter (`oxiscript-syntax`)
+May rely on:
+* the grammar in `grammar.md` (EBNF, lexical rules, precedence, the disambiguation list in 3.4, the whitespace rule for `?`);
+* the AST in `ast.rs`: build exactly these types; allocate `NodeId`s with `NodeIdGen` in parse order; every node has a `Span`; doc comments go into `Item::doc`/`Member::doc`, other comments are formatter trivia outside the tree; parenthesised expressions stay as `ExprKind::Paren`;
+* `keywords.rs` for the word lists (reserved words produce `OXS-E0900`);
+* the syntax reason codes `OXS-E0001..E0006`, `E0900` in `registry/codes.txt` (append more in the 0001-0099 range);
+* the formatter must be idempotent and normalise: `;`, `===`, braces on control statements, `a ? b : c` / `f()?` spacing, attribute placement.
+Owes: hand-built AST in `tests/ast_example.rs` becomes a parsed golden; the parse of the grammar's examples; reserved syntax rejected with `OXS-E0900` while its AST slot already exists.
+
+### 8.T Type checker (`oxiscript-check`)
+May rely on: the AST (side tables keyed by `NodeId`, `Visitor`/`walk_*` for traversal); the typing rules stated in `grammar.md` (numeric literal inference, narrowing of discriminated unions, exhaustive `switch`, `?` on `Result`, null handling, structural interface satisfaction as generic bound only, nominal struct/class, anonymous object types only as union members); the ABI value classes (`abi.md` 2.2) for deciding what is scalar/managed; the registry for diagnostics (`OXS-E01xx` types, `E03xx` names, `E04xx` capabilities, `E05xx` profiles). It must not invent diagnostic text outside the registry. Host interfaces come from `abi::idl::parse` (the checker turns an `Interface` into the opaque type and its methods).
+Owes: the checked/typed form that 8.L lowers; the effect summaries written into `#effects`.
+
+**Cross-slice conventions fixed here** (8.T, 8.L and 8.R all rely on them): (1) the entry point is the exported function `main` whose parameters are exactly the capability types, mapped one-to-one, in order, to manifest `needs` lines and to `oxi_init` parameters (`grammar.md` 2.1, `abi.md` 3.1); (2) the union discriminant `kind` is derived from the tag, never stored (`grammar.md` 2.5); (3) `mutating` struct methods return the updated receiver as their first result (`ir.md` section 4); (4) `===` is an error on structs/unions/arrays/closures and identity on classes; (5) **initialisation:** a constructor must not use `this` until every non-nullable managed field is assigned (the IR verifier enforces the same with `setfield.init` straight after `alloc`), `array.new` is only for scalar or nullable element types, and there are no non-null managed globals; (6) **host data is typed at the IR boundary:** imports take `str`, `[u8]`, scalars and consumed `fn` closures, never integer addresses; out-buffers are `[u8]` plus `str.from_utf8`; (7) **host-to-guest bulk data** (callback parameters *and* exported-function parameters) is at most one `str`/`bytes` of at most `HOST_PAYLOAD_MAX` (4096) bytes, so 8.T rejects exported functions with two string parameters; (8) **raw memory is a toolchain decision:** only the runtime-support module (8.M) is verified with `VerifyOptions::allow_raw_memory`; no module can grant itself `ptr`, `load`/`store`, `intrinsic` or reserved export names; (9) callback trampolines are named `cb:<module>@<version>.<Interface>.<Callback>`; (11) **import signatures are checked against the IDL**: 8.R and 8.G must call `oxiscript_ir::host::verify_with_interfaces` (or `verify_imports`) with the granted interfaces before linking, because plain `verify` cannot tell a typed `(i32, u8, str)` from a forged `(i32, u8, i32, i32)`; (12) **verification requires canonical value numbering**: 8.L and 8.M call `build::renumber` after any edit that inserts or reorders definitions; (10) a borrow loaded from a global, field, array element or closure environment is *not* protected across calls or stores and must be retained first (`ir.md` section 4); elision may remove a retain/release pair only when no call or store lies between them.
+
+### 8.L Lowering (typed AST -> OxiIR; in `check`/`ir`)
+May rely on: `ir.md` instruction semantics, the ownership table (section 4) as the *only* RC convention (borrowed params by default, owned results, consuming stores), `build::FuncBuilder`, `verify` as the gate (lowering output must verify), `layout_fields` for field offsets only where it needs them (the IR itself is layout-free), `ABI` flattening rules for imports (it builds the raw import signatures from `IdlFn` via `Interface::wasm_imports`). It decides: struct copy-on-write sequences (`is_unique`/`clone`), boxing of nullable scalars, closure env types and capture-by-cell for mutated captured variables, lowering `result<T>` host returns into `Result<T, i32>` values, out-buffer retry loops for `result<str>`, the `oxi_init`/`cb:` trampolines' IR bodies.
+
+### 8.G Wasm codegen (`oxiscript-wasm`)
+May rely on: *verified* OxiIR only; `Ty`/`Op`/`Terminator` are `#[non_exhaustive]`: an unknown kind must produce a clear "unsupported" error, never a panic; the ABI crate for every layout number (`HEADER_SIZE`, offsets, `TypeDesc::encode`, `META_*`, export names/signatures from `EXPORTS`); the numeric semantics of `ir.md` section 3 and the determinism rules of section 6 (canonical NaN at `bitcast` and host-call boundaries; re-canonicalise narrow integers); `Op::may_trap` for scheduling. It emits: the memory/descriptor table/data segments, `oxi_abi_version`, `oxi_trap_kind` (or imports it from the runtime part), the function table for closures, the `oxi.manifest` custom section, `cb:` trampolines.
+Does not rely on: any host or Component Model feature. Only Core Wasm.
+
+### 8.M Memory (`oxiscript-rc`)
+May rely on: the object header, colours, sticky counts and descriptor table of `abi.md` section 2 (`layout.rs`); the runtime export table with exact signatures (`exports::EXPORTS`, the `Runtime` provider rows are yours); `ir.md` section 4 as the ownership contract for the elision pass and for an RC-balance checker; the `#acyclic` type attribute / `TYPE_FLAG_ACYCLIC`. It implements the runtime functions (in Rust compiled to Wasm, or as a `#raw_memory` OxiIR module: the verifier gates `load`/`store`/`intrinsic` to such modules), the deferred destruction queue, the cycle collector, `oxi_live_*` for leak tests. Gate: leak tests including cycles, stress, overhead.
+
+### 8.R Runtime (`oxiscript-runtime`, wasmi host)
+May rely on: the manifest format (`manifest.rs`) to decide before instantiation; `idl::parse` + `Interface::wasm_imports()` to bind capability functions by `(module "host:name@N", field)` signature; link-time rejection rules (imports not in the manifest = `OXS-E0400`); the **no re-entrancy** rule (hosts never call into the guest from an import), the out-buffer protocol, the scratch region, `oxi_trap_kind` for trap reasons, status codes (`STATUS_*`), capability handles as the first argument of every import, `oxi_init`/`oxi_tick`/`cb:` entry conventions, `oxi_live_objects`/`oxi_deinit` for leak checks. It supplies: fuel/limits, instance-swap reload that keeps host state, handle tables with generation counters. Tested with hand-written WAT that follows `abi.md` (no compiler needed).
+
+### 8.S* integration slices
+Rely on everything above plus the example interfaces `idl/log.idl` and `idl/state.idl` (a real OxiUI `ui` capability follows the same format).
+
+## 3. Extension points, and why each stays cheap
+
+| Extension | What is reserved today | Why adding it is additive |
+|---|---|---|
+| **Kernel profile** (data-parallel functions, `kernel function`, GPU) | `kernel` and `parallel` are reserved words; `FnModifiers::kernel` and `For*::parallel` exist in the AST; `@profile(kernel)` is a registered attribute; `#effects`/profile attributes exist in the IR; manifest `profile` directive | A profile is a *restriction set checked over the same language and the same IR*: the checker rejects constructs, nothing is added to the semantics. Kernel code is ordinary functions; the IR needs only a `#kernel` function attribute and a verifier restriction (no managed allocation, no host calls, bounded loops). New backends consume the same verified IR. |
+| **SIMD types** | `ABI` pointer maps already describe *element-relative* slots and `FieldKind::Inline{size,align,..}` lays out inline records; `WasmTy` is non-exhaustive; Core Wasm SIMD128 is in scope for the backend | `Simd<T, N>` is an ordinary generic builtin type (no grammar change). IR gains `Ty::Vec{elem,lanes}` + lane ops (non-exhaustive enums); backends without SIMD lower to scalar loops with identical semantics (the sequential-semantics rule). A `V128` Wasm type and alignment-16 inline fields are a *minor* ABI bump. |
+| **Threads / isolates** | `isolate`, `spawn`, `async`, `await`, `move` are reserved; one instance = one thread (non-atomic RC) is an ABI statement; capabilities are values (an isolate gets only what is moved into it) | An isolate is a separate instance with its own memory; messages are copied/moved through a host capability, so no shared-memory ABI or atomic RC is needed. Async lowers to state machines in the IR (`Terminator::Await` is a new variant of a non-exhaustive enum). Shared-memory Wasm threads are never required. |
+| **GPU device buffers** | Arrays are `(len, cap, data)` with *header-less data blocks* and element descriptors; no instruction assumes elements live in managed memory only; the IDL has `bytes` and handles; `host:gpu` would be an ordinary capability | A device buffer is a *handle* type (`Buffer<T>`, generational id owned by the host) with explicit `upload`/`download` host calls, so transfers are visible in types and in the placement report (`OXS-P03xx`). Data-parallel kernels read/write `[T]` or device buffers through the same element layout. A WGSL/SPIR-V backend consumes OxiIR of kernel functions; the Wasm backend stays untouched. |
+| **AOT / other backends** | OxiIR and Core Wasm are both stable interchange formats; the ABI contains no engine-specific feature (no GC/threads/EH), `-> wasm2c`/Cranelift consume the same `.wasm` | AOT is a different *consumer* of `.wasm`. The two ABI points that matter for wasm2c/32-bit targets (no re-entrancy, flat scalar imports, explicit table indices) are already in the spec. |
+| **Component Model adapter** | The IDL is WIT-convertible (records, handles, results, callbacks map directly) and compiles to plain imports | A generator, not a dependency. |
+| **Contracts / laws / SMT** | `law` is in the grammar and AST; `requires`/`ensures` reserved with `FnDecl::contracts`; `OXS-L*` codes | A law is a `bool` expression over parameters; checking levels are tools over the checked AST, not language changes. |
+| **Placement report / `@expect`** | Source spans carried on every IR instruction (`!file:lo-hi`), `#effects` slot, `P` reason codes with `assertable`, registry append-only | The report is a pass-by-pass remarks log keyed by codes and spans; `@expect` compares facts to codes. Nothing in the IR has to change when a new pass starts emitting remarks. |
+| **Ownership/borrow refinements** | `own` parameter marks; borrowed/owned counts documented | `inout`/borrowed-by-contract parameters are stricter versions of the same table; the RC-balance checker enforces whichever is declared. |
+| **Unicode identifiers, tuples, `dyn`** | Reserved in `grammar.md` section 5 | Lexer/parser/checker work only; no IR or ABI change (tuples = structs, `dyn` = a fat reference over a descriptor + vtable id). |
+
+**Worked example (SIMD/GPU stay easy):** `Array<Particle>` where `Particle { x: f32, y: f32 }` is a struct *reference* in the MVP, so the array holds 4-byte pointers. For SIMD or a device buffer we want the elements inline. The ABI array descriptor already stores a full `elem_size` and a per-element pointer map, and `layout_fields` already supports `FieldKind::Inline`: an inline `Particle` has `elem_size = 8` and an empty pointer map. Switching `Array<Particle>` to inline elements is then a *lowering* change (use `getfield`/`setfield` on a view of the element instead of a pointer load) plus new IR ops for element access; the object header, descriptor kinds, `oxi_clone`, release and the collector (which walk the pointer map) are unchanged, and a `Simd<f32,4>` field is just a 16-byte aligned scalar slot.
+
+## 4. Decisions made in this slice that the owner should look at
+
+1. **Whitespace-sensitive `?`** (ternary needs a space before `?`, try-operator needs none): see `grammar.md` 1.5/7. The only whitespace-significant rule in the grammar.
+2. **Discriminated unions are TypeScript's own spelling** (`{ kind: "a" } | { kind: "b" }`), lowered to tagged heap objects; `enum` is C-like only; no `match` keyword (reserved) but an expression form of `switch` with `=>` arms.
+3. **Precedence exactly as TypeScript** (including `as`); risky unparenthesised mixes (bitwise with comparison, shift with additive, `??` with `||`/`&&`) are errors `OXS-E0007/E0008/E0009` requiring parentheses.
+4. **`===`/`!==` only; semicolons mandatory; ASCII identifiers; braces optional.**
+5. **`struct` = value semantics via copy-on-write heap objects** in the MVP IR (`is_unique`/`clone`), not first-class aggregates; interfaces are generic bounds only in the first checker (dynamic dispatch later).
+6. **RC conventions:** parameters borrowed by default (`own` to consume), results owned, block arguments consumed, `setfield`/`array.set`/`global.set` consume and drop the old value (`setfield.init` for fresh objects), loads are borrowed. Rationale: one rule set that elision and an RC-balance checker can both be written against.
+7. **Host ABI: capability handle as implicit first argument; no re-entrancy (the host never calls into the guest while an import runs); strings returned from the host via guest-supplied out buffers with retry.** Simplifies the sandbox and every engine; costs one extra call for large results.
+8. **Import namespace `host:<name>@<version>`** with the capability version in the module name; the manifest custom section lists needs and fixes the `oxi_init` parameter order.
+9. **Float determinism:** NaN payload/sign unobservable, canonicalised at `bitcast` and host boundaries (and at every store/min/max/conv under the `safety` profile); transcendental functions implemented in OxiScript, not imported.
+10. **Nullable scalars are boxed** (`i32 | null` allocates) until a scalar-replacement pass exists; nullable *references* are free (address 0).
+11. **Array lengths and indices are `i32`** (no `usize`): identical on every target, `2^31 - 1` elements maximum.
+
+## 5. What this slice deliberately does not contain
+No parser, checker, lowering, Wasm emitter, runtime or allocator (slices 8.P, 8.T, 8.L, 8.G, 8.R, 8.M). The IR verifier does not check RC balance or union-tag discipline (8.M / the checker). The placement-report JSON schema and the effect-summary vocabulary beyond the attribute slot are left to 8.S4. The standard library's source (`Result`, `Array` methods, `range`, math) is sketched in `grammar.md` only.

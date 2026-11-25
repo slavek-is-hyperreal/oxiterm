@@ -1,0 +1,230 @@
+# OxiScript reason-code registry. Append only: never edit the meaning of, renumber or reuse a code.
+# Keep sorted. Format: see src/codes.rs. Each later slice adds its own codes in its own range.
+
+code OXS-E0001
+severity error
+phase parse
+title Unexpected token
+message expected {expected}, found {found}
+fix Insert the expected token or remove the unexpected one.
+
+code OXS-E0002
+severity error
+phase lex
+title Unterminated string or comment
+message the {what} starting here is never closed
+fix Add the closing delimiter.
+
+code OXS-E0003
+severity error
+phase lex
+title Invalid numeric literal
+message `{text}` is not a valid {kind} literal
+fix Check digits, separators and the type suffix (for example `42u8`, `1.5f32`).
+
+code OXS-E0004
+severity error
+phase parse
+title Missing semicolon
+message statements end with `;`
+fix Add `;` after the statement.
+
+code OXS-E0005
+severity error
+phase parse
+title Loose equality operator
+message `{op}` does not exist in OxiScript
+fix Use `===` or `!==`.
+
+code OXS-E0006
+severity error
+phase parse
+title Ambiguous `?`
+message `?` after whitespace is the conditional operator and needs `: `; the try operator is written directly after its operand, as in `f()?`
+fix Remove the space before `?` (try) or complete the `a ? b : c` expression.
+
+code OXS-E0007
+severity error
+phase parse
+title Bitwise operator mixed with comparison or another bitwise operator
+message `{lhs}` and `{rhs}` mix `{op}` with `{other}`; add parentheses
+fix Parenthesise the intended operands, for example `({a} & {b}) === {c}`.
+
+code OXS-E0008
+severity error
+phase parse
+title Shift mixed with addition or subtraction
+message `{op}` mixed with `{other}` without parentheses is ambiguous to readers
+fix Parenthesise the shift or the sum.
+
+code OXS-E0009
+severity error
+phase parse
+title `??` mixed with `||` or `&&`
+message `??` cannot be mixed with `{other}` without parentheses
+fix Parenthesise one side.
+
+code OXS-E0010
+severity error
+phase parse
+title `as` followed by `|`
+message `as {ty} | ...` could be a cast to a union or a cast followed by bitwise or
+fix Write `({expr} as {ty}) | ...` or `{expr} as ({ty} | ...)`.
+
+code OXS-E0100
+severity error
+phase check
+title Type mismatch
+message expected `{expected}`, found `{found}`
+fix Convert explicitly (`as`) or change the declaration.
+
+code OXS-E0101
+severity error
+phase check
+title Switch is not exhaustive
+message `switch` over `{ty}` does not handle: {missing}
+fix Add the missing cases or a `default`.
+
+code OXS-E0102
+severity error
+phase check
+title Integer literal out of range
+message `{value}` does not fit in `{ty}`
+fix Use a wider type or a smaller value.
+
+code OXS-E0103
+severity error
+phase check
+title Annotation required
+message cannot infer the type of {what}; add a type annotation
+fix Annotate the {what}.
+
+code OXS-E0104
+severity error
+phase check
+title `?` outside a Result function
+message the try operator needs the enclosing function to return `Result<_, {err}>`
+fix Change the return type or handle the error with `switch`.
+
+code OXS-E0105
+severity error
+phase check
+title Possibly null
+message `{expr}` may be null here
+fix Check `!== null` first or use `??`.
+
+code OXS-E0106
+severity error
+phase check
+title Optional chaining on Result
+message `?.` is optional chaining; `{expr}` is a Result
+fix Write `({expr}?).member` to try first.
+
+code OXS-E0300
+severity error
+phase check
+title Unknown name
+message `{name}` is not defined here
+fix Check spelling or import it.
+
+code OXS-E0301
+severity error
+phase check
+title Duplicate definition
+message `{name}` is already defined in this scope
+fix Rename one of them.
+
+code OXS-E0400
+severity error
+phase link
+title Capability not granted
+message module imports `{module}` but the host did not grant it
+fix Ask the host for the capability or remove the import.
+
+code OXS-E0401
+severity error
+phase link
+title Unknown host interface
+message no interface `{name}` is declared in `{module}`
+fix Check the host IDL version.
+
+code OXS-E0500
+severity error
+phase check
+title Construct forbidden by profile
+message {construct} is not allowed under the `{profile}` profile
+fix Restructure the code or relax the profile on this function.
+
+code OXS-E0900
+severity error
+phase parse
+title Reserved syntax
+message `{keyword}` is reserved for a future version of OxiScript
+fix Pick another identifier or remove it.
+
+code OXS-I0001
+severity internal
+phase runtime
+title Internal compiler error
+message internal error in {phase}: {detail}
+fix Report this as a bug with the input that triggered it.
+
+code OXS-L0001
+severity error
+phase law
+title Law counterexample found
+message law `{law}` fails for {args}
+fix Fix the code or the law; the shrunk counterexample is shown.
+
+code OXS-L0002
+severity warning
+phase law
+title Law not proven
+message law `{law}` could not be proven automatically and was only tested
+fix Add hints or lemmas next to the law, or accept the tested level outside the safety profile.
+
+code OXS-P0101
+severity note
+phase place
+title Loop not vectorised: loop-carried dependence
+message loop at {loc} runs scalar: `{var}` depends on the previous iteration
+fix Use `reduce` or restructure so iterations are independent.
+assertable no
+
+code OXS-P0102
+severity note
+phase place
+title Loop not data-parallel
+message loop at {loc} is not provably data-parallel: {reason}
+fix Make the loop body free of cross-iteration writes, or use a parallel combinator.
+assertable yes
+
+code OXS-P0201
+severity note
+phase place
+title Allocation on hot path
+message {callee} allocates at {loc} inside a loop or handler
+fix Hoist the allocation out of the loop or reuse a buffer.
+assertable yes
+
+code OXS-P0301
+severity note
+phase place
+title Host transfer per call
+message {bytes} bytes cross the host boundary per call at {loc}
+fix Batch the transfers or keep the data on one side.
+assertable no
+
+code OXS-W0001
+severity warning
+phase check
+title Unused binding
+message `{name}` is never used
+fix Remove it or prefix with `_`.
+
+code OXS-W0002
+severity warning
+phase check
+title Suppression needs a reason
+message `@allow({code})` has no reason string
+fix Write `@allow("{code}", "why")`.

@@ -1,0 +1,38 @@
+oxiir 1
+module "loop"
+
+; sum of 0..n, a counted loop carrying two values in block parameters
+export func @sum(%n: i32) -> i64 {
+entry:
+  %i0: i32 = const 0
+  %a0: i64 = const 0
+  br loop(%i0, %a0)
+loop(%i: i32, %acc: i64):
+  %done: bool = ge %i, %n
+  br_if %done, exit(%acc), body()
+body:
+  %w: i64 = conv %i
+  %acc2: i64 = add %acc, %w
+  %one: i32 = const 1
+  %i2: i32 = add %i, %one
+  br loop(%i2, %acc2)
+exit(%res: i64):
+  ret %res
+}
+
+export func @classify(%v: i32) -> i32 {
+entry:
+  switch %v, [0: zero(), 1: one(), -1: neg()], default other()
+zero:
+  %a: i32 = const 100
+  ret %a
+one:
+  %b: i32 = const 101
+  ret %b
+neg:
+  %c: i32 = const 102
+  ret %c
+other:
+  %d: i32 = const 0
+  ret %d
+}

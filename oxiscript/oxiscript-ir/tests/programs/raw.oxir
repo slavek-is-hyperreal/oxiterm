@@ -1,0 +1,31 @@
+oxiir 1
+module "rt" #raw_memory
+
+; runtime-support code (slice 8.M) uses raw memory and the ABI intrinsics
+export func @retain_ptr(%p: ptr) -> void {
+entry:
+  %null: ptr = const 0
+  %isnull: bool = eq %p, %null
+  br_if %isnull, done(), go()
+go:
+  %eight: ptr = const 8
+  %hdr: ptr = sub.wrap %p, %eight
+  %rc: u32 = load %hdr, 0
+  %limit: u32 = const 2147483648
+  %sticky: bool = ge %rc, %limit
+  br_if %sticky, done(), inc()
+inc:
+  %one: u32 = const 1
+  %rc2: u32 = add %rc, %one
+  store %hdr, 0, %rc2
+  br done()
+done:
+  ret
+}
+
+export func @fail_bounds() -> void {
+entry:
+  %k: i32 = const 4
+  intrinsic oxi_trap(%k)
+  trap unreachable
+}

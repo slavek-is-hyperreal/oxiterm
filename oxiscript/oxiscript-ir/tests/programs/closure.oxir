@@ -1,0 +1,53 @@
+oxiir 1
+module "closure"
+
+type Env0 = closure { n: i32 }
+type Env1 = closure { f: fn(i32) -> i32, g: fn(i32) -> i32 }
+
+func @add_n(%env: ref Env0, %x: i32) -> i32 {
+entry:
+  %n: i32 = getfield Env0.n %env
+  %r: i32 = add %x, %n
+  ret %r
+}
+
+; the closure value owns the captured value (captures are consumed)
+export func @make_adder(%n: i32) -> fn(i32) -> i32 {
+entry:
+  %c: fn(i32) -> i32 = closure.new Env0 @add_n(%n)
+  ret %c
+}
+
+export func @apply(%f: fn(i32) -> i32, %v: i32) -> i32 {
+entry:
+  %r: i32 = call_closure %f(%v)
+  ret %r
+}
+
+func @compose_call(%env: ref Env1, %x: i32) -> i32 {
+entry:
+  %f: fn(i32) -> i32 = getfield Env1.f %env
+  %g: fn(i32) -> i32 = getfield Env1.g %env
+  %y: i32 = call_closure %g(%x)
+  %z: i32 = call_closure %f(%y)
+  ret %z
+}
+
+export func @compose(%f: own fn(i32) -> i32, %g: own fn(i32) -> i32) -> fn(i32) -> i32 {
+entry:
+  %c: fn(i32) -> i32 = closure.new Env1 @compose_call(%f, %g)
+  ret %c
+}
+
+; a nullable callback
+export func @maybe_call(%cb: (fn(i32) -> i32)?, %v: i32) -> i32 {
+entry:
+  %none: bool = is_null %cb
+  br_if %none, skip(), run()
+skip:
+  ret %v
+run:
+  %f: fn(i32) -> i32 = unopt %cb
+  %r: i32 = call_closure %f(%v)
+  ret %r
+}

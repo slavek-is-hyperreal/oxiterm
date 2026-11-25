@@ -1,0 +1,5 @@
+// The `log` capability: write a line to the host's log. Levels: 0 trace, 1 debug,
+// 2 info, 3 warn, 4 error. The host may drop lines (rate limit); it never fails.
+interface Log "host:log" @1 {
+    fn write(level: u8, msg: str);
+}
