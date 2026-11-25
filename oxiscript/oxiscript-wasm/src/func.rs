@@ -850,6 +850,87 @@ impl<'c, 'a> FnGen<'c, 'a> {
                 self.call_rt("oxi_str_new");
                 self.set(res[0]);
             }
+            Op::StrConcat { a, b } => {
+                self.get(*a);
+                self.get(*b);
+                self.call_rt("oxi_str_concat");
+                self.set(res[0]);
+            }
+            Op::StrEq { a, b } => {
+                self.get(*a);
+                self.get(*b);
+                self.call_rt("oxi_str_eq");
+                self.set(res[0]);
+            }
+            Op::StrCmp { a, b } => {
+                self.get(*a);
+                self.get(*b);
+                self.call_rt("oxi_str_cmp");
+                self.set(res[0]);
+            }
+            Op::StrSlice { s, lo, hi } => {
+                self.get(*s);
+                self.get(*lo);
+                self.get(*hi);
+                self.call_rt("oxi_str_slice");
+                self.set(res[0]);
+            }
+            Op::StrByte { s, idx } => {
+                self.get(*idx);
+                self.get(*s);
+                self.b.load(Mem::I32, layout::STR_OFF_LEN);
+                self.b.s().i32_ge_u();
+                self.trap_if(TrapKind::Bounds);
+                self.get(*s);
+                self.get(*idx);
+                self.b.s().i32_add();
+                self.b.load(Mem::U8, 8);
+                self.set(res[0]);
+            }
+            Op::StrFromF64 { x } => {
+                self.get(*x);
+                self.call_rt("oxi_str_from_f64");
+                self.set(res[0]);
+            }
+            Op::ArrayEmpty => {
+                let Ty::Array(e) = self.ty(res[0]) else {
+                    return self.err("array.empty result is not an array");
+                };
+                let id = *self.cx.lay.array_ids.get(&ty_key(e)).expect("array type registered");
+                self.b.i32c(id as i32);
+                self.b.i32c(0);
+                self.call_rt("oxi_array_new");
+                self.set(res[0]);
+            }
+            Op::ArrayPop { arr } => {
+                let Ty::Array(e) = self.ty(*arr) else {
+                    return self.err("array.pop on a non-array");
+                };
+                let tl = self.temp32(0);
+                self.get(*arr);
+                self.b.load(Mem::I32, layout::ARR_OFF_LEN);
+                self.b.set(tl);
+                self.b.get(tl);
+                self.b.s().i32_eqz();
+                self.trap_if(TrapKind::Bounds);
+                self.b.get(tl).i32c(1);
+                self.b.s().i32_sub();
+                self.b.set(tl);
+                self.get(*arr);
+                self.b.get(tl);
+                self.b.store(Mem::I32, layout::ARR_OFF_LEN);
+                self.get(*arr);
+                self.b.load(Mem::I32, layout::ARR_OFF_DATA);
+                self.b.get(tl);
+                let sh = mem_of(e).align_log2();
+                if sh > 0 {
+                    self.b.i32c(sh as i32);
+                    self.b.s().i32_shl();
+                }
+                self.b.s().i32_add();
+                self.b.load(mem_of(e), 0);
+                self.set(res[0]);
+            }
             Op::IsNull { val } => {
                 self.get(*val);
                 self.b.s().i32_eqz();

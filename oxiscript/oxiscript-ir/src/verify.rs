@@ -1168,6 +1168,57 @@ impl<'a> Verifier<'a> {
                     ));
                 }
             }
+            Op::StrConcat { a, b } => {
+                want_results!(1);
+                if ty(a) != Ty::Str || ty(b) != Ty::Str || ty(&res[0]) != Ty::Str {
+                    self.e(format!("{ctx}: str.concat needs two str and yields str"));
+                }
+            }
+            Op::StrEq { a, b } => {
+                want_results!(1);
+                if ty(a) != Ty::Str || ty(b) != Ty::Str || ty(&res[0]) != Ty::Bool {
+                    self.e(format!("{ctx}: str.eq needs two str and yields bool"));
+                }
+            }
+            Op::StrCmp { a, b } => {
+                want_results!(1);
+                if ty(a) != Ty::Str || ty(b) != Ty::Str || ty(&res[0]) != Ty::I32 {
+                    self.e(format!("{ctx}: str.cmp needs two str and yields i32"));
+                }
+            }
+            Op::StrSlice { s, lo, hi } => {
+                want_results!(1);
+                if ty(s) != Ty::Str || ty(lo) != Ty::I32 || ty(hi) != Ty::I32 || ty(&res[0]) != Ty::Str {
+                    self.e(format!("{ctx}: str.slice needs a str and two i32 offsets and yields str"));
+                }
+            }
+            Op::StrByte { s, idx } => {
+                want_results!(1);
+                if ty(s) != Ty::Str || ty(idx) != Ty::I32 || ty(&res[0]) != Ty::U8 {
+                    self.e(format!("{ctx}: str.byte needs a str and an i32 index and yields u8"));
+                }
+            }
+            Op::StrFromF64 { x } => {
+                want_results!(1);
+                if ty(x) != Ty::F64 || ty(&res[0]) != Ty::Str {
+                    self.e(format!("{ctx}: str.from_f64 needs an f64 and yields str"));
+                }
+            }
+            Op::ArrayEmpty => {
+                want_results!(1);
+                if !matches!(ty(&res[0]), Ty::Array(_)) {
+                    self.e(format!("{ctx}: array.empty yields an array"));
+                }
+            }
+            Op::ArrayPop { arr } => {
+                want_results!(1);
+                match ty(arr) {
+                    Ty::Array(e) if *e == ty(&res[0]) => {}
+                    _ => self.e(format!(
+                        "{ctx}: array.pop needs an array and yields the element type"
+                    )),
+                }
+            }
             Op::IsNull { val } => {
                 want_results!(1);
                 if !matches!(ty(val), Ty::Opt(_)) || ty(&res[0]) != Ty::Bool {

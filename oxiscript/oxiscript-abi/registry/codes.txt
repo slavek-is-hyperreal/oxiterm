@@ -540,6 +540,41 @@ title Bad module configuration
 message module configuration is inconsistent: {detail}
 fix Make main's parameters match the manifest needs and grant every imported interface.
 
+code OXS-E0700
+severity error
+phase lower
+title Construct not supported by lowering
+message `{detail}` is not supported by the lowering yet
+fix Rewrite the construct with supported features, or report it.
+
+code OXS-E0701
+severity error
+phase lower
+title Instantiation budget exceeded
+message too many generic instantiations: {detail}
+fix Reduce the number of distinct type arguments or break the instantiation chain.
+
+code OXS-E0702
+severity error
+phase lower
+title Lowering produced invalid IR
+message the lowering produced invalid IR: {detail}
+fix Report this as a bug with the program that triggered it.
+
+code OXS-E0703
+severity error
+phase lower
+title Unsupported operand types
+message operation `{detail}` is not available for these operand types
+fix Convert the operands to a supported type first.
+
+code OXS-E0704
+severity error
+phase lower
+title Function too large for the code generator
+message function `{detail}` is too large to lower
+fix Split the function into smaller functions.
+
 code OXS-E0900
 severity error
 phase parse
@@ -641,3 +676,10 @@ phase check
 title Expression has no effect
 message this expression statement has no effect
 fix Remove it or assign the value.
+
+code OXS-W0700
+severity warning
+phase lower
+title Function is not exported
+message function `{name}` is not exported: its signature does not fit the ABI export boundary
+fix Use scalars and `str`/`[u8]` parameters and scalar results, or call it from an exported function.

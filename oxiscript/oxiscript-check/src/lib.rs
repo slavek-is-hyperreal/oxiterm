@@ -114,7 +114,7 @@ pub const MAX_IFACE_METHODS: usize = 256;
 /// Diagnostics kept before the checker stops recording.
 pub const MAX_ERRORS: usize = 100;
 
-pub(crate) const PRELUDE_SRC: &str = "\
+pub const PRELUDE_SRC: &str = "\
 type Result<T, E> = { kind: \"ok\"; value: T } | { kind: \"err\"; error: E };
 function Ok<T, E>(value: T): Result<T, E> { return { kind: \"ok\", value }; }
 function Err<T, E>(error: E): Result<T, E> { return { kind: \"err\", error }; }
@@ -320,7 +320,11 @@ pub fn check_program(
     let mut check_order = vec![prelude_idx];
     check_order.extend(order.iter().copied());
     ck.run(&asts, &all_names, &targets, &check_order);
-    ck.finish(diags)
+    let mut checked = ck.finish(diags);
+    checked.sources = srcs.clone();
+    checked.sources.push(PRELUDE_SRC.to_string());
+    checked.order = check_order.iter().map(|&k| k as u32).collect();
+    checked
 }
 
 // ----------------------------------------------------------------------------
@@ -511,6 +515,8 @@ impl Checked {
             effects: HashMap::new(),
             entry: None,
             prelude: None,
+            sources: Vec::new(),
+            order: Vec::new(),
         }
     }
 }
@@ -922,6 +928,8 @@ impl<'a> Checker<'a> {
             instances: self.instances,
             entry: self.entry,
             prelude,
+            sources: Vec::new(),
+            order: Vec::new(),
         };
         if !had_errors {
             if let Some(what) = checked.poisoned_table() {

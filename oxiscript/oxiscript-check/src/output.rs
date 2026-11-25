@@ -407,6 +407,11 @@ pub struct Checked {
     pub entry: Option<DefId>,
     /// Index of the implicit prelude module (`Result`, `Ok`, `Err`), always the last module.
     pub prelude: Option<u32>,
+    /// Source text of every module, indexed like [`Checked::modules`] (the prelude last): 8.L
+    /// re-parses them (node ids are deterministic) because `Checked` does not keep the trees.
+    pub sources: Vec<String>,
+    /// Module check/initialisation order: the prelude first, then imports before importers.
+    pub order: Vec<u32>,
 }
 
 impl Checked {
