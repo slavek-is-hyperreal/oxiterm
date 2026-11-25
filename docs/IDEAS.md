@@ -95,3 +95,15 @@ This document serves as the master catalog and index of architectural ideas, con
   - **ESP32 thin client** that decodes the existing binary cell-diff stream with a bitmap font.
   - **Server-side 3D in three tiers:** pixels (JPEG/H.264), projected 2D vector polygons rendered as DisplayList items, or a cached mesh plus camera updates.
 * **Read the full blueprint:** 📄 [docs/iot-screens.md](iot-screens.md)
+
+### 8. Server-rendered high-risk surfaces ("zero DOM, zero secrets in the browser")
+*Idea from the owner, 2026-11-25. Not scheduled; does not change the phase order.*
+In server-driven GUI mode the browser never receives THTML/TCSS or a DOM form, only draw commands (`0x36`), and sends back pointer/key events. That makes OxiUI a natural fit for login, PIN-entry, payment-approval and admin screens:
+- **No DOM to steal from:** no `<input type="password">` for extensions, injected third-party scripts or XSS to read; the ARIA mirror already never sends password values.
+- **Logic and validation only on the server:** nothing on the client to tamper with or skip.
+- **Shuffled on-screen keypad (bank style):** the client only sends coordinates on a server-drawn image whose digit layout the server reshuffles every time — event loggers see meaningless points.
+- **Harder for credential-stuffing bots** (no form selectors) — an obstacle, not a security guarantee (headless browser + OCR).
+What it does **not** do, stated honestly: it does not stop phishing (a fake site can stream too — passkeys/WebAuthn, being origin-bound, do); keystrokes typed on a real keyboard are still visible to a keyboard-event logger; password managers and autofill stop working.
+**Shape worth building:** a server-rendered login surface plus a narrow thin-client bridge to `navigator.credentials` (WebAuthn/passkeys) for phishing resistance, and an optional shuffled keypad for PINs on untrusted/shared devices, kiosks and machine HMIs (IEC 62443 fit).
+**Market evidence:** Remote Browser Isolation does exactly this for untrusted sites — e.g. Cloudflare Browser Isolation's "Network Vector Rendering" streams draw commands instead of the DOM for security reasons. OxiUI is the same architecture for one's own apps.
+**Positioning:** "server-rendered high-risk surfaces: zero DOM, zero secrets in the browser" — not "secure login".
