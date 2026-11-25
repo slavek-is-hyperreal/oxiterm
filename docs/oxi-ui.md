@@ -175,7 +175,7 @@ Original scope:
 - Add the `@media (render: tui|gui)` parser and evaluation, plus silent-ignore for GUI-only properties (`border-radius`, `box-shadow`, `font-family`, `font-size`).
 - **Done when:** golden snapshots are unchanged, and `@media` tests cover both render modes.
 
-### Phase 3: DisplayList over the wire → web canvas becomes real GUI
+### Phase 3: DisplayList over the wire → web canvas becomes real GUI — ✅ done
 - New negotiated WS message type: a full DisplayList per frame, serialized and compressed with `flate2` (already a dependency). The cell-diff stream stays as the fallback and default.
 - Generalize the `emitter.rs` `send_frame` trait into a frame enum (`Cells(front, back)` | `Display(list)`).
 - `oxiterm-web`: add `WebCanvas::draw_display_list` (Canvas2D fill rects, rounded borders, `fillText` with the monospace font, images as positioned DOM/`drawImage` from asset paths).
