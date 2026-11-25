@@ -1,9 +1,9 @@
 //! Statements, blocks, loops, patterns, returns.
 
 use crate::fb::tgt;
-use crate::fx::{strip, AssignScan, Frame, Fx, FnKind, Join, Key, Opnd, Slot};
-use oxiscript_check::{DefKind, LocalId, Res, Ty, TyKind};
-use oxiscript_ir::{CmpOp, Const, FieldRef, Op, Ovf, Terminator, Ty as It, ValueId};
+use crate::fx::{strip, AssignScan, Frame, Fx, FnKind, Key, Opnd, Slot};
+use oxiscript_check::{LocalId, Ty, TyKind};
+use oxiscript_ir::{CmpOp, FieldRef, Op, Ovf, Terminator, Ty as It, ValueId};
 use oxiscript_syntax::visit::Visitor;
 use oxiscript_syntax::{Block, Expr, ExprKind, Ident, Pattern, PatternKind, Stmt, StmtKind, VarDecl};
 
@@ -342,7 +342,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                     cont_set: Vec::new(),
                     brk_reached: false,
                     cont_hit: false,
-                    is_switch: true,
                 });
                 self.stmt(body);
                 let f = self.loops.pop().expect("frame");
@@ -393,7 +392,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             cont_set: set.clone(),
             brk_reached: false,
             cont_hit: false,
-            is_switch: false,
         });
         self.push_scope();
         self.stmt(body);
@@ -510,7 +508,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             cont_set: set.clone(),
             brk_reached: false,
             cont_hit: false,
-            is_switch: false,
         });
         self.push_scope();
         // the loop variable(s)

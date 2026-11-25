@@ -7,13 +7,13 @@ use oxiscript_abi::idl::{IdlFn, Interface};
 use oxiscript_check::{Checked, DefId, DefKind, ParamId, Ty};
 use oxiscript_ir::{self as ir, Ty as It};
 use oxiscript_syntax::visit::{walk_item, walk_member, Visitor};
-use oxiscript_syntax::{FieldDecl, FnDecl, Item, ItemKind, Member, MemberKind, Module, RecordDecl, Span, VarDecl};
+use oxiscript_syntax::{FieldDecl, FnDecl, Item, ItemKind, Member, MemberKind, Module, RecordDecl, Span};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Copy)]
 pub(crate) enum DefAst<'a> {
     Fn(&'a FnDecl),
-    Var(&'a VarDecl),
+    Var,
     Record(&'a RecordDecl),
     #[allow(dead_code)]
     Field(&'a FieldDecl),
@@ -36,8 +36,6 @@ pub(crate) struct GlobalIr {
 
 pub(crate) enum Job {
     Fn { def: DefId, targs: Vec<Ty>, sym: String },
-    /// A plain function used as a value: `@sym(%env, params) -> ret` forwarding to the function.
-    Thunk { target: String, env: String, sym: String },
 }
 
 pub(crate) struct Lw<'c, 'a> {
@@ -65,8 +63,8 @@ pub(crate) struct Lw<'c, 'a> {
     pub counter: u32,
     pub instances: usize,
     pub helper_done: HashSet<String>,
-    pub result_def: Option<DefId>,
     pub budget_hit: bool,
+    pub lower_all: bool,
 }
 
 pub(crate) fn sanitize(s: &str) -> String {
@@ -93,8 +91,8 @@ impl<'a, 'c> Visitor<'a> for Indexer<'a, 'c> {
                 ItemKind::Fn(f) => {
                     self.out.insert(d, DefAst::Fn(f));
                 }
-                ItemKind::Var(v) => {
-                    self.out.insert(d, DefAst::Var(v));
+                ItemKind::Var(_) => {
+                    self.out.insert(d, DefAst::Var);
                 }
                 ItemKind::Record(r) => {
                     self.out.insert(d, DefAst::Record(r));
@@ -132,13 +130,6 @@ impl<'c, 'a> Lw<'c, 'a> {
                 ix.visit_item(it);
             }
         }
-        let result_def = ck.prelude.and_then(|p| {
-            ck.modules[p as usize]
-                .items
-                .iter()
-                .copied()
-                .find(|d| ck.defs[d.0 as usize].name == "Result" && ck.unions.contains_key(d))
-        });
         Lw {
             ck,
             asts,
@@ -166,8 +157,8 @@ impl<'c, 'a> Lw<'c, 'a> {
             counter: 0,
             instances: 0,
             helper_done: HashSet::new(),
-            result_def,
             budget_hit: false,
+            lower_all: false,
         }
     }
 

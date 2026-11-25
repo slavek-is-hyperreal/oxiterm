@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Closed programs: arrays, structs (copy-on-write), classes, nullables, globals.
 mod common;
 use common::*;

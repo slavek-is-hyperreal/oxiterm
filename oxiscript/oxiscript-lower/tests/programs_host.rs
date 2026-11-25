@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Closed programs: host capabilities, callbacks, out-buffers, several capabilities.
 mod common;
 use common::*;
@@ -132,7 +132,12 @@ export function main(log: Log, st: State): void {
     );
     p.rt.pump().unwrap();
     let log = p.log();
-    assert!(log.iter().any(|l| l == "changed k #1"), "{log:?}");
+    // the host coalesces change notifications per subscriber: two writes, one event
+    assert_eq!(log, vec!["changed k #1"]);
+    // the host holds the registered closure (and what it captured) until it drops the registration
+    let held = p.live_after_deinit();
+    eprintln!("state watch: {held} objects held by the host registration");
+    assert!(held > 0 && held < 10);
 }
 
 #[test]

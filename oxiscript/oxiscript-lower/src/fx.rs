@@ -61,7 +61,6 @@ pub(crate) struct Frame {
     pub cont_set: Vec<Key>,
     pub brk_reached: bool,
     pub cont_hit: bool,
-    pub is_switch: bool,
 }
 
 pub(crate) struct Join {
@@ -109,10 +108,6 @@ pub(crate) struct CtorState {
     pub ir_ty: String,
     pub args: Vec<Ty>,
     pub materialised: Option<ValueId>,
-}
-
-pub(crate) fn lit_const_int(n: i128) -> Const {
-    Const::Int(n)
 }
 
 impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
@@ -228,10 +223,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
 
     pub fn const_i32(&mut self, n: i128) -> ValueId {
         self.fb.emit1(Op::Const(Const::Int(n)), It::I32)
-    }
-
-    pub fn const_int(&mut self, n: i128, ty: It) -> ValueId {
-        self.fb.emit1(Op::Const(Const::Int(n)), ty)
     }
 
     pub fn const_bool(&mut self, b: bool) -> ValueId {
@@ -438,11 +429,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         l.0
     }
 
-    pub fn local_ir_ty(&mut self, l: LocalId) -> Option<It> {
-        let t = self.local_info(l).ty;
-        self.repr(t)
-    }
-
     /// Is the local kept in a shared cell (captured by a closure and assigned after initialisation)?
     pub fn is_cell(&self, l: LocalId) -> bool {
         let i = &self.mi().locals[l.0 as usize];
@@ -477,13 +463,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
 
     pub fn def_kind(&self, d: DefId) -> DefKind {
         self.lw.ck.defs[d.0 as usize].kind
-    }
-
-    pub fn is_struct_ty(&self, t: Ty) -> bool {
-        match self.lw.ck.tys.kind(t) {
-            TyKind::Adt(d, _) => matches!(self.lw.ck.defs[d.0 as usize].kind, DefKind::Struct),
-            _ => false,
-        }
     }
 
     pub fn builtin_of(&self, id: NodeId) -> Option<Builtin> {

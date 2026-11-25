@@ -186,7 +186,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             cont_set: Vec::new(),
             brk_reached: false,
             cont_hit: false,
-            is_switch: true,
         });
         let mut res_val: Option<ValueId> = None;
         for (i, c) in clauses.iter().enumerate() {

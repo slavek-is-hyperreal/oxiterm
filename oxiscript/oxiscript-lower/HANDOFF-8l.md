@@ -5,8 +5,8 @@ Verify: `cargo test -p oxiscript-lower --no-fail-fast` (+ `--release`), `cargo t
 `cargo clippy -p oxiscript-lower --all-targets -- -D warnings`, `cargo build -p oxiscript-lower --target wasm32-unknown-unknown`.
 
 ## Status
-M2 DONE: corpus gate (a) green (44/45 files pass checker... all 45 compile+load; tests/corpus.rs), 39 closed programs pass with zero live objects (tests/programs_{scalar,managed,types,host}.rs). NEXT: more programs (>=40 total new, plus tough RC cases: early return with temps, `?` with pending temps, break/continue with owned locals, nested closures, closures capturing this), tiny-methods module (E0408), differential scalar test, clippy -D warnings, wasm32 build, speed example, advisor, contracts.md 8.L notes, report.
-Known gaps: float->string uses oxi_str_from_f64 (Stub traps unreachable); float `%` unsupported (E0703); ctor `this` used as value inside nested control flow (E0700); statics of generic classes; `let x: Ref;` without initialiser for non-str/array managed types.
+DONE (report only left). All gates green: 51 programs + corpus (45/45 lower with Options{lower_all:true}, 44 zero-live, 02_drag holds 3 objects via host callbacks) + misc; clippy -D warnings clean (targeted allows only); wasm32 ok; release ok; speed ~46k lines/s full pipeline, linear.
+Not done: 8.T accept.rs snippets not covered; float to-string under Stub traps; float `%`; Real runtime Import mode.
 
 Edits outside this crate (list in the final report):
 - oxiscript-ir: new ops str.concat/eq/cmp/slice/byte/from_f64, array.empty, array.pop (types.rs, print.rs, parse.rs, verify.rs); oxiscript-wasm func.rs codegen for them.

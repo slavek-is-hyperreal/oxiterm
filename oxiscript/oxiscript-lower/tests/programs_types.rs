@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Closed programs: closures, generics, interfaces, enums, unions, switch, Result.
 mod common;
 use common::*;

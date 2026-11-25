@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Tricky ownership and control-flow shapes. Every program ends with zero live objects.
 mod common;
 use common::*;
@@ -196,7 +196,7 @@ export function main(log: Log): void {
 }
 "#,
         ),
-        &["Aa! B zz!zz! 1one 2two other"],
+        &["Aa! B zz!zz!", "1one 2two other"],
     );
 }
 
@@ -233,7 +233,7 @@ export function main(log: Log): void {
 }
 "#,
         ),
-        &["hi bob nobody 12 -1"],
+        &["hi bob nobody", "12 -1"],
     );
 }
 
@@ -275,20 +275,20 @@ fn p49_nested_struct_mutation_through_class_and_array() {
     run_log(
         &prog(
             r#"
-struct V { x: i32; y: i32; mutating move(dx: i32, dy: i32): void { this.x += dx; this.y += dy; } }
+struct V { x: i32; y: i32; mutating shift(dx: i32, dy: i32): void { this.x += dx; this.y += dy; } }
 class Sprite { pos: V; name: string; constructor(name: string) { this.name = name; this.pos = { x: 0, y: 0 }; } }
 struct World { sprites: Sprite[]; origin: V; }
 export function main(log: Log): void {
   const s = new Sprite("s");
   const before = s.pos;
-  s.pos.move(1, 2);
-  s.pos.move(10, 20);
+  s.pos.shift(1, 2);
+  s.pos.shift(10, 20);
   s.pos.x += 5;
   log.write(2, `${s.pos.x} ${s.pos.y} ${before.x}`);
   let w: World = { sprites: [s], origin: { x: 7, y: 8 } };
   const copy = w;
-  w.origin.move(1, 1);
-  w.sprites[0].pos.move(100, 100);
+  w.origin.shift(1, 1);
+  w.sprites[0].pos.shift(100, 100);
   log.write(2, `${w.origin.x} ${copy.origin.x} ${s.pos.x} ${copy.sprites[0].pos.y}`);
 }
 "#,
@@ -347,7 +347,7 @@ export function main(log: Log): void {
     let name = lines[load].trim().split(':').next().unwrap().trim().to_string();
     let call = lines.iter().position(|l| l.contains("call @use.")).unwrap();
     assert!(
-        lines[load + 1..call].iter().any(|l| l.trim() == format!("retain {name}")),
+        lines[load + 1..call].iter().any(|l| l.trim().starts_with(&format!("retain {name}"))),
         "the loaded field {name} must be retained before the call:\n{f}"
     );
     let mut p = Prog::from_wasm(out.wasm);

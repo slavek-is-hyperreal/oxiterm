@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Gate (a): every program of the syntax corpus that passes the checker lowers, verifies,
 //! validates as Wasm and loads under the strict limits of the runtime.
 mod common;
@@ -34,6 +34,7 @@ fn every_checked_corpus_program_compiles_and_loads() {
     let env = env();
     let mut ok = 0;
     let mut skipped = 0;
+    let mut zero = 0;
     let mut failures = String::new();
     for f in &files {
         let src = std::fs::read_to_string(f).unwrap();
@@ -43,20 +44,24 @@ fn every_checked_corpus_program_compiles_and_loads() {
             skipped += 1;
             continue;
         }
-        match compile_program("main", &src, &mut loader(), &ifaces, &Options::default()) {
+        match compile_program("main", &src, &mut loader(), &ifaces, &Options { lower_all: true, ..Options::default() }) {
             Err(e) => failures.push_str(&format!("{name}: compile: {e}\n")),
             Ok(out) => match env.host.instantiate(&out.wasm, Grants::all()) {
                 Ok(mut rt) => {
                     // module initialisers and main ran in oxi_init; everything not held by the host must be gone
                     let live = rt.deinit().unwrap_or(-1);
                     ok += 1;
-                    let _ = live;
+                    if live == 0 {
+                        zero += 1;
+                    } else {
+                        eprintln!("{name}: {live} objects live after deinit (host-held callbacks?)");
+                    }
                 }
                 Err(e) => failures.push_str(&format!("{name}: load: {e}\n")),
             },
         }
     }
-    eprintln!("corpus: {ok} programs compiled and loaded, {skipped} skipped (do not pass the checker)");
+    eprintln!("corpus: {ok} programs compiled (all code lowered) and loaded, {zero} with zero live objects, {skipped} skipped (do not pass the checker)");
     assert!(failures.is_empty(), "\n{failures}");
     assert!(ok >= 20, "only {ok} programs");
 }

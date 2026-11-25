@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::nursery)]
 //! Closed programs: integers, floats, strings, templates.
 mod common;
 use common::*;

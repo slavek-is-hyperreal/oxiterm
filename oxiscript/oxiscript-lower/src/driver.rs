@@ -3,12 +3,12 @@
 
 use crate::ctx::{DefAst, GKey, Job, Lw};
 use crate::fb::Fb;
-use crate::fx::{CtorState, Fx, FnKind, Opnd, Slot, THIS_FIELD};
+use crate::fx::{CtorState, Fx, FnKind, Slot, THIS_FIELD};
 use crate::{Diagnostic, Diagnostics};
 use oxiscript_abi::idl::Interface;
 use oxiscript_abi::manifest::Need;
 use oxiscript_check::{CheckOptions, Checked, DefId, DefKind, ModuleLoader, NoLoader, ParamId, Ty, TyKind};
-use oxiscript_ir::{self as ir, Const, FieldRef, Op, Terminator, Ty as It, TypeRef, ValueId};
+use oxiscript_ir::{self as ir, FieldRef, Op, Terminator, Ty as It, TypeRef, ValueId};
 use oxiscript_syntax::visit::Visitor;
 use oxiscript_syntax::{FileId, ItemKind, MemberKind, Module, PatternKind};
 
@@ -18,6 +18,9 @@ pub struct Options {
     pub runtime: oxiscript_wasm::RuntimeMode,
     /// Validate the generated Wasm.
     pub validate_output: bool,
+    /// Lower every non-generic function, method and constructor, not only what `main` and the
+    /// exports reach (tests and tools that want all code verified).
+    pub lower_all: bool,
 }
 
 impl Default for Options {
@@ -25,6 +28,7 @@ impl Default for Options {
         Options {
             runtime: oxiscript_wasm::RuntimeMode::Stub,
             validate_output: true,
+            lower_all: false,
         }
     }
 }
@@ -61,6 +65,11 @@ pub fn lower(ck: &mut Checked, interfaces: &[Interface]) -> Result<ir::Module, D
 
 /// Like [`lower`], also returning the manifest `needs`.
 pub fn lower_full(ck: &mut Checked, interfaces: &[Interface]) -> Result<Lowered, Diagnostics> {
+    lower_with(ck, interfaces, false)
+}
+
+/// [`lower_full`] with the choice of lowering all code (`all`) or only the reachable part.
+pub fn lower_with(ck: &mut Checked, interfaces: &[Interface], all: bool) -> Result<Lowered, Diagnostics> {
     if !ck.ok() {
         return Err(check_diags(ck));
     }
@@ -71,6 +80,7 @@ pub fn lower_full(ck: &mut Checked, interfaces: &[Interface]) -> Result<Lowered,
         .map(|(i, s)| oxiscript_syntax::parse(s, FileId(i as u32)).module)
         .collect();
     let mut lw = Lw::new(ck, &asts, interfaces.to_vec(), "program");
+    lw.lower_all = all;
     lw.run()
 }
 
@@ -94,6 +104,9 @@ impl<'c, 'a> Lw<'c, 'a> {
             self.fn_sym(d, Vec::new());
         }
         let user_main = entry.map(|d| self.fn_sym(d, Vec::new()));
+        if self.lower_all {
+            self.queue_all_roots();
+        }
         // statics and classes without explicit constructors are lowered on demand; run the worklist
         while let Some(job) = self.jobs.pop_front() {
             if self.diags.len() >= 100 || self.budget_hit {
@@ -105,7 +118,6 @@ impl<'c, 'a> Lw<'c, 'a> {
                         self.out.funcs.push(f);
                     }
                 }
-                Job::Thunk { .. } => {}
             }
         }
         if !self.diags.is_empty() {
@@ -117,6 +129,33 @@ impl<'c, 'a> Lw<'c, 'a> {
         let module = std::mem::take(&mut self.out);
         let notes = std::mem::take(&mut self.notes);
         Ok(Lowered { module, needs, notes })
+    }
+
+    /// Queue every non-generic function, method and constructor of every module.
+    fn queue_all_roots(&mut self) {
+        let n = self.ck.defs.len();
+        for i in 0..n {
+            let d = DefId(i as u32);
+            let info = &self.ck.defs[i];
+            if !info.tparams.is_empty() || info.local {
+                continue;
+            }
+            if let Some(o) = info.owner {
+                if !self.ck.defs[o.0 as usize].tparams.is_empty() || self.ck.defs[o.0 as usize].local {
+                    continue;
+                }
+            }
+            let prelude = self.ck.prelude == Some(info.module);
+            if prelude {
+                continue;
+            }
+            match info.kind {
+                DefKind::Fn | DefKind::Method | DefKind::Ctor if self.defast.contains_key(&d) => {
+                    self.fn_sym(d, Vec::new());
+                }
+                _ => {}
+            }
+        }
     }
 
     fn compute_needs(&mut self) -> Vec<Need> {
@@ -534,10 +573,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         self.emit_return(Some(obj));
     }
 
-    pub fn const_unit(&mut self) -> Opnd {
-        let _ = Const::Bool(false);
-        Opnd::void()
-    }
 }
 
 // ------------------------------------------------------------------------------ pipeline
@@ -569,7 +604,7 @@ pub fn compile_program(
     if !ck.ok() {
         return Err(check_diags(&ck));
     }
-    let Lowered { module, needs, notes } = lower_full(&mut ck, interfaces)?;
+    let Lowered { module, needs, notes } = lower_with(&mut ck, interfaces, opts.lower_all)?;
     let errs = ir::host::verify_with_interfaces(&module, ir::VerifyOptions::default(), interfaces);
     if !errs.is_empty() {
         return Err(Diagnostics(

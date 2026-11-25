@@ -3,7 +3,6 @@
 use crate::ctx::{DefAst, GKey};
 use crate::fb::tgt;
 use crate::fx::{strip, AssignScan, Fx, Key, Opnd, Slot, THIS_FIELD};
-use crate::types::mangle;
 use oxiscript_check::{Builtin, DefId, DefKind, Discr, LocalId, ParamId, Res, Ty, TyKind};
 use oxiscript_ir::{BinOp as IB, CmpOp, Const, FieldRef, Op, Ovf, Terminator, Ty as It, TypeRef, UnOp as IU, ValueId};
 use oxiscript_syntax::visit::Visitor;
@@ -46,12 +45,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         };
         self.fb.loc = saved;
         o
-    }
-
-    /// Lower and make the result owned.
-    pub fn expr_owned(&mut self, e: &Expr) -> Option<ValueId> {
-        let o = self.expr(e);
-        self.own_of(o)
     }
 
     /// Lower an expression that must produce a value; diverging code yields a dummy.
@@ -1478,20 +1471,6 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         self.variant_field_ty_opt(union, variant, field).unwrap_or(It::I32)
     }
 
-    pub fn struct_field_ty(&self, ty: &str, field: &str) -> It {
-        if let Some(t) = self.lw.type_decl(ty) {
-            if let oxiscript_ir::TypeKind::Struct { fields } = &t.kind {
-                if let Some(f) = fields.iter().find(|f| f.name == field) {
-                    return f.ty.clone();
-                }
-            }
-        }
-        It::I32
-    }
-
-    pub fn mangle_ty(&self, t: &It) -> String {
-        mangle(t)
-    }
 }
 
 pub(crate) fn cmp_of(op: BinOp) -> CmpOp {
