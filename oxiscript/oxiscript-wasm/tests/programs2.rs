@@ -1150,8 +1150,7 @@ e:
 fn p38_ungranted_and_forged_imports_are_rejected() {
     let m = parse_module(HOST_SRC).unwrap();
     let err = compile(&m, &CompileOptions::default()).unwrap_err();
-    assert_eq!(err.0[0].code, oxiscript_wasm::E_VERIFY);
-    assert!(err.0[0].message.contains("OXS-E0400"), "{err}");
+    assert_eq!(err.0[0].code, "OXS-E0400", "{err}");
     let forged = HOST_SRC.replace(
         "import @log_write = \"host:log@1\" \"write\" (i32, u8, str) -> void",
         "import @log_write = \"host:log@1\" \"write\" (i32, u8, i32, i32) -> void",

@@ -36,8 +36,16 @@ Status: STARTED (design done, writing code). Update after every milestone.
 - tests: corpus (7 programs compile+validate+load), programs.rs p01-p15, programs2.rs p16-p42 (managed, host/callback/outbuffer, irreducible, config errors, import mode, determinism, features), golden (4), diff (random). clippy -D warnings clean, wasm32 build OK, example `measure` done.
 - Remaining: final advisor review, report. Not done: tag-proof elision of variant bad_cast checks, local reuse, memory64 parametrisation (see lead note 2).
 
+## Cross-slice conflicts / findings (for lead; also in the report)
+1. Import-mode trap kinds: runtime-raised traps (oxi_str_new bad UTF-8, OOM in alloc/grow) go through 8.M's `oxi_trap_cell`, not our `oxi_trap_kind` global. Compiler-raised traps (incl. `array.new n<0`, now inline) use our global. 8.R must read the cell or the linker must redirect `oxi_trap` to write `oxi_trap_kind`.
+2. Import-mode memory ownership is undefined: we define+export `memory`, put static data at [1024, static_end) and export typedesc base/count; `oxi_rt_init(typedesc_base, typedesc_count)` gives the runtime neither `static_end` nor a heap base. Proposal: `oxi_rt_init(typedesc_base, typedesc_count, static_end)` (minor ABI bump) so the runtime starts its heap/scratch after the static data.
+3. Strict wasmi limits in oxiscript-runtime (EnforcedLimits::strict): min 40 avg bytes/function (once bodies >= 1000 B) rejects modules of many tiny getters (1000 one-line exports load fails OXS-E0408); max 32 params/results (we pre-check -> E0603), 10k functions, 1000 globals. 8.R should consider relaxing the avg-bytes rule or codegen must pad.
+4. Structuring recursion is bounded (MAX_DEPTH 300 -> E0603, ~2.4 KiB/level in debug builds); sequential loops nest in Wasm (loop exits are inlined inside the loop frame), so >300 sequential loops in one function is rejected.
+5. Not done: variant tag-check elision (bad_cast test always emitted), local reuse (one local per SSA value; >50k values -> E0603), full memory64 parametrisation, wasm `oxi_str_from_*` in stub are traps.
+6. Managed refs in user exports are raw i32 pointers (no wrapper), str/[u8] params use scratch wrappers (+canonicalisation of bool/narrow ints).
+
 ## Remaining / current step
-- skeleton -> stub runtime -> lowering -> differential tests -> corpus -> measure.
+- final verification + report.
 
 ## Verify
 cargo test -p oxiscript-wasm ; cargo test -p oxiscript-wasm --release ; cargo clippy -p oxiscript-wasm --all-targets -- -D warnings ; cargo build -p oxiscript-wasm --target wasm32-unknown-unknown

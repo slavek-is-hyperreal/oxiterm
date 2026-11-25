@@ -247,19 +247,7 @@ impl<'c, 'a> FnGen<'c, 'a> {
 
     /// Push the canonical-NaN form of the float in local `l`.
     pub(crate) fn push_canon_float(&mut self, l: u32, is64: bool) {
-        self.b.get(l);
-        if is64 {
-            self.b.s().f64_const(Ieee64::new(0x7ff8_0000_0000_0000));
-        } else {
-            self.b.s().f32_const(Ieee32::new(0x7fc0_0000));
-        }
-        self.b.get(l).get(l);
-        if is64 {
-            self.b.s().f64_eq();
-        } else {
-            self.b.s().f32_eq();
-        }
-        self.b.s().select();
+        push_canon_float_body(&mut self.b, l, is64);
     }
 
     /// Canonicalise the float on top of the stack (via a scratch local).
@@ -594,9 +582,9 @@ impl<'c, 'a> FnGen<'c, 'a> {
             .rec(&fr.ty, fr.variant.as_deref())
             .ok_or_else(|| Diagnostic::new(E_UNSUPPORTED, "unknown field owner", None))?;
         let i = rec
-            .names
-            .iter()
-            .position(|n| *n == fr.field)
+            .ix
+            .get(&fr.field)
+            .copied()
             .ok_or_else(|| Diagnostic::new(E_UNSUPPORTED, "unknown field", None))?;
         Ok((rec.offsets[i], rec.tys[i].clone(), var))
     }
@@ -1720,4 +1708,21 @@ impl<'c, 'a> FnGen<'c, 'a> {
         }
         self.b.set(d);
     }
+}
+
+/// Push the canonical-NaN form of the float in local `l` (NaN -> canonical NaN, else itself).
+pub(crate) fn push_canon_float_body(b: &mut Body, l: u32, is64: bool) {
+    b.get(l);
+    if is64 {
+        b.s().f64_const(Ieee64::new(0x7ff8_0000_0000_0000));
+    } else {
+        b.s().f32_const(Ieee32::new(0x7fc0_0000));
+    }
+    b.get(l).get(l);
+    if is64 {
+        b.s().f64_eq();
+    } else {
+        b.s().f32_eq();
+    }
+    b.s().select();
 }

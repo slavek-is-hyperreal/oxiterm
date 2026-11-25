@@ -47,7 +47,7 @@ fn compile_in_small_stack(src: String, stack: usize) -> Result<Vec<u8>, String> 
     let m = parse_module(&src).expect("parse");
     std::thread::Builder::new()
         .stack_size(stack)
-        .spawn(move || compile(&m, &opts()).map_err(|e| format!("{}", e.0[0].code)))
+        .spawn(move || compile(&m, &opts()).map_err(|e| e.0[0].code.to_string()))
         .unwrap()
         .join()
         .expect("compiler must not overflow the stack")
@@ -85,7 +85,7 @@ fn huge_function_is_a_diagnostic_or_loads() {
     let n = 70_000;
     let mut prev = "%a".to_string();
     for i in 0..n {
-        let _ = write!(s, "  %v{i}: i32 = add.wrap {prev}, %a\n");
+        let _ = writeln!(s, "  %v{i}: i32 = add.wrap {prev}, %a");
         prev = format!("%v{i}");
     }
     let _ = write!(s, "  ret {prev}\n}}");

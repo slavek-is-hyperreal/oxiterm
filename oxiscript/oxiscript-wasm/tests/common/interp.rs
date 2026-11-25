@@ -159,7 +159,11 @@ impl<'a> Interp<'a> {
                 }
                 self.inst(f, i, &mut vals, depth)?;
             }
+            // charge every block transfer, so instruction-free loops run out of fuel too
             self.steps += 1;
+            if self.steps > self.max_steps {
+                return Err(Out::Fuel);
+            }
             let get = |v: &ValueId, vals: &Vec<Option<V>>| vals[v.0 as usize].expect("defined");
             let go = |t: &Target, vals: &mut Vec<Option<V>>| -> usize {
                 let vs: Vec<V> = t.args.iter().map(|a| get(a, vals)).collect();

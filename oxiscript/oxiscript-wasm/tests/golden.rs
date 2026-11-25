@@ -25,6 +25,7 @@ fn golden_dumps() {
             &m,
             &CompileOptions {
                 runtime: RuntimeMode::Import,
+                allow_raw_exports: true, // the IR corpus exports raw `ref` signatures
                 ..opts()
             },
         )

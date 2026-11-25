@@ -15,7 +15,8 @@ pub(crate) struct Rec {
     pub id: u32,
     pub offsets: Vec<u32>,
     pub tys: Vec<Ty>,
-    pub names: Vec<String>,
+    /// Field name -> index (first declaration wins).
+    pub ix: HashMap<String, usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +91,32 @@ fn align_to(v: &mut Vec<u8>, a: usize) {
     }
 }
 
+fn ptr_count_u16(n: usize, ctx: &str) -> Result<u16, Diagnostic> {
+    u16::try_from(n).map_err(|_| {
+        Diagnostic::new(
+            E_LIMIT,
+            format!("{ctx} has {n} managed fields; the type descriptor holds at most {}", u16::MAX),
+            None,
+        )
+    })
+}
+
+fn seg_addr(base: u32, seg: &[u8]) -> Result<u32, Diagnostic> {
+    u32::try_from(seg.len())
+        .ok()
+        .and_then(|n| n.checked_add(base))
+        .ok_or_else(|| Diagnostic::new(E_LIMIT, "static data too large", None))
+}
+
+fn alloc_id(next_id: &mut u32, what: &str) -> Result<u32, Diagnostic> {
+    let id = *next_id;
+    if id > layout::MAX_TYPE_ID {
+        return Err(Diagnostic::new(E_LIMIT, format!("too many types ({what})"), None));
+    }
+    *next_id += 1;
+    Ok(id)
+}
+
 fn rec_layout(
     prefix: u32,
     fields: &[(String, Ty)],
@@ -105,7 +132,13 @@ fn rec_layout(
             id,
             offsets: l.offsets.clone(),
             tys: fields.iter().map(|(_, t)| t.clone()).collect(),
-            names: fields.iter().map(|(n, _)| n.clone()).collect(),
+            ix: {
+                let mut ix = HashMap::with_capacity(fields.len());
+                for (i, (n, _)) in fields.iter().enumerate() {
+                    ix.entry(n.clone()).or_insert(i);
+                }
+                ix
+            },
         },
         l,
     ))
@@ -129,7 +162,7 @@ impl Layout {
                 .ok_or_else(|| Diagnostic::new(E_LIMIT, "string constant too large", None))?;
             seg.extend_from_slice(&RC_STICKY.to_le_bytes());
             seg.extend_from_slice(&pack_meta(TYPE_ID_STRING, Colour::Green, false).to_le_bytes());
-            let at = base + seg.len() as u32;
+            let at = seg_addr(base, &seg)?;
             str_addr.push(at);
             data_ix.insert(d.name.clone(), i);
             seg.extend_from_slice(&len.to_le_bytes());
@@ -137,10 +170,10 @@ impl Layout {
             seg.extend_from_slice(d.text.as_bytes());
             seg.push(0);
             let used = layout::object_alloc_size(payload).unwrap_or(0) - HEADER_SIZE;
-            while (seg.len() as u32 + base - at) < used {
+            while (seg_addr(base, &seg)? - at) < used {
                 seg.push(0);
             }
-            if base + seg.len() as u32 > (1 << 30) {
+            if seg_addr(base, &seg)? > (1 << 30) {
                 return Err(Diagnostic::new(E_LIMIT, "static data too large", None));
             }
         }
@@ -163,8 +196,7 @@ impl Layout {
                         .iter()
                         .map(|f| (f.name.clone(), f.ty.clone()))
                         .collect();
-                    let id = next_id;
-                    next_id += 1;
+                    let id = alloc_id(&mut next_id, &t.name)?;
                     let (rec, l) = rec_layout(prefix, &fl, id, &t.name)?;
                     let kind = if prefix == 0 {
                         TypeKind::Struct
@@ -178,7 +210,7 @@ impl Layout {
                             size_or_elem: l.size.max(if prefix == 0 { 0 } else { prefix }),
                             kind,
                             flags: if acyclic { TYPE_FLAG_ACYCLIC } else { 0 },
-                            ptr_count: l.ptr_slots.len() as u16,
+                            ptr_count: ptr_count_u16(l.ptr_slots.len(), &t.name)?,
                             ptr_map_addr: 0,
                         },
                     );
@@ -193,8 +225,7 @@ impl Layout {
                             .iter()
                             .map(|f| (f.name.clone(), f.ty.clone()))
                             .collect();
-                        let id = next_id;
-                        next_id += 1;
+                        let id = alloc_id(&mut next_id, &t.name)?;
                         let (rec, l) = rec_layout(
                             layout::UNION_FIELDS_PREFIX,
                             &fl,
@@ -208,7 +239,7 @@ impl Layout {
                                 size_or_elem: l.size,
                                 kind: TypeKind::UnionVariant,
                                 flags: if acyclic { TYPE_FLAG_ACYCLIC } else { 0 },
-                                ptr_count: l.ptr_slots.len() as u16,
+                                ptr_count: ptr_count_u16(l.ptr_slots.len(), &format!("{}::{}", t.name, v.name))?,
                                 ptr_map_addr: 0,
                             },
                         );
@@ -245,11 +276,7 @@ impl Layout {
         }
         let mut array_ids = BTreeMap::new();
         for e in &elems {
-            let id = next_id;
-            next_id += 1;
-            if id > layout::MAX_TYPE_ID {
-                return Err(Diagnostic::new(E_LIMIT, "too many types", None));
-            }
+            let id = alloc_id(&mut next_id, "array element types")?;
             let fk = field_kind(e);
             let slots: Vec<u32> = if fk == FieldKind::Ref { vec![0] } else { vec![] };
             descs.insert(
@@ -258,7 +285,7 @@ impl Layout {
                     size_or_elem: fk.size(),
                     kind: TypeKind::Array,
                     flags: if slots.is_empty() { TYPE_FLAG_ACYCLIC } else { 0 },
-                    ptr_count: slots.len() as u16,
+                    ptr_count: ptr_count_u16(slots.len(), "array element")?,
                     ptr_map_addr: 0,
                 },
             );
@@ -282,7 +309,7 @@ impl Layout {
             if slots.is_empty() {
                 continue;
             }
-            let at = base + seg.len() as u32;
+            let at = seg_addr(base, &seg)?;
             for s in slots {
                 seg.extend_from_slice(&s.to_le_bytes());
             }
@@ -291,16 +318,19 @@ impl Layout {
 
         // 5. descriptor table
         align_to(&mut seg, 16);
-        let typedesc_base = base + seg.len() as u32;
+        let typedesc_base = seg_addr(base, &seg)?;
         let typedesc_count = next_id.max(FIRST_USER_TYPE_ID);
-        let mut table = vec![0u8; (typedesc_count * TYPE_DESC_SIZE) as usize];
+        let table_len = typedesc_count
+            .checked_mul(TYPE_DESC_SIZE)
+            .ok_or_else(|| Diagnostic::new(E_LIMIT, "type descriptor table too large", None))?;
+        let mut table = vec![0u8; table_len as usize];
         for (id, d) in &descs {
-            let o = (*id * TYPE_DESC_SIZE) as usize;
+            let o = (*id as usize) * (TYPE_DESC_SIZE as usize);
             table[o..o + 16].copy_from_slice(&d.encode());
         }
         seg.extend_from_slice(&table);
         align_to(&mut seg, 8);
-        let static_end = base + seg.len() as u32;
+        let static_end = seg_addr(base, &seg)?;
         if static_end > (1 << 30) {
             return Err(Diagnostic::new(E_LIMIT, "static data too large", None));
         }
@@ -323,7 +353,7 @@ impl Layout {
             (TLay::Rec(r), None) => Some((r, None)),
             (TLay::Union { variants }, Some(v)) => {
                 let i = variants.iter().position(|(n, _)| n == v)?;
-                Some((&variants[i].1, Some(i as u32)))
+                Some((&variants[i].1, u32::try_from(i).ok()))
             }
             _ => None,
         }

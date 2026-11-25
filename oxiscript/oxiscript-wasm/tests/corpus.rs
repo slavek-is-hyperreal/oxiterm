@@ -33,6 +33,8 @@ fn opts(name: &str) -> CompileOptions {
         } else {
             RuntimeMode::Stub
         },
+        // the IR corpus exports raw `ref`/`[T]` signatures (ABI 1.0 default rejects them, see below)
+        allow_raw_exports: true,
         ..CompileOptions::default()
     }
 }
@@ -69,5 +71,18 @@ fn corpus_compiles_and_validates() {
         let m = parse_module(text).unwrap();
         let wasm = compile(&m, &opts(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
         validate(&wasm).unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+}
+
+/// Default options enforce the ABI export boundary: the corpus programs that
+/// export raw managed signatures are rejected with E0601.
+#[test]
+fn corpus_raw_exports_rejected_by_default() {
+    for name in ["structs", "rc", "host"] {
+        let text = PROGRAMS.iter().find(|(n, _)| *n == name).unwrap().1;
+        let m = parse_module(text).unwrap();
+        let o = CompileOptions { allow_raw_exports: false, ..opts(name) };
+        let e = compile(&m, &o).expect_err(name);
+        assert_eq!(e.0[0].code, oxiscript_wasm::E_UNSUPPORTED, "{name}: {e}");
     }
 }

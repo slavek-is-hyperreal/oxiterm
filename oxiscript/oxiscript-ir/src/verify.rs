@@ -48,6 +48,7 @@ pub fn verify_with(m: &Module, opts: VerifyOptions) -> Vec<VerifyError> {
         opts,
         errs: Vec::new(),
         func: None,
+        field_ix: HashMap::new(),
     };
     v.ids_prepass();
     if !v.errs.is_empty() {
@@ -100,9 +101,11 @@ struct Verifier<'a> {
     opts: VerifyOptions,
     errs: Vec<VerifyError>,
     func: Option<String>,
+    /// Field slice address -> name index, built lazily (keeps field lookups O(1)).
+    field_ix: HashMap<usize, HashMap<&'a str, &'a Field>>,
 }
 
-impl Verifier<'_> {
+impl<'a> Verifier<'a> {
     fn e(&mut self, msg: impl Into<String>) {
         self.errs.push(VerifyError {
             func: self.func.clone(),
@@ -798,17 +801,18 @@ impl Verifier<'_> {
         }
     }
 
-    fn lookup_fields(&mut self, ty: &str, variant: Option<&str>) -> Option<Vec<Field>> {
-        let Some(d) = self.m.type_decl(ty) else {
+    fn lookup_fields(&mut self, ty: &str, variant: Option<&str>) -> Option<&'a [Field]> {
+        let m: &'a Module = self.m;
+        let Some(d) = m.type_decl(ty) else {
             self.e(format!("unknown type `{ty}`"));
             return None;
         };
         match (&d.kind, variant) {
-            (TypeKind::Struct { fields }, None) => Some(fields.clone()),
-            (TypeKind::Closure { captures }, None) => Some(captures.clone()),
+            (TypeKind::Struct { fields }, None) => Some(fields.as_slice()),
+            (TypeKind::Closure { captures }, None) => Some(captures.as_slice()),
             (TypeKind::Union { variants }, Some(v)) => {
                 if let Some(x) = variants.iter().find(|x| x.name == v) {
-                    Some(x.fields.clone())
+                    Some(x.fields.as_slice())
                 } else {
                     self.e(format!("`{ty}` has no variant `{v}`"));
                     None
@@ -825,6 +829,20 @@ impl Verifier<'_> {
                 None
             }
         }
+    }
+
+    fn find_field(&mut self, fs: &'a [Field], name: &str) -> Option<&'a Field> {
+        self.field_ix
+            .entry(fs.as_ptr() as usize)
+            .or_insert_with(|| {
+                let mut ix = HashMap::with_capacity(fs.len());
+                for x in fs {
+                    ix.entry(x.name.as_str()).or_insert(x);
+                }
+                ix
+            })
+            .get(name)
+            .copied()
     }
 
     fn inst(&mut self, f: &Func, b: &Block, inst: &Inst) {
@@ -1009,7 +1027,7 @@ impl Verifier<'_> {
                     ));
                 }
                 if let Some(fs) = self.lookup_fields(&field.ty, field.variant.as_deref()) {
-                    match fs.iter().find(|x| x.name == field.field) {
+                    match self.find_field(fs, &field.field) {
                         Some(x) if x.ty == ty(&res[0]) => {}
                         Some(x) => self.e(format!(
                             "{ctx}: field `{}` has type `{}`, result is `{}`",
@@ -1036,7 +1054,7 @@ impl Verifier<'_> {
                     ));
                 }
                 if let Some(fs) = self.lookup_fields(&field.ty, field.variant.as_deref()) {
-                    match fs.iter().find(|x| x.name == field.field) {
+                    match self.find_field(fs, &field.field) {
                         Some(x) if x.ty == ty(val) => {}
                         Some(x) => self.e(format!(
                             "{ctx}: field `{}` has type `{}`, stored value is `{}`",

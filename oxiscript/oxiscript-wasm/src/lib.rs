@@ -87,7 +87,10 @@ pub const I_INTERNAL: &str = "OXS-I0002";
 /// `I0002` "invalid module": wasmparser's locals and body size limits and the
 /// strict engine limits `oxiscript-runtime` applies (parameters, results,
 /// functions, globals).
-pub(crate) const LIMIT_LOCALS: usize = 50_000;
+/// Measured: the strict wasmi engine traps StackOverflow on every call of a
+/// function with >= ~17000 values and rejects >= ~32000 at load; 12000 leaves margin
+/// for codegen temporaries.
+pub(crate) const LIMIT_LOCALS: usize = 12_000;
 pub(crate) const LIMIT_BODY_BYTES: usize = 7_000_000;
 pub(crate) const LIMIT_PARAMS: usize = 32;
 pub(crate) const LIMIT_FUNCS: usize = 10_000;
@@ -161,6 +164,11 @@ pub struct CompileOptions {
     pub runtime: RuntimeMode,
     /// Validate the output with `wasmparser` and the exact ABI feature set.
     pub validate_output: bool,
+    /// Trusted toolchain/test option: allow exports whose parameters or results
+    /// are raw managed references (`ref T`, `[T]`, `str?`, closures, `ptr`) or a
+    /// `str`/`[u8]` result. ABI 1.0 (abi.md 3.1/5.1) only lets the host see
+    /// scalars and `str`/`[u8]` parameters, so the default rejects them (E0601).
+    pub allow_raw_exports: bool,
 }
 
 impl Default for CompileOptions {
@@ -171,6 +179,7 @@ impl Default for CompileOptions {
             verify: VerifyOptions::default(),
             runtime: RuntimeMode::Stub,
             validate_output: true,
+            allow_raw_exports: false,
         }
     }
 }

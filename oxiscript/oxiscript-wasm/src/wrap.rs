@@ -4,10 +4,10 @@
 
 use crate::body::{Body, Mem};
 use crate::cx::{flat_ty, wasm_ty, Cx};
-use crate::func::{gen_func, vt};
+use crate::func::{gen_func, push_canon_float_body, vt};
 use crate::modlayout::ty_key;
 use crate::stubrt::{self, G_TRAP};
-use crate::{Diagnostic, RuntimeMode, E_CONFIG};
+use crate::{Diagnostic, RuntimeMode, E_CONFIG, E_UNSUPPORTED};
 use oxiscript_abi::exports::{self, HOST_PAYLOAD_MAX};
 use oxiscript_abi::layout;
 use oxiscript_abi::trap::TrapKind;
@@ -37,8 +37,35 @@ fn canon_int(b: &mut Body, t: &Ty) {
     }
 }
 
+/// Call finished: results are on the stack. Release `built`, then re-push the
+/// results with floats canonicalised (ir.md section 6: no NaN payload reaches the host).
+fn finish_results(cx: &Cx<'_>, b: &mut Body, rets: &[Ty], built: &[u32]) {
+    let any_float = rets.iter().any(Ty::is_float);
+    let locals: Vec<u32> = if any_float {
+        let ls: Vec<u32> = rets.iter().map(|t| b.local(vt(t))).collect();
+        for l in ls.iter().rev() {
+            b.set(*l);
+        }
+        ls
+    } else {
+        Vec::new()
+    };
+    for l in built {
+        b.get(*l);
+        b.s().call(cx.rt("oxi_release"));
+    }
+    for (l, t) in locals.iter().zip(rets) {
+        if t.is_float() {
+            push_canon_float_body(b, *l, *t == Ty::F64);
+        } else {
+            b.get(*l);
+        }
+    }
+}
+
 fn needs_wrapper(f: &Func) -> bool {
-    f.params.iter().any(|p| {
+    f.rets.iter().any(Ty::is_float)
+        || f.params.iter().any(|p| {
         matches!(
             f.ty(p.value),
             Ty::Str | Ty::Bool | Ty::I8 | Ty::I16 | Ty::U8 | Ty::U16
@@ -97,8 +124,42 @@ fn push_host_params(
     Ok(built)
 }
 
+/// ABI 1.0 export boundary: scalars and `str`/`[u8]` parameters only; results
+/// are scalars. Anything else would hand the host a raw guest pointer.
+fn check_export_boundary(f: &Func) -> Result<(), Diagnostic> {
+    let bad = |what: String| {
+        Diagnostic::new(
+            E_UNSUPPORTED,
+            format!(
+                "exported function with {what}; ABI 1.0 exports take scalars and `str`/`[u8]` parameters and return scalars"
+            ),
+            Some(f.name.clone()),
+        )
+    };
+    for (i, p) in f.params.iter().enumerate() {
+        let t = f.ty(p.value);
+        let ok = t.is_numeric()
+            || matches!(t, Ty::Bool | Ty::Str)
+            || matches!(t, Ty::Array(e) if **e == Ty::U8);
+        if !ok {
+            return Err(bad(format!("a parameter {} of type `{}`", i + 1, oxiscript_ir::print::ty_text(t))));
+        }
+    }
+    for (i, t) in f.rets.iter().enumerate() {
+        if !(t.is_numeric() || matches!(t, Ty::Bool)) {
+            return Err(bad(format!("a result {} of type `{}`", i + 1, oxiscript_ir::print::ty_text(t))));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn gen_all(cx: &mut Cx<'_>) -> Result<(), Diagnostic> {
     let m = cx.m;
+    if !cx.opts.allow_raw_exports {
+        for f in m.funcs.iter().filter(|f| f.export) {
+            check_export_boundary(f)?;
+        }
+    }
     // 1. stub runtime bodies
     if cx.opts.runtime == RuntimeMode::Stub {
         let map = cx.rt_idx.clone();
@@ -201,10 +262,7 @@ pub(crate) fn gen_all(cx: &mut Cx<'_>) -> Result<(), Diagnostic> {
             let mut b = Body::new(flat.len());
             let built = push_host_params(cx, &mut b, &params, 0)?;
             b.s().call(inner);
-            for l in built {
-                b.get(l);
-                b.s().call(cx.rt("oxi_release"));
-            }
+            finish_results(cx, &mut b, &f.rets, &built);
             cx.set_body(w, b.finish());
             w
         } else {
@@ -250,10 +308,7 @@ pub(crate) fn gen_all(cx: &mut Cx<'_>) -> Result<(), Diagnostic> {
             let ti = cx.sig_type(&cp, &cr);
             b.get(0).load(Mem::I32, layout::CLOSURE_OFF_FN);
             b.s().call_indirect(0, ti);
-            for l in built {
-                b.get(l);
-                b.s().call(cx.rt("oxi_release"));
-            }
+            finish_results(cx, &mut b, &sig.rets, &built);
             cx.set_body(idx, b.finish());
             cx.exports.push((wc.name.clone(), ExportKind::Func, idx));
         }
