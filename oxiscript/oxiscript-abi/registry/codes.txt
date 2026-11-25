@@ -169,6 +169,146 @@ title Optional chaining on Result
 message `?.` is optional chaining; `{expr}` is a Result
 fix Write `({expr}?).member` to try first.
 
+code OXS-E0107
+severity error
+phase check
+title Wrong number of arguments
+message expected {expected} argument(s), but got {found}
+fix Pass exactly the declared parameters.
+
+code OXS-E0108
+severity error
+phase check
+title Unknown member
+message property `{name}` does not exist on type `{ty}`
+fix Check the spelling or the type of the receiver.
+
+code OXS-E0109
+severity error
+phase check
+title Cannot assign
+message cannot assign to {what}: {detail}
+fix Declare it with `let`, or assign to a mutable place.
+
+code OXS-E0110
+severity error
+phase check
+title Invalid operand types
+message operator `{op}` cannot be applied to types `{lhs}` and `{rhs}`
+fix Convert one side explicitly with `as`.
+
+code OXS-E0111
+severity error
+phase check
+title Invalid cast
+message cannot convert `{from}` to `{to}` with `as`
+fix `as` only converts between numeric types; use `downcast`, `wrapping` or `saturating` for the other conversions.
+
+code OXS-E0112
+severity error
+phase check
+title Not callable
+message this expression is not callable: `{ty}`
+fix Call a function, method or closure.
+
+code OXS-E0113
+severity error
+phase check
+title Type or expression too complex
+message {detail}
+fix Split the expression or simplify the type.
+
+code OXS-E0114
+severity error
+phase check
+title Missing return
+message function `{name}` must return a value of type `{ty}` on every path
+fix Add a `return` on the missing path.
+
+code OXS-E0115
+severity error
+phase check
+title Unsupported type form
+message {detail}
+fix Use a supported form (see the grammar, section 2.5).
+
+code OXS-E0116
+severity error
+phase check
+title Invalid case label
+message {detail}
+fix Use a label that names one of the variants or values.
+
+code OXS-E0117
+severity error
+phase check
+title Invalid generic arguments
+message {detail}
+fix Pass the right number of type arguments that satisfy the bounds.
+
+code OXS-E0118
+severity error
+phase check
+title Used before assigned
+message variable `{name}` is used before being assigned
+fix Assign it on every path before use.
+
+code OXS-E0119
+severity error
+phase check
+title Access not allowed
+message {detail}
+fix Change the declaration or the access.
+
+code OXS-E0120
+severity error
+phase check
+title Invalid object literal
+message {detail}
+fix List every field exactly once with the right type.
+
+code OXS-E0121
+severity error
+phase check
+title Invalid entry point or export
+message {detail}
+fix Fix the exported signature.
+
+code OXS-E0122
+severity error
+phase check
+title Invalid control flow
+message {detail}
+fix Use `break` and `continue` only inside a loop or labelled statement.
+
+code OXS-E0123
+severity error
+phase check
+title Invalid declaration
+message {detail}
+fix Fix the declaration.
+
+code OXS-E0124
+severity error
+phase check
+title Unknown attribute
+message `@{name}` is not a known attribute
+fix Check the spelling; known attributes are expect, profile, allow, inline, noinline, export_name.
+
+code OXS-E0125
+severity error
+phase check
+title Invalid law
+message {detail}
+fix A law body must be a pure `bool` expression.
+
+code OXS-E0126
+severity error
+phase check
+title Invalid capture
+message {detail}
+fix Pass the value as a parameter or use an arrow function.
+
 code OXS-E0300
 severity error
 phase check
@@ -182,6 +322,20 @@ phase check
 title Duplicate definition
 message `{name}` is already defined in this scope
 fix Rename one of them.
+
+code OXS-E0302
+severity error
+phase check
+title Cannot resolve import
+message cannot resolve import `{spec}`: {detail}
+fix Check the path, the export name and that imports are not cyclic.
+
+code OXS-E0303
+severity error
+phase check
+title Wrong kind of name
+message `{name}` is {found}, expected {expected}
+fix Use a name of the right kind.
 
 code OXS-E0400
 severity error
@@ -417,3 +571,10 @@ phase lex
 title Invisible or direction-changing character in a literal
 message invisible or direction-changing character U+{code} in a literal
 fix Write it as an escape such as the backslash-u form with braces.
+
+code OXS-W0004
+severity warning
+phase check
+title Expression has no effect
+message this expression statement has no effect
+fix Remove it or assign the value.
