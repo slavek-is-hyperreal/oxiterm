@@ -715,6 +715,27 @@ Remaining unknowns are measured, not re-decided, in Stage 8.0: wasmi compile lat
 
 ---
 
+### Phase 9: 3D in OxiUI (draft, owner 2026-11-25; not scheduled, phase order unchanged)
+Today OxiUI has no 3D. The server-driven design exists in [iot-screens.md §4](iot-screens.md) (three tiers chosen per client capability: 1 pixels for the 3D region, 2 projected 2D polygons as ordinary `Path`/`Text` items, 3 mesh once + camera matrix per frame). `Path` already exists in the DisplayList (Phase 3b), so tier 2 has its foundation.
+
+| Mode / target | How 3D is drawn | Building blocks |
+|---|---|---|
+| Server-driven, any client | tiers 1–3 above | `Path` items, JPEG/H.264 for tier 1 |
+| Local in the browser | WebGPU, WebGL2 fallback | `wgpu` on wasm32 |
+| Native window | the Phase 5 wgpu pipeline (Vulkan/Metal/DX12) | Phase 5.2+ |
+| OxiDE without a GPU | software projection of flat-shaded polygons | the 7.2 rasterizer |
+| Terminal over SSH | half-block / braille rendering of tier 2 | cell renderer |
+
+Authoring: declarative `<model src="x.glb">` with GUI-only TCSS (`perspective`, `rotate3d`, camera), pointer rotation and node picking as ordinary `event-htmx`; programmatic 3D (games, simulations, custom shaders) in OxiScript, where a shader is an ordinary function under the `kernel` profile (8.3b). Libraries: `wgpu`, `gltf`, `glam` (all MIT/Apache).
+Stages when scheduled: **9.1** tier 2 (server-side projection to `Path`, `<model>` element, flat shading, picking) — no GPU needed, works in browser, OxiDE, ESP32 thin clients and (coarsely) terminals; **9.2** tier 3 (mesh + camera to capable thin clients); **9.3** GPU path in local mode and the native window (needs 5.2); **9.4** OxiScript 3D API and kernel shaders (needs 8.3b). Each stage ends with a BAD ACTOR pass (malicious meshes, polygon floods, NaN geometry).
+
+#### GPU after OxiScript: one device, several users (2026-11-25)
+Phase 5's GPU work is no longer only "a faster painter". Three consumers now need the same wgpu device: the DisplayList renderer (5.2+), OxiScript `kernel` functions on the GPU (8.3b) and 3D (9.3). Consequences:
+- **Design rule now:** one shared GPU context in the local core (device, queue, buffer/texture residency) used by the renderer, the script runtime and 3D; script kernels can write into textures that the display list draws directly ("paint with this kernel"), with no CPU round trip.
+- **Dependency:** 5.2 (headless GpuSink on wgpu) becomes the foundation of 8.3b and 9.3. When OxiScript reaches 8.3b, pull 5.2 (and the shared-context design) forward; 5.3–5.7 (window, input, AccessKit, Pi) can stay last.
+- **wgpu also runs in the browser** (WebGPU/WebGL2), so GPU acceleration of local mode in the browser does not need the native window at all; it can arrive with 5.2 + 7.1.
+- **OxiScript v1 needs no GPU** (CPU SIMD + multi-core first), so nothing here changes the current order.
+
 ## 6. Risks
 
 | Risk | Mitigation |
