@@ -1,5 +1,4 @@
 @@profile(safety);
-@@inline;
 
 @expect(simd)
 function sum(xs: f64[]): f64 {
@@ -16,6 +15,6 @@ export function init(): void {}
 struct S {
   @inline
   m(): void {}
-  @a(on: browser, n: 3, ok: true, path: a.b.c)
+  @expect(on: browser, n: 3, ok: true, path: a.b.c)
   f: i32;
 }

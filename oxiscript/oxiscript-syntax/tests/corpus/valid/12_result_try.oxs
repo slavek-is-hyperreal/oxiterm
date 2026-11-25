@@ -3,6 +3,8 @@ type Result<T, E> = { kind: "ok"; value: T } | { kind: "err"; error: E };
 function Ok<T, E>(value: T): Result<T, E> { return { kind: "ok", value }; }
 function Err<T, E>(error: E): Result<T, E> { return { kind: "err", error }; }
 
+function parseInt(text: string): Result<i32, string> { return Err("not a number"); }
+
 function parsePort(text: string): Result<u16, string> {
   const n = parseInt(text)?;
   if (n < 1 || n > 65535) { return Err("port out of range"); }

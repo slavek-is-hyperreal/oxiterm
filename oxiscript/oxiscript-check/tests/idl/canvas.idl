@@ -1,0 +1,4 @@
+interface Canvas "host:canvas" @1 {
+    fn clear();
+    fn put(x: i32, y: i32, ch: str);
+}

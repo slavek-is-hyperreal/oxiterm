@@ -78,7 +78,7 @@ pub struct TypeParamInfo {
 }
 
 #[derive(Clone, Debug)]
-pub struct FieldSig {
+pub struct FieldInfo {
     pub name: String,
     pub ty: Ty,
     pub readonly: bool,
@@ -101,7 +101,7 @@ pub struct RecordSig {
     pub is_class: bool,
     /// Instance and static fields in declaration order. For a union variant the
     /// discriminant field is **not** listed (it is derived from the tag).
-    pub fields: Vec<FieldSig>,
+    pub fields: Vec<FieldInfo>,
     pub methods: Vec<(String, DefId)>,
     pub ctor: Option<DefId>,
     pub implements: Vec<Ty>,

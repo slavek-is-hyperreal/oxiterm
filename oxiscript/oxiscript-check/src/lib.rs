@@ -71,6 +71,7 @@
 )]
 
 mod builtins;
+mod calls;
 mod decl;
 mod exhaust;
 mod expr;
@@ -363,6 +364,7 @@ pub(crate) struct ModData<'a> {
 pub(crate) struct LoopCtx {
     pub label: Option<String>,
     pub is_switch: bool,
+    pub is_loop: bool,
     pub breaks: Vec<flow::Flow>,
     pub brk: bool,
 }
@@ -380,15 +382,15 @@ pub(crate) struct FnCtx {
     pub loops: Vec<LoopCtx>,
     pub captures: Vec<LocalId>,
     pub name: String,
+    pub name_span: Option<Span>,
     pub is_law: bool,
     pub tparams: Vec<ParamId>,
     /// Names assigned anywhere in the outermost function body / inside closures.
     pub assigned: Rc<HashSet<String>>,
     pub closure_assigned: Rc<HashSet<String>>,
+    pub closure_recv: Rc<HashSet<String>>,
     pub has_ret_value: bool,
     pub exported: bool,
-    /// Constructor: field indices not yet assigned.
-    pub ctor_unassigned: Vec<u32>,
 }
 
 pub(crate) struct Checker<'a> {
@@ -421,6 +423,11 @@ pub(crate) struct Checker<'a> {
     pub depth: u32,
     pub bparams: [ParamId; 3],
     pub entry: Option<DefId>,
+    pub pending_bounds: Vec<(DefId, Vec<Ty>, Span, usize)>,
+    pub this_member_ok: bool,
+    pub assign_target: bool,
+    pub skip_unassigned: bool,
+    pub pending_label: Option<String>,
 }
 
 static REGISTRY: OnceLock<HashMap<String, (String, Option<String>)>> = OnceLock::new();
@@ -490,10 +497,12 @@ impl<'a> Checker<'a> {
             depth: 0,
             bparams: [ParamId(0); 3],
             entry: None,
+            pending_bounds: Vec::new(),
+            this_member_ok: false,
+            assign_target: false,
+            skip_unassigned: false,
+            pending_label: None,
         };
-        for nm in ["U", "V", "W"] {
-            let _ = nm;
-        }
         let mut ids = [ParamId(0); 3];
         for (k, nm) in ["U", "V", "W"].iter().enumerate() {
             ids[k] = ck.new_param(nm, None, 0);
@@ -716,7 +725,9 @@ impl<'a> Checker<'a> {
         });
         m.local_fn.push(fnidx);
         let id = LocalId(u32::try_from(m.out.locals.len() - 1).unwrap_or(u32::MAX));
-        m.out.binding_local.insert(node, id);
+        if node.0 < u32::MAX - 1 {
+            m.out.binding_local.insert(node, id);
+        }
         id
     }
 

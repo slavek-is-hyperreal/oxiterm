@@ -7,14 +7,12 @@ Verify: `cd <worktree> && CARGO_BUILD_JOBS=2 cargo test -p oxiscript-check` (and
 `cargo test -p oxiscript-syntax -p oxiscript-abi` (must stay green).
 
 ## Status
-- [x] M0 orientation, advisor consult, corpus triage (below)
-- [~] M1 DONE so far: Cargo.toml (deps syntax+abi), src/ty.rs (interner, subst), src/output.rs (Checked API), registry codes E0107-E0126, E0302, E0303, W0004 added (abi tests green). TODO: lib.rs Checker + driver, decl.rs, expr.rs, stmt.rs, flow.rs, builtins.rs; contracts.md 8.T section
-- [ ] M2 declarations/resolution/IDL hosts/modules
-- [ ] M3 expressions, statements, numerics
-- [ ] M4 narrowing, switch exhaustiveness, definite assignment, termination
-- [ ] M5 generics, closures, Result/?, laws, attributes, reserved features
-- [ ] M6 corpus fixes + 60 ill-typed + soundness + fuzz tests
-- [ ] M7 speed measure, clippy, wasm build, report
+- [x] M0-M5 core checker implemented: src/{lib,ty,output,decl,typeexpr,expr,calls,builtins,stmt,flow,exhaust}.rs; compiles; smoke + valid corpus pass (45/45).
+- [x] Valid corpus fixed (real files edited, syntax tests green): 06,08,11,12,13,14,17,18,19,21,22,25,26,27,30,31,36,37,43,45 (script in scratchpad patch4.py; reasons in "Corpus triage"). tests/corpus.rs supplies host IDLs (tests/idl/ui.idl, canvas.idl) and stub modules ./util, std/math.
+- [ ] M6 ill-typed corpus (>=60, code+line), soundness tests, fuzz (no panic/bounded), diag-registry test (every code exists, phase check, no unfilled placeholder), zero-errors => no ERROR type in tables test
+- [ ] contracts.md 8.T section (API + conventions + deviations: E0110 for === on struct, E0127 for ?. on non-null)
+- [ ] M7 speed measure, clippy -D warnings, wasm32 build, release tests, report
+Known TODO polish: arithmetic on nullable should say E0105; W0001 unused not implemented; deep-chain stack tests.
 
 ## Decisions
 - No `ena`: no inference variables. Local bidirectional checking; generic calls use one-way

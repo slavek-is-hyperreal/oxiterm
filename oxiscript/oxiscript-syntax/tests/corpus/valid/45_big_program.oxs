@@ -51,10 +51,10 @@ function handle(e: Event): void {
 
 @expect(no_alloc)
 export function update(dt: f32): void {
-  for (const p of particles) {
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.life -= 1;
+  for (let i = 0; i < particles.length; i++) {
+    particles[i].x += particles[i].vx * dt;
+    particles[i].y += particles[i].vy * dt;
+    particles[i].life -= 1;
   }
 }
 

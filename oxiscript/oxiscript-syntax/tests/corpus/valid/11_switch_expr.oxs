@@ -7,5 +7,5 @@ function name(c: Color): string {
     case ("a" === n ? "x" : "y"): 2,
     default: 3
   };
-  return n + m;
+  return `${n}${m}`;
 }

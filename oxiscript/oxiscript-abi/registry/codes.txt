@@ -309,6 +309,13 @@ title Invalid capture
 message {detail}
 fix Pass the value as a parameter or use an arrow function.
 
+code OXS-E0127
+severity error
+phase check
+title Unnecessary null handling
+message `{expr}` has type `{ty}` and is never null here
+fix Remove the `?.` or `??`, or make the type nullable.
+
 code OXS-E0300
 severity error
 phase check

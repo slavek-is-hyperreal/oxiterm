@@ -1,14 +1,19 @@
-function g(x: i64, f: f64): u8 {
-  const a = x as i32;
+type Circle = { kind: "circle"; r: f64 };
+type Rect = { kind: "rect"; w: f64 };
+type Shape = Circle | Rect;
+function foo<A, B>(a: A, b: B): A { return a; }
+
+function g(x: i64, f: f64, shape: Shape): u8 {
+  const a = x as i64;
   const b = f as i64 + 1;
   const c = (x as u8) | 1;
-  const d = x as (u8 | null);
+  const d = (x as u8) as (u8 | null);
   const e = x.wrapping<u8>();
   const h = f.saturating<i32>();
   const i = shape.downcast<Circle>();
   const j = foo<i32, string>(1, "a");
   const k = a < b;
-  const l = (a < b) > c;
-  const arr = x as Array<i32>;
+  const l = (a < b) === (b > a);
+  const arr = [1, 2] as Array<i32>;
   return e;
 }
