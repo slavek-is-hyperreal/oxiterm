@@ -687,6 +687,9 @@ Not reusable as code: the cycle collector for RC in Wasm linear memory (algorith
 | 7.2 OxiDE sink | 30 min | ~10 min | ~1 h incl. 200k-case fuzz run | 21 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) + 1 found during fixes | 2026-11-25, `78fcdb5` |
 | 8.P Parser + formatter | ~45 min | ~20 min | in progress | 16 (formatter changes meaning/breaks code with comments, ~3 KB stack per nesting level, Trojan-Source escapes, quadratic comments) | — |
 | 8.R Runtime | ~26 min | ~25 min | in progress | 7, no sandbox escape (sticky revocation, pump budget, subscription scan DoS, guessable handles, shared-store quota, log injection) | — |
+| 8.T Type checker | (not logged) | (not logged) | 2 agents: first stopped by usage limit, resume ~35 min | 22 (17 severe: uninitialised globals/statics, `never` falling off, private bypass, law purity bypass, polymorphic recursion, lossy fix texts) + 7 catalogue | 2026-11-25, Merge 8.T |
+| 8.G Codegen | (not logged) | (not logged) | agent stopped by usage limit after F1–F6; lead finished verify + clippy | 6 (NaN not canonicalised at exports, quadratic IR verifier, locals limit above engine, ptr_count truncation, raw-ref exports, loop limit), 0 miscompilations | 2026-11-25, Merge 8.G |
+| 8.L Lowering | started 2026-11-25 21:32 | — | — | — | — |
 
 **Wave 1 (7.1, 7.2, 8.C) closed 2026-11-25 12:5x.** Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
 
