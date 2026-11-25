@@ -148,6 +148,132 @@ title Unknown host interface
 message no interface `{name}` is declared in `{module}`
 fix Check the host IDL version.
 
+code OXS-E0402
+severity error
+phase link
+title Invalid module manifest
+message the `oxi.manifest` section is missing, duplicated or malformed: {detail}
+fix Emit exactly one well-formed `oxi.manifest` custom section.
+
+code OXS-E0403
+severity error
+phase link
+title Module not supported by this host
+message {detail}
+fix Rebuild against an ABI/profile this host supports.
+
+code OXS-E0404
+severity error
+phase link
+title Import signature mismatch
+message import `{module}`.`{name}` has type {found}, the interface requires {expected}
+fix Regenerate the import from the interface IDL.
+
+code OXS-E0405
+severity error
+phase link
+title Unsupported import kind
+message import `{module}`.`{name}` is not a function; modules may only import host capability functions
+fix Remove the memory/table/global import.
+
+code OXS-E0406
+severity error
+phase link
+title Required export missing or mistyped
+message export `{name}`: {detail}
+fix Export every runtime and entry-point symbol of the ABI table with its exact type.
+
+code OXS-E0407
+severity error
+phase link
+title Forbidden export
+message export `{name}`: {detail}
+fix Reserved `oxi_*`/`cb:*` names are only the ABI table and the callbacks of needed interfaces.
+
+code OXS-E0408
+severity error
+phase link
+title Module rejected by the engine
+message the Wasm module is invalid or uses a feature the ABI forbids: {detail}
+fix Core Wasm only (MVP, multi-value, bulk-memory, sign-extension, mutable globals; no start function).
+
+code OXS-E0409
+severity error
+phase link
+title Module exceeds a host limit
+message {detail}
+fix Reduce the module or ask the host to raise the limit.
+
+code OXS-E0410
+severity error
+phase link
+title Invalid ABI globals or scratch region
+message {detail}
+fix Export a valid scratch region and ABI version global.
+
+code OXS-E0420
+severity error
+phase runtime
+title Fuel exhausted
+message the call used its whole fuel budget of {fuel}
+fix Shorten the work done per event or ask the host for a larger budget.
+
+code OXS-E0421
+severity error
+phase runtime
+title Stack overflow
+message the call exceeded the host's recursion or stack limit
+fix Reduce recursion depth.
+
+code OXS-E0422
+severity error
+phase runtime
+title Memory access out of bounds
+message the module accessed memory out of bounds
+fix Fix the bounds error.
+
+code OXS-E0423
+severity error
+phase runtime
+title Host call rejected an argument
+message host call `{func}` failed: {detail}
+fix Pass pointers and lengths inside guest memory, valid UTF-8 and canonical values.
+
+code OXS-E0424
+severity error
+phase runtime
+title Capability denied
+message host call `{func}` has no status result and its capability or handle is invalid or revoked
+fix Declare operations that can be revoked as `result<..>`.
+
+code OXS-E0425
+severity error
+phase runtime
+title Guest trap
+message the module trapped: {kind}
+fix See the trap kind.
+
+code OXS-E0426
+severity error
+phase runtime
+title Instance poisoned
+message the instance trapped earlier and must be restarted or reloaded
+fix Call `restart` or `reload`.
+
+code OXS-E0427
+severity error
+phase runtime
+title Host resource limit
+message {detail}
+fix Release an instance or raise the limit.
+
+code OXS-E0428
+severity error
+phase runtime
+title Engine trap
+message the engine trapped: {detail}
+fix See the trap description.
+
 code OXS-E0500
 severity error
 phase check
