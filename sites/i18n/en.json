@@ -781,11 +781,11 @@
                 "href": "repo:docs/oxiscript/grammar.md"
               },
               {
-                "label": "AGENTS.md (being added by the DevKit stage)",
+                "label": "AGENTS.md",
                 "href": "repo:AGENTS.md"
               },
               {
-                "label": "llms.txt (being added by the DevKit stage)",
+                "label": "llms.txt",
                 "href": "repo:docs/oxiscript/llms.txt"
               }
             ]

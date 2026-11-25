@@ -20,7 +20,6 @@ const REPO_URL = 'https://github.com/slavek-is-hyperreal/oxiterm';
 // Files that slice 8.D adds to main (root AGENTS.md, docs/oxiscript/llms.txt). The site already links to exactly
 // these paths; until 8.D is merged they do not exist in this tree, so they are allowed to be missing.
 // TODO(8.D merge): DELETE this allowlist once both files exist on main; the check then enforces them like any other link.
-const PENDING_8D = new Set(['AGENTS.md', 'docs/oxiscript/llms.txt']);
 const DIST = path.join(HERE, 'dist');
 const SITES = ['home', 'oxiui', 'oxiscript'];
 const errors = [];
@@ -167,7 +166,7 @@ for (const site of SITES) {
     const kind = k.slice(0, k.indexOf(":")), p = k.slice(k.indexOf(":") + 1);
     const abs = path.join(REPO, p);
     if (!abs.startsWith(REPO + path.sep)) { err(`${site}: repo link escapes the repository: ${p}`); continue; }
-    if (!fs.existsSync(abs)) { if (!PENDING_8D.has(p)) err(`${site}: repo link target missing in the working tree: ${kind}/main/${p}`); continue; }
+    if (!fs.existsSync(abs)) { err(`${site}: repo link target missing in the working tree: ${kind}/main/${p}`); continue; }
     const isDir = fs.statSync(abs).isDirectory();
     if (kind === 'blob' && isDir) err(`${site}: /blob/main/${p} is a directory (use repotree:)`);
     if (kind === 'tree' && !isDir) err(`${site}: /tree/main/${p} is a file (use repo:)`);

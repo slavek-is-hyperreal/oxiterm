@@ -9,8 +9,9 @@ cleanly, render wrong, and emit no error.
 |---|---|
 | `thtml-tcss-authoring` | Any `.thtml` file, any `<style>` block, any layout that renders wrong. |
 | `oxiterm-app-integration` | Anything crossing the UI ↔ App Server boundary: custom `event-htmx` actions, `/events` handlers, state patches, OAuth flows. |
+| `oxiscript-authoring` | Any `.oxs` file, `oxi.toml` or `idl/*.idl`, any `OXS-` diagnostic. Generated from `oxiscript/oxiscript-cli/templates/common/AGENTS.md` by `tools/sync_docs.py`. |
 
-Both were derived by reading `oxiterm-renderer/src/parser/`,
+The two OxiTerm skills were derived by reading `oxiterm-renderer/src/parser/`,
 `oxiterm-server/src/dispatcher.rs`, and `oxiterm-server/src/session.rs` — not by
 summarising `docs/`. Where a skill and a document in `docs/` disagree, the skill
 is the one checked against source. Known documentation errors are listed in
