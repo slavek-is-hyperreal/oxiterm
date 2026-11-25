@@ -152,10 +152,9 @@ impl Handler for OxiServer {
         let sid = self.channels.lock().get(&channel).copied();
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
-                let new_dims = crate::session::PtyDimensions {
-                    cols: u16::try_from(width).unwrap_or(u16::MAX),
-                    rows: u16::try_from(height).unwrap_or(u16::MAX),
-                };
+                // The client chooses these numbers: clamp them (65535x65535 aborts the process).
+                let (cols, rows) = oxiterm_proto::input::wire::clamp_dims_u32(width, height);
+                let new_dims = crate::session::PtyDimensions { cols, rows };
                 *session.dims.write() = new_dims;
                 { let now = session.clock.now(); session.resize_debouncer.write().push(new_dims, now); }
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));
@@ -269,10 +268,9 @@ impl Handler for OxiServer {
         let sid = self.channels.lock().get(&channel).copied();
         if let Some(sid) = sid {
             if let Some(session) = self.registry.sessions.read().get(&sid) {
-                let new_dims = crate::session::PtyDimensions {
-                    cols: u16::try_from(width).unwrap_or(u16::MAX),
-                    rows: u16::try_from(height).unwrap_or(u16::MAX),
-                };
+                // The client chooses these numbers: clamp them (65535x65535 aborts the process).
+                let (cols, rows) = oxiterm_proto::input::wire::clamp_dims_u32(width, height);
+                let new_dims = crate::session::PtyDimensions { cols, rows };
                 { let now = session.clock.now(); session.resize_debouncer.write().push(new_dims, now); }
                 // Trigger a resize event through the reactor channel to dynamically adapt cell buffer layout grids.
                 let _ = session.raw_input_tx.send(crate::ssh::reactor::ReactorMessage::Resize(new_dims.cols, new_dims.rows));

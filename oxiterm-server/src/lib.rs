@@ -21,6 +21,7 @@ pub mod placeholder;
 pub mod url_validator;
 pub use oxiterm_core::state;
 pub mod web;
+pub mod local_mode;
 pub mod pathsafe;
 pub use oxiterm_core::page_source;
 pub mod fs_page_source;

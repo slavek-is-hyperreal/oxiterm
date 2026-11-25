@@ -28,6 +28,16 @@ pub struct PtyDimensions {
     pub rows: u16,
 }
 
+impl PtyDimensions {
+    /// A size clamped to `1..=MAX_COLS` x `1..=MAX_ROWS` (`oxiterm_proto::input::wire`). Every
+    /// place that accepts a client-supplied grid goes through this: an unclamped 65535x65535
+    /// allocates gigabytes per buffer.
+    pub fn clamped(cols: u16, rows: u16) -> Self {
+        let (cols, rows) = oxiterm_proto::input::wire::clamp_dims(cols, rows);
+        Self { cols, rows }
+    }
+}
+
 /// Predictive echo buffer for client side latency hiding.
 ///
 /// Anchored by spec [S5-21].
@@ -92,7 +102,7 @@ impl ResizeDebouncer {
     /// `now` comes from the session's host clock ([`SessionState::clock`]); `push` is called
     /// by the transports (SSH/WebSocket), which stamp the same clock the loop polls with.
     pub fn push(&mut self, dims: PtyDimensions, now: crate::clock::MonoTime) {
-        self.pending = Some(dims);
+        self.pending = Some(PtyDimensions::clamped(dims.cols, dims.rows));
         self.pushed_at = now;
     }
 
@@ -335,6 +345,18 @@ impl SessionState {
 mod resize_debouncer_tests {
     use super::*;
     use crate::clock::MonoTime;
+
+    #[test]
+    fn push_clamps_a_hostile_size() {
+        let mut d = ResizeDebouncer::new();
+        d.push(PtyDimensions { cols: 65535, rows: 65535 }, MonoTime::ZERO);
+        let got = d.poll(MonoTime::from_millis(500)).unwrap();
+        assert_eq!((got.cols, got.rows), (oxiterm_proto::input::wire::MAX_COLS, oxiterm_proto::input::wire::MAX_ROWS));
+        d.push(PtyDimensions { cols: 0, rows: 0 }, MonoTime::from_millis(600));
+        let got = d.poll(MonoTime::from_millis(1200)).unwrap();
+        assert_eq!((got.cols, got.rows), (1, 1));
+        assert_eq!(PtyDimensions::clamped(80, 24).cols, 80);
+    }
 
     #[test]
     fn due_at_is_the_first_instant_poll_applies() {

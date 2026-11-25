@@ -13,12 +13,23 @@ use crate::action::{ActionHandler, ActionReply};
 pub struct HttpActionHandler {
     /// Destination endpoint URL of the application server events channel.
     app_server_url: String,
+    /// Total time one request may take (connect, send, wait, read). A silent App Server used to
+    /// pin the request thread forever.
+    timeout: std::time::Duration,
 }
 
 impl HttpActionHandler {
-    /// Creates a new handler targeting the given URL.
+    /// Default total time for one action request.
+    pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    /// Creates a new handler targeting the given URL (30 s total, 5 s to connect).
     pub fn new(app_server_url: String) -> Self {
-        Self { app_server_url }
+        Self { app_server_url, timeout: Self::DEFAULT_TIMEOUT }
+    }
+
+    /// Same, with an explicit total timeout.
+    pub fn with_timeout(app_server_url: String, timeout: std::time::Duration) -> Self {
+        Self { app_server_url, timeout }
     }
 }
 
@@ -27,9 +38,16 @@ impl ActionHandler for HttpActionHandler {
     /// response with a JSON body is handed to `reply`.
     fn dispatch(&self, payload: DispatchPayload, reply: ActionReply) {
         let url = self.app_server_url.clone();
+        let timeout = self.timeout;
         std::thread::spawn(move || {
             info!("HttpActionHandler: POST {} action={}", url, payload.action);
-            let mut req = ureq::post(&url);
+            let agent = ureq::AgentBuilder::new()
+                .timeout_connect(timeout.min(std::time::Duration::from_secs(5)))
+                .timeout_read(timeout)
+                .timeout_write(timeout)
+                .timeout(timeout)
+                .build();
+            let mut req = agent.post(&url);
             if let Ok(token) = std::env::var("OXITERM_APP_TOKEN") {
                 if !token.is_empty() {
                     req = req.set("Authorization", &format!("Bearer {}", token));

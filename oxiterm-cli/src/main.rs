@@ -44,6 +44,11 @@ enum Commands {
         /// AT-SPI2/D-Bus transport is not yet implemented — no external connections are made.
         #[arg(long)]
         a11y: bool,
+        /// Enable the browser local mode (`/?local=1`: the core runs in the page). Off by
+        /// default; also `OXITERM_LOCAL_MODE=1`. Publishes the app's THTML pages to every
+        /// visitor and proxies their actions to the App Server.
+        #[arg(long)]
+        local_mode: bool,
     },
     /// Run the built-in weather dashboard demo
     Demo {
@@ -75,7 +80,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { file, port, host, no_auth, web_port, a11y } => {
+        Commands::Serve { file, port, host, no_auth, web_port, a11y, local_mode } => {
+            if local_mode {
+                // The web routes read the switch from the environment (like OXITERM_APP_SERVER).
+                std::env::set_var("OXITERM_LOCAL_MODE", "1");
+            }
             info!("Serving {} on {}:{} (web on port {}){}", file, host, port, web_port, if a11y { " [a11y mode]" } else { "" });
             
             let doc = oxiterm_server::loader::load_thtml_file(&file)?;

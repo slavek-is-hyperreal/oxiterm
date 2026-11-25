@@ -2661,8 +2661,12 @@ dependencies = [
 name = "oxiterm-web"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
+ "oxiterm-core",
  "oxiterm-proto",
  "oxiterm-renderer",
+ "parking_lot",
+ "serde_json",
  "unicode-width",
  "wasm-bindgen",
  "web-sys",

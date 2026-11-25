@@ -302,7 +302,12 @@ impl EventLoop {
         doc: THTMLDocument,
     ) -> Self {
         let LoopHandles { state: session, events_in, events_out, host } = handles;
-        let dims = *session.dims.read();
+        // Whatever the transport stored, the buffers are allocated at a bounded size.
+        let dims = {
+            let mut d = session.dims.write();
+            *d = crate::session_state::PtyDimensions::clamped(d.cols, d.rows);
+            *d
+        };
         let clock = session.clock.clone();
         let now = clock.now();
 
@@ -1572,6 +1577,7 @@ impl EventLoop {
     fn poll_resize(&mut self) -> bool {
         let dims_opt = self.session.resize_debouncer.write().poll(self.now);
         if let Some(dims) = dims_opt {
+            let dims = crate::session_state::PtyDimensions::clamped(dims.cols, dims.rows);
             *self.session.dims.write() = dims;
             self.buffer = DoubleBuffer::new(dims.cols, dims.rows);
             info!("Resized session {} to {:?}", self.session.id, dims);

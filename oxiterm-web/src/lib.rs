@@ -12,6 +12,11 @@ use oxiterm_renderer::DiffEngine;
 
 pub mod paint;
 
+#[cfg(feature = "local")]
+pub mod local;
+#[cfg(feature = "local")]
+mod local_wasm;
+
 /// Canvas rendering WebTerminal WASM wrapper.
 #[wasm_bindgen]
 pub struct WebTerminal {
@@ -132,57 +137,7 @@ impl WebTerminal {
     #[wasm_bindgen]
     pub fn draw_display_list(&mut self, payload: &[u8]) -> Result<(), String> {
         let list = oxiterm_renderer::render::wire::decode(payload).map_err(|e| e.to_string())?;
-        let m = paint::Metrics {
-            cw: self.char_width,
-            ch: self.char_height,
-            dpr: self.dpr,
-            base_font: self.base_font.clone(),
-        };
-        let ops = paint::plan(&list, &m);
-        self.ctx.set_text_baseline("top");
-        for op in &ops {
-            match op {
-                paint::PaintOp::Fill { x, y, w, h, color } => {
-                    self.ctx.set_fill_style_str(color);
-                    self.ctx.fill_rect(*x, *y, *w, *h);
-                }
-                paint::PaintOp::Stroke { color, width, path } => {
-                    trace_path(&self.ctx, path);
-                    self.ctx.set_stroke_style_str(color);
-                    self.ctx.set_line_width(*width);
-                    self.ctx.stroke();
-                }
-                paint::PaintOp::FillPath { color, path } => {
-                    trace_path(&self.ctx, path);
-                    self.ctx.set_fill_style_str(color);
-                    self.ctx.fill();
-                }
-                paint::PaintOp::ClipPath { path } => {
-                    trace_path(&self.ctx, path);
-                    self.ctx.clip();
-                }
-                paint::PaintOp::Text { ch, x, y, font, color } => {
-                    self.ctx.set_font(font);
-                    self.ctx.set_fill_style_str(color);
-                    let _ = self.ctx.fill_text(&ch.to_string(), *x, *y);
-                }
-                paint::PaintOp::Run { text, x, y, font, color } => {
-                    self.ctx.set_text_baseline("alphabetic");
-                    self.ctx.set_font(font);
-                    self.ctx.set_fill_style_str(color);
-                    let _ = self.ctx.fill_text(text, *x, *y);
-                    self.ctx.set_text_baseline("top");
-                }
-                paint::PaintOp::Save => self.ctx.save(),
-                paint::PaintOp::ClipRect { x, y, w, h } => {
-                    self.ctx.begin_path();
-                    self.ctx.rect(*x, *y, *w, *h);
-                    self.ctx.clip();
-                }
-                paint::PaintOp::Restore => self.ctx.restore(),
-            }
-        }
-        self.ctx.set_font(&self.base_font);
+        self.paint_list(&list);
         Ok(())
     }
 
@@ -252,6 +207,61 @@ fn trace_path(ctx: &web_sys::CanvasRenderingContext2d, path: &[paint::Seg]) {
 }
 
 impl WebTerminal {
+    /// Paints a decoded display list (shared by the wire path and the local mode).
+    pub(crate) fn paint_list(&mut self, list: &oxiterm_renderer::render::display_list::DisplayList) {
+        let m = paint::Metrics {
+            cw: self.char_width,
+            ch: self.char_height,
+            dpr: self.dpr,
+            base_font: self.base_font.clone(),
+        };
+        let ops = paint::plan(list, &m);
+        self.ctx.set_text_baseline("top");
+        for op in &ops {
+            match op {
+                paint::PaintOp::Fill { x, y, w, h, color } => {
+                    self.ctx.set_fill_style_str(color);
+                    self.ctx.fill_rect(*x, *y, *w, *h);
+                }
+                paint::PaintOp::Stroke { color, width, path } => {
+                    trace_path(&self.ctx, path);
+                    self.ctx.set_stroke_style_str(color);
+                    self.ctx.set_line_width(*width);
+                    self.ctx.stroke();
+                }
+                paint::PaintOp::FillPath { color, path } => {
+                    trace_path(&self.ctx, path);
+                    self.ctx.set_fill_style_str(color);
+                    self.ctx.fill();
+                }
+                paint::PaintOp::ClipPath { path } => {
+                    trace_path(&self.ctx, path);
+                    self.ctx.clip();
+                }
+                paint::PaintOp::Text { ch, x, y, font, color } => {
+                    self.ctx.set_font(font);
+                    self.ctx.set_fill_style_str(color);
+                    let _ = self.ctx.fill_text(&ch.to_string(), *x, *y);
+                }
+                paint::PaintOp::Run { text, x, y, font, color } => {
+                    self.ctx.set_text_baseline("alphabetic");
+                    self.ctx.set_font(font);
+                    self.ctx.set_fill_style_str(color);
+                    let _ = self.ctx.fill_text(text, *x, *y);
+                    self.ctx.set_text_baseline("top");
+                }
+                paint::PaintOp::Save => self.ctx.save(),
+                paint::PaintOp::ClipRect { x, y, w, h } => {
+                    self.ctx.begin_path();
+                    self.ctx.rect(*x, *y, *w, *h);
+                    self.ctx.clip();
+                }
+                paint::PaintOp::Restore => self.ctx.restore(),
+            }
+        }
+        self.ctx.set_font(&self.base_font);
+    }
+
     fn draw_cell(&self, col: u16, row: u16, ch: char, width_cells: u16) {
         let x = col as f64 * self.char_width;
         let y = row as f64 * self.char_height;

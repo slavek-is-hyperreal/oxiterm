@@ -12,6 +12,17 @@ wasm-bindgen = "0.2"
 oxiterm-proto = { path = "../oxiterm-proto" }
 oxiterm-renderer = { path = "../oxiterm-renderer", default-features = false }
 unicode-width = { workspace = true }
+# Local mode (OxiUI 7.1): the portable core runs in the browser. Pulls in text shaping and the
+# embedded fonts (measured: wasm 1.62 MB -> 3.64 MB raw, 0.58 MB -> 1.49 MB gzip); the thin client
+# does not need them: build with `--no-default-features` for a thin-only bundle.
+oxiterm-core = { path = "../oxiterm-core", optional = true }
+serde_json = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+[features]
+default = ["local"]
+local = ["dep:oxiterm-core", "dep:serde_json", "dep:parking_lot", "dep:anyhow"]
 
 [dependencies.web-sys]
 version = "0.3"
