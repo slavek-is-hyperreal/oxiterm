@@ -37,8 +37,40 @@
 //!
 //! `oxi_rt_init(base, count)`, `oxi_rt_scratch_cap() -> i32`,
 //! `oxi_gc_step(budget) -> i32` (bits: 1 more work, 2 deferred candidates need
-//! a full `oxi_collect_cycles`), `oxi_gc_stat(key) -> i32`,
-//! `oxi_gc_config(key, value)`.
+//! a full `oxi_collect_cycles` or a bigger budget; `budget == 0` does nothing
+//! and returns 0), `oxi_gc_stat(key) -> i32`, `oxi_gc_config(key, value)`.
+//!
+//! Extension trap codes (outside `TrapKind`'s range 1..=10; proposed for
+//! `trap.rs`): 64 = `oxi_rt_init` rejected the type descriptor table
+//! (`bad_typedesc`), 65 = debug builds only: release/retain of a pointer that
+//! is not a live object (`stale_object`).
+//!
+//! # Host protocol: when and how long
+//!
+//! The host may call `oxi_gc_step` or `oxi_collect_cycles` between *any* two
+//! guest calls (never from inside a host import, per the no-re-entrancy rule).
+//! The runtime keeps no state across a guest call that a collection could
+//! invalidate: owned values hold counts, and trial deletion only frees objects
+//! no count reaches. `oxi_gc_step(budget)` does O(`budget`) work per call (plus
+//! at most one record's pointer count, because a record is destroyed
+//! atomically); one unit is about 0.2 us natively. Loop `while step(b) & 1 {}`
+//! only with `b > 0`. A candidate whose mark phase exceeds the budget is
+//! deferred (bit 2) and skipped by later steps with the same or a smaller
+//! budget, so it costs one unit per step until `oxi_collect_cycles` (unbounded,
+//! call it when idle) or a larger budget examines it.
+//!
+//! # Memory limits
+//!
+//! The guest never sees a limit: `memory.grow` failure makes dlmalloc return
+//! null, the runtime drains its destruction queue, retries, then traps
+//! `OutOfMemory`. The *host* must therefore configure the limit; under wasmi's
+//! defaults a 2 GiB `oxi_alloc_bytes` succeeds. `oxiscript-runtime` should set a
+//! store limiter (`memory_size`, pages) per instance; dlmalloc grows in whole
+//! pages and keeps free space, so leave headroom of a few pages above the
+//! program's peak, and note that debug builds additionally keep a live-object
+//! bitmap (1 bit per 8 bytes of address space) and can hit the limit sooner than
+//! release builds. The pages-limit and `oxi_gc_stat(4)` (internal vector bytes)
+//! together bound the runtime's own overhead.
 //!
 //! # Semantics beyond the ABI text
 //!
@@ -74,12 +106,15 @@
 //!   must be `retain`ed first. Borrows from parameters stay valid for the whole
 //!   call. An owned value (`c >= 1`) is protected exactly until its own release.
 //! * Retain of `null` and of sticky objects is a no-op, so elision need not
-//!   special-case them. **There is no double-release / use-after-free
-//!   detection in release builds**: a stale `release` of a dead object reads
-//!   whatever the allocator left in its header. Corruption stays inside the
-//!   sandbox, but only the checked native heap (`sim`), the debug build's
-//!   poisoning and the RC-balance checker detect it; the compiler/elision pass
-//!   must emit balanced code.
+//!   special-case them. **Release builds do not detect double release or
+//!   release of non-objects**: a stale `release` reads whatever the allocator
+//!   left in the freed header (dlmalloc's free-list words), may corrupt the
+//!   allocator and usually ends in a trap; corruption stays inside the sandbox.
+//!   Debug builds keep a bitmap of live object starts (one bit per 8-byte
+//!   granule; statics below every heap allocation must be sticky) and trap
+//!   `stale_object` (65) on retain/release of anything else; the checked native
+//!   heap (`sim`) panics on any such access. The defence for shipped code is the
+//!   RC-balance checker in 8.L: the compiler must emit balanced code.
 //! * A retained object is recoloured black (not a candidate), so
 //!   `retain`/`release` pairs elided around a still-live object cost the
 //!   collector nothing; conversely, every *non-final* release of a cyclic

@@ -30,3 +30,20 @@ fn fuzz_long_programs() {
     assert!(aborts > 0, "the abort/undo path was never exercised");
     assert!(freed > 0);
 }
+
+/// Every allocation-failure path (first try fails, retry succeeds) under the
+/// reference model: object/block allocation, candidate buffer growth, the
+/// collector's stack/log growth inside trials (undo path), the debug live map.
+#[test]
+fn fuzz_with_allocation_failure_injection() {
+    let seeds: u64 = if cfg!(debug_assertions) { 150 } else { 1500 };
+    let mut failures = 0;
+    for seed in 0..seeds {
+        let mut g = SimGuest::standard();
+        g.rt.heap.inject_failures(seed, [3, 10, 30][(seed % 3) as usize]);
+        fuzz(&mut g, 50_000 + seed, 150);
+        failures += g.rt.heap.injected_failures;
+    }
+    eprintln!("injection: {seeds} programs, {failures} injected allocation failures");
+    assert!(failures > 1000);
+}

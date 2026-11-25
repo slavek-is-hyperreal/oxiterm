@@ -205,7 +205,6 @@ fn f3_scalar_array_drop_is_o_1() {
 
 /// Zero-size elements: no memory, but `len` up to 2^31-1 is walked on drop.
 #[test]
-#[ignore = "burns ~2^31 loop iterations (fuel DoS); run manually"]
 fn f3b_zero_sized_element_array_drop_burns_fuel() {
     let mut specs = standard_types();
     specs.push(TypeSpec { kind: 5, size: 0, acyclic: true, ptrs: vec![] }); // 25
@@ -222,7 +221,7 @@ fn f3b_zero_sized_element_array_drop_burns_fuel() {
 
 /// Build a guest with one extra malformed type (id 25) appended to the standard table.
 /// Returns Ok(outcome description) or Err(init trapped = clean rejection).
-fn descriptor_outcome(bad: TypeSpec, raw_hook: impl FnOnce(&mut FGuest, u32), use_id: u32) -> String {
+fn descriptor_outcome(bad: TypeSpec, raw_hook: impl FnOnce(&mut FGuest, u32), _use_id: u32) -> String {
     let mut specs = standard_types();
     specs.push(bad);
     let specs2 = specs.clone();
@@ -275,18 +274,43 @@ fn f4_malformed_descriptors_are_rejected_or_trap_cleanly() {
     assert!(bad.is_empty(), "descriptor handling:\n{}", bad.join("\n"));
 }
 
-/// count > 2^24: ids >= 2^24 are accepted by `td()` but the 24-bit type field
-/// aliases the colour bits.
+/// count > 2^24: ids >= 2^24 must be rejected (trap). Release builds wrap the
+/// u32 address arithmetic, so we make the lookup of id 0x0100_0010 land on the
+/// real NODE entry; `new_object` then ORs the id into the colour bits.
 #[test]
 fn f4b_type_id_beyond_24_bits_is_rejected() {
-    let mut g = FGuest::new();
-    g.rt.init(0x1000, 0x0200_0000); // claims 32M descriptors
-    let r = catch_unwind(AssertUnwindSafe(|| g.alloc(0x0100_0010)));
-    assert!(r.is_err(), "alloc of out-of-range 24-bit id was accepted");
+    if cfg!(debug_assertions) { return; } // debug build: u32 overflow panic instead of wrap
+    let specs = standard_types();
+    let mut g = FGuest { rt: Rt::new(FailHeap::with_checks(64 << 20, true)) };
+    // replicate install_types to learn the table base
+    let base = g.alloc_bytes(specs.len() as u32 * 16);
+    install_types(&mut g, &specs); // second table (valid); we only use the first copy below
+    for (id, sp) in specs.iter().enumerate() {
+        let a = base + id as u32 * 16;
+        let pmap = if sp.ptrs.is_empty() { 0 } else { g.alloc_bytes(sp.ptrs.len() as u32 * 4) };
+        for (k, off) in sp.ptrs.iter().enumerate() { g.wr(pmap + 4 * k as u32, *off); }
+        if sp.kind != 0 {
+            g.wr(a, sp.size);
+            g.wr(a + 4, sp.kind | (u32::from(sp.acyclic) << 8) | ((sp.ptrs.len() as u32) << 16));
+            g.wr(a + 8, pmap);
+        }
+    }
+    let id: u32 = 0x0100_0000 + ty::NODE;
+    // CORRECTED (8.M fixes): init itself now rejects count > 2^24 with a trap, so it
+    // must run inside the catch; a trap at init is the clean rejection this test wants.
+    let r = catch_unwind(AssertUnwindSafe(|| {
+        g.rt.init(base.wrapping_add(ty::NODE * 16).wrapping_sub(id.wrapping_mul(16)), 0x0200_0000);
+        let p = g.alloc(id);
+        (p, g.rd(p - 4))
+    }));
+    match r {
+        Err(e) if msg(&e).starts_with("trap") => {}
+        Ok((_, meta)) => panic!("alloc(0x{id:x}) accepted; meta={meta:#x} (type id aliases colour bits: colour {})", (meta >> 24) & 7),
+        Err(e) => panic!("alloc(0x{id:x}) -> non-trap failure {}", msg(&e)),
+    }
 }
 
-
-/// Duplicate pointer-map offsets double-release one child: a still-referenced
+// Duplicate pointer-map offsets double-release one child: a still-referenced
 /// object is freed. (Silent wrong free, caught only by validating at init.)
 #[test]
 fn f4d_duplicate_ptr_map_offsets_cause_wrong_free() {
@@ -345,7 +369,13 @@ fn f5_double_release_release_build_must_not_corrupt_allocator() {
     let path = build_wasm("release");
     let r = stale_release_probe(&path, 1);
     eprintln!("f5 release-build double release: {r:?}");
-    assert!(r.is_ok(), "{}", r.unwrap_err());
+    // CORRECTED (8.M fixes): the lead decision is that release builds stay as they are
+    // (the RC-balance checker is the defence). A trap anywhere in the probe is therefore
+    // acceptable: the instance dies and nothing escapes it. What must never happen is
+    // *silent* corruption: overlap, duplicate addresses, a clobbered live object.
+    if let Err(e) = &r {
+        assert!(e.contains("trapped"), "silent corruption after a stale release: {e}");
+    }
 }
 
 /// lib.rs claims debug poisoning detects stale releases.
@@ -451,17 +481,22 @@ fn f7_size_overflow_paths_trap_not_wrap() {
 #[test]
 fn f7b_string_concat_and_slice_edges() {
     let mut g = FGuest::new();
-    let s = g.str_new("héllo");
-    for (a, b) in [(0u32, 6u32), (2, 3), (3, 2), (0x8000_0000, 1), (u32::MAX, 0), (0, u32::MAX), (1, 2)] {
-        let r = catch_unwind(AssertUnwindSafe(|| g.rt.str_slice(s, a, b)));
-        // valid: (0,6) whole, (0,..); (2,3) splits é? bytes: h=0, é=1..3, l=3 -> (2,3) invalid utf8 boundary
-        match (a, b, r) {
-            (0, 6, Ok(_)) | (1, 2, Err(_)) => {}
-            (1, 3, _) => {}
-            (_, _, Ok(_)) if (a, b) == (3, 2) || a > 5 || b > 6 => panic!("slice({a},{b}) accepted"),
-            _ => {}
+    let s = g.str_new("h\u{e9}llo"); // h=0 e-acute=1..3 l=3 l=4 o=5, len 6
+    let trap_kind = |g: &mut FGuest, a: u32, b: u32| -> Option<u32> {
+        match catch_unwind(AssertUnwindSafe(|| g.rt.str_slice(s, a, b))) {
+            Ok(_) => None,
+            Err(e) => e.downcast_ref::<Trap>().map(|t| t.0),
         }
-    }
+    };
+    assert_eq!(trap_kind(&mut g, 0, 6), None);
+    assert_eq!(trap_kind(&mut g, 1, 3), None);
+    assert_eq!(trap_kind(&mut g, 6, 6), None);
+    assert_eq!(trap_kind(&mut g, 2, 3), Some(9), "start inside a code point");
+    assert_eq!(trap_kind(&mut g, 1, 2), Some(9), "end inside a code point");
+    assert_eq!(trap_kind(&mut g, 3, 2), Some(4), "start > end");
+    assert_eq!(trap_kind(&mut g, 0x8000_0000, 1), Some(4), "negative start");
+    assert_eq!(trap_kind(&mut g, 0, u32::MAX), Some(4), "end past len");
+    assert_eq!(trap_kind(&mut g, u32::MAX, 0), Some(4));
     let empty = g.str_new("");
     let c = g.rt.str_concat(empty, empty);
     assert_eq!(g.str_read(c), "");
@@ -723,4 +758,101 @@ fn f9_candidate_churn_over_a_shared_live_graph_amplifies_collector_work() {
     assert!(one < 20 * n as u64 * 4, "collect_cycles superlinear: {one}");
     assert!(cost / guest_ops < 1000, "amplification x{} per guest op", cost / guest_ops);
 
+}
+
+// ---------------------------------------------------------------- F5d probe, F10 exact undo, F11 f64 native vs wasm
+/// Probe what a stale release actually reads: print rc/meta words of a freed object.
+#[test]
+fn f5d_probe_stale_header_words() {
+    if !wasm_available() { return; }
+    for prof in ["release", "dev"] {
+        let path = build_wasm(prof);
+        let mut g = WasmGuest::standard(&path);
+        let a = g.alloc(ty::NODE);
+        let _guard = g.alloc(ty::NODE);
+        g.release(a);
+        eprintln!("f5d {prof}: freed object header rc={:#x} meta={:#x}", g.rd(a - 8), g.rd(a - 4));
+    }
+}
+
+/// Exact undo: a garbage-free graph (everything held) with every node buffered;
+/// for every budget b, gc_step(b) calls must leave every rc exactly as before.
+#[test]
+fn f10_gc_step_undo_is_exact_at_every_budget() {
+    let seeds = if cfg!(debug_assertions) { 10 } else { 40 };
+    let mut total_aborts = 0u64;
+    for seed in 0..seeds {
+        for b in (1..=64u32).chain([100, 150, 400]) {
+            let mut g = SimGuest::new(64 << 20, true);
+            install_types(&mut g, &ext_types());
+            let mut rng = Rng(seed * 31 + 7);
+            let mut objs: Vec<(u32, u32)> = vec![]; // (ptr, ty)
+            for _ in 0..24 {
+                let t = [ty::NODE, ty::NODE, ty::WIDE, GREENREC, ty::REFARRAY, ARRNODE, ty::CLOSURE][rng.below(7)];
+                let p = match t { ty::REFARRAY | ARRNODE => g.array_new(t, 1 + rng.below(3) as u32), _ => g.alloc(t) };
+                objs.push((p, t));
+            }
+            // random links (green records only point forward => no cycle through them)
+            for i in 0..objs.len() {
+                let (p, t) = objs[i];
+                let slots = ptr_slot_addrs_ext(&mut g, p, t);
+                for a in slots {
+                    if rng.chance(70) {
+                        let j = rng.below(objs.len());
+                        if t == GREENREC && (objs[j].1 == GREENREC || j <= i) { continue; }
+                        if objs[j].1 == GREENREC && j < i { /* edge into green from earlier node ok */ }
+                        if objs[j].1 == GREENREC && t != GREENREC && j <= i { }
+                        let (d, dt) = objs[j];
+                        // avoid cycles through green records: green may only be pointed at by lower index and point to higher
+                        if dt == GREENREC && j <= i && false { continue; }
+                        g.retain(d);
+                        g.wr(a, d);
+                    }
+                }
+            }
+            for &(p, _) in &objs { g.retain(p); g.release(p); } // buffer all
+            let snap: Vec<u32> = objs.iter().map(|&(p, _)| g.rd(p - 8)).collect();
+            let live = g.live_objects();
+            for call in 0..6 {
+                g.gc_step(b);
+                for (k, &(p, _)) in objs.iter().enumerate() {
+                    assert_eq!(g.rd(p - 8), snap[k], "seed {seed} budget {b} call {call}: rc of obj {k} changed");
+                    assert_eq!(g.rd(p - 4) & 0xFF_FFFF, objs[k].1);
+                }
+                assert_eq!(g.live_objects(), live, "seed {seed} budget {b}: object freed though everything is held");
+            }
+            total_aborts += u64::from(g.stat(6));
+            g.collect();
+            for (k, &(p, _)) in objs.iter().enumerate() { assert_eq!(g.rd(p - 8), snap[k], "seed {seed} b {b}: after collect, obj {k}"); }
+        }
+    }
+    eprintln!("f10: {total_aborts} aborted trials checked for exact undo");
+    assert!(total_aborts > 1000, "undo path barely exercised");
+}
+fn ptr_slot_addrs_ext(g: &mut SimGuest, p: u32, t: u32) -> Vec<u32> {
+    if t == GREENREC { return vec![p]; }
+    if t == ARRNODE {
+        let len = g.rd(p); let data = g.rd(p + 8);
+        return (0..len * 2).map(|i| data + 4 * i).collect();
+    }
+    ptr_slot_addrs(g, p)
+}
+
+#[test]
+fn f11_f64_printing_native_equals_wasm() {
+    if !wasm_available() { return; }
+    let path = build_wasm("release");
+    let mut w = WasmGuest::standard(&path);
+    let mut n = FGuest::new();
+    let mut vals = vec![0.0f64, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX, f64::MIN_POSITIVE, 5e-324, 1e16, 1e21, 1e-7, 0.1 + 0.2, 123456789012345680.0];
+    let mut r = Rng(9);
+    for _ in 0..20000 { vals.push(f64::from_bits(r.next())); }
+    for v in vals {
+        let pw = w.call_vals("oxi_str_from_f64", &[wasmi::Val::F64(v.into())]).unwrap()[0].i32().unwrap() as u32;
+        let sw = w.str_read(pw);
+        let pn = n.rt.str_from_f64(v);
+        let sn = n.str_read(pn);
+        assert_eq!(sw, sn, "bits {:#x}", v.to_bits());
+        w.release(pw); n.release(pn);
+    }
 }

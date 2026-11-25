@@ -18,6 +18,11 @@ pub trait Heap {
     fn alloc(&mut self, size: u32) -> u32;
     /// Free a block returned by `alloc` (`size` is the size passed to `alloc`).
     fn free(&mut self, a: u32, size: u32);
+    /// Size of the memory in bytes (used to validate the descriptor table).
+    /// Heaps that cannot tell may keep the default (unbounded).
+    fn mem_size(&self) -> u64 {
+        u64::MAX
+    }
     /// Stop the instance with a `TrapKind` code. Never returns.
     fn trap(&mut self, kind: u32) -> !;
 }

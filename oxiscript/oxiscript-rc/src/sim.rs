@@ -63,6 +63,11 @@ pub struct SimHeap {
     pub checks: bool,
     /// Last trap kind (also carried by the panic payload).
     pub last_trap: u32,
+    /// Fault injection: `(xorshift state, percent)`; an allocation fails with that
+    /// probability, but never twice in a row (so one retry always succeeds).
+    inject: Option<(u64, u64)>,
+    just_failed: bool,
+    pub injected_failures: u64,
 }
 
 impl SimHeap {
@@ -71,7 +76,12 @@ impl SimHeap {
         let mut mem = vec![0u8; size].into_boxed_slice();
         let base = mem.as_mut_ptr() as usize;
         let dl = Dlmalloc::new_with_allocator(Arena { base, next: AtomicUsize::new(RESERVED), limit: size });
-        SimHeap { mem, dl, live: BTreeMap::new(), checks, last_trap: 0 }
+        SimHeap { mem, dl, live: BTreeMap::new(), checks, last_trap: 0, inject: None, just_failed: false, injected_failures: 0 }
+    }
+
+    /// Make `alloc` fail with probability `pct` percent (see the field docs).
+    pub fn inject_failures(&mut self, seed: u64, pct: u64) {
+        self.inject = Some((seed | 1, pct));
     }
 
     pub fn live_blocks(&self) -> usize {
@@ -136,6 +146,18 @@ impl Heap for SimHeap {
     }
     fn alloc(&mut self, size: u32) -> u32 {
         assert!(size > 0);
+        if self.just_failed {
+            self.just_failed = false;
+        } else if let Some((st, pct)) = self.inject.as_mut() {
+            *st ^= *st >> 12;
+            *st ^= *st << 25;
+            *st ^= *st >> 27;
+            if st.wrapping_mul(0x2545_F491_4F6C_DD1D) % 100 < *pct {
+                self.just_failed = true;
+                self.injected_failures += 1;
+                return 0;
+            }
+        }
         // SAFETY: plain dlmalloc use; size/align are valid.
         let p = unsafe { self.dl.calloc(size as usize, 8) };
         if p.is_null() {
@@ -151,6 +173,9 @@ impl Heap for SimHeap {
         assert_eq!(got, Some(size), "free of {a:#x}: not a live block of that size (double free?)");
         // SAFETY: `a` came from `alloc` above.
         unsafe { self.dl.free(self.mem.as_mut_ptr().add(a as usize), size as usize, 8) };
+    }
+    fn mem_size(&self) -> u64 {
+        self.mem.len() as u64
     }
     fn trap(&mut self, kind: u32) -> ! {
         self.last_trap = kind;

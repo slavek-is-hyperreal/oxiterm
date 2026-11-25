@@ -62,6 +62,9 @@ impl Heap for WasmHeap {
         // SAFETY: `a` was returned by `alloc`.
         unsafe { (*addr_of_mut!(DL)).free(a as usize as *mut u8, size as usize, 8) }
     }
+    fn mem_size(&self) -> u64 {
+        core::arch::wasm32::memory_size(0) as u64 * 65536
+    }
     fn trap(&mut self, kind: u32) -> ! {
         // SAFETY: single-threaded.
         unsafe { *addr_of_mut!(oxi_trap_cell) = kind };
