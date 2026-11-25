@@ -2558,6 +2558,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxiscript-lower"
+version = "0.1.0"
+dependencies = [
+ "oxiscript-abi",
+ "oxiscript-check",
+ "oxiscript-ir",
+ "oxiscript-runtime",
+ "oxiscript-syntax",
+ "oxiscript-wasm",
+]
+
+[[package]]
 name = "oxiscript-rc"
 version = "0.1.0"
 dependencies = [

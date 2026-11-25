@@ -11,6 +11,7 @@ members = [
     "oxiterm-fb",
     "oxiscript/oxiscript-syntax",
     "oxiscript/oxiscript-check",
+    "oxiscript/oxiscript-lower",
     "oxiscript/oxiscript-ir",
     "oxiscript/oxiscript-abi",
     "oxiscript/oxiscript-wasm",

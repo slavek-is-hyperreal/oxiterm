@@ -1,0 +1,16 @@
+[package]
+name = "oxiscript-lower"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "OxiScript lowering: checked AST -> OxiIR (Phase 8, slice 8.L)."
+
+[dependencies]
+oxiscript-syntax = { path = "../oxiscript-syntax" }
+oxiscript-check = { path = "../oxiscript-check" }
+oxiscript-ir = { path = "../oxiscript-ir" }
+oxiscript-abi = { path = "../oxiscript-abi" }
+
+[dev-dependencies]
+oxiscript-wasm = { path = "../oxiscript-wasm" }
+oxiscript-runtime = { path = "../oxiscript-runtime" }
