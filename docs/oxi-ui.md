@@ -655,6 +655,23 @@ Later stages keep the research's order and estimates: 8.2 AOT release path and p
 
 Mechanics: each agent works in its own git worktree (`CARGO_BUILD_JOBS=2`, per-package tests only); shared files (`docs/oxi-ui.md`, `docs/ARCHITECTURE.md`, `ci.yml`, root `Cargo.toml`) are edited only by the lead; the lead reviews the diff, a BAD ACTOR agent attacks the branch (confined to its worktree, no network targets, no device writes, time-boxed, reports only), findings become tests, then the lead commits, merges to main, runs the full workspace gates serially and pushes.
 
+#### Reuse before writing (owner, 2026-11-25)
+Solved engineering problems are taken from existing permissive crates; the language and its semantics stay ours. Each crate is checked at adoption (licence, size, wasm32 build). Light dependencies may enter the core (live compiler in the browser/device); heavy ones stay in the developer toolchain. Every dependency is an SBOM entry (CRA / IEC 62443).
+| Need | Reuse | Slice | Where |
+|---|---|---|---|
+| Type inference (unification) | `ena` (rustc's union-find) | 8.T | core |
+| Incremental queries shared by compiler and LSP | `salsa` (rust-analyzer) — evaluate first | 8.T / 8.S2 | toolchain |
+| Diagnostic rendering | `ariadne` or `codespan-reporting` | 8.T+ | toolchain |
+| Language server | `lsp-server` + `lsp-types` | 8.S2 | toolchain |
+| Wasm emission and validation | `wasm-encoder` + `wasmparser` | 8.G | core |
+| Wasm transforms / module merging | `walrus` | 8.G / 8.L | toolchain |
+| Release optimisation | Binaryen `wasm-opt` | 8.2 | toolchain |
+| Guest allocator | `dlmalloc` or `talc` compiled to Wasm, under our RC + cycle collector | 8.M | module |
+| Adversarial testing | `wasm-smith`, `arbitrary` | all BAD ACTOR passes | dev only |
+| E-graph optimisation | `egg` / `egglog` | 8.3 | toolchain |
+| SMT for laws level 2 | `z3` / `cvc5` | 8.5 | toolchain |
+Not reusable as code: the cycle collector for RC in Wasm linear memory (algorithms from Nim ORC and Koka Perceus) and the type system itself.
+
 #### Wave log (measured; wall-clock excludes usage-limit pauses)
 | Slice | Implementation | BAD ACTOR | Fixes | Findings | Merged |
 |---|---|---|---|---|---|
