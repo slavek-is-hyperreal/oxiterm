@@ -163,10 +163,11 @@ fn big_union_is_bounded() {
 
 #[test]
 fn deep_generics_are_bounded() {
-    // polymorphic recursion: f<T> calls f<Box<T>>; the checker checks `f` once
+    // polymorphic recursion: f<T> calls f<Box<T>>; the checker checks `f` once and (BAD ACTOR F07,
+    // corrected expectation) refuses it: monomorphisation would never end
     let src = "struct Box<T> { v: T; }\nfunction f<T>(x: T, n: i32): i32 {\n  if (n === 0) { return 0; }\n  const b: Box<T> = { v: x };\n  return f<Box<T>>(b, n - 1);\n}\n";
     let (ok, errs, _) = on_small_stack(src.to_string());
-    assert!(ok, "{errs:?}");
+    assert!(!ok && errs.iter().any(|c| c == "OXS-E0113"), "{errs:?}");
     // a type nested beyond the limit is an error, not a blowup
     let mut t = String::from("i32");
     for _ in 0..40 {
@@ -492,7 +493,9 @@ fn nested_budgets_do_not_overflow() {
         s.push_str(&format!("const C{i}: i32 = {};\n", wrap_ex(&format!("C{} + 1", i - 1))));
     }
     s.push_str("const C0: i32 = 1;\n");
-    flat_chain("nested reversed const chain", s, max);
+    // (F02: reading a later constant is now also an init-order error, OXS-E0123; the point here is only that the
+    // recursion guard keeps the checker alive)
+    lenient_chain("nested reversed const chain", s, max);
     // reversed extends chain with deep type arguments
     let mut s = String::new();
     for i in (1..n).rev() {

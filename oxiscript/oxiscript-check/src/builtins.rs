@@ -30,8 +30,12 @@ impl Checker<'_> {
                 let a = self.tys.array(t);
                 Some(match name {
                     "length" => MemberOut::Value(I32, Res::Builtin(Builtin::ArrayLength)),
-                    "push" => self.bcallee(Builtin::ArrayPush, vec![], vec![t], VOID),
+                    "push" => {
+                        self.note_effect(8);
+                        self.bcallee(Builtin::ArrayPush, vec![], vec![t], VOID)
+                    }
                     "pop" => {
+                        self.note_effect(8);
                         let r = self.tys.nullable(t);
                         self.bcallee(Builtin::ArrayPop, vec![], vec![], r)
                     }

@@ -228,3 +228,46 @@ fn f19b_type_params_quadratic() {
 fn f19c_enum_members_quadratic() {
     assert_linear(|n| format!("enum E: u32 {{ {} }}", (0..n).map(|i| format!("M{i}")).collect::<Vec<_>>().join(", ")));
 }
+
+// F6b a law that writes through an element of a shared array
+#[test]
+fn f06b_law_mutates_struct_inside_array_element() {
+    rejects_with("struct S { x: i32; }\nfunction m(a: S[]): bool { a[0].x = 1; return true; }\nlaw l(a: S[]) { m(a) }", "OXS-E0125");
+}
+
+// F8 must not over-reject: `void` as a generic argument is fine where no field/element becomes `void`
+#[test]
+fn f08d_void_type_argument_in_callback_position_is_accepted() {
+    let h = hosts();
+    for src in [
+        "struct Task<T> { run: () => T; }\nfunction f(t: Task<void>): void { t.run(); }",
+        "struct Task<T> { run: () => T; }\nfunction mk<T>(r: () => T): Task<T> { return { run: r }; }\nfunction f(): void { const t = mk(() => {}); t.run(); }",
+        "interface H<T> { handle(): T; }\nstruct S { handle(): void {} }\nfunction g<T extends H<void>>(t: T): void { t.handle(); }\nfunction f(s: S): void { g(s); }",
+    ] {
+        let c = oxiscript_check::check_source(src, &h);
+        assert!(c.ok(), "rejected a valid program: {src}\n{:?}", c.errors().map(|d| d.code).collect::<Vec<_>>());
+    }
+}
+
+// D1/D2 no suggested fix is a statically lossy `as`
+#[test]
+fn d1_d2_no_lossy_as_fix() {
+    let h = hosts();
+    for src in ["function f(): i32 { return 1.5; }", "const x: u8 = 300;", "function g(a: u8): u8 { return a; }\nfunction f(): u8 { return g(300); }", "enum E: u8 { A = 300 }"] {
+        let c = oxiscript_check::check_source(src, &h);
+        assert!(!c.ok());
+        for d in c.errors() {
+            for f in &d.fixes {
+                assert!(f.edits.iter().all(|e| !e.replacement.contains(" as ")), "lossy `as` fix offered for {src}: {:?}", f.title);
+            }
+        }
+    }
+}
+
+// F20 `() => 1` as `() => void` is accepted and the dropped value is recorded as a coercion to void
+#[test]
+fn f20_void_callback_drop_is_recorded() {
+    let c = oxiscript_check::check_source("function ap(f: () => void): void { f(); }\nfunction f(): void { ap(() => 1); }", &hosts());
+    assert!(c.ok());
+    assert!(c.modules[0].coercions.values().any(|co| co.to == oxiscript_check::ty::VOID));
+}

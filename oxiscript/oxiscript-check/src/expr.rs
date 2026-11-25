@@ -240,6 +240,20 @@ impl<'a> Checker<'a> {
     pub fn note_call(&mut self, callee: DefId, span: Span) {
         if let Some(d) = self.fnctx.last().and_then(|c| c.def) {
             self.eff.entry(d).or_default().edges.push((callee, span));
+        } else if let Some(k) = self.cur_init {
+            self.init_recs.entry(k).or_default().calls.push((callee, span));
+        }
+    }
+
+    /// A module global or static field is read (initialisation-order analysis).
+    pub fn note_global_read(&mut self, key: crate::inst::GKey, span: Span) {
+        if let Some(d) = self.fnctx.last().and_then(|c| c.def) {
+            let r = self.eff.entry(d).or_default();
+            if r.reads.last() != Some(&key) {
+                r.reads.push(key);
+            }
+        } else if let Some(k) = self.cur_init {
+            self.init_recs.entry(k).or_default().reads.push((key, span));
         }
     }
 
@@ -270,11 +284,15 @@ impl<'a> Checker<'a> {
         for (d, m) in &mask {
             self.effects.insert(
                 *d,
-                EffectSummary { uses_host: m & 1 != 0, reads_globals: m & 2 != 0, writes_globals: m & 4 != 0 },
+                EffectSummary { uses_host: m & 1 != 0, reads_globals: m & 2 != 0, writes_globals: m & 4 != 0, mutates_heap: m & 8 != 0, calls_unknown: m & 16 != 0 },
             );
         }
         let laws: Vec<DefId> = (0..self.defs.len()).map(|i| DefId(i as u32)).filter(|d| self.kind_of(*d) == DefKind::Law).collect();
         for l in laws {
+            if self.eff.get(&l).is_some_and(|r| r.mask & 0x18 != 0) {
+                let sp = self.defs[l.0 as usize].info.span;
+                self.err("OXS-E0125", sp, &[("detail", "a law cannot mutate arrays or objects or call interface-bound methods (their effects are unknown)")]);
+            }
             let edges = self.eff.get(&l).map(|r| r.edges.clone()).unwrap_or_default();
             for (c, span) in edges {
                 if mask.get(&c).copied().unwrap_or(0) != 0 {
@@ -282,7 +300,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         "OXS-E0125",
                         span,
-                        &[("detail", &format!("a law may only call pure functions; `{n}` uses host capabilities or module-level state"))],
+                        &[("detail", &format!("a law may only call pure functions; `{n}` uses host capabilities, module-level state, mutates arrays or objects, or calls interface-bound methods"))],
                     );
                 }
             }
@@ -491,6 +509,7 @@ impl<'a> Checker<'a> {
             DefKind::Global => {
                 self.ensure_global(d);
                 self.set_res(e.id, Res::Def(d));
+                self.note_global_read(crate::inst::GKey::Global(d), e.span);
                 if self.globals.get(&d).is_some_and(|g| g.mutable) {
                     self.note_effect(2);
                     if self.in_law() {
@@ -707,6 +726,9 @@ impl<'a> Checker<'a> {
                 }
                 continue;
             };
+            if fs.private && !self.private_ok(def) {
+                self.err("OXS-E0119", f.name.span, &[("detail", &format!("Property '{name}' is private and only accessible within '{}'", self.def_name(def)))]);
+            }
             let fty = self.tys.subst(fs.ty, &map);
             if let Some(v) = &f.value {
                 self.expr_to(v, fty);
@@ -1442,6 +1464,33 @@ impl<'a> Checker<'a> {
                     return None;
                 }
                 self.check_place_mutable(t)?;
+                // writing through an array or a class reference is visible to every alias (laws must be pure):
+                // any link of the receiver chain that is an index, or a class-typed member base, counts
+                let mut cur: &Expr = t;
+                let mut depth = 0;
+                loop {
+                    depth += 1;
+                    match &strip_paren(cur).kind {
+                        ExprKind::Index { .. } => {
+                            self.note_effect(8);
+                            break;
+                        }
+                        ExprKind::Member { obj, .. } => {
+                            let o = strip_paren(obj);
+                            let ot = self.memo.get(&o.id).copied().or_else(|| self.mods[self.cm].out.expr_ty.get(o.id.0 as usize).copied());
+                            if ot.is_none_or(|x| matches!(self.tys.kind(self.non_null(x)), TyKind::Adt(d, _) if self.kind_of(*d) != DefKind::Struct)) {
+                                self.note_effect(8);
+                                break;
+                            }
+                            cur = obj;
+                        }
+                        _ => break,
+                    }
+                    if depth > 64 {
+                        self.note_effect(8);
+                        break;
+                    }
+                }
                 Some(ty)
             }
             ExprKind::This => {
@@ -1817,6 +1866,11 @@ impl<'a> Checker<'a> {
             self.err("OXS-E0127", obj.span, &[("expr", self.span_text(obj.span)), ("ty", &s)]);
         }
         let it = self.expr(index, Some(I32));
+        if let ExprKind::Unary { op: UnOp::Neg, expr: x } = &strip_paren(index).kind {
+            if matches!(&strip_paren(x).kind, ExprKind::Lit(l) if matches!(l.kind, LitKind::Int { .. })) {
+                self.err("OXS-E0123", index.span, &[("detail", "an array index cannot be negative (arrays are not indexed from the end)")]);
+            }
+        }
         let elem = match self.tys.kind(base).clone() {
             TyKind::Array(x) => {
                 if it != I32 && it != ERROR && it != NEVER {

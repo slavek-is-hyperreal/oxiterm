@@ -1,3 +1,5 @@
+#![allow(clippy::duplicate_mod)]
+#![allow(clippy::type_complexity)]
 mod common;
 use common::*;
 use oxiscript_check::*;

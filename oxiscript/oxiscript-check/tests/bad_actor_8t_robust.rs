@@ -1,3 +1,5 @@
+#![allow(clippy::unnecessary_get_then_check, clippy::range_plus_one)]
+#![allow(clippy::redundant_closure_for_method_calls, clippy::explicit_iter_loop)]
 #![allow(clippy::format_push_string)]
 //! BAD ACTOR 8.T: determinism, span sanity, registry codes, side-table invariants over a pool of
 //! hand-written, valid-corpus, generated and mutated programs; everything on a 1 MB stack.

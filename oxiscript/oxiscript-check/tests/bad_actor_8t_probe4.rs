@@ -1,3 +1,4 @@
+#![allow(clippy::duplicate_mod)]
 mod common;
 use common::*;
 pub const C: &[(&str, &str)] = &[

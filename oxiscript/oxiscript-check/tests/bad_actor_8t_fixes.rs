@@ -1,3 +1,4 @@
+#![allow(clippy::duplicate_mod, clippy::type_complexity)]
 //! BAD ACTOR 8.T: apply every suggested fix mechanically and report fixed programs that the
 //! checker ACCEPTS (a fix must lead to a well-typed program, and must not silently change meaning).
 mod common;

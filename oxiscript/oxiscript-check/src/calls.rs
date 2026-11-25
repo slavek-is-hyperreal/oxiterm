@@ -63,7 +63,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn private_ok(&self, owner: DefId) -> bool {
+    pub(crate) fn private_ok(&self, owner: DefId) -> bool {
         self.fnctx.iter().any(|c| c.owner == Some(owner))
     }
 
@@ -155,6 +155,7 @@ impl<'a> Checker<'a> {
                         self.err("OXS-E0119", name.span, &[("detail", &format!("Property '{}' is private and only accessible within class '{}'", name.name, self.def_name(d)))]);
                     }
                     self.note_effect(2);
+                    self.note_global_read(crate::inst::GKey::Static(d, i as u32), name.span);
                     if self.in_law() {
                         self.err("OXS-E0125", name.span, &[("detail", "a law cannot read static state")]);
                     }
@@ -355,6 +356,7 @@ impl<'a> Checker<'a> {
                 let methods = self.iface_methods_inst(idef, &iargs);
                 if let Some(i) = methods.iter().position(|(n, _, _)| *n == name.name) {
                     let (_, ps, r) = methods[i].clone();
+                    self.note_effect(16);
                     let own = self.ifaces.get(&idef).map(|s| s.methods[i].tparams.clone()).unwrap_or_default();
                     let callee = Callee {
                         tparams: own,
@@ -825,6 +827,13 @@ impl<'a> Checker<'a> {
             self.check_bounds(&solve, &solved, span);
         }
         let ret = self.tys.subst(cal.ret, &m);
+        if !failed && !solve.is_empty() {
+            self.check_wf(e.span, ret);
+            for p in &cal.params {
+                let pt = self.tys.subst(*p, &m);
+                self.check_wf(e.span, pt);
+            }
+        }
         self.check_overflow(e.span);
         // record the call
         let mut all_args = cal.owner_args.clone();
@@ -841,6 +850,7 @@ impl<'a> Checker<'a> {
         }
         if let Some(d) = cal.def {
             self.note_call(d, e.span);
+            self.note_inst(d, &all_args, e.span);
             if !all_args.is_empty() && !all_args.contains(&ERROR) {
                 let inst = Instance { def: d, args: all_args };
                 let idx = if let Some(i) = self.inst_map.get(&inst) { *i } else {

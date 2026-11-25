@@ -639,6 +639,14 @@ impl<'a> Checker<'a> {
 
     fn lit_key(l: &Expr) -> Option<String> {
         match &strip_paren(l).kind {
+            ExprKind::Unary { op: UnOp::Neg, expr } => match &strip_paren(expr).kind {
+                ExprKind::Lit(x) => match &x.kind {
+                    LitKind::Int { value, .. } => Some(format!("i:-{value}")),
+                    LitKind::Float { .. } => Some("f".into()),
+                    _ => None,
+                },
+                _ => None,
+            },
             ExprKind::Lit(x) => match &x.kind {
                 LitKind::Str(s) => Some(format!("s:{s}")),
                 LitKind::Int { value, .. } => Some(format!("i:{value}")),
@@ -1133,6 +1141,7 @@ impl<'a> Checker<'a> {
         let _ = is_local;
         let name = self.def_name(d).to_string();
         let mutable = v.kind == VarKind::Let;
+        let outer_init = self.cur_init.replace(crate::inst::GKey::Global(d));
         self.with_def_env(d, |s| {
             let ctx = s.new_fnctx(false, None, name.clone(), Rc::default(), Rc::default(), vec![]);
             s.fnctx.push(ctx);
@@ -1169,6 +1178,7 @@ impl<'a> Checker<'a> {
             s.flow = saved;
             s.globals.insert(d, GlobalSig { ty, mutable });
         });
+        self.cur_init = outer_init;
     }
 
     pub fn check_record_bodies(&mut self, d: DefId) {
@@ -1186,9 +1196,17 @@ impl<'a> Checker<'a> {
             match &m.kind {
                 MemberKind::Field(f) => {
                     let fty = rec.fields.iter().find(|x| x.name == f.name.name).map(|x| x.ty);
+                    let fidx = rec.fields.iter().position(|x| x.name == f.name.name);
                     let _ = fi;
                     fi += 1;
                     if let (Some(init), Some(fty)) = (&f.init, fty) {
+                        let outer_init = std::mem::replace(
+                            &mut self.cur_init,
+                            match fidx {
+                                Some(i) if rec.fields[i].is_static => Some(crate::inst::GKey::Static(d, i as u32)),
+                                _ => None,
+                            },
+                        );
                         self.with_def_env(d, |s| {
                             let ctx = s.new_fnctx(false, None, "<field>".into(), Rc::default(), Rc::default(), vec![]);
                             s.fnctx.push(ctx);
@@ -1199,6 +1217,7 @@ impl<'a> Checker<'a> {
                             s.fnctx.pop();
                             s.flow = saved;
                         });
+                        self.cur_init = outer_init;
                     }
                 }
                 MemberKind::Method(_) | MemberKind::Constructor(_) => {

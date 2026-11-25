@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines, clippy::format_collect)]
 #![allow(clippy::format_push_string)]
 //! BAD ACTOR 8.T: complexity probes. Each generator is timed at n and 4n on a 1 MB stack; the
 //! growth exponent is printed (run with --nocapture) and super-quadratic growth fails.

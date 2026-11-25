@@ -248,6 +248,14 @@ impl<'a> Checker<'a> {
                     self.err("OXS-E0117", t.span, &[("detail", &format!("type parameter `{name}` takes no type arguments"))]);
                     return ERROR;
                 }
+                if !self.local_sig.is_empty() {
+                    if let Some(o) = self.params[p.0 as usize].owner {
+                        if !self.defs[o.0 as usize].info.local {
+                            self.err("OXS-E0117", t.span, &[("detail", &format!("a local declaration cannot mention the type parameter `{name}` of an enclosing generic definition"))]);
+                            return ERROR;
+                        }
+                    }
+                }
                 self.tys.mk(TyKind::Param(p))
             }
             Binding::Local(_) | Binding::BuiltinFn(_) => ERROR,
@@ -289,7 +297,11 @@ impl<'a> Checker<'a> {
                 if want > 0 {
                     self.defer_bounds(d, &args, span);
                 }
-                self.tys.adt(d, &args)
+                let t = self.tys.adt(d, &args);
+                if want > 0 {
+                    self.check_wf(span, t);
+                }
+                t
             }
             DefKind::Alias => {
                 self.ensure_alias(d);
@@ -452,7 +464,7 @@ impl<'a> Checker<'a> {
         let (_, m) = rec.methods.iter().find(|(n, _)| n == name).cloned()?;
         self.ensure_fn(m);
         let sig = self.fns.get(&m)?.clone();
-        if sig.is_static || !sig.tparams.is_empty() && sig.tparams.len() > args.len() {
+        if sig.private || sig.is_static || !sig.tparams.is_empty() && sig.tparams.len() > args.len() {
             return None;
         }
         let tps = self.defs[d.0 as usize].info.tparams.clone();

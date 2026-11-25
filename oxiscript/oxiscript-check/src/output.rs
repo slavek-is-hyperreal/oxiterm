@@ -372,11 +372,15 @@ pub struct EffectSummary {
     pub reads_globals: bool,
     /// Writes module-level `let` state or a static field.
     pub writes_globals: bool,
+    /// Writes an array element, pushes/pops an array, or assigns a class field: visible to every alias.
+    pub mutates_heap: bool,
+    /// Calls a method through an interface bound (`T extends I`): the callee, and so its effects, are unknown.
+    pub calls_unknown: bool,
 }
 
 impl EffectSummary {
     pub fn is_pure(&self) -> bool {
-        !self.uses_host && !self.reads_globals && !self.writes_globals
+        !self.uses_host && !self.reads_globals && !self.writes_globals && !self.mutates_heap && !self.calls_unknown
     }
 }
 

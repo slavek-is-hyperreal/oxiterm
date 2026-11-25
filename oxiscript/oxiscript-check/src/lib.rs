@@ -87,6 +87,7 @@ mod decl;
 mod exhaust;
 mod expr;
 mod flow;
+mod inst;
 mod stmt;
 mod typeexpr;
 
@@ -440,6 +441,8 @@ pub(crate) struct Checker<'a> {
     pub cm: usize,
     pub scopes: Vec<HashMap<String, Binding>>,
     pub fnctx: Vec<FnCtx>,
+    /// Local definitions whose signatures are being resolved (innermost last).
+    pub local_sig: Vec<DefId>,
     pub flow: flow::Flow,
     pub paths: flow::PathTable,
     pub depth: u32,
@@ -454,6 +457,10 @@ pub(crate) struct Checker<'a> {
     pub default_depth: Option<usize>,
     pub pending_label: Option<String>,
     pub eff: HashMap<DefId, EffRec>,
+    pub(crate) inst_edges: Vec<inst::InstEdge>,
+    /// The module global / static whose initialiser is being checked.
+    pub(crate) cur_init: Option<inst::GKey>,
+    pub(crate) init_recs: HashMap<inst::GKey, InitRec>,
     pub memo: HashMap<NodeId, Ty>,
     pub effects: HashMap<DefId, EffectSummary>,
 }
@@ -462,6 +469,15 @@ pub(crate) struct Checker<'a> {
 pub(crate) struct EffRec {
     pub mask: u8,
     pub edges: Vec<(DefId, Span)>,
+    /// Module globals and static fields this function reads directly (init-order analysis).
+    pub reads: Vec<inst::GKey>,
+}
+
+/// What the initialiser of one module global / static field reads and calls.
+#[derive(Default, Clone)]
+pub(crate) struct InitRec {
+    pub reads: Vec<(inst::GKey, Span)>,
+    pub calls: Vec<(DefId, Span)>,
 }
 
 static REGISTRY: OnceLock<HashMap<String, (String, Option<String>)>> = OnceLock::new();
@@ -527,6 +543,7 @@ impl<'a> Checker<'a> {
             cm: 0,
             scopes: Vec::new(),
             fnctx: Vec::new(),
+            local_sig: Vec::new(),
             flow: flow::Flow::default(),
             paths: flow::PathTable::default(),
             depth: 0,
@@ -540,6 +557,9 @@ impl<'a> Checker<'a> {
             default_depth: None,
             pending_label: None,
             eff: HashMap::new(),
+            inst_edges: Vec::new(),
+            cur_init: None,
+            init_recs: HashMap::new(),
             memo: HashMap::new(),
             effects: HashMap::new(),
         };
@@ -860,6 +880,8 @@ impl<'a> Checker<'a> {
             self.cm = k;
             self.check_module_bodies(k);
         }
+        self.check_instantiation_cycles();
+        self.check_init_order(order);
         self.compute_effects();
         if self.tys.overflowed {
             self.err(

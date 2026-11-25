@@ -1,3 +1,4 @@
+#![allow(clippy::duplicate_mod)]
 //! BAD ACTOR probe: candidates that SHOULD be rejected; prints those accepted.
 mod common;
 use common::*;
@@ -430,7 +431,7 @@ fn probe() {
     let mut acc = Vec::new();
     for (n, s) in C {
         let c = oxiscript_check::check_source(s, &o);
-        if c.ok() { acc.push(*n); } else { let d: Vec<String> = c.errors().map(|d| format!("{}", d.code)).collect(); println!("REJ {n}: {}", d.join(" ")); }
+        if c.ok() { acc.push(*n); } else { let d: Vec<String> = c.errors().map(|d| d.code.to_string()).collect(); println!("REJ {n}: {}", d.join(" ")); }
     }
     println!("TOTAL {} ACCEPTED {}", C.len(), acc.len());
     for n in &acc { println!("ACCEPTED: {n}"); }

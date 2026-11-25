@@ -50,7 +50,19 @@ impl<'a> Checker<'a> {
             sc.insert(self.params[p.0 as usize].name.clone(), Binding::TParam(*p));
         }
         self.scopes.push(sc);
+        let outer_sig = if local {
+            self.local_sig.push(d);
+            None
+        } else {
+            Some(std::mem::take(&mut self.local_sig))
+        };
         let r = f(self);
+        match outer_sig {
+            None => {
+                self.local_sig.pop();
+            }
+            Some(v) => self.local_sig = v,
+        }
         self.scopes.pop();
         if let Some(s) = saved {
             debug_assert!(s.swapped);
@@ -95,6 +107,10 @@ impl<'a> Checker<'a> {
     }
 
     fn bind_item(&mut self, name: &Ident, d: DefId, exported: bool, local: bool) {
+        let type_item = matches!(self.kind_of(d), DefKind::Struct | DefKind::Class | DefKind::Enum | DefKind::Interface | DefKind::Alias | DefKind::Union);
+        if type_item && (matches!(name.name.as_str(), "bool" | "string" | "void" | "never" | "Array") || NumTy::from_name(&name.name).is_some()) {
+            self.err("OXS-E0123", name.span, &[("detail", &format!("`{}` is the name of a builtin type and cannot be redeclared", name.name))]);
+        }
         if local {
             self.bind_scope(&name.name, Binding::Def(d), name.span);
             return;
@@ -186,6 +202,9 @@ impl<'a> Checker<'a> {
                         MemberKind::Method(f) | MemberKind::Constructor(f) => {
                             let ck = if matches!(m.kind, MemberKind::Method(_)) { DefKind::Method } else { DefKind::Ctor };
                             let md = self.new_def(&f.name.name, ck, m.span, m.id, false, vec![], Some(d), Ast::Member(m, r));
+                            if ck == DefKind::Ctor && (!f.type_params.is_empty() || f.mods.is_static) || ck == DefKind::Method && f.name.name == "constructor" {
+                                self.err("OXS-E0123", f.name.span, &[("detail", "a constructor cannot be generic or `static`, and `constructor` is not a method name")]);
+                            }
                             let own = self.new_tparams(&f.type_params, md, &tps);
                             self.defs[md.0 as usize].info.tparams = own;
                             self.reserved_fn(f);
@@ -732,9 +751,10 @@ impl<'a> Checker<'a> {
         }
         let mut names_seen: HashSet<&str> = HashSet::new();
         let mut vals_seen: HashSet<i128> = HashSet::new();
+        let mut by_name: HashMap<String, i128> = HashMap::new();
         for v in &e.variants {
             let val = match &v.value {
-                Some(x) => if let Some(n) = self.const_int(x, &members) { n } else {
+                Some(x) => if let Some(n) = self.const_int(x, &by_name) { n } else {
                     self.err("OXS-E0123", x.span, &[("detail", "enum member value must be a constant integer expression")]);
                     next
                 },
@@ -750,6 +770,7 @@ impl<'a> Checker<'a> {
                 if !vals_seen.insert(val) {
                     self.err("OXS-E0123", v.span, &[("detail", &format!("duplicate enum value {val}: members of a closed enum must have distinct values"))]);
                 }
+                by_name.insert(v.name.name.clone(), val);
                 members.push((v.name.name.clone(), val));
             }
             next = val.wrapping_add(1);
@@ -763,7 +784,7 @@ impl<'a> Checker<'a> {
     }
 
     #[allow(clippy::self_only_used_in_recursion)]
-    fn const_int(&mut self, e: &'a Expr, prev: &[(String, i128)]) -> Option<i128> {
+    fn const_int(&mut self, e: &'a Expr, prev: &HashMap<String, i128>) -> Option<i128> {
         match &e.kind {
             ExprKind::Lit(l) => match &l.kind {
                 LitKind::Int { value, .. } => i128::try_from(*value).ok(),
@@ -772,7 +793,7 @@ impl<'a> Checker<'a> {
             ExprKind::Paren(i) => self.const_int(i, prev),
             ExprKind::Unary { op: UnOp::Neg, expr } => self.const_int(expr, prev)?.checked_neg(),
             ExprKind::Unary { op: UnOp::BitNot, expr } => Some(!self.const_int(expr, prev)?),
-            ExprKind::Ident(i) => prev.iter().find(|(n, _)| *n == i.name).map(|(_, v)| *v),
+            ExprKind::Ident(i) => prev.get(&i.name).copied(),
             ExprKind::Binary { op, lhs, rhs } => {
                 let (a, b) = (self.const_int(lhs, prev)?, self.const_int(rhs, prev)?);
                 match op {
@@ -995,6 +1016,7 @@ impl<'a> Checker<'a> {
         let sig = self.with_def_env(d, |s| {
             let mut fields = Vec::new();
             let mut discr: Option<(String, Discr)> = None;
+            let mut field_names: HashSet<String> = HashSet::new();
             for f in obj {
                 let mut t = &f.ty;
                 while let TypeExprKind::Paren(i) = &t.kind {
@@ -1013,11 +1035,12 @@ impl<'a> Checker<'a> {
                     s.err("OXS-E0115", f.span, &[("detail", "only one field of a union member may have a literal type (the discriminant)")]);
                     continue;
                 }
-                if fields.iter().any(|x: &FieldInfo| x.name == f.name.name) || discr.as_ref().is_some_and(|(n, _)| *n == f.name.name) {
+                if field_names.contains(&f.name.name) || discr.as_ref().is_some_and(|(n, _)| *n == f.name.name) {
                     s.err("OXS-E0301", f.name.span, &[("name", &f.name.name)]);
                     continue;
                 }
                 let ty = s.lower_type(&f.ty);
+                field_names.insert(f.name.name.clone());
                 fields.push(FieldInfo {
                     name: f.name.name.clone(),
                     ty,

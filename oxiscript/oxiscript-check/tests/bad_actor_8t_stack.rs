@@ -1,3 +1,4 @@
+#![allow(clippy::format_collect)]
 #![allow(clippy::format_push_string)]
 //! BAD ACTOR 8.T: hostile shapes on a 1 MB stack (debug and release), 
 //! checked with a wall-clock bound and diagnostic span sanity.
