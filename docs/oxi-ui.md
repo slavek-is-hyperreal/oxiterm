@@ -655,6 +655,17 @@ Later stages keep the research's order and estimates: 8.2 AOT release path and p
 
 Mechanics: each agent works in its own git worktree (`CARGO_BUILD_JOBS=2`, per-package tests only); shared files (`docs/oxi-ui.md`, `docs/ARCHITECTURE.md`, `ci.yml`, root `Cargo.toml`) are edited only by the lead; the lead reviews the diff, a BAD ACTOR agent attacks the branch (confined to its worktree, no network targets, no device writes, time-boxed, reports only), findings become tests, then the lead commits, merges to main, runs the full workspace gates serially and pushes.
 
+#### Wave log (measured; wall-clock excludes usage-limit pauses)
+| Slice | Implementation | BAD ACTOR | Fixes | Findings | Merged |
+|---|---|---|---|---|---|
+| 8.C Contracts | 31 min (+3 min lead amendment) | ~15 min | 21 min | 28 (verifier crash, pointer forging, RC use-after-free in the spec, grammar ambiguities) | 2026-11-25, `2ba1aa0` |
+| 7.1 WASM local mode | 41 min | ~17 min | ~29 min | 8 (incl. a pre-existing server abort via a 65535×65535 resize) | 2026-11-25, `77f9002` |
+| 7.2 OxiDE sink | 30 min | ~10 min | in progress | 19 + 2 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) | — |
+| 8.P Parser + formatter | ~45 min | in progress | — | — | — |
+
+Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
+
+
 **Decisions (owner, 2026-11-24 — decided now, deliberately, accepting that some may be regretted later)**
 1. **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
 2. **Grammar:** our own grammar, files `.oxs`, designed so that a TypeScript developer simply *reads* it without learning it (same keywords, braces, arrow functions, `import`/`export`, type annotations after `:`; differences only where soundness requires them, and then with familiar spellings). Real TypeScript is not parsed (no accepting syntax we then reject).
