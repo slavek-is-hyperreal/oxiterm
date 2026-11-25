@@ -4,6 +4,7 @@ RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 WORKDIR /app
 COPY . .
 RUN rustup target add wasm32-unknown-unknown
-RUN wasm-pack build --target web --out-dir ../oxiterm-server/assets/pkg oxiterm-web
+RUN wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features \
+ && wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
 RUN cargo fetch
 CMD ["cargo", "test", "-p", "oxiterm-proto", "-p", "oxiterm-server", "-p", "oxiterm-renderer"]

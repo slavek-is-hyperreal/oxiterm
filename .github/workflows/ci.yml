@@ -33,7 +33,9 @@ jobs:
     - name: Install wasm-pack
       uses: taiki-e/install-action@wasm-pack
     - name: Build web client bundle
-      run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
+      run: |
+        wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features
+        wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
     - name: Build
       run: cargo build --workspace
     - name: Run tests
@@ -88,7 +90,9 @@ jobs:
     - name: Install wasm-pack
       uses: taiki-e/install-action@wasm-pack
     - name: Build web client bundle
-      run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
+      run: |
+        wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features
+        wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
     - name: Install tarpaulin
       uses: taiki-e/install-action@cargo-tarpaulin
     - name: Run tarpaulin
@@ -106,7 +110,9 @@ jobs:
       - name: Install wasm-pack
         uses: taiki-e/install-action@wasm-pack
       - name: Build web client bundle
-        run: wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web
+        run: |
+          wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features
+          wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
       - name: Build
         run: cargo build --release
       - name: Create Release
