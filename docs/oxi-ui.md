@@ -711,6 +711,8 @@ Not reusable as code: the cycle collector for RC in Wasm linear memory (algorith
     Lesson from Bend 2 kept in mind: laws only protect what is written down (an under-specified law let its demo agent change the game rules), so law review is part of code review. Full dependent types are rejected: they would break "a TS developer simply reads it" and slow compilation.
 12. **AI-friendliness as a design goal:** an unambiguous grammar; error messages with stable reason codes and a suggested fix, readable by people and models; a stable specification with model-oriented docs (`llms.txt`); the placement report and `@expect`; laws as machine-checkable targets for agents; a deterministic compiler, so an agent can rely on its own experiments.
 
+13. **Pointer width is a target parameter (owner question, 2026-11-25).** v1 targets wasm32: 32-bit addresses and lengths in the ABI (4 GiB of linear memory per module), while `i64`/`f64` arithmetic is native 64-bit. Release builds are still native 64-bit machine code on 64-bit hosts (Wasmtime AOT, or wasm→C then the native compiler); only the per-module heap is 32-bit addressed, which is also what ESP32-class 32-bit MCUs need. Programs that need more than 4 GiB get a later `memory64` target (part of Wasm 3.0): pointer width stays a codegen/ABI parameter, never a deep assumption, and the switch is an ABI version bump, not a language change.
+
 Remaining unknowns are measured, not re-decided, in Stage 8.0: wasmi compile latency for small modules, fuel overhead and `no_std` flash size on ESP32, RC overhead with elision.
 
 ---
