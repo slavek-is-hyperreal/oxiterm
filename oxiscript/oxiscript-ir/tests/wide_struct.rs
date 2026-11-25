@@ -28,9 +28,9 @@ fn seventy_thousand_fields_verify_fast() {
     let el = t.elapsed();
     assert!(errs.is_empty(), "{:?}", errs.first());
     eprintln!("verify 70000 fields: {el:?}");
-    if !cfg!(debug_assertions) {
-        assert!(el < std::time::Duration::from_secs(1), "verify took {el:?}");
-    } else {
+    if cfg!(debug_assertions) {
         assert!(el < std::time::Duration::from_secs(20), "verify took {el:?}");
+    } else {
+        assert!(el < std::time::Duration::from_secs(1), "verify took {el:?}");
     }
 }

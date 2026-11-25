@@ -7,3 +7,4 @@ F3 done (LIMIT_LOCALS 12000; measured trap >=17000; test asserting)
 F6 test asserts E0603 or ok; interp fuel per block done
 F5 in progress: wrap.rs check_export_boundary + CompileOptions.allow_raw_exports (corpus/golden set it); fixing catalogue cat05 etc.
 F5 done; golden re-blessed (float-return wrappers). Remaining: full verify (debug, ir, abi, clippy, wasm32)
+Verify (Opus takeover 2026-11-25): debug+release oxiscript-wasm green; ir/abi green; clippy green after if_not_else fix in ir/tests/wide_struct.rs; wasm32 build ok. CompileOptions used only inside oxiscript-wasm. DONE.
