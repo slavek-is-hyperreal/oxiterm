@@ -2,7 +2,6 @@
 //! array and object literals, `?`, indexing, closures, switch expressions.
 //! Calls and member access live in `calls.rs`.
 
-use crate::exhaust::Pat;
 use crate::flow::Flow;
 use crate::ty::*;
 use crate::*;
@@ -98,23 +97,59 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Is the constant `e` (a possibly negated numeric literal) changed by converting it to `to`?
+    /// Such a conversion is never offered as a fix: `1.5 as i32` and `300 as u8` hide a bug.
+    fn lossy_const(e: &Expr, to: NumTy) -> bool {
+        let (e, neg) = match &strip_paren(e).kind {
+            ExprKind::Unary { op: UnOp::Neg, expr } => (strip_paren(expr), true),
+            _ => (strip_paren(e), false),
+        };
+        let ExprKind::Lit(l) = &e.kind else { return false };
+        match &l.kind {
+            LitKind::Int { value, .. } => {
+                if is_int(to) {
+                    if neg && !is_signed(to) { *value > 0 } else { *value > int_max(to, neg) }
+                } else {
+                    !Self::float_fits(*value, to)
+                }
+            }
+            LitKind::Float { text, .. } => {
+                let v: f64 = text.parse().unwrap_or(f64::INFINITY);
+                let v = if neg { -v } else { v };
+                if is_int(to) {
+                    let (lo, hi) = (-(int_max(to, true) as f64), int_max(to, false) as f64);
+                    !(v.fract() == 0.0 && v >= lo && v <= hi)
+                } else {
+                    to == NumTy::F32 && !(v as f32).is_finite()
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// The `(e as T)` fix for a numeric mismatch, unless the conversion is statically lossy.
+    fn as_fix(&self, e: &Expr, to: Ty, from: Ty, title: String) -> Option<Fix> {
+        let (TyKind::Num(tn), TyKind::Num(_)) = (self.tys.kind(to), self.tys.kind(from)) else { return None };
+        if Self::lossy_const(e, *tn) {
+            return None;
+        }
+        let st = self.show(to);
+        Some(Fix {
+            title,
+            edits: vec![
+                TextEdit { span: Span::new(e.span.file, e.span.lo, e.span.lo), replacement: "(".into() },
+                TextEdit { span: Span::new(e.span.file, e.span.hi, e.span.hi), replacement: format!(" as {st})") },
+            ],
+        })
+    }
+
     /// `OXS-E0100` with a mechanical fix for numeric conversions.
     pub fn mismatch_fix(&mut self, e: &Expr, expected: Ty, found: Ty) {
         if self.tys.has_error(expected) || self.tys.has_error(found) {
             return;
         }
         let (se, sf) = (self.show(expected), self.show(found));
-        let fix = if matches!(self.tys.kind(expected), TyKind::Num(_)) && matches!(self.tys.kind(found), TyKind::Num(_)) {
-            Some(Fix {
-                title: format!("Convert with `as {se}`"),
-                edits: vec![
-                    TextEdit { span: Span::new(e.span.file, e.span.lo, e.span.lo), replacement: "(".into() },
-                    TextEdit { span: Span::new(e.span.file, e.span.hi, e.span.hi), replacement: format!(" as {se})") },
-                ],
-            })
-        } else {
-            None
-        };
+        let fix = self.as_fix(e, expected, found, format!("Convert with `as {se}`"));
         self.err_fix("OXS-E0100", e.span, &[("expected", &se), ("found", &sf)], fix);
     }
 
@@ -127,7 +162,56 @@ impl<'a> Checker<'a> {
 
     // ---- entry ---------------------------------------------------------------
 
+    /// The receiver of a member/call/index/paren node (the next link of a chain).
+    fn receiver(e: &'a Expr) -> Option<&'a Expr> {
+        match &e.kind {
+            ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => Some(obj),
+            ExprKind::Call { callee, .. } => match &strip_paren(callee).kind {
+                // a method call evaluates the receiver of the callee member, not the member itself
+                ExprKind::Member { obj, .. } => Some(obj),
+                _ => Some(callee),
+            },
+            ExprKind::Paren(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    /// Long `a.b().c()...` chains are evaluated innermost first, so the native stack does
+    /// not grow with the chain length: each link finds its receiver already typed in `memo`.
+    fn precompute_chain(&mut self, e: &'a Expr) {
+        // only chains of at least 12 links are worth it
+        let mut probe = e;
+        let mut n = 0;
+        while let Some(r) = Self::receiver(probe) {
+            n += 1;
+            probe = r;
+            if n >= 12 {
+                break;
+            }
+        }
+        if n < 12 || self.memo.contains_key(&Self::receiver(e).map_or(e.id, |r| r.id)) {
+            return;
+        }
+        let mut spine: Vec<&'a Expr> = Vec::new();
+        let mut cur = e;
+        while let Some(r) = Self::receiver(cur) {
+            spine.push(r);
+            cur = r;
+        }
+        // `spine` runs from e's receiver to the base; evaluate the base first
+        for node in spine.into_iter().rev() {
+            let t = self.expr(node, None);
+            self.memo.insert(node.id, t);
+        }
+    }
+
     pub fn expr(&mut self, e: &'a Expr, exp: Option<Ty>) -> Ty {
+        if let Some(t) = self.memo.remove(&e.id) {
+            return t;
+        }
+        if matches!(e.kind, ExprKind::Member { .. } | ExprKind::Call { .. } | ExprKind::Index { .. }) {
+            self.precompute_chain(e);
+        }
         self.depth += 1;
         if self.depth > MAX_EXPR_DEPTH {
             self.depth -= 1;
@@ -138,10 +222,71 @@ impl<'a> Checker<'a> {
         let t = self.expr_inner(e, exp);
         self.depth -= 1;
         self.set_ty(e.id, t);
-        if self.in_law() && matches!(self.tys.kind(t), TyKind::Adt(d, _) if self.kind_of(*d) == DefKind::Host) {
-            self.err("OXS-E0125", e.span, &[("detail", "a law cannot use host capabilities")]);
+        if matches!(self.tys.kind(t), TyKind::Adt(d, _) if self.kind_of(*d) == DefKind::Host) {
+            self.note_effect(1);
+            if self.in_law() {
+                self.err("OXS-E0125", e.span, &[("detail", "a law cannot use host capabilities")]);
+            }
         }
         t
+    }
+
+    pub fn note_effect(&mut self, bit: u8) {
+        if let Some(d) = self.fnctx.last().and_then(|c| c.def) {
+            self.eff.entry(d).or_default().mask |= bit;
+        }
+    }
+
+    pub fn note_call(&mut self, callee: DefId, span: Span) {
+        if let Some(d) = self.fnctx.last().and_then(|c| c.def) {
+            self.eff.entry(d).or_default().edges.push((callee, span));
+        }
+    }
+
+    /// Propagate effects from callees to callers (linear worklist) and check law purity.
+    pub fn compute_effects(&mut self) {
+        let mut mask: HashMap<DefId, u8> = HashMap::new();
+        let mut rev: HashMap<DefId, Vec<DefId>> = HashMap::new();
+        for (d, r) in &self.eff {
+            mask.insert(*d, r.mask);
+            for (c, _) in &r.edges {
+                rev.entry(*c).or_default().push(*d);
+            }
+        }
+        let mut work: Vec<DefId> = mask.iter().filter(|(_, m)| **m != 0).map(|(d, _)| *d).collect();
+        while let Some(d) = work.pop() {
+            let m = mask.get(&d).copied().unwrap_or(0);
+            if let Some(callers) = rev.get(&d) {
+                for c in callers {
+                    let cm = mask.entry(*c).or_insert(0);
+                    if *cm | m != *cm {
+                        *cm |= m;
+                        work.push(*c);
+                    }
+                }
+            }
+        }
+        // callees without a record (host-free leaf functions) are pure
+        for (d, m) in &mask {
+            self.effects.insert(
+                *d,
+                EffectSummary { uses_host: m & 1 != 0, reads_globals: m & 2 != 0, writes_globals: m & 4 != 0 },
+            );
+        }
+        let laws: Vec<DefId> = (0..self.defs.len()).map(|i| DefId(i as u32)).filter(|d| self.kind_of(*d) == DefKind::Law).collect();
+        for l in laws {
+            let edges = self.eff.get(&l).map(|r| r.edges.clone()).unwrap_or_default();
+            for (c, span) in edges {
+                if mask.get(&c).copied().unwrap_or(0) != 0 {
+                    let n = self.def_name(c).to_string();
+                    self.err(
+                        "OXS-E0125",
+                        span,
+                        &[("detail", &format!("a law may only call pure functions; `{n}` uses host capabilities or module-level state"))],
+                    );
+                }
+            }
+        }
     }
 
     pub fn in_law(&self) -> bool {
@@ -197,7 +342,7 @@ impl<'a> Checker<'a> {
                     }
                 };
                 if is_int(ty) {
-                    if *value > int_max(ty, neg) {
+                    if !(neg && !is_signed(ty)) && *value > int_max(ty, neg) {
                         let shown = if neg { format!("-{value}") } else { value.to_string() };
                         self.err("OXS-E0102", l.span, &[("value", &shown), ("ty", ty.name())]);
                     }
@@ -249,11 +394,11 @@ impl<'a> Checker<'a> {
     pub fn narrowable(&self, l: LocalId) -> bool {
         let Some(ctx) = self.fnctx.last() else { return false };
         let name = &self.mods[self.cm].out.locals[l.0 as usize].name;
-        if ctx.closure_assigned.contains(name) {
+        if ctx.closure_assigned.contains(name) || ctx.closure_assigned.contains("*") {
             return false;
         }
         let owner = self.mods[self.cm].local_fn[l.0 as usize] as usize;
-        if owner + 1 < self.fnctx.len() && ctx.assigned.contains(name) {
+        if owner + 1 < self.fnctx.len() && (ctx.assigned.contains(name) || ctx.assigned.contains("*")) {
             return false;
         }
         true
@@ -346,6 +491,12 @@ impl<'a> Checker<'a> {
             DefKind::Global => {
                 self.ensure_global(d);
                 self.set_res(e.id, Res::Def(d));
+                if self.globals.get(&d).is_some_and(|g| g.mutable) {
+                    self.note_effect(2);
+                    if self.in_law() {
+                        self.err("OXS-E0125", e.span, &[("detail", "a law cannot read module-level `let` state")]);
+                    }
+                }
                 self.globals.get(&d).map_or(ERROR, |g| g.ty)
             }
             DefKind::Struct | DefKind::Class | DefKind::Enum | DefKind::Union | DefKind::Variant { .. } | DefKind::Interface | DefKind::Alias | DefKind::Host | DefKind::Handle => {
@@ -365,25 +516,22 @@ impl<'a> Checker<'a> {
     }
 
     fn this_expr(&mut self, e: &'a Expr) -> Ty {
-        match self.lookup("this") {
-            Some(Binding::Local(l)) => {
-                // use of `this` inside a constructor before all fields are assigned
-                if let Some(c) = self.fnctx.iter().rev().find(|c| !c.is_closure) {
-                    if c.is_ctor && self.flow.unassigned.iter().any(|u| *u & 0x8000_0000 != 0) && !self.this_member_ok {
-                        self.err(
-                            "OXS-E0119",
-                            e.span,
-                            &[("detail", "`this` cannot be used before every field is assigned in the constructor")],
-                        );
-                    }
+        if let Some(Binding::Local(l)) = self.lookup("this") {
+            // use of `this` inside a constructor before all fields are assigned
+            if let Some(c) = self.fnctx.iter().rev().find(|c| !c.is_closure) {
+                if c.is_ctor && self.flow.has_unassigned_fields() && !self.this_member_ok {
+                    self.err(
+                        "OXS-E0119",
+                        e.span,
+                        &[("detail", "`this` cannot be used before every field is assigned in the constructor")],
+                    );
                 }
-                self.this_member_ok = false;
-                self.use_local(e.id, l, e.span)
             }
-            _ => {
-                self.err("OXS-E0119", e.span, &[("detail", "`this` is only valid inside a method or constructor")]);
-                ERROR
-            }
+            self.this_member_ok = false;
+            self.use_local(e.id, l, e.span)
+        } else {
+            self.err("OXS-E0119", e.span, &[("detail", "`this` is only valid inside a method or constructor")]);
+            ERROR
         }
     }
 
@@ -473,23 +621,20 @@ impl<'a> Checker<'a> {
                         },
                         _ => None,
                     });
-                    match lit {
-                        Some(v) => {
-                            chosen = usig.variants.iter().position(|x| x.value == v).map(|i| (i, f));
-                            if chosen.is_none() {
-                                let uname = self.show(target);
-                                self.err(
-                                    "OXS-E0120",
-                                    f.span,
-                                    &[("detail", &format!("Type '{}' is not assignable to type '{uname}'; no member has {}: {}", self.span_text(f.value.as_ref().map_or(f.span, |v| v.span)), usig.discr_field, self.span_text(f.value.as_ref().map_or(f.span, |v| v.span))))],
-                                );
-                                return ERROR;
-                            }
-                        }
-                        None => {
-                            self.err("OXS-E0120", f.span, &[("detail", &format!("the `{}` field of a union value must be a literal", usig.discr_field))]);
+                    if let Some(v) = lit {
+                        chosen = usig.variants.iter().position(|x| x.value == v).map(|i| (i, f));
+                        if chosen.is_none() {
+                            let uname = self.show(target);
+                            self.err(
+                                "OXS-E0120",
+                                f.span,
+                                &[("detail", &format!("Type '{}' is not assignable to type '{uname}'; no member has {}: {}", self.span_text(f.value.as_ref().map_or(f.span, |v| v.span)), usig.discr_field, self.span_text(f.value.as_ref().map_or(f.span, |v| v.span))))],
+                            );
                             return ERROR;
                         }
+                    } else {
+                        self.err("OXS-E0120", f.span, &[("detail", &format!("the `{}` field of a union value must be a literal", usig.discr_field))]);
+                        return ERROR;
                     }
                 }
             }
@@ -563,36 +708,33 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let fty = self.tys.subst(fs.ty, &map);
-            match &f.value {
-                Some(v) => {
-                    self.expr_to(v, fty);
-                }
-                None => {
-                    // shorthand `{ x }`
-                    match self.lookup(name) {
-                        Some(Binding::Local(l)) => {
-                            let t = self.use_local(f.id, l, f.name.span);
-                            if self.assignable(t, fty) {
-                                self.record_coercion(f.id, t, fty);
-                            } else {
-                                self.mismatch(f.name.span, fty, t);
-                            }
-                        }
-                        Some(Binding::Def(d)) if self.kind_of(d) == DefKind::Global => {
-                            self.ensure_global(d);
-                            let t = self.globals.get(&d).map_or(ERROR, |g| g.ty);
-                            self.set_res(f.id, Res::Def(d));
-                            if !self.assignable(t, fty) {
-                                self.mismatch(f.name.span, fty, t);
-                            }
+            if let Some(v) = &f.value {
+                self.expr_to(v, fty);
+            } else {
+                // shorthand `{ x }`
+                match self.lookup(name) {
+                    Some(Binding::Local(l)) => {
+                        let t = self.use_local(f.id, l, f.name.span);
+                        if self.assignable(t, fty) {
                             self.record_coercion(f.id, t, fty);
-                        }
-                        _ => {
-                            self.err("OXS-E0300", f.name.span, &[("name", name)]);
+                        } else {
+                            self.mismatch(f.name.span, fty, t);
                         }
                     }
-                    self.set_ty(f.id, fty);
+                    Some(Binding::Def(d)) if self.kind_of(d) == DefKind::Global => {
+                        self.ensure_global(d);
+                        let t = self.globals.get(&d).map_or(ERROR, |g| g.ty);
+                        self.set_res(f.id, Res::Def(d));
+                        if !self.assignable(t, fty) {
+                            self.mismatch(f.name.span, fty, t);
+                        }
+                        self.record_coercion(f.id, t, fty);
+                    }
+                    _ => {
+                        self.err("OXS-E0300", f.name.span, &[("name", name)]);
+                    }
                 }
+                self.set_ty(f.id, fty);
             }
         }
         let missing: Vec<&str> = inst.iter().filter(|f| !f.has_init && !seen.contains(&f.name.as_str())).map(|f| f.name.as_str()).collect();
@@ -633,7 +775,7 @@ impl<'a> Checker<'a> {
                 let t = self.expr(inner, Some(BOOL));
                 if t != BOOL && t != ERROR && t != NEVER {
                     let s = self.show(t);
-                    self.err("OXS-E0110", e.span, &[("op", "!"), ("lhs", &s), ("rhs", "")]);
+                    self.err("OXS-E0128", e.span, &[("op", "!"), ("ty", &s)]);
                 }
                 BOOL
             }
@@ -646,7 +788,7 @@ impl<'a> Checker<'a> {
                         if let TyKind::Num(n) = self.tys.kind(t) {
                             if !is_signed(*n) && !n.is_float() {
                                 let s = n.name();
-                                self.err("OXS-E0110", e.span, &[("op", "-"), ("lhs", s), ("rhs", "")]);
+                                self.err("OXS-E0128", e.span, &[("op", "-"), ("ty", s)]);
                             }
                         }
                         return t;
@@ -658,7 +800,7 @@ impl<'a> Checker<'a> {
                     TyKind::Error | TyKind::Never => t,
                     _ => {
                         let s = self.show(t);
-                        self.err("OXS-E0110", e.span, &[("op", "-"), ("lhs", &s), ("rhs", "")]);
+                        self.err("OXS-E0128", e.span, &[("op", "-"), ("ty", &s)]);
                         ERROR
                     }
                 }
@@ -670,7 +812,7 @@ impl<'a> Checker<'a> {
                     TyKind::Error | TyKind::Never => t,
                     _ => {
                         let s = self.show(t);
-                        self.err("OXS-E0110", e.span, &[("op", "~"), ("lhs", &s), ("rhs", "")]);
+                        self.err("OXS-E0128", e.span, &[("op", "~"), ("ty", &s)]);
                         ERROR
                     }
                 }
@@ -726,7 +868,7 @@ impl<'a> Checker<'a> {
                 _ => None,
             },
             BinOp::Shl | BinOp::Shr => match (&lk, &rk) {
-                (TyKind::Num(a), TyKind::Num(b)) if is_int(*a) && is_int(*b) => Some(l),
+                (TyKind::Num(a), TyKind::Num(_)) if is_int(*a) && l == r => Some(l),
                 _ => None,
             },
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => match (&lk, &rk) {
@@ -809,7 +951,7 @@ impl<'a> Checker<'a> {
         let mut acc: Ty;
         // literal on the left with a non-literal right operand: evaluate the right side first
         let mut pre_rhs: Option<(Ty, usize)> = None;
-        if is_lit_expr(base) && chain.len() >= 1 {
+        if is_lit_expr(base) && !chain.is_empty() {
             let ExprKind::Binary { rhs, .. } = &innermost.kind else { return ERROR };
             if !is_lit_expr(rhs) && !matches!(iop, BinOp::Shl | BinOp::Shr) {
                 let rt = self.expr(rhs, None);
@@ -836,30 +978,66 @@ impl<'a> Checker<'a> {
                     self.expr(rhs, hint)
                 }
             };
-            let res = if acc == ERROR || rt == ERROR || acc == NEVER || rt == NEVER {
-                if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) { BOOL } else if acc == NEVER || rt == NEVER { ERROR } else { ERROR }
+            let lhs_e = match &node.kind {
+                ExprKind::Binary { lhs, .. } => Some(&**lhs),
+                _ => None,
+            };
+            let res = if acc == ERROR || rt == ERROR {
+                if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) { BOOL } else { ERROR }
+            } else if acc == NEVER || rt == NEVER {
+                if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) { BOOL } else { NEVER }
             } else if let Some(t) = self.binary_result(*op, acc, rt) {
+                if matches!(op, BinOp::Shl | BinOp::Shr) {
+                    self.check_shift_amount(rhs, acc);
+                }
                 t
-            } else {
-                let (sl, sr) = (self.show(acc), self.show(rt));
-                let fix = if matches!(self.tys.kind(acc), TyKind::Num(_)) && matches!(self.tys.kind(rt), TyKind::Num(_)) && !matches!(op, BinOp::Shl | BinOp::Shr) {
-                    Some(Fix {
-                        title: format!("Convert the right operand with `as {sl}`"),
-                        edits: vec![
-                            TextEdit { span: Span::new(rhs.span.file, rhs.span.lo, rhs.span.lo), replacement: "(".into() },
-                            TextEdit { span: Span::new(rhs.span.file, rhs.span.hi, rhs.span.hi), replacement: format!(" as {sl})") },
-                        ],
-                    })
+            } else if let (TyKind::Nullable(i), Some(l)) = (self.tys.kind(acc).clone(), lhs_e) {
+                if self.binary_result(*op, i, rt).is_some() {
+                    self.possibly_null(l, acc);
+                    ERROR
                 } else {
-                    None
-                };
-                self.err_fix("OXS-E0110", node.span, &[("op", Self::op_str(*op)), ("lhs", &sl), ("rhs", &sr)], fix);
+                    self.operand_mismatch(node, *op, acc, rt, rhs);
+                    ERROR
+                }
+            } else if let TyKind::Nullable(i) = self.tys.kind(rt).clone() {
+                if self.binary_result(*op, acc, i).is_some() {
+                    self.possibly_null(rhs, rt);
+                    ERROR
+                } else {
+                    self.operand_mismatch(node, *op, acc, rt, rhs);
+                    ERROR
+                }
+            } else {
+                self.operand_mismatch(node, *op, acc, rt, rhs);
                 ERROR
             };
             self.set_ty(node.id, res);
             acc = res;
         }
         acc
+    }
+
+    /// A constant shift amount must be in `0..bits` of the shifted type (ir.md `shl`/`shr`).
+    fn check_shift_amount(&mut self, rhs: &Expr, lt: Ty) {
+        let TyKind::Num(n) = self.tys.kind(lt).clone() else { return };
+        let bits = u128::from(int_bits(n));
+        let (e, neg) = match &strip_paren(rhs).kind {
+            ExprKind::Unary { op: UnOp::Neg, expr } => (strip_paren(expr), true),
+            _ => (strip_paren(rhs), false),
+        };
+        if let ExprKind::Lit(Lit { kind: LitKind::Int { value, .. }, .. }) = &e.kind {
+            if neg && *value > 0 || *value >= bits {
+                let shown = if neg { format!("-{value}") } else { value.to_string() };
+                let what = format!("a shift amount of `{}` (0..{})", n.name(), bits - 1);
+                self.err("OXS-E0102", rhs.span, &[("value", &shown), ("ty", &what)]);
+            }
+        }
+    }
+
+    fn operand_mismatch(&mut self, node: &'a Expr, op: BinOp, l: Ty, r: Ty, rhs: &'a Expr) {
+        let (sl, sr) = (self.show(l), self.show(r));
+        let fix = if matches!(op, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(rhs, l, r, format!("Convert the right operand with `as {sl}`")) };
+        self.err_fix("OXS-E0110", node.span, &[("op", Self::op_str(op)), ("lhs", &sl), ("rhs", &sr)], fix);
     }
 
     fn coalesce(&mut self, e: &'a Expr, exp: Option<Ty>) -> Ty {
@@ -925,7 +1103,7 @@ impl<'a> Checker<'a> {
                 let it = self.mods[self.cm].out.expr_ty.get(expr.id.0 as usize).copied().unwrap_or(ERROR);
                 if it != BOOL && it != ERROR && it != NEVER {
                     let s = self.show(it);
-                    self.err("OXS-E0110", e.span, &[("op", "!"), ("lhs", &s), ("rhs", "")]);
+                    self.err("OXS-E0128", e.span, &[("op", "!"), ("ty", &s)]);
                 }
                 self.set_ty(e.id, BOOL);
                 (f, t)
@@ -1023,7 +1201,9 @@ impl<'a> Checker<'a> {
                 if let (Some(p), ExprKind::Lit(l)) = (self.path_of(strip_paren(obj)), &lit_e.kind) {
                     let ot_obj = self.mods[self.cm].out.expr_ty.get(obj.id.0 as usize).copied().unwrap_or(ERROR);
                     if let Some((u, uargs, mask)) = self.union_view(ot_obj) {
-                        debug_assert_eq!(u, union);
+                        if u != union {
+                            return (tf, ff);
+                        }
                         let want = match &l.kind {
                             LitKind::Str(s) => Some(Discr::Str(s.clone())),
                             LitKind::Int { value, .. } => i128::try_from(*value).ok().map(Discr::Int),
@@ -1031,22 +1211,19 @@ impl<'a> Checker<'a> {
                             _ => None,
                         };
                         if let (Some(w), Some(sig)) = (want, self.unions.get(&u).cloned()) {
-                            match sig.variants.iter().position(|v| v.value == w) {
-                                Some(i) => {
-                                    let bit = 1u64 << i;
-                                    let tt = self.mk_variants(u, &uargs, mask & bit);
-                                    let ft = self.mk_variants(u, &uargs, mask & !bit);
-                                    tf.set(p, tt);
-                                    ff.set(p, ft);
-                                }
-                                None => {
-                                    let s = self.show(ot_obj);
-                                    self.err(
-                                        "OXS-E0116",
-                                        other.span,
-                                        &[("detail", &format!("This comparison appears to be unintentional because the types '{s}' and '{}' have no overlap: no variant has {}: {}", self.span_text(other.span), sig.discr_field, self.span_text(other.span)))],
-                                    );
-                                }
+                            if let Some(i) = sig.variants.iter().position(|v| v.value == w) {
+                                let bit = 1u64 << i;
+                                let tt = self.mk_variants(u, &uargs, mask & bit);
+                                let ft = self.mk_variants(u, &uargs, mask & !bit);
+                                tf.set(p, tt);
+                                ff.set(p, ft);
+                            } else {
+                                let s = self.show(ot_obj);
+                                self.err(
+                                    "OXS-E0116",
+                                    other.span,
+                                    &[("detail", &format!("This comparison appears to be unintentional because the types '{s}' and '{}' have no overlap: no variant has {}: {}", self.span_text(other.span), sig.discr_field, self.span_text(other.span)))],
+                                );
                             }
                         }
                     }
@@ -1086,7 +1263,7 @@ impl<'a> Checker<'a> {
                 let p = self.path_of(obj)?;
                 let root = self.paths.nodes[p as usize].root as usize;
                 let rn = &self.mods[self.cm].out.locals[root].name;
-                if self.fnctx.last().is_some_and(|c| c.closure_recv.contains(rn)) {
+                if self.fnctx.last().is_some_and(|c| c.closure_recv.contains(rn) || c.closure_recv.contains("*")) {
                     return None;
                 }
                 self.paths.field(p, &name.name)
@@ -1192,22 +1369,19 @@ impl<'a> Checker<'a> {
                 pick = Some(acc);
             }
         }
-        match pick {
-            Some(p) => {
-                for (ex, t) in arms {
-                    if *t != ERROR {
-                        self.record_coercion(ex.id, *t, p);
-                    }
+        if let Some(p) = pick {
+            for (ex, t) in arms {
+                if *t != ERROR {
+                    self.record_coercion(ex.id, *t, p);
                 }
-                p
             }
-            None => {
-                let (a, b) = (cands[0], cands.iter().copied().find(|t| *t != cands[0]).unwrap_or(cands[0]));
-                if let Some((ex, _)) = arms.iter().find(|(_, t)| *t == b) {
-                    self.mismatch_fix(ex, a, b);
-                }
-                ERROR
+            p
+        } else {
+            let (a, b) = (cands[0], cands.iter().copied().find(|t| *t != cands[0]).unwrap_or(cands[0]));
+            if let Some((ex, _)) = arms.iter().find(|(_, t)| *t == b) {
+                self.mismatch_fix(ex, a, b);
             }
+            ERROR
         }
     }
 
@@ -1227,10 +1401,12 @@ impl<'a> Checker<'a> {
                 match self.mods[self.cm].out.res.get(&t.id).copied() {
                     Some(Res::Local(l)) => {
                         let info = &self.mods[self.cm].out.locals[l.0 as usize];
-                        if info.kind == LocalKind::Const {
+                        if matches!(info.kind, LocalKind::Const | LocalKind::ForOf) {
                             let n = info.name.clone();
-                            let fix = self.const_to_let_fix(l);
-                            self.err_fix("OXS-E0109", target.span, &[("what", &format!("`{n}`")), ("detail", "it is a constant")], fix);
+                            let is_for = info.kind == LocalKind::ForOf;
+                            let fix = if is_for { None } else { self.const_to_let_fix(l) };
+                            let detail = if is_for { "it is a loop variable declared with `const`" } else { "it is a constant" };
+                            self.err_fix("OXS-E0109", target.span, &[("what", &format!("`{n}`")), ("detail", detail)], fix);
                             return None;
                         }
                         self.mods[self.cm].out.locals[l.0 as usize].mutated = true;
@@ -1238,11 +1414,17 @@ impl<'a> Checker<'a> {
                     }
                     Some(Res::Def(d)) if self.kind_of(d) == DefKind::Global => {
                         let g = self.globals.get(&d).cloned()?;
+                        if self.defs[d.0 as usize].info.module != self.cm as u32 {
+                            let n = self.def_name(d).to_string();
+                            self.err("OXS-E0109", target.span, &[("what", &format!("`{n}`")), ("detail", "it is an imported binding; module-level state belongs to the module that declares it")]);
+                            return None;
+                        }
                         if !g.mutable {
                             let n = self.def_name(d).to_string();
                             self.err("OXS-E0109", target.span, &[("what", &format!("`{n}`")), ("detail", "it is a constant")]);
                             return None;
                         }
+                        self.note_effect(4);
                         Some(g.ty)
                     }
                     Some(_) => {
@@ -1313,8 +1495,16 @@ impl<'a> Checker<'a> {
                         );
                         None
                     }
-                    Some(Res::Field { owner, index }) | Some(Res::StaticField { owner, index }) => {
+                    Some(Res::Field { owner, index } | Res::StaticField { owner, index }) => {
                         let Some(f) = self.records.get(&owner).and_then(|r| r.fields.get(index as usize)).cloned() else { return Some(()) };
+                        if matches!(self.kind_of(owner), DefKind::Variant { union: Some(_), .. }) {
+                            self.err(
+                                "OXS-E0109",
+                                t.span,
+                                &[("what", &format!("`{}`", name.name)), ("detail", "the fields of a union member are read-only; build a new value instead")],
+                            );
+                            return None;
+                        }
                         if f.readonly {
                             // allowed only inside the constructor of the owning class on `this`
                             let in_ctor = self.fnctx.iter().rev().find(|c| !c.is_closure).is_some_and(|c| c.is_ctor && c.owner == Some(owner));
@@ -1334,6 +1524,18 @@ impl<'a> Checker<'a> {
                         }
                         self.check_place_mutable(obj)
                     }
+                    Some(Res::Builtin(_)) => {
+                        self.err("OXS-E0109", t.span, &[("what", &format!("`{}`", name.name)), ("detail", "it is a read-only built-in property")]);
+                        None
+                    }
+                    Some(Res::EnumMember { .. }) => {
+                        self.err("OXS-E0109", t.span, &[("what", &format!("`{}`", name.name)), ("detail", "an enum member is a constant")]);
+                        None
+                    }
+                    Some(Res::Def(d)) if self.kind_of(d) == DefKind::Global => {
+                        self.err("OXS-E0109", t.span, &[("what", &format!("`{}`", name.name)), ("detail", "it is an imported binding; module-level state belongs to the module that declares it")]);
+                        None
+                    }
                     _ => Some(()),
                 }
             }
@@ -1350,8 +1552,16 @@ impl<'a> Checker<'a> {
                 match self.mods[self.cm].out.res.get(&strip_paren(t).id).copied() {
                     Some(Res::Local(l)) => {
                         let info = &self.mods[self.cm].out.locals[l.0 as usize];
-                        if info.kind == LocalKind::Const {
+                        if matches!(info.kind, LocalKind::Const | LocalKind::ForOf) {
                             let n = info.name.clone();
+                            if info.kind == LocalKind::ForOf {
+                                self.err(
+                                    "OXS-E0109",
+                                    t.span,
+                                    &[("what", "a field of a loop variable"), ("detail", &format!("`{n}` is a copy of an array element, so the change would be lost; write to the element instead, e.g. `xs[i].field = ...`"))],
+                                );
+                                return None;
+                            }
                             let fix = self.const_to_let_fix(l);
                             self.err_fix(
                                 "OXS-E0109",
@@ -1464,20 +1674,14 @@ impl<'a> Checker<'a> {
                 let vt = self.expr(value, Some(tt));
                 if tt != ERROR && vt != ERROR {
                     match self.binary_result(bop, tt, vt) {
-                        Some(r) if r == tt => {}
+                        Some(r) if r == tt => {
+                            if matches!(bop, BinOp::Shl | BinOp::Shr) {
+                                self.check_shift_amount(value, tt);
+                            }
+                        }
                         _ => {
                             let (sl, sr) = (self.show(tt), self.show(vt));
-                            let fix = if matches!(self.tys.kind(tt), TyKind::Num(_)) && matches!(self.tys.kind(vt), TyKind::Num(_)) && !matches!(bop, BinOp::Shl | BinOp::Shr) {
-                                Some(Fix {
-                                    title: format!("Convert the right operand with `as {sl}`"),
-                                    edits: vec![
-                                        TextEdit { span: Span::new(value.span.file, value.span.lo, value.span.lo), replacement: "(".into() },
-                                        TextEdit { span: Span::new(value.span.file, value.span.hi, value.span.hi), replacement: format!(" as {sl})") },
-                                    ],
-                                })
-                            } else {
-                                None
-                            };
+                            let fix = if matches!(bop, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(value, tt, vt, format!("Convert the right operand with `as {sl}`")) };
                             self.err_fix("OXS-E0110", e.span, &[("op", &format!("{}=", Self::op_str(bop))), ("lhs", &sl), ("rhs", &sr)], fix);
                         }
                     }
@@ -1494,7 +1698,7 @@ impl<'a> Checker<'a> {
         self.set_ty(target.id, tt);
         if !matches!(self.tys.kind(tt), TyKind::Num(_)) && tt != ERROR {
             let s = self.show(tt);
-            self.err("OXS-E0110", e.span, &[("op", "++"), ("lhs", &s), ("rhs", "")]);
+            self.err("OXS-E0128", e.span, &[("op", "++"), ("ty", &s)]);
         }
         self.invalidate_target(target);
         tt
@@ -1553,7 +1757,19 @@ impl<'a> Checker<'a> {
         Some((vt, et))
     }
 
+    /// A default-parameter expression runs in the caller's frame: `?` has no function to return from.
+    pub fn default_expr(&mut self, dv: &'a Expr, t: Ty) {
+        let saved = self.default_depth.replace(self.fnctx.len());
+        self.expr_to(dv, t);
+        self.default_depth = saved;
+    }
+
     fn try_expr(&mut self, e: &'a Expr, inner: &'a Expr) -> Ty {
+        if self.default_depth == Some(self.fnctx.len()) {
+            self.err("OXS-E0122", e.span, &[("detail", "`?` cannot be used in a default parameter value: it is evaluated at the call site, where there is no function to return from")]);
+            self.expr(inner, None);
+            return ERROR;
+        }
         let t = self.expr(inner, None);
         if t == ERROR {
             return ERROR;
@@ -1610,12 +1826,12 @@ impl<'a> Checker<'a> {
             }
             TyKind::Error => return ERROR,
             TyKind::Str => {
-                self.err("OXS-E0110", e.span, &[("op", "[]"), ("lhs", "string"), ("rhs", "")]);
+                self.err("OXS-E0128", e.span, &[("op", "[]"), ("ty", "string")]);
                 return ERROR;
             }
             _ => {
                 let s = self.show(base);
-                self.err("OXS-E0110", e.span, &[("op", "[]"), ("lhs", &s), ("rhs", "")]);
+                self.err("OXS-E0128", e.span, &[("op", "[]"), ("ty", &s)]);
                 return ERROR;
             }
         };
@@ -1671,6 +1887,11 @@ impl<'a> Checker<'a> {
                     ERROR
                 }
             };
+            if let Some(dv) = &p.default {
+                if t != ERROR {
+                    self.default_expr(dv, t);
+                }
+            }
             ptys.push(t);
         }
         let declared_ret = a.ret.as_ref().map(|r| self.lower_type(r));
@@ -1692,7 +1913,9 @@ impl<'a> Checker<'a> {
         };
         let ctx = self.new_fnctx(true, exp_ret, "<closure>".to_string(), assigned, closure_assigned, tparams);
         let mut ctx = ctx;
+        ctx.closure_recv = self.fnctx.last().map(|c| c.closure_recv.clone()).unwrap_or_default();
         ctx.is_law = is_law;
+        ctx.def = self.fnctx.last().and_then(|c| c.def);
         self.fnctx.push(ctx);
         // facts about names that are never assigned stay valid inside the closure
         let keep: Vec<(u32, Ty)> = {
@@ -1717,7 +1940,13 @@ impl<'a> Checker<'a> {
                 let hint = exp_ret.filter(|r| *r != VOID);
                 let t = self.expr(x, hint);
                 match exp_ret {
-                    Some(r) if r == VOID => VOID,
+                    Some(r) if r == VOID => {
+                        // the value of a `() => expr` used as a void callback is dropped: make it visible
+                        if t != VOID && t != ERROR {
+                            self.record_coercion(x.id, t, VOID);
+                        }
+                        VOID
+                    }
                     Some(r) => {
                         self.coerce_to(x, t, r);
                         r
@@ -1737,7 +1966,7 @@ impl<'a> Checker<'a> {
                     (None, Some(i), _) => i,
                     (None, None, _) => VOID,
                 };
-                if r != VOID && r != NEVER && r != ERROR && !self.flow.dead {
+                if r != VOID && r != ERROR && !self.flow.dead {
                     self.err("OXS-E0114", e.span, &[("name", "<closure>"), ("ty", &self.show(r))]);
                 }
                 r

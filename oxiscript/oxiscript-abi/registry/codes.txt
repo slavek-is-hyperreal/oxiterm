@@ -316,6 +316,13 @@ title Unnecessary null handling
 message `{expr}` has type `{ty}` and is never null here
 fix Remove the `?.` or `??`, or make the type nullable.
 
+code OXS-E0128
+severity error
+phase check
+title Invalid operand type
+message operator `{op}` cannot be applied to type `{ty}`
+fix Use a value of a type the operator supports.
+
 code OXS-E0300
 severity error
 phase check
@@ -504,6 +511,13 @@ phase parse
 title Reserved syntax
 message `{keyword}` is reserved for a future version of OxiScript
 fix Pick another identifier or remove it.
+
+code OXS-E0990
+severity error
+phase check
+title Internal checker inconsistency
+message the type checker left an unresolved type in `{detail}`; this is a checker bug, not a problem in your program
+fix Report the program that triggers this; as a workaround add explicit type annotations.
 
 code OXS-I0001
 severity internal

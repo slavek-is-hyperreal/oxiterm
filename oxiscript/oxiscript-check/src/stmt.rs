@@ -13,11 +13,12 @@ struct AssignedNames {
     recv: HashSet<String>,
     recv_in_closure: HashSet<String>,
     closure_depth: u32,
+    depth: u32,
 }
 
 impl AssignedNames {
     fn new() -> AssignedNames {
-        AssignedNames { all: HashSet::new(), in_closure: HashSet::new(), recv: HashSet::new(), recv_in_closure: HashSet::new(), closure_depth: 0 }
+        AssignedNames { all: HashSet::new(), in_closure: HashSet::new(), recv: HashSet::new(), recv_in_closure: HashSet::new(), closure_depth: 0, depth: 0 }
     }
 }
 
@@ -31,8 +32,27 @@ fn root_name(e: &Expr) -> Option<String> {
     }
 }
 
+/// Expression depth beyond which the prepass stops walking and conservatively treats every
+/// name as assigned (marker `*`), so a very long chain cannot exhaust the native stack.
+const PREPASS_DEPTH: u32 = 120;
+
 impl<'a> Visitor<'a> for AssignedNames {
     fn visit_expr(&mut self, e: &'a Expr) {
+        if self.depth > PREPASS_DEPTH {
+            self.all.insert("*".into());
+            self.in_closure.insert("*".into());
+            self.recv.insert("*".into());
+            self.recv_in_closure.insert("*".into());
+            return;
+        }
+        self.depth += 1;
+        self.visit_expr_inner(e);
+        self.depth -= 1;
+    }
+}
+
+impl AssignedNames {
+    fn visit_expr_inner(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Assign { target, .. } | ExprKind::Update { target, .. } => {
                 if let Some(n) = root_name(target) {
@@ -111,6 +131,7 @@ impl<'a> Checker<'a> {
             closure_recv: Rc::default(),
             has_ret_value: false,
             exported: false,
+            def: None,
         }
     }
 
@@ -232,13 +253,10 @@ impl<'a> Checker<'a> {
                     self.stmt(i);
                 }
                 self.invalidate_assigned_in(s);
-                let (ft, ff) = match cond {
-                    Some(c) => self.cond_bool(c),
-                    None => {
-                        let mut f = self.flow.clone();
-                        f.dead = true;
-                        (self.flow.clone(), f)
-                    }
+                let (ft, ff) = if let Some(c) = cond { self.cond_bool(c) } else {
+                    let mut f = self.flow.clone();
+                    f.dead = true;
+                    (self.flow.clone(), f)
                 };
                 self.push_loop(label, true);
                 self.flow = ft.clone();
@@ -263,14 +281,14 @@ impl<'a> Checker<'a> {
                     TyKind::Error => ERROR,
                     _ => {
                         let s2 = self.show(it);
-                        self.err("OXS-E0110", iter.span, &[("op", "of"), ("lhs", &s2), ("rhs", "an array")]);
+                        self.err("OXS-E0128", iter.span, &[("op", "of"), ("ty", &s2)]);
                         ERROR
                     }
                 };
                 self.invalidate_assigned_in(s);
                 let entry = self.flow.clone();
                 self.push_scope();
-                let lk = if *kind == VarKind::Const { LocalKind::Const } else { LocalKind::Let };
+                let lk = if *kind == VarKind::Const { LocalKind::ForOf } else { LocalKind::Let };
                 self.bind_pattern(binding, elem, lk);
                 self.push_loop(label, true);
                 self.stmt_body(body);
@@ -332,22 +350,19 @@ impl<'a> Checker<'a> {
             Some(l) => ctx.loops.iter().rposition(|c| c.label.as_deref() == Some(l.name.as_str())),
             None => ctx.loops.iter().rposition(|c| if is_break { c.is_loop || c.is_switch } else { c.is_loop }),
         };
-        match target {
-            Some(i) => {
-                if !is_break && !ctx.loops[i].is_loop {
-                    self.err("OXS-E0122", s.span, &[("detail", &format!("`continue` target `{}` is not a loop", label.map_or("", |l| l.name.as_str())))]);
-                } else if is_break {
-                    ctx.loops[i].breaks.push(flow);
-                    ctx.loops[i].brk = true;
-                }
+        if let Some(i) = target {
+            if !is_break && !ctx.loops[i].is_loop {
+                self.err("OXS-E0122", s.span, &[("detail", &format!("`continue` target `{}` is not a loop", label.map_or("", |l| l.name.as_str())))]);
+            } else if is_break {
+                ctx.loops[i].breaks.push(flow);
+                ctx.loops[i].brk = true;
             }
-            None => {
-                let d = match label {
-                    Some(l) => format!("Jump target `{}` cannot be found", l.name),
-                    None => format!("A `{kw}` statement can only be used within a loop{}", if is_break { " or switch" } else { "" }),
-                };
-                self.err("OXS-E0122", s.span, &[("detail", &d)]);
-            }
+        } else {
+            let d = match label {
+                Some(l) => format!("Jump target `{}` cannot be found", l.name),
+                None => format!("A `{kw}` statement can only be used within a loop{}", if is_break { " or switch" } else { "" }),
+            };
+            self.err("OXS-E0122", s.span, &[("detail", &d)]);
         }
         self.flow.dead = true;
     }
@@ -447,10 +462,11 @@ impl<'a> Checker<'a> {
         }
         let locals = &self.mods[self.cm].out.locals;
         let paths = &self.paths;
+        let all = v.all.contains("*");
         self.flow.facts.retain(|(p, _)| {
             let n = paths.nodes[*p as usize];
             let name = &locals[n.root as usize].name;
-            !(v.all.contains(name) || (n.depth > 0 && v.recv.contains(name)))
+            !(all || v.all.contains(name) || (n.depth > 0 && v.recv.contains(name)))
         });
     }
 
@@ -495,7 +511,7 @@ impl<'a> Checker<'a> {
                 let l = self.new_local(&id.name, ty, lk, id.span, id.id);
                 self.bind_scope(&id.name, Binding::Local(l), id.span);
                 if v.init.is_none() {
-                    self.flow.unassigned.push(l.0);
+                    self.flow.mark_unassigned(l.0);
                 } else if let Some(it) = init_ty {
                     // the initialiser may be narrower than the declared type
                     if decl.is_some() && it != ty && it != ERROR && it != NEVER && self.narrowable(l) {
@@ -566,28 +582,22 @@ impl<'a> Checker<'a> {
                             self.ensure_record(d);
                             let tps = self.defs[d.0 as usize].info.tparams.clone();
                             let map: Vec<(ParamId, Ty)> = tps.into_iter().zip(args.iter().copied()).collect();
-                            match self.records.get(&d).and_then(|r| r.fields.iter().find(|x| !x.is_static && x.name == f.key.name).cloned()) {
-                                Some(fs) => {
-                                    if fs.private && !self.fnctx.iter().any(|c| c.owner == Some(d)) {
-                                        self.err("OXS-E0119", f.key.span, &[("detail", &format!("Property '{}' is private", f.key.name))]);
-                                    }
-                                    self.tys.subst(fs.ty, &map)
+                            if let Some(fs) = self.records.get(&d).and_then(|r| r.fields.iter().find(|x| !x.is_static && x.name == f.key.name).cloned()) {
+                                if fs.private && !self.fnctx.iter().any(|c| c.owner == Some(d)) {
+                                    self.err("OXS-E0119", f.key.span, &[("detail", &format!("Property '{}' is private", f.key.name))]);
                                 }
-                                None => {
-                                    let s = self.show(base);
-                                    self.err("OXS-E0108", f.key.span, &[("name", &f.key.name), ("ty", &s)]);
-                                    ERROR
-                                }
+                                self.tys.subst(fs.ty, &map)
+                            } else {
+                                let s = self.show(base);
+                                self.err("OXS-E0108", f.key.span, &[("name", &f.key.name), ("ty", &s)]);
+                                ERROR
                             }
                         }
                         None => ERROR,
                     };
-                    match &f.pattern {
-                        Some(sub) => self.bind_pattern(sub, fty, lk),
-                        None => {
-                            let l = self.new_local(&f.key.name, fty, lk, f.key.span, f.id);
-                            self.bind_scope(&f.key.name, Binding::Local(l), f.key.span);
-                        }
+                    if let Some(sub) = &f.pattern { self.bind_pattern(sub, fty, lk) } else {
+                        let l = self.new_local(&f.key.name, fty, lk, f.key.span, f.id);
+                        self.bind_scope(&f.key.name, Binding::Local(l), f.key.span);
                     }
                 }
             }
@@ -643,8 +653,8 @@ impl<'a> Checker<'a> {
     pub(crate) fn switch_plan(&mut self, sc: &SwitchScrut, clauses: &[(&'a [Expr], bool)]) -> SwitchPlan {
         let mut labels: Vec<Vec<CaseLabel>> = Vec::new();
         let mut rows: Vec<Pat> = Vec::new();
-        let mut seen: Vec<u32> = Vec::new();
-        let mut seen_keys: Vec<String> = Vec::new();
+        let mut seen: HashSet<u32> = HashSet::new();
+        let mut seen_keys: HashSet<String> = HashSet::new();
         let mut has_default = false;
         for (exprs, is_default) in clauses {
             let mut ls = Vec::new();
@@ -670,26 +680,21 @@ impl<'a> Checker<'a> {
                             continue;
                         };
                         let sig = self.unions.get(u).cloned();
-                        match sig.and_then(|s| s.variants.iter().position(|v| v.value == w)) {
-                            Some(i) => {
-                                if seen.contains(&(i as u32)) {
-                                    self.err("OXS-E0116", l.span, &[("detail", &format!("Duplicate case label {}", w.display()))]);
-                                } else {
-                                    seen.push(i as u32);
-                                }
-                                ls.push(CaseLabel::Variant(i as u32));
-                                rows.push(Pat::Ctor(i as u32, vec![]));
+                        if let Some(i) = sig.and_then(|s| s.variants.iter().position(|v| v.value == w)) {
+                            if !seen.insert(i as u32) {
+                                self.err("OXS-E0116", l.span, &[("detail", &format!("Duplicate case label {}", w.display()))]);
                             }
-                            None => {
-                                let s = self.show(sc.ty);
-                                let uty = self.tys.adt(*u, uargs);
-                                let us = self.show(uty);
-                                self.err(
-                                    "OXS-E0116",
-                                    l.span,
-                                    &[("detail", &format!("Type '{}' is not comparable to type '{s}': no variant of '{us}' has this discriminant", w.display()))],
-                                );
-                            }
+                            ls.push(CaseLabel::Variant(i as u32));
+                            rows.push(Pat::Ctor(i as u32, vec![]));
+                        } else {
+                            let s = self.show(sc.ty);
+                            let uty = self.tys.adt(*u, uargs);
+                            let us = self.show(uty);
+                            self.err(
+                                "OXS-E0116",
+                                l.span,
+                                &[("detail", &format!("Type '{}' is not comparable to type '{s}': no variant of '{us}' has this discriminant", w.display()))],
+                            );
                         }
                     }
                     SwitchKind::Enum => {
@@ -701,10 +706,8 @@ impl<'a> Checker<'a> {
                         }
                         match self.mods[self.cm].out.res.get(&strip_paren(l).id).copied() {
                             Some(Res::EnumMember { def, index }) if def == ed => {
-                                if seen.contains(&index) {
+                                if !seen.insert(index) {
                                     self.err("OXS-E0116", l.span, &[("detail", "Duplicate case label")]);
-                                } else {
-                                    seen.push(index);
                                 }
                                 ls.push(CaseLabel::Member(index));
                                 rows.push(Pat::Ctor(index, vec![]));
@@ -721,6 +724,9 @@ impl<'a> Checker<'a> {
                         self.coerce_to(l, t, BOOL);
                         if let ExprKind::Lit(x) = &strip_paren(l).kind {
                             if let LitKind::Bool(b) = x.kind {
+                                if !seen_keys.insert(format!("b:{b}")) {
+                                    self.err("OXS-E0116", l.span, &[("detail", "Duplicate case label")]);
+                                }
                                 rows.push(Pat::Ctor(u32::from(b), vec![]));
                                 ls.push(CaseLabel::Value);
                                 continue;
@@ -748,10 +754,8 @@ impl<'a> Checker<'a> {
                         let t = self.expr(l, Some(sc.ty));
                         self.coerce_to(l, t, sc.ty);
                         if let Some(k) = Self::lit_key(l) {
-                            if seen_keys.contains(&k) {
+                            if !seen_keys.insert(k) {
                                 self.err("OXS-E0116", l.span, &[("detail", "Duplicate case label")]);
-                            } else {
-                                seen_keys.push(k);
                             }
                         }
                         ls.push(CaseLabel::Value);
@@ -982,6 +986,7 @@ impl<'a> Checker<'a> {
         let info = self.defs[d.0 as usize].info.clone();
         let mut ctx = self.new_fnctx(false, if infer { None } else { Some(sig.ret) }, info.name.clone(), assigned, cassigned, info.tparams.clone());
         ctx.is_ctor = is_ctor;
+        ctx.def = Some(d);
         ctx.closure_recv = crecv;
         ctx.owner = info.owner;
         ctx.mutating = sig.mutating;
@@ -999,7 +1004,7 @@ impl<'a> Checker<'a> {
         // defaults are checked in the scope that has no parameters
         for (p, ps) in decl.params.iter().zip(&sig.params) {
             if let Some(dv) = &p.default {
-                self.expr_to(dv, ps.ty);
+                self.default_expr(dv, ps.ty);
             }
         }
         // `this`
@@ -1011,11 +1016,12 @@ impl<'a> Checker<'a> {
             if let Some(c) = self.fnctx.last_mut() {
                 c.this = Some((l, tt));
             }
+            self.mods[self.cm].out.this_locals.insert(d, l);
             if is_ctor {
                 if let Some(rec) = self.records.get(&o).cloned() {
                     for (i, f) in rec.fields.iter().enumerate() {
                         if !f.is_static && !f.has_init {
-                            self.flow.unassigned.push(0x8000_0000 | i as u32);
+                            self.flow.mark_unassigned(0x8000_0000 | i as u32);
                         }
                     }
                 }
@@ -1052,7 +1058,7 @@ impl<'a> Checker<'a> {
                         );
                     }
                 }
-            } else if fin != VOID && fin != NEVER && fin != ERROR {
+            } else if fin != VOID && fin != ERROR {
                 let n = self.show(fin);
                 self.err("OXS-E0114", decl.name.span, &[("name", &info.name), ("ty", &n)]);
             }
@@ -1078,17 +1084,18 @@ impl<'a> Checker<'a> {
             let info = s.defs[d.0 as usize].info.clone();
             let mut ctx = s.new_fnctx(false, Some(BOOL), info.name.clone(), names.0, names.1, info.tparams.clone());
             ctx.is_law = true;
+            ctx.def = Some(d);
             s.fnctx.push(ctx);
             let saved = std::mem::take(&mut s.flow);
             s.push_scope();
             for p in &l.params {
-                let ty = match &p.ty {
-                    Some(t) => s.lower_type(t),
-                    None => {
-                        s.err("OXS-E0103", p.span, &[("what", "parameter")]);
-                        ERROR
-                    }
+                let ty = if let Some(t) = &p.ty { s.lower_type(t) } else {
+                    s.err("OXS-E0103", p.span, &[("what", "parameter")]);
+                    ERROR
                 };
+                if matches!(s.tys.kind(ty), TyKind::Adt(h, _) if s.kind_of(*h) == DefKind::Host) {
+                    s.err("OXS-E0125", p.span, &[("detail", "a law cannot take a host capability as a parameter")]);
+                }
                 let loc = s.new_local(&p.name.name, ty, LocalKind::Param, p.name.span, p.name.id);
                 s.bind_scope(&p.name.name, Binding::Local(loc), p.name.span);
             }
@@ -1211,6 +1218,10 @@ impl<'a> Checker<'a> {
                     &[("detail", &format!("Property '{}' has no initializer and the class has no constructor", missing.join("', '")))],
                 );
             }
+        }
+        // a static has no constructor to assign it: like a module-level binding it needs an initialiser
+        for f in rec.fields.iter().filter(|f| f.is_static && !f.has_init) {
+            self.err("OXS-E0123", f.span, &[("detail", &format!("static field '{}' needs an initializer", f.name))]);
         }
         // `implements` is checked structurally
         let targs: Vec<Ty> = self.defs[d.0 as usize].info.tparams.iter().map(|p| self.tys.mk(TyKind::Param(*p))).collect();

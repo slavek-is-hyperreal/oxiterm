@@ -1,3 +1,4 @@
+#![allow(clippy::format_push_string)]
 mod common;
 use common::*;
 
@@ -37,10 +38,10 @@ function f(s: Shape): f64 {
 #[test]
 fn smoke_errors() {
     let r = show(
-        r#"
+        r"
 function f(a: i32, b: i64): i32 { return a + b; }
 function g(): i32 { let x: i32 | null = null; return x + 1; }
-"#,
+",
     );
     println!("{r}");
     assert!(r.contains("OXS-E0110"));

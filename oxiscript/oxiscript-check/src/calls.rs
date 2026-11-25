@@ -39,6 +39,13 @@ impl<'a> Checker<'a> {
         match self.resolve_member(e, obj, name, optional) {
             MemberOut::Value(t, r) => {
                 self.set_res(e.id, r);
+                if matches!(r, Res::Field { .. }) {
+                    if let Some(p) = self.path_of(e) {
+                        if let Some(f) = self.flow.get(p) {
+                            return f;
+                        }
+                    }
+                }
                 t
             }
             MemberOut::Callable(c, r) => {
@@ -129,13 +136,10 @@ impl<'a> Checker<'a> {
                 self.set_ty(obj.id, ty);
                 self.set_ty(strip_paren(obj).id, ty);
                 let Some(sig) = self.enums.get(&d) else { return MemberOut::Err };
-                match sig.members.iter().position(|(n, _)| *n == name.name) {
-                    Some(i) => MemberOut::Value(ty, Res::EnumMember { def: d, index: i as u32 }),
-                    None => {
-                        let n = self.def_name(d).to_string();
-                        self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &format!("typeof {n}"))]);
-                        MemberOut::Err
-                    }
+                if let Some(i) = sig.members.iter().position(|(n, _)| *n == name.name) { MemberOut::Value(ty, Res::EnumMember { def: d, index: i as u32 }) } else {
+                    let n = self.def_name(d).to_string();
+                    self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &format!("typeof {n}"))]);
+                    MemberOut::Err
                 }
             }
             DefKind::Class | DefKind::Struct => {
@@ -149,6 +153,10 @@ impl<'a> Checker<'a> {
                     let f = &rec.fields[i];
                     if f.private && !self.private_ok(d) {
                         self.err("OXS-E0119", name.span, &[("detail", &format!("Property '{}' is private and only accessible within class '{}'", name.name, self.def_name(d)))]);
+                    }
+                    self.note_effect(2);
+                    if self.in_law() {
+                        self.err("OXS-E0125", name.span, &[("detail", "a law cannot read static state")]);
                     }
                     return MemberOut::Value(f.ty, Res::StaticField { owner: d, index: i as u32 });
                 }
@@ -179,6 +187,8 @@ impl<'a> Checker<'a> {
                 MemberOut::Err
             }
             DefKind::Namespace => {
+                self.set_ty(obj.id, VOID);
+                self.set_ty(strip_paren(obj).id, VOID);
                 let Some(m) = self.defs[d.0 as usize].info.target_module else { return MemberOut::Err };
                 let Some(&t) = self.mods[m as usize].exports.get(&name.name) else {
                     self.err("OXS-E0300", name.span, &[("name", &name.name)]);
@@ -256,7 +266,7 @@ impl<'a> Checker<'a> {
                             if sig.private && !self.private_ok(d) {
                                 self.err("OXS-E0119", name.span, &[("detail", &format!("Method '{}' is private and only accessible within class '{}'", name.name, self.def_name(d)))]);
                             }
-                            if is_this && self.flow.unassigned.iter().any(|u| *u & 0x8000_0000 != 0) {
+                            if is_this && self.flow.has_unassigned_fields() {
                                 self.err("OXS-E0119", name.span, &[("detail", "a method cannot be called before every field is assigned in the constructor")]);
                             }
                             let own: Vec<ParamId> = sig.tparams.iter().copied().skip(tps.len()).collect();
@@ -293,26 +303,23 @@ impl<'a> Checker<'a> {
                     }
                     DefKind::Host => {
                         let Some(h) = self.hosts.get(&d).cloned() else { return MemberOut::Err };
-                        match h.fns.iter().position(|(n, _)| *n == name.name) {
-                            Some(i) => {
-                                let TyKind::Fn(ps, r) = self.tys.kind(h.fns[i].1).clone() else { return MemberOut::Err };
-                                let callee = Callee {
-                                    tparams: vec![],
-                                    params: ps.to_vec(),
-                                    defaults: vec![false; ps.len()],
-                                    ret: r,
-                                    def: None,
-                                    owner_args: vec![],
-                                    mutating: false,
-                                    builtin: None,
-                                };
-                                MemberOut::Callable(callee, Res::HostFn { host: d, index: i as u32 })
-                            }
-                            None => {
-                                let s = self.show(base);
-                                self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &s)]);
-                                MemberOut::Err
-                            }
+                        if let Some(i) = h.fns.iter().position(|(n, _)| *n == name.name) {
+                            let TyKind::Fn(ps, r) = self.tys.kind(h.fns[i].1).clone() else { return MemberOut::Err };
+                            let callee = Callee {
+                                tparams: vec![],
+                                params: ps.to_vec(),
+                                defaults: vec![false; ps.len()],
+                                ret: r,
+                                def: None,
+                                owner_args: vec![],
+                                mutating: false,
+                                builtin: None,
+                            };
+                            MemberOut::Callable(callee, Res::HostFn { host: d, index: i as u32 })
+                        } else {
+                            let s = self.show(base);
+                            self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &s)]);
+                            MemberOut::Err
                         }
                     }
                     _ => {
@@ -346,27 +353,24 @@ impl<'a> Checker<'a> {
                 let TyKind::Adt(idef, iargs) = self.tys.kind(b).clone() else { return MemberOut::Err };
                 self.ensure_iface(idef);
                 let methods = self.iface_methods_inst(idef, &iargs);
-                match methods.iter().position(|(n, _, _)| *n == name.name) {
-                    Some(i) => {
-                        let (_, ps, r) = methods[i].clone();
-                        let own = self.ifaces.get(&idef).map(|s| s.methods[i].tparams.clone()).unwrap_or_default();
-                        let callee = Callee {
-                            tparams: own,
-                            defaults: vec![false; ps.len()],
-                            params: ps,
-                            ret: r,
-                            def: None,
-                            owner_args: vec![],
-                            mutating: false,
-                            builtin: None,
-                        };
-                        MemberOut::Callable(callee, Res::IfaceMethod { iface: idef, index: i as u32 })
-                    }
-                    None => {
-                        let s = self.show(base);
-                        self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &s)]);
-                        MemberOut::Err
-                    }
+                if let Some(i) = methods.iter().position(|(n, _, _)| *n == name.name) {
+                    let (_, ps, r) = methods[i].clone();
+                    let own = self.ifaces.get(&idef).map(|s| s.methods[i].tparams.clone()).unwrap_or_default();
+                    let callee = Callee {
+                        tparams: own,
+                        defaults: vec![false; ps.len()],
+                        params: ps,
+                        ret: r,
+                        def: None,
+                        owner_args: vec![],
+                        mutating: false,
+                        builtin: None,
+                    };
+                    MemberOut::Callable(callee, Res::IfaceMethod { iface: idef, index: i as u32 })
+                } else {
+                    let s = self.show(base);
+                    self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &s)]);
+                    MemberOut::Err
                 }
             }
             _ => {
@@ -792,16 +796,13 @@ impl<'a> Checker<'a> {
         let mut solved: Vec<Ty> = Vec::new();
         let mut failed = false;
         for (i, p) in solve.iter().enumerate() {
-            match map[i] {
-                Some(t) => solved.push(t),
-                None => {
-                    if !failed {
-                        let pn = self.params[p.0 as usize].name.clone();
-                        self.err("OXS-E0103", e.span, &[("what", &format!("type argument `{pn}`; provide it explicitly, e.g. `f<i32>(...)`"))]);
-                    }
-                    failed = true;
-                    solved.push(ERROR);
+            if let Some(t) = map[i] { solved.push(t) } else {
+                if !failed {
+                    let pn = self.params[p.0 as usize].name.clone();
+                    self.err("OXS-E0103", e.span, &[("what", &format!("type argument `{pn}`; provide it explicitly, e.g. `f<i32>(...)`"))]);
                 }
+                failed = true;
+                solved.push(ERROR);
             }
         }
         let _ = hinted;
@@ -839,16 +840,14 @@ impl<'a> Checker<'a> {
             }
         }
         if let Some(d) = cal.def {
+            self.note_call(d, e.span);
             if !all_args.is_empty() && !all_args.contains(&ERROR) {
                 let inst = Instance { def: d, args: all_args };
-                let idx = match self.inst_map.get(&inst) {
-                    Some(i) => *i,
-                    None => {
-                        let i = self.instances.len() as u32;
-                        self.instances.push(inst.clone());
-                        self.inst_map.insert(inst, i);
-                        i
-                    }
+                let idx = if let Some(i) = self.inst_map.get(&inst) { *i } else {
+                    let i = self.instances.len() as u32;
+                    self.instances.push(inst.clone());
+                    self.inst_map.insert(inst, i);
+                    i
                 };
                 info.instance = Some(idx);
             }

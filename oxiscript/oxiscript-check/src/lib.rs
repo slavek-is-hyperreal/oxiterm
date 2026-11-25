@@ -43,6 +43,17 @@
 //! [`MAX_ERRORS`] diagnostics are kept. Work is linear in the program size
 //! except flow joins, which are linear in the number of live facts per branch.
 #![allow(
+    clippy::assigning_clones,
+    clippy::option_map_unit_fn,
+    clippy::nonminimal_bool,
+    clippy::while_let_loop,
+    clippy::format_collect,
+    clippy::format_push_string,
+    clippy::unreadable_literal,
+    clippy::needless_lifetimes,
+    clippy::single_match,
+    clippy::too_many_arguments,
+    clippy::collapsible_match,
     clippy::too_many_lines,
     clippy::many_single_char_names,
     clippy::match_same_arms,
@@ -92,7 +103,13 @@ pub use output::*;
 pub use ty::{DefId, Interner, ParamId, Ty, TyKind};
 
 /// Expression/statement recursion cap (`OXS-E0113` beyond it).
-pub const MAX_EXPR_DEPTH: u32 = 180;
+pub const MAX_EXPR_DEPTH: u32 = 120;
+/// Nested on-demand declaration resolutions (`OXS-E0113` beyond it).
+pub const MAX_SIG_DEPTH: u32 = 64;
+/// Recursion budget one on-demand declaration resolution consumes (shared with expression depth).
+pub(crate) const SIG_COST: u32 = 3;
+/// Methods of one interface, inherited ones included (`OXS-E0113` beyond it).
+pub const MAX_IFACE_METHODS: usize = 256;
 /// Diagnostics kept before the checker stops recording.
 pub const MAX_ERRORS: usize = 100;
 
@@ -338,6 +355,7 @@ pub(crate) enum Ast<'a> {
     /// A top-level union alias member list element or object alias.
     Obj(&'a TypeExpr),
     /// Interface method signature.
+    #[allow(dead_code)]
     IfaceMethod(&'a FnDecl),
 }
 
@@ -357,6 +375,7 @@ pub(crate) struct ModData<'a> {
     pub out: ModuleInfo,
     /// Parallel to `out.locals`: index of the function context that declared it.
     pub local_fn: Vec<u32>,
+    #[allow(dead_code)]
     pub is_prelude: bool,
 }
 
@@ -381,6 +400,7 @@ pub(crate) struct FnCtx {
     pub owner: Option<DefId>,
     pub loops: Vec<LoopCtx>,
     pub captures: Vec<LocalId>,
+    #[allow(dead_code)]
     pub name: String,
     pub name_span: Option<Span>,
     pub is_law: bool,
@@ -391,6 +411,8 @@ pub(crate) struct FnCtx {
     pub closure_recv: Rc<HashSet<String>>,
     pub has_ret_value: bool,
     pub exported: bool,
+    /// The function whose effects this body contributes to (closures share their enclosing function).
+    pub def: Option<DefId>,
 }
 
 pub(crate) struct Checker<'a> {
@@ -421,13 +443,25 @@ pub(crate) struct Checker<'a> {
     pub flow: flow::Flow,
     pub paths: flow::PathTable,
     pub depth: u32,
+    pub sig_depth: u32,
     pub bparams: [ParamId; 3],
     pub entry: Option<DefId>,
     pub pending_bounds: Vec<(DefId, Vec<Ty>, Span, usize)>,
     pub this_member_ok: bool,
     pub assign_target: bool,
     pub skip_unassigned: bool,
+    /// `fnctx.len()` while a default-parameter expression is being checked (`?` is rejected there).
+    pub default_depth: Option<usize>,
     pub pending_label: Option<String>,
+    pub eff: HashMap<DefId, EffRec>,
+    pub memo: HashMap<NodeId, Ty>,
+    pub effects: HashMap<DefId, EffectSummary>,
+}
+
+#[derive(Default, Clone)]
+pub(crate) struct EffRec {
+    pub mask: u8,
+    pub edges: Vec<(DefId, Span)>,
 }
 
 static REGISTRY: OnceLock<HashMap<String, (String, Option<String>)>> = OnceLock::new();
@@ -458,6 +492,7 @@ impl Checked {
             aliases: HashMap::new(),
             hosts: HashMap::new(),
             instances: Vec::new(),
+            effects: HashMap::new(),
             entry: None,
             prelude: None,
         }
@@ -495,13 +530,18 @@ impl<'a> Checker<'a> {
             flow: flow::Flow::default(),
             paths: flow::PathTable::default(),
             depth: 0,
+            sig_depth: 0,
             bparams: [ParamId(0); 3],
             entry: None,
             pending_bounds: Vec::new(),
             this_member_ok: false,
             assign_target: false,
             skip_unassigned: false,
+            default_depth: None,
             pending_label: None,
+            eff: HashMap::new(),
+            memo: HashMap::new(),
+            effects: HashMap::new(),
         };
         let mut ids = [ParamId(0); 3];
         for (k, nm) in ["U", "V", "W"].iter().enumerate() {
@@ -619,22 +659,19 @@ impl<'a> Checker<'a> {
             }
             TyKind::Adt(d, a) => {
                 let info = &self.defs[d.0 as usize].info;
-                match info.kind {
-                    DefKind::Variant { union, .. } => {
-                        if let Some(u) = union {
-                            out.push_str(&self.defs[u.0 as usize].info.name);
-                            out.push('#');
-                        }
-                        out.push_str(&info.name);
-                        // variants print without arguments unless they have their own
-                        if !a.is_empty() && union.is_none() {
-                            self.show_args(a, out, depth);
-                        }
+                if let DefKind::Variant { union, .. } = info.kind {
+                    if let Some(u) = union {
+                        out.push_str(&self.defs[u.0 as usize].info.name);
+                        out.push('#');
                     }
-                    _ => {
-                        out.push_str(&info.name);
+                    out.push_str(&info.name);
+                    // variants print without arguments unless they have their own
+                    if !a.is_empty() && union.is_none() {
                         self.show_args(a, out, depth);
                     }
+                } else {
+                    out.push_str(&info.name);
+                    self.show_args(a, out, depth);
                 }
             }
             TyKind::Variants(d, a, m) => {
@@ -693,10 +730,6 @@ impl<'a> Checker<'a> {
     }
 
     // ---- module tables ----------------------------------------------------
-
-    pub fn out(&mut self) -> &mut ModuleInfo {
-        &mut self.mods[self.cm].out
-    }
 
     pub fn set_ty(&mut self, id: NodeId, t: Ty) {
         let o = &mut self.mods[self.cm].out.expr_ty;
@@ -808,6 +841,7 @@ impl<'a> Checker<'a> {
                     casts: HashMap::new(),
                     main: None,
                     attrs: HashMap::new(),
+                    this_locals: HashMap::new(),
                 },
                 local_fn: Vec::new(),
                 is_prelude: fid == total - 1,
@@ -826,6 +860,7 @@ impl<'a> Checker<'a> {
             self.cm = k;
             self.check_module_bodies(k);
         }
+        self.compute_effects();
         if self.tys.overflowed {
             self.err(
                 "OXS-E0113",
@@ -838,7 +873,17 @@ impl<'a> Checker<'a> {
     fn finish(mut self, mut diags: Vec<Diagnostic>) -> Checked {
         diags.append(&mut self.diags);
         let prelude = u32::try_from(self.prelude).ok();
-        Checked {
+        for m in &mut self.mods {
+            let locals = &m.out.locals;
+            for c in m.out.closures.values_mut() {
+                for cap in &mut c.captures {
+                    cap.mutated = locals[cap.local.0 as usize].mutated;
+                }
+            }
+        }
+        let had_errors = diags.iter().any(Diagnostic::is_error);
+        let mut checked = Checked {
+            effects: std::mem::take(&mut self.effects),
             diagnostics: diags,
             tys: self.tys,
             defs: self.defs.into_iter().map(|d| d.info).collect(),
@@ -855,6 +900,13 @@ impl<'a> Checker<'a> {
             instances: self.instances,
             entry: self.entry,
             prelude,
+        };
+        if !had_errors {
+            if let Some(what) = checked.poisoned_table() {
+                let msg = registry().get("OXS-E0990").map(|(m, _)| m.clone()).unwrap_or_default();
+                checked.diagnostics.push(Diagnostic::new("OXS-E0990", Span::DUMMY, oxiscript_abi::codes::render(&msg, &[("detail", what)])));
+            }
         }
+        checked
     }
 }

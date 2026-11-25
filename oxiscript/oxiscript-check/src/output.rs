@@ -359,6 +359,25 @@ pub struct ModuleInfo {
     pub main: Option<DefId>,
     /// Recognised attributes by attached node: name and rendered arguments.
     pub attrs: HashMap<NodeId, Vec<(String, Vec<String>)>>,
+    /// The `this` local of each method/constructor body.
+    pub this_locals: HashMap<DefId, LocalId>,
+}
+
+/// What running a function may do, transitively through the functions it calls.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EffectSummary {
+    /// Uses a host capability value (and so may call the host).
+    pub uses_host: bool,
+    /// Reads module-level `let` state or a static field.
+    pub reads_globals: bool,
+    /// Writes module-level `let` state or a static field.
+    pub writes_globals: bool,
+}
+
+impl EffectSummary {
+    pub fn is_pure(&self) -> bool {
+        !self.uses_host && !self.reads_globals && !self.writes_globals
+    }
 }
 
 /// Result of checking a program (entry module = module 0).
@@ -378,6 +397,8 @@ pub struct Checked {
     pub aliases: HashMap<DefId, Ty>,
     pub hosts: HashMap<DefId, HostSig>,
     pub instances: Vec<Instance>,
+    /// Transitive effect summary of every function, method, constructor and law (feeds `#effects`).
+    pub effects: HashMap<DefId, EffectSummary>,
     /// Exported function `main` of the entry module, if present.
     pub entry: Option<DefId>,
     /// Index of the implicit prelude module (`Result`, `Ok`, `Err`), always the last module.
@@ -385,6 +406,49 @@ pub struct Checked {
 }
 
 impl Checked {
+    /// Name of the first side table that holds the poison type, if any. Poison is only legal in
+    /// a program that already has errors; an error-free program must be free of it by construction.
+    pub(crate) fn poisoned_table(&self) -> Option<&'static str> {
+        use crate::ty::ERROR;
+        let e = |t: Ty| t == ERROR || self.tys.has_error(t);
+        for m in &self.modules {
+            if m.locals.iter().any(|l| e(l.ty)) {
+                return Some("local variable types");
+            }
+            if m.coercions.values().chain(m.casts.values()).any(|c| e(c.from) || e(c.to)) {
+                return Some("coercions or casts");
+            }
+            if m.calls.values().any(|c| c.type_args.iter().any(|t| e(*t))) {
+                return Some("call type arguments");
+            }
+            if m.switches.values().any(|s| s.union.is_some_and(e)) {
+                return Some("switch information");
+            }
+        }
+        if self.instances.iter().any(|i| i.args.iter().any(|t| e(*t))) {
+            return Some("monomorphisation instances");
+        }
+        if self.fns.values().any(|f| e(f.ret) || f.params.iter().any(|p| e(p.ty))) {
+            return Some("function signatures");
+        }
+        if self.records.values().any(|r| r.fields.iter().any(|f| e(f.ty))) {
+            return Some("struct fields");
+        }
+        if self.globals.values().any(|g| e(g.ty)) {
+            return Some("global types");
+        }
+        if self.aliases.values().any(|t| e(*t)) {
+            return Some("type aliases");
+        }
+        if self.unions.values().any(|u| e(u.discr_ty)) {
+            return Some("union signatures");
+        }
+        if self.hosts.values().any(|h| h.fns.iter().any(|(_, t)| e(*t)) || h.callbacks.iter().any(|(_, t)| e(*t))) {
+            return Some("host signatures");
+        }
+        None
+    }
+
     /// `true` when there are no error diagnostics: only then may 8.L use the tables.
     pub fn ok(&self) -> bool {
         !self.diagnostics.iter().any(Diagnostic::is_error)

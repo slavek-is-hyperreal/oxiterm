@@ -6,7 +6,7 @@ use crate::calls::{Callee, MemberOut};
 use crate::ty::*;
 use crate::*;
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     fn bp(&mut self, i: usize) -> Ty {
         let p = self.bparams[i];
         self.tys.mk(TyKind::Param(p))

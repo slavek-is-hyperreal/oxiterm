@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::format_push_string)]
 use oxiscript_abi::idl;
 use oxiscript_check::*;
 use oxiscript_syntax::LineIndex;
@@ -33,6 +33,32 @@ pub fn show(src: &str) -> String {
         .map(|d| format!("{} line {}: {}", d.code, li.line(d.span.lo), d.message))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Expected `(code, line)` pairs from `//! E0100` markers.
+pub fn expected(src: &str) -> Vec<(String, u32)> {
+    let mut v = Vec::new();
+    for (i, l) in src.lines().enumerate() {
+        if let Some(at) = l.find("//! ") {
+            for c in l[at + 4..].split_whitespace() {
+                v.push((format!("OXS-{c}"), (i + 1) as u32));
+            }
+        }
+    }
+    v.sort();
+    v
+}
+
+pub fn run_cases(cases: &[(&str, &str)]) {
+    let mut bad = String::new();
+    for (name, src) in cases {
+        let want = expected(src);
+        let got = codes(src);
+        if got != want {
+            bad.push_str(&format!("--- {name}\nwant {want:?}\n got {got:?}\n{}\n", show(src)));
+        }
+    }
+    assert!(bad.is_empty(), "\n{bad}");
 }
 
 pub fn assert_ok(src: &str) {

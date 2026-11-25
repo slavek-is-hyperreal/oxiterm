@@ -102,6 +102,18 @@ impl<'a> Checker<'a> {
     }
 
     fn lower_type_inner(&mut self, t: &'a TypeExpr, iface_ok: bool) -> Ty {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            self.depth -= 1;
+            self.err("OXS-E0113", t.span, &[("detail", "type is nested too deeply")]);
+            return ERROR;
+        }
+        let r = self.lower_type_body(t, iface_ok);
+        self.depth -= 1;
+        r
+    }
+
+    fn lower_type_body(&mut self, t: &'a TypeExpr, iface_ok: bool) -> Ty {
         match &t.kind {
             TypeExprKind::Paren(i) => self.lower_type_inner(i, iface_ok),
             TypeExprKind::Null => NULL,
@@ -188,15 +200,12 @@ impl<'a> Checker<'a> {
                     let m = self.defs[d.0 as usize].info.target_module.unwrap_or(0) as usize;
                     let name = &segments[1].name;
                     if segments.len() > 2 {
-                        self.err("OXS-E0300", t.span, &[("name", &self.span_text(t.span).to_string())]);
+                        self.err("OXS-E0300", t.span, &[("name", self.span_text(t.span))]);
                         return ERROR;
                     }
-                    match self.mods[m].exports.get(name) {
-                        Some(d) => Some(Binding::Def(*d)),
-                        None => {
-                            self.err("OXS-E0300", segments[1].span, &[("name", name)]);
-                            return ERROR;
-                        }
+                    if let Some(d) = self.mods[m].exports.get(name) { Some(Binding::Def(*d)) } else {
+                        self.err("OXS-E0300", segments[1].span, &[("name", name)]);
+                        return ERROR;
                     }
                 }
                 Some(_) => {
@@ -313,12 +322,7 @@ impl<'a> Checker<'a> {
     // ---- bounds -----------------------------------------------------------
 
     fn defer_bounds(&mut self, d: DefId, args: &[Ty], span: Span) {
-        let any = self.defs[d.0 as usize]
-            .info
-            .tparams
-            .iter()
-            .any(|p| self.params[p.0 as usize].bound.is_some() || true);
-        if any {
+        if !self.defs[d.0 as usize].info.tparams.is_empty() {
             self.pending_bounds.push((d, args.to_vec(), span, self.cm));
         }
     }

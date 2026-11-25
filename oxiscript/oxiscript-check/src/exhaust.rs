@@ -24,8 +24,10 @@ pub enum ColSig {
     Infinite,
 }
 
+#[cfg(test)]
 type Row = Vec<Pat>;
 
+#[cfg(test)]
 fn specialize(rows: &[Row], c: u32) -> Vec<Row> {
     let mut out = Vec::new();
     for r in rows {
@@ -42,6 +44,7 @@ fn specialize(rows: &[Row], c: u32) -> Vec<Row> {
     out
 }
 
+#[cfg(test)]
 fn default_matrix(rows: &[Row]) -> Vec<Row> {
     rows.iter()
         .filter(|r| r[0] == Pat::Wild)
@@ -52,6 +55,7 @@ fn default_matrix(rows: &[Row]) -> Vec<Row> {
 /// Is vector `q` useful with respect to `rows` (does it match a value no row matches)?
 /// `sigs[i]` is the signature of column `i`; constructors are nullary here, so the
 /// signature list only ever shrinks from the front.
+#[cfg(test)]
 pub fn useful(rows: &[Row], q: &[Pat], sigs: &[ColSig]) -> bool {
     if q.is_empty() {
         return rows.is_empty();
@@ -63,7 +67,7 @@ pub fn useful(rows: &[Row], q: &[Pat], sigs: &[ColSig]) -> bool {
             useful(&specialize(rows, *c), &nq, &sigs[1..])
         }
         Pat::Wild => {
-            let used: Vec<u32> = rows
+            let used: std::collections::HashSet<u32> = rows
                 .iter()
                 .filter_map(|r| match &r[0] {
                     Pat::Ctor(k, _) => Some(*k),
@@ -88,17 +92,38 @@ pub fn useful(rows: &[Row], q: &[Pat], sigs: &[ColSig]) -> bool {
 /// Constructors of a single column that no row covers; `None` entries are not
 /// representable (infinite signature: report "other values").
 pub fn missing(rows_single_col: &[Pat], sig: ColSig) -> Vec<u32> {
-    let rows: Vec<Row> = rows_single_col.iter().map(|p| vec![p.clone()]).collect();
+    // Single nullary column: `useful(rows, [Ctor c])` holds iff no row is `c` or a wildcard.
+    // This linear form is the same algorithm specialised to one column (checked against
+    // the general `useful` in the tests), so a 20 000-member enum stays linear.
     match sig {
-        ColSig::Finite(n) => (0..n)
-            .filter(|c| useful(&rows, &[Pat::Ctor(*c, vec![])], &[sig]))
-            .collect(),
+        ColSig::Finite(n) => {
+            if rows_single_col.contains(&Pat::Wild) {
+                return Vec::new();
+            }
+            let covered: std::collections::HashSet<u32> = rows_single_col
+                .iter()
+                .filter_map(|p| if let Pat::Ctor(k, _) = p { Some(*k) } else { None })
+                .collect();
+            (0..n).filter(|c| !covered.contains(c)).collect()
+        }
         ColSig::Infinite => Vec::new(),
     }
 }
 
 /// Exhaustive iff the wildcard is not useful.
 pub fn is_exhaustive(rows_single_col: &[Pat], sig: ColSig) -> bool {
+    if rows_single_col.contains(&Pat::Wild) {
+        return true;
+    }
+    match sig {
+        ColSig::Finite(_) => missing(rows_single_col, sig).is_empty(),
+        ColSig::Infinite => false,
+    }
+}
+
+/// The general algorithm applied to the same question (used by tests as the reference).
+#[cfg(test)]
+pub fn is_exhaustive_general(rows_single_col: &[Pat], sig: ColSig) -> bool {
     let rows: Vec<Row> = rows_single_col.iter().map(|p| vec![p.clone()]).collect();
     !useful(&rows, &[Pat::Wild], &[sig])
 }
@@ -117,6 +142,38 @@ mod tests {
         assert!(is_exhaustive(&[c(0), Pat::Wild], ColSig::Finite(9)));
         assert!(!is_exhaustive(&[c(1)], ColSig::Infinite));
         assert!(is_exhaustive(&[Pat::Wild], ColSig::Infinite));
+    }
+    #[test]
+    fn linear_form_agrees_with_the_general_algorithm() {
+        let mut seed = 12345u64;
+        let mut next = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as u32
+        };
+        for _ in 0..500 {
+            let n = next() % 6 + 1;
+            let k = next() % 8;
+            let rows: Vec<Pat> = (0..k)
+                .map(|_| if next() % 7 == 0 { Pat::Wild } else { c(next() % (n + 1)) })
+                .collect();
+            let sig = if next() % 5 == 0 { ColSig::Infinite } else { ColSig::Finite(n) };
+            let rows: Vec<Pat> = rows
+                .into_iter()
+                .filter(|p| match (p, sig) {
+                    (Pat::Ctor(x, _), ColSig::Finite(n)) => *x < n,
+                    (Pat::Ctor(..), ColSig::Infinite) => false,
+                    _ => true,
+                })
+                .collect();
+            assert_eq!(is_exhaustive(&rows, sig), is_exhaustive_general(&rows, sig), "{rows:?} {sig:?}");
+            if let ColSig::Finite(_) = sig {
+                let miss = missing(&rows, sig);
+                for ctor in 0..n {
+                    let r2: Vec<Vec<Pat>> = rows.iter().map(|p| vec![p.clone()]).collect();
+                    assert_eq!(miss.contains(&ctor), useful(&r2, &[c(ctor)], &[sig]));
+                }
+            }
+        }
     }
     #[test]
     fn two_columns() {

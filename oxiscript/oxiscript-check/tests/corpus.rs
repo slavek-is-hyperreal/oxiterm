@@ -1,3 +1,4 @@
+#![allow(clippy::format_push_string)]
 mod common;
 use common::*;
 use oxiscript_check::*;

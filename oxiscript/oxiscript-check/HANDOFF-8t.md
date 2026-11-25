@@ -9,9 +9,12 @@ Verify: `cd <worktree> && CARGO_BUILD_JOBS=2 cargo test -p oxiscript-check` (and
 ## Status
 - [x] M0-M5 core checker implemented: src/{lib,ty,output,decl,typeexpr,expr,calls,builtins,stmt,flow,exhaust}.rs; compiles; smoke + valid corpus pass (45/45).
 - [x] Valid corpus fixed (real files edited, syntax tests green): 06,08,11,12,13,14,17,18,19,21,22,25,26,27,30,31,36,37,43,45 (script in scratchpad patch4.py; reasons in "Corpus triage"). tests/corpus.rs supplies host IDLs (tests/idl/ui.idl, canvas.idl) and stub modules ./util, std/math.
-- [ ] M6 ill-typed corpus (>=60, code+line), soundness tests, fuzz (no panic/bounded), diag-registry test (every code exists, phase check, no unfilled placeholder), zero-errors => no ERROR type in tables test
-- [ ] contracts.md 8.T section (API + conventions + deviations: E0110 for === on struct, E0127 for ?. on non-null)
-- [ ] M7 speed measure, clippy -D warnings, wasm32 build, release tests, report
+- [x] Advisor bug list (exports guard, Capture.mutated, definite assignment, Ok(), receiver sets, for-of msg, union fields read-only, effects (EffectSummary + law purity), enum cap, quadratic fixes, E0128 unary code, @allow code check, this_locals) done.
+- [x] tests: ill_typed.rs (100 programs, //! markers), soundness.rs, accept.rs, corpus.rs, smoke.rs pass.
+- [x] limits.rs done+passing debug/release on 1MB stack (parser caps depth ~50, checker MAX_EXPR_DEPTH=180; probe: debug needs <=512KB). tables.rs, modules.rs, registry.rs files exist: verify they pass.
+- [x] fuzz.rs done (4 tests, pass debug,full-debug,release). Remaining: speed example
+- [x] contracts.md 8.T paragraph written
+- [x] speed 105k lines/s release; clippy clean; wasm32 ok; debug+release green. Remaining: advisor, report
 Known TODO polish: arithmetic on nullable should say E0105; W0001 unused not implemented; deep-chain stack tests.
 
 ## Decisions
@@ -45,3 +48,13 @@ unbounded T, 18 unknown attr `@a` and `@@inline`, 25 interface as value type, 27
 - Cite Dunfield-Krishnaswami / Pierce-Turner local inference (check vs synth modes) in crate docs.
 - Narrowing: TS flow-node model (our Flow state is a flow-node walk); messages mirror TS wording in `detail` strings.
 - Report must list reused vs written mechanisms.
+
+## Final state (advisor round 2 done)
+- Fixed: reversed alias/declaration chains overflowed 1MB stack -> MAX_SIG_DEPTH=64 guard (E0113) wrapping ensure_*; interface flatten was cubic -> HashSet + MAX_IFACE_METHODS=256; host `result<T>` returned ERROR type (prelude Result lookup used `exports`, now `top`) - real soundness hole, test in soundness.rs.
+- Added tests: limits.rs (declaration/reversed/import/bound chains, nested inference non-exponential, mixed nesting), tables.rs all-tables ERROR walker, fuzz.rs.
+- All green: debug+release 69 tests, clippy -D warnings, wasm32, syntax+abi 133. Only the report remains.
+
+## Advisor round 3 fixes (done)
+- depth counter no longer reset in with_def_env; ensure_* wrappers + lower_type consume it; MAX_EXPR_DEPTH 120 (debug 1MB needs ~384-512KB, release <=256KB).
+- sig_overflow writes placeholder sigs per kind; OXS-E0990 (internal poison in tables of ok program) emitted by finish(); fuzz asserts none.
+- tests: nested_budgets, guarded_definitions, nested inference n>=20 asserted. Gate green (71 tests debug+release, clippy, wasm32, syntax+abi 133). ONLY THE REPORT REMAINS.

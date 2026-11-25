@@ -41,8 +41,9 @@ impl<'a> Checker<'a> {
             })
         };
         if !local {
+            // the depth counter is deliberately NOT reset: nested on-demand resolutions share
+            // one recursion budget, so no chain of declarations can multiply the native stack use
             self.cm = module;
-            self.depth = 0;
         }
         let mut sc = HashMap::new();
         for p in &tps {
@@ -112,8 +113,9 @@ impl<'a> Checker<'a> {
 
     pub fn new_tparams(&mut self, tps: &'a [TypeParam], owner: DefId, base: &[ParamId]) -> Vec<ParamId> {
         let mut out: Vec<ParamId> = base.to_vec();
+        let mut seen: HashSet<String> = base.iter().map(|p| self.params[p.0 as usize].name.clone()).collect();
         for (i, tp) in tps.iter().enumerate() {
-            if out.iter().any(|p| self.params[p.0 as usize].name == tp.name.name) {
+            if !seen.insert(tp.name.name.clone()) {
                 self.err("OXS-E0301", tp.name.span, &[("name", &tp.name.name)]);
             }
             let p = self.new_param(&tp.name.name, Some(owner), (base.len() + i) as u32);
@@ -297,6 +299,8 @@ impl<'a> Checker<'a> {
                     let code = args.first().cloned().unwrap_or_default();
                     if a.args.is_empty() {
                         self.err("OXS-E0123", a.span, &[("detail", "`@allow` needs a code and a reason: `@allow(\"OXS-P0102\", \"why\")`")]);
+                    } else if !crate::registry().contains_key(code.as_str()) {
+                        self.err("OXS-E0123", a.span, &[("detail", &format!("`@allow` names `{code}`, which is not a registered reason code"))]);
                     } else if a.args.len() < 2 || args[1].is_empty() {
                         self.err("OXS-W0002", a.span, &[("code", &code)]);
                     }
@@ -376,7 +380,10 @@ impl<'a> Checker<'a> {
     }
 
     fn result_def(&self) -> Option<DefId> {
-        self.mods[self.prelude].exports.get("Result").copied()
+        match self.mods[self.prelude].top.get("Result") {
+            Some(Binding::Def(d)) => Some(*d),
+            _ => None,
+        }
     }
 
     fn idl_ty(&mut self, t: &IdlTy, host: &str) -> Ty {
@@ -424,12 +431,9 @@ impl<'a> Checker<'a> {
         if !self.host_defs.contains_key(&format!("{}#{}", iface.module, iface.name)) {
             self.build_host(idx);
         }
-        match self.host_defs.get(&key) {
-            Some(d) => Some(*d),
-            None => {
-                self.err("OXS-E0401", name.span, &[("name", &name.name), ("module", spec)]);
-                None
-            }
+        if let Some(d) = self.host_defs.get(&key) { Some(*d) } else {
+            self.err("OXS-E0401", name.span, &[("name", &name.name), ("module", spec)]);
+            None
         }
     }
 
@@ -489,7 +493,154 @@ impl<'a> Checker<'a> {
 
     // ---- aliases -------------------------------------------------------------
 
+    /// Declarations are resolved on demand, so a chain of forward references recurses once per
+    /// declaration; beyond [`MAX_SIG_DEPTH`] levels the definition is given up (`OXS-E0113`).
+    fn sig_overflow(&mut self, d: DefId) {
+        let info = &self.defs[d.0 as usize].info;
+        let (sp, kind, tparams, module) = (info.span, info.kind, info.tparams.clone(), info.module);
+        let _ = module;
+        self.err("OXS-E0113", sp, &[("detail", "declarations depend on each other through too long a chain of forward references; declare them in dependency order")]);
+        self.defs[d.0 as usize].sig = Sig::Done;
+        // placeholder signatures so later lookups of this definition find something (never panic)
+        match kind {
+            DefKind::Alias => {
+                self.aliases.insert(d, ERROR);
+            }
+            DefKind::Fn | DefKind::Method | DefKind::Ctor | DefKind::Law => {
+                self.fns.insert(d, FnSig { params: vec![], ret: ERROR, tparams, mutating: false, is_static: false, private: false });
+            }
+            DefKind::Global => {
+                self.globals.insert(d, GlobalSig { ty: ERROR, mutable: false });
+            }
+            DefKind::Interface => {
+                self.ifaces.insert(d, IfaceSig { methods: vec![] });
+            }
+            DefKind::Struct | DefKind::Class | DefKind::Variant { .. } => {
+                self.records.insert(d, RecordSig { is_class: kind == DefKind::Class, fields: vec![], methods: vec![], ctor: None, implements: vec![], discr: None });
+            }
+            DefKind::Union => {
+                self.unions.insert(d, UnionSig { discr_field: "kind".into(), discr_ty: ERROR, variants: vec![] });
+            }
+            DefKind::Enum => {
+                self.enums.insert(d, EnumSig { repr: NumTy::I32, members: vec![] });
+            }
+            _ => {}
+        }
+    }
+
     pub fn ensure_alias(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_alias_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_alias_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_iface(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_iface_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_iface_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_record(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_record_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_record_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_variant(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_variant_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_variant_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_union(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_union_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_union_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_fn(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_fn_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_fn_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_global(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_global_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_global_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    pub fn ensure_enum(&mut self, d: DefId) {
+        if self.defs[d.0 as usize].sig != Sig::Pending {
+            return self.ensure_enum_inner(d);
+        }
+        if self.sig_depth >= MAX_SIG_DEPTH || self.depth + SIG_COST > MAX_EXPR_DEPTH {
+            return self.sig_overflow(d);
+        }
+        self.sig_depth += 1;
+        self.depth += SIG_COST;
+        self.ensure_enum_inner(d);
+        self.depth -= SIG_COST;
+        self.sig_depth -= 1;
+    }
+
+    fn ensure_alias_inner(&mut self, d: DefId) {
         match self.defs[d.0 as usize].sig {
             Sig::Done => return,
             Sig::InProgress => {
@@ -537,7 +688,7 @@ impl<'a> Checker<'a> {
 
     // ---- enums ---------------------------------------------------------------
 
-    pub fn ensure_enum(&mut self, d: DefId) {
+    fn ensure_enum_inner(&mut self, d: DefId) {
         if self.defs[d.0 as usize].sig != Sig::Pending {
             return;
         }
@@ -559,14 +710,33 @@ impl<'a> Checker<'a> {
         };
         let mut members: Vec<(String, i128)> = Vec::new();
         let mut next: i128 = 0;
+        if e.variants.len() > 65_536 {
+            self.err("OXS-E0113", item.span, &[("detail", "an enum can have at most 65536 members")]);
+            self.enums.insert(d, EnumSig { repr, members });
+            return;
+        }
+        let mut const_ids: Vec<NodeId> = Vec::new();
+        for v in &e.variants {
+            if let Some(x) = &v.value {
+                struct Ids(Vec<NodeId>);
+                impl<'b> Visitor<'b> for Ids {
+                    fn visit_expr(&mut self, e: &'b Expr) {
+                        self.0.push(e.id);
+                        walk_expr(self, e);
+                    }
+                }
+                let mut ids = Ids(Vec::new());
+                ids.visit_expr(x);
+                const_ids.extend(ids.0);
+            }
+        }
+        let mut names_seen: HashSet<&str> = HashSet::new();
+        let mut vals_seen: HashSet<i128> = HashSet::new();
         for v in &e.variants {
             let val = match &v.value {
-                Some(x) => match self.const_int(x, &members) {
-                    Some(n) => n,
-                    None => {
-                        self.err("OXS-E0123", x.span, &[("detail", "enum member value must be a constant integer expression")]);
-                        next
-                    }
+                Some(x) => if let Some(n) = self.const_int(x, &members) { n } else {
+                    self.err("OXS-E0123", x.span, &[("detail", "enum member value must be a constant integer expression")]);
+                    next
                 },
                 None => next,
             };
@@ -574,16 +744,25 @@ impl<'a> Checker<'a> {
             if val < lo || val > hi {
                 self.err("OXS-E0102", v.span, &[("value", &val.to_string()), ("ty", repr.name())]);
             }
-            if members.iter().any(|(n, _)| *n == v.name.name) {
+            if !names_seen.insert(v.name.name.as_str()) {
                 self.err("OXS-E0301", v.name.span, &[("name", &v.name.name)]);
             } else {
+                if !vals_seen.insert(val) {
+                    self.err("OXS-E0123", v.span, &[("detail", &format!("duplicate enum value {val}: members of a closed enum must have distinct values"))]);
+                }
                 members.push((v.name.name.clone(), val));
             }
             next = val.wrapping_add(1);
         }
         self.enums.insert(d, EnumSig { repr, members });
+        self.with_def_env(d, |s| {
+            for id in const_ids {
+                s.set_ty(id, num(repr));
+            }
+        });
     }
 
+    #[allow(clippy::self_only_used_in_recursion)]
     fn const_int(&mut self, e: &'a Expr, prev: &[(String, i128)]) -> Option<i128> {
         match &e.kind {
             ExprKind::Lit(l) => match &l.kind {
@@ -614,7 +793,7 @@ impl<'a> Checker<'a> {
 
     // ---- interfaces ----------------------------------------------------------
 
-    pub fn ensure_iface(&mut self, d: DefId) {
+    fn ensure_iface_inner(&mut self, d: DefId) {
         match self.defs[d.0 as usize].sig {
             Sig::Done => return,
             Sig::InProgress => {
@@ -631,6 +810,8 @@ impl<'a> Checker<'a> {
         self.with_def_env(d, |s| {
             s.resolve_bounds(d, &i.type_params);
             let mut methods: Vec<IfaceMethod> = Vec::new();
+            let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut too_many = false;
             for m in &i.methods {
                 let own = s.new_tparams(&m.type_params, d, &[]);
                 let mut sc = HashMap::new();
@@ -641,17 +822,14 @@ impl<'a> Checker<'a> {
                 let ps: Vec<Ty> = m
                     .params
                     .iter()
-                    .map(|p| match &p.ty {
-                        Some(t) => s.lower_type(t),
-                        None => {
-                            s.err("OXS-E0103", p.span, &[("what", "parameter")]);
-                            ERROR
-                        }
+                    .map(|p| if let Some(t) = &p.ty { s.lower_type(t) } else {
+                        s.err("OXS-E0103", p.span, &[("what", "parameter")]);
+                        ERROR
                     })
                     .collect();
                 let r = m.ret.as_ref().map_or(VOID, |t| s.lower_type(t));
                 s.scopes.pop();
-                if methods.iter().any(|x| x.name == m.name.name) {
+                if !names.insert(m.name.name.clone()) {
                     s.err("OXS-E0301", m.name.span, &[("name", &m.name.name)]);
                 } else {
                     methods.push(IfaceMethod { name: m.name.name.clone(), params: ps, ret: r, tparams: own });
@@ -666,9 +844,17 @@ impl<'a> Checker<'a> {
                         let tps = s.defs[ed.0 as usize].info.tparams.clone();
                         let map: Vec<(ParamId, Ty)> = tps.into_iter().zip(eargs.iter().copied()).collect();
                         for m in sig.methods {
-                            if methods.iter().any(|x| x.name == m.name) {
+                            if names.contains(&m.name) {
                                 continue;
                             }
+                            if methods.len() >= MAX_IFACE_METHODS {
+                                if !too_many {
+                                    too_many = true;
+                                    s.err("OXS-E0113", ex.span, &[("detail", "an interface can have at most 256 methods including inherited ones")]);
+                                }
+                                break;
+                            }
+                            names.insert(m.name.clone());
                             let ps: Vec<Ty> = m.params.iter().map(|p| s.tys.subst(*p, &map)).collect();
                             let r = s.tys.subst(m.ret, &map);
                             methods.push(IfaceMethod { name: m.name, params: ps, ret: r, tparams: m.tparams });
@@ -687,7 +873,7 @@ impl<'a> Checker<'a> {
 
     // ---- records and unions --------------------------------------------------
 
-    pub fn ensure_record(&mut self, d: DefId) {
+    fn ensure_record_inner(&mut self, d: DefId) {
         if self.defs[d.0 as usize].sig != Sig::Pending {
             return;
         }
@@ -704,11 +890,12 @@ impl<'a> Checker<'a> {
             let mut fields: Vec<FieldInfo> = Vec::new();
             let mut methods: Vec<(String, DefId)> = Vec::new();
             let mut ctor = None;
+            let mut member_names: HashSet<&str> = HashSet::new();
             for m in &r.members {
                 match &m.kind {
                     MemberKind::Field(f) => {
                         let ty = s.lower_type(&f.ty);
-                        if fields.iter().any(|x| x.name == f.name.name) || methods.iter().any(|x| x.0 == f.name.name) {
+                        if !member_names.insert(f.name.name.as_str()) {
                             s.err("OXS-E0301", f.name.span, &[("name", &f.name.name)]);
                             continue;
                         }
@@ -730,7 +917,7 @@ impl<'a> Checker<'a> {
                     }
                     MemberKind::Method(f) => {
                         let Some(&md) = s.mods[s.cm].out.node_def.get(&m.id) else { continue };
-                        if methods.iter().any(|x| x.0 == f.name.name) || fields.iter().any(|x| x.name == f.name.name) {
+                        if !member_names.insert(f.name.name.as_str()) {
                             s.err("OXS-E0301", f.name.span, &[("name", &f.name.name)]);
                             continue;
                         }
@@ -796,7 +983,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn ensure_variant(&mut self, d: DefId) {
+    fn ensure_variant_inner(&mut self, d: DefId) {
         if self.defs[d.0 as usize].sig != Sig::Pending {
             return;
         }
@@ -847,7 +1034,7 @@ impl<'a> Checker<'a> {
         self.defs[d.0 as usize].sig = Sig::Done;
     }
 
-    pub fn ensure_union(&mut self, d: DefId) {
+    fn ensure_union_inner(&mut self, d: DefId) {
         if self.defs[d.0 as usize].sig != Sig::Pending {
             return;
         }
@@ -953,7 +1140,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         "OXS-E0116",
                         sp,
-                        &[("detail", &format!("all members of `{uname}` must use the same discriminant field `{}` with literals of one kind", f))],
+                        &[("detail", &format!("all members of `{uname}` must use the same discriminant field `{f}` with literals of one kind"))],
                     );
                     continue;
                 }
@@ -989,7 +1176,7 @@ impl<'a> Checker<'a> {
 
     // ---- functions -----------------------------------------------------------
 
-    pub fn ensure_fn(&mut self, d: DefId) {
+    fn ensure_fn_inner(&mut self, d: DefId) {
         match self.defs[d.0 as usize].sig {
             Sig::Done => return,
             Sig::InProgress => {
@@ -1023,18 +1210,16 @@ impl<'a> Checker<'a> {
             s.resolve_bounds(d, &decl.type_params);
             let _ = own_n;
             let mut params = Vec::new();
+            let mut pnames: HashSet<&str> = HashSet::new();
             for p in &decl.params {
-                let ty = match &p.ty {
-                    Some(t) => s.lower_type(t),
-                    None => {
-                        s.err("OXS-E0103", p.span, &[("what", "parameter")]);
-                        ERROR
-                    }
+                let ty = if let Some(t) = &p.ty { s.lower_type(t) } else {
+                    s.err("OXS-E0103", p.span, &[("what", "parameter")]);
+                    ERROR
                 };
                 if ty == VOID || ty == NEVER {
                     s.err("OXS-E0115", p.span, &[("detail", "a parameter cannot have type `void` or `never`")]);
                 }
-                if params.iter().any(|x: &ParamSig| x.name == p.name.name) {
+                if !pnames.insert(p.name.name.as_str()) {
                     s.err("OXS-E0301", p.name.span, &[("name", &p.name.name)]);
                 }
                 params.push(ParamSig { name: p.name.name.clone(), ty, has_default: p.default.is_some() });
@@ -1081,7 +1266,7 @@ impl<'a> Checker<'a> {
 
     // ---- globals ---------------------------------------------------------------
 
-    pub fn ensure_global(&mut self, d: DefId) {
+    fn ensure_global_inner(&mut self, d: DefId) {
         match self.defs[d.0 as usize].sig {
             Sig::Done => return,
             Sig::InProgress => {

@@ -32,11 +32,23 @@ impl Flow {
             self.facts.push((p, t));
         }
     }
+    /// `unassigned` is kept sorted; constructor field markers (`0x8000_0000 | index`) sort last.
     pub fn is_unassigned(&self, local: u32) -> bool {
-        self.unassigned.contains(&local)
+        self.unassigned.binary_search(&local).is_ok()
     }
     pub fn assign(&mut self, local: u32) {
-        self.unassigned.retain(|l| *l != local);
+        if let Ok(i) = self.unassigned.binary_search(&local) {
+            self.unassigned.remove(i);
+        }
+    }
+    pub fn mark_unassigned(&mut self, local: u32) {
+        if let Err(i) = self.unassigned.binary_search(&local) {
+            self.unassigned.insert(i, local);
+        }
+    }
+    /// Some constructor field is not assigned yet.
+    pub fn has_unassigned_fields(&self) -> bool {
+        self.unassigned.last().is_some_and(|u| *u & 0x8000_0000 != 0)
     }
 }
 
@@ -44,6 +56,7 @@ impl Flow {
 pub struct PathNode {
     pub parent: Option<u32>,
     pub root: u32,
+    #[allow(dead_code)]
     pub field: u32,
     pub depth: u32,
 }
@@ -94,7 +107,7 @@ impl PathTable {
     }
 }
 
-impl<'a> Checker<'a> {
+impl Checker<'_> {
     /// Remove facts about `p` and everything below it.
     pub fn kill_path(&mut self, p: u32) {
         let paths = &self.paths;
@@ -137,7 +150,7 @@ impl<'a> Checker<'a> {
         if mask == full_mask(n) {
             return self.tys.adt(u, args);
         }
-        if mask.count_ones() == 1 {
+        if mask.is_power_of_two() {
             let i = mask.trailing_zeros() as usize;
             let v = sig.variants[i].clone();
             let tp = self.defs[u.0 as usize].info.tparams.clone();
@@ -146,11 +159,6 @@ impl<'a> Checker<'a> {
             return self.tys.adt(v.def, &vargs);
         }
         self.tys.mk(TyKind::Variants(u, args.into(), mask))
-    }
-
-    /// The type of union variant `i` of union type args `args`.
-    pub fn variant_ty(&mut self, u: DefId, args: &[Ty], i: usize) -> Ty {
-        self.mk_variants(u, args, 1u64 << i)
     }
 
     /// Least type containing `a` and `b` that narrowing can express (joins of facts).
@@ -221,11 +229,35 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        let mut un = a.unassigned.clone();
-        for l in &b.unassigned {
-            if !un.contains(l) {
-                un.push(*l);
-            }
+        let (x, y) = (&a.unassigned, &b.unassigned);
+        let mut un: Vec<u32> = Vec::with_capacity(x.len().max(y.len()));
+        let (mut i, mut j) = (0, 0);
+        while i < x.len() || j < y.len() {
+            let v = match (x.get(i), y.get(j)) {
+                (Some(p), Some(q)) if p == q => {
+                    i += 1;
+                    j += 1;
+                    *p
+                }
+                (Some(p), Some(q)) if p < q => {
+                    i += 1;
+                    *p
+                }
+                (Some(_), Some(q)) => {
+                    j += 1;
+                    *q
+                }
+                (Some(p), None) => {
+                    i += 1;
+                    *p
+                }
+                (None, Some(q)) => {
+                    j += 1;
+                    *q
+                }
+                (None, None) => break,
+            };
+            un.push(v);
         }
         Flow { facts, unassigned: un, dead: false }
     }
