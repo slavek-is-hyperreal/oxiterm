@@ -5,4 +5,14 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript memory runtime: reference counting with a cycle collector (Phase 8)."
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+# Guest allocator (MIT OR Apache-2.0). Used by the wasm32 build (memory.grow backed)
+# and, with an arena back end, by the native test heap.
+dlmalloc = "0.2.14"
+
+[dev-dependencies]
+oxiscript-abi = { path = "../oxiscript-abi" }
+wasmi = "2.0.3"
