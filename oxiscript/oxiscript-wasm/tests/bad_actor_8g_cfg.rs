@@ -61,9 +61,9 @@ pub fn gen_cfg_x(seed: u64, n: usize, wide: bool, noparam: bool) -> String {
             i64s: ent.i64s.clone(),
         };
         if bi > 0 && noparam {
-            let _ = write!(s, "L{bi}:\n");
+            let _ = writeln!(s, "L{bi}:");
         } else if bi > 0 {
-            let _ = write!(s, "L{bi}(%p{bi}: i32, %q{bi}: u8, %r{bi}: i64):\n");
+            let _ = writeln!(s, "L{bi}(%p{bi}: i32, %q{bi}: u8, %r{bi}: i64):");
             p.i32s.push(format!("%p{bi}"));
             p.u8s.push(format!("%q{bi}"));
             p.i64s.push(format!("%r{bi}"));
@@ -183,7 +183,7 @@ pub fn gen_cfg_x(seed: u64, n: usize, wide: bool, noparam: bool) -> String {
                 let t = tgt(&mut r, &p);
                 let _ = writeln!(s, "  br {t}");
             }
-            5 | 6 | 7 => {
+            5..=7 => {
                 let c = if bools.is_empty() {
                     ctr += 1;
                     let (x, y) = (pick(&mut r, &p.i32s), pick(&mut r, &p.i32s));

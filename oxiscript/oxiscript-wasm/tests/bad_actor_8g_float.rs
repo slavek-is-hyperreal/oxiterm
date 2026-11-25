@@ -103,12 +103,13 @@ fn float_to_int_boundaries_match_model() {
     eprintln!("float->int boundary cases: {cases}");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check(rt: &mut oxiscript_runtime::Runtime, h: &oxiscript_runtime::Host, wasm: &[u8], f: &str, arg: Value, x: f64, bits: u32, signed: bool, sat: bool) {
     if rt.is_poisoned() {
         *rt = instantiate(h, wasm);
     }
     let want = model(x, bits, signed, sat);
-    let got = rt.call_export(f, &[arg.clone()]);
+    let got = rt.call_export(f, std::slice::from_ref(&arg));
     match (want, got) {
         (Ok(w), Ok(g)) => {
             let gv: i128 = match g[0] {

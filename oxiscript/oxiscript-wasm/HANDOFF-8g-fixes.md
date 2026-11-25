@@ -8,3 +8,4 @@ F6 test asserts E0603 or ok; interp fuel per block done
 F5 in progress: wrap.rs check_export_boundary + CompileOptions.allow_raw_exports (corpus/golden set it); fixing catalogue cat05 etc.
 F5 done; golden re-blessed (float-return wrappers). Remaining: full verify (debug, ir, abi, clippy, wasm32)
 Verify (Opus takeover 2026-11-25): debug+release oxiscript-wasm green; ir/abi green; clippy green after if_not_else fix in ir/tests/wide_struct.rs; wasm32 build ok. CompileOptions used only inside oxiscript-wasm. DONE.
+Clippy (correction): needed mechanical fixes in tests/bad_actor_8g_cfg.rs (writeln!, range pattern) and an allow(too_many_arguments) on a test helper in bad_actor_8g_float.rs; now green.
