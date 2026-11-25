@@ -1,0 +1,17 @@
+struct Point {
+  x: f64;
+  y: f64;
+
+  mutating moveBy(dx: f64, dy: f64): void {
+    this.x = this.x + dx;
+    this.y = this.y + dy;
+  }
+}
+
+export function walk(steps: i32): f64 {
+  let p: Point = { x: 0.0, y: 0.0 };
+  for (let i = 0; i < steps; i++) {
+    p.moveBy(1.5, 0.5);
+  }
+  return p.x + p.y;
+}

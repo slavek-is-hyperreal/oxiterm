@@ -2585,6 +2585,7 @@ dependencies = [
  "oxiscript-abi",
  "oxiscript-check",
  "oxiscript-syntax",
+ "serde_json",
  "wasm-bindgen",
 ]
 

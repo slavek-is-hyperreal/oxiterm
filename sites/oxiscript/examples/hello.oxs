@@ -1,0 +1,5 @@
+import { Log } from "host:log";
+
+export function main(log: Log): void {
+  log.write(2, "Hello from OxiScript");
+}
