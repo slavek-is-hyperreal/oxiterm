@@ -1,0 +1,8 @@
+function f(o: S, a: i32[]): void {
+  o.x = 1;
+  a[0] = 2;
+  o.inner.y += 3;
+  (o).x = 4;
+  let q = 0;
+  q = q = 1;
+}

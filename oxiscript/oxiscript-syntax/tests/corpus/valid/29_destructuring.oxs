@@ -1,0 +1,10 @@
+struct P { x: i32; y: i32; inner: Q; }
+struct Q { z: i32; }
+function f(p: P): i32 {
+  const { x, y } = p;
+  const { inner: { z } } = p;
+  const { x: a, y: _ } = p;
+  let u: i32;
+  u = x + y + z + a;
+  return u;
+}

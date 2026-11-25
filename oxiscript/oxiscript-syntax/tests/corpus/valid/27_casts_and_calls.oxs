@@ -1,0 +1,14 @@
+function g(x: i64, f: f64): u8 {
+  const a = x as i32;
+  const b = f as i64 + 1;
+  const c = (x as u8) | 1;
+  const d = x as (u8 | null);
+  const e = x.wrapping<u8>();
+  const h = f.saturating<i32>();
+  const i = shape.downcast<Circle>();
+  const j = foo<i32, string>(1, "a");
+  const k = a < b;
+  const l = (a < b) > c;
+  const arr = x as Array<i32>;
+  return e;
+}

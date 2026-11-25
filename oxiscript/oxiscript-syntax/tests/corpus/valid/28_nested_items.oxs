@@ -1,0 +1,7 @@
+function outer(): i32 {
+  function inner(x: i32): i32 { return x + 1; }
+  struct Local { v: i32; }
+  type Alias = i32;
+  const l: Local = { v: 1 };
+  return inner(l.v);
+}

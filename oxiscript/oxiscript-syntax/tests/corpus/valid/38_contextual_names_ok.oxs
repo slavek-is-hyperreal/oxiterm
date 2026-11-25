@@ -1,0 +1,9 @@
+const of = 1;
+const from = 2;
+const type = 3;
+const law = 4;
+const when = 5;
+const mutating = 6;
+const constructor = 7;
+function use(): i32 { return of + from + type + law + when + mutating + constructor; }
+type Alias = i32;

@@ -1,0 +1,8 @@
+function cmp(a: i32, b: i32, s: string): bool {
+  const x = a < b;
+  const y = a <= b && b >= a || a > b;
+  const z = a === b || a !== b;
+  const w = (a & 1) === 0;
+  const v = (a < b) === (b > a);
+  return x && y && z && w && v && s === "ok";
+}

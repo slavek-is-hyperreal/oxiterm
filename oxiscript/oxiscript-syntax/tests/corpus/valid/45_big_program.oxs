@@ -1,0 +1,66 @@
+import { Log } from "host:log";
+import { Canvas } from "host:canvas";
+
+/// A particle in the simulation.
+struct Particle {
+  x: f32;
+  y: f32;
+  vx: f32;
+  vy: f32;
+  life: i32;
+}
+
+type Event =
+  | { kind: "emit"; x: f32; y: f32 }
+  | { kind: "kill"; index: i32 }
+  | { kind: "clear" };
+
+let particles: Particle[] = [];
+let rng: u32 = 12345u32;
+
+function next(): u32 {
+  rng ^= rng << 13;
+  rng ^= rng >> 17;
+  rng ^= rng << 5;
+  return rng;
+}
+
+function emit(x: f32, y: f32): void {
+  const p: Particle = {
+    x,
+    y,
+    vx: (next() % 100u32) as f32 / 50.0f32 - 1.0f32,
+    vy: (next() % 100u32) as f32 / 50.0f32 - 1.0f32,
+    life: 100,
+  };
+  particles.push(p);
+}
+
+function handle(e: Event): void {
+  switch (e.kind) {
+    case "emit":
+      emit(e.x, e.y);
+      break;
+    case "kill":
+      particles[e.index].life = 0;
+      break;
+    case "clear":
+      particles = [];
+  }
+}
+
+@expect(no_alloc)
+export function update(dt: f32): void {
+  for (const p of particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= 1;
+  }
+}
+
+export function main(log: Log, canvas: Canvas): void {
+  emit(1.0f32, 1.0f32);
+  log.write(1, "started");
+}
+
+law life_nonneg(p: Particle) when p.life > 0 { p.life - 1 >= 0 }

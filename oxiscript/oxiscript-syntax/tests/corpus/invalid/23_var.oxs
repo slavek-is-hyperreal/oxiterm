@@ -1,0 +1,3 @@
+function f(): void {
+  var x = 1;
+}

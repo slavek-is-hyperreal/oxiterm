@@ -71,6 +71,55 @@ title `as` followed by `|`
 message `as {ty} | ...` could be a cast to a union or a cast followed by bitwise or
 fix Write `({expr} as {ty}) | ...` or `{expr} as ({ty} | ...)`.
 
+code OXS-E0011
+severity error
+phase parse
+title Nesting too deep
+message this construct is nested or chained more than {limit} levels deep
+fix Split the code into several statements or helper functions.
+
+code OXS-E0012
+severity error
+phase parse
+title Input too complex to parse
+message this input is too large or too ambiguous to parse in reasonable time
+fix Add parentheses, shorten the expression or split the file.
+
+code OXS-E0013
+severity error
+phase lex
+title Invalid escape sequence
+message `{text}` is not a valid escape sequence
+fix Use one of the escapes n r t 0 backslash quote backtick dollar, xHH (ASCII only) or u{...}.
+
+code OXS-E0014
+severity error
+phase lex
+title Unexpected character
+message unexpected character `{ch}`
+fix Remove it; identifiers are ASCII, Unicode is allowed only in strings and comments.
+
+code OXS-E0015
+severity error
+phase parse
+title Invalid assignment target
+message the left side of an assignment must be a variable, a field or an element
+fix Assign to a name, a field `a.b` or an element `a[i]`.
+
+code OXS-E0016
+severity error
+phase parse
+title Increment or decrement used as a value
+message `++` and `--` produce no value
+fix Use `i++;` as a statement or in a `for` update, or write `i += 1`.
+
+code OXS-E0017
+severity error
+phase parse
+title Too many errors
+message more than {limit} errors; giving up on this file
+fix Fix the first errors and run again.
+
 code OXS-E0100
 severity error
 phase check
@@ -361,3 +410,10 @@ phase check
 title Suppression needs a reason
 message `@allow({code})` has no reason string
 fix Write `@allow("{code}", "why")`.
+
+code OXS-W0003
+severity warning
+phase lex
+title Invisible or direction-changing character in a literal
+message invisible or direction-changing character U+{code} in a literal
+fix Write it as an escape such as the backslash-u form with braces.

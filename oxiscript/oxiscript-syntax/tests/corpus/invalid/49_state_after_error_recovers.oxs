@@ -1,0 +1,4 @@
+function f(): void {
+  let = 1;
+  let y = x == 2;
+}

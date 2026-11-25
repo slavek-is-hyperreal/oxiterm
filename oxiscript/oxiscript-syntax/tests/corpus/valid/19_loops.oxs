@@ -1,0 +1,18 @@
+function loops(xs: i32[]): i32 {
+  let s = 0;
+  for (let i = 0; i < 10; i++) { s += i; }
+  for (;;) { break; }
+  for (const x of xs) s += x;
+  for (const { a, b: renamed } of pairs) { s += a + renamed; }
+  for (let _ of xs) { s++; }
+  let j = 0;
+  while (j < 3) j++;
+  do { j--; } while (j > 0);
+  outer: for (let k = 0; k < 3; k++) {
+    for (let m = 0; m < 3; m++) {
+      if (m === 1) continue outer;
+      if (k === 2) break outer;
+    }
+  }
+  return s;
+}

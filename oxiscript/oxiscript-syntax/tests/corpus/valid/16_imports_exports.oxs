@@ -1,0 +1,12 @@
+import { Log } from "host:log";
+import { a, b as c, d } from "./util";
+import * as math from "std/math";
+
+export const PI: f64 = 3.14159;
+export let counter: i32 = 0;
+export function f(): void {}
+export struct S { x: i32; }
+export class K {}
+export interface I { m(): void; }
+export enum E { A, B }
+export type T = i32;

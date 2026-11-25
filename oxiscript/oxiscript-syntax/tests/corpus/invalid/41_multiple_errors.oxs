@@ -1,0 +1,4 @@
+let a = 1
+let b = x == y;
+let c = 1 < 2 < 3;
+let d = x as u8 | 1;

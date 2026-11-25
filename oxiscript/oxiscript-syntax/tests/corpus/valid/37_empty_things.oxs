@@ -1,0 +1,7 @@
+struct Empty {}
+class E2 {}
+interface I0 {}
+function nothing() {}
+const f = () => {};
+const o = {};
+const a = [];

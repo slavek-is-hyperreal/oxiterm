@@ -1,0 +1,1 @@
+function f(x: i32): i32 requires x > 0 { return x; }

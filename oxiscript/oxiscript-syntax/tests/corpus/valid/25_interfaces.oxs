@@ -1,0 +1,13 @@
+interface Shape {
+  area(): f64;
+  scale(k: f64): Shape;
+}
+interface Named<T> extends Shape, Other {
+  name(): string;
+  get(x: T): T;
+}
+function total<S extends Shape>(items: S[]): f64 {
+  let t = 0.0;
+  for (const s of items) { t += s.area(); }
+  return t;
+}

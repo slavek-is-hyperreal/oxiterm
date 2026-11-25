@@ -1,0 +1,24 @@
+// A counter, the "hello world" of UI scripts.
+import { Log } from "host:log";
+import { State } from "host:state";
+
+let count: i32 = 0;
+
+function render(log: Log): void {
+  log.write(1, `count = ${count}`);
+}
+
+export function main(log: Log, state: State): void {
+  count = 0;
+  render(log);
+}
+
+export function increment(log: Log): void {
+  count += 1;
+  render(log);
+}
+
+export function reset(log: Log): void {
+  count = 0;
+  render(log);
+}

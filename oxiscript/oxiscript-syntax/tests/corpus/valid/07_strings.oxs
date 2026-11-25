@@ -1,0 +1,9 @@
+const a = "plain";
+const b = 'single';
+const c = "esc \n \r \t \0 \\ \" \' \x41 \u{1F600} \u{e9}";
+const d = `template ${a} and ${b + c} text`;
+const e = `multi
+line ${1 + 2}`;
+const f = `nested ${`inner ${a}`} done`;
+const g = "unicode: zażółć gęślą jaźń ✓";
+const h = `\${not interpolated} \` backtick`;

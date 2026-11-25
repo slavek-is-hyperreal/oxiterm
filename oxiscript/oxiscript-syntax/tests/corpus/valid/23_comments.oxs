@@ -1,0 +1,22 @@
+// leading comment
+/// Doc comment for f.
+/// Second doc line.
+function f(): void {
+  // inside
+  const a = 1; // trailing
+
+  /* block */
+  const b = /* inline */ 2;
+  // dangling at end
+}
+
+/**
+ * Multi-line block comment.
+ */
+struct S {
+  // before field
+  x: i32; // after field
+  /// doc for m
+  m(): void {}
+}
+// final comment

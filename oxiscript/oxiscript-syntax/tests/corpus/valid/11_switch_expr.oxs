@@ -1,0 +1,11 @@
+enum Color: u8 { Red, Green = 5, Blue }
+
+function name(c: Color): string {
+  const n = switch (c) { case Color.Red: "red", case Color.Green, Color.Blue: "cool", };
+  const m = switch (n) {
+    case "red": 1,
+    case ("a" === n ? "x" : "y"): 2,
+    default: 3
+  };
+  return n + m;
+}

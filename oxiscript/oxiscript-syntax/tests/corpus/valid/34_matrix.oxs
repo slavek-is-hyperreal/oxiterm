@@ -1,0 +1,13 @@
+function mul(a: f64[], b: f64[], n: i32): f64[] {
+  const out: f64[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let acc = 0.0;
+      for (let k = 0; k < n; k++) {
+        acc += a[i * n + k] * b[k * n + j];
+      }
+      out[i * n + j] = acc;
+    }
+  }
+  return out;
+}
