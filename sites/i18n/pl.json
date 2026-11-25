@@ -1,0 +1,356 @@
+{
+  "meta": { "name": "Polski", "short": "PL", "htmlLang": "pl", "status": "reviewed" },
+  "common": {
+    "skip": "Przejdź do treści",
+    "projects": "Projekty",
+    "language": "Język",
+    "menu": "Menu główne",
+    "viewInOxiui": "Zobacz tę stronę w OxiUI",
+    "viewInOxiuiTitle": "Otwiera wersję tej strony w OxiUI, uruchomioną w Twojej przeglądarce",
+    "backToHtml": "Wróć do zwykłej strony",
+    "draft": "Tłumaczenie robocze, czeka na przegląd.",
+    "honestTitle": "Uczciwa uwaga",
+    "honest": "Te projekty są młode. Budują je agenci AI pod nadzorem jednego właściciela, a każdy ukończony etap jest atakowany przez przeciwnego agenta \"BAD ACTOR\", zanim zostanie przyjęty. [Dziennik fal](@oxiui:roadmap) pokazuje, co znaleziono.",
+    "support": "Wsparcie",
+    "supportText": "Pracę finansuje jedna osoba. Jeśli Ci się przydaje, kawa pomaga (cele: nowa maszyna do budowania, płytki ESP32).",
+    "supportButton": "Postaw mi kawę",
+    "repo": "Kod źródłowy na GitHubie",
+    "footerFine": "Bez śledzenia, bez ciasteczek, bez skryptów firm trzecich. Kod na licencji MIT lub Apache-2.0.",
+    "demoHint": "To uruchamia OxiUI w Twojej przeglądarce, bez serwera. Pobiera około 1,5 MB.",
+    "runDemo": "Uruchom demo na żywo",
+    "demoWeight": "Nic nie jest nigdzie wysyłane: stronę rysuje WebAssembly na Twoim urządzeniu.",
+    "demoTitle": "Demo OxiUI na żywo",
+    "showSource": "Pokaż źródło THTML",
+    "roadmapSource": "Generowane podczas budowania z docs/oxi-ui.md w repozytorium; status wynika z dziennika fal.",
+    "roadmapEnglishOnly": "Sam plan jest napisany wyłącznie po angielsku.",
+    "phases": "Fazy",
+    "stages7": "Etapy fazy 7",
+    "slices8": "Plasterki OxiScript (faza 8)",
+    "colSlice": "Plasterek",
+    "colStatus": "Status",
+    "colWhat": "Co",
+    "waveLog": "Dziennik fal",
+    "waveLogIntro": "Zmierzone czasy każdego plasterka, liczba problemów znalezionych przez agenta BAD ACTOR i zatwierdzony commit.",
+    "state": { "done": "gotowe", "active": "w toku", "planned": "planowane" },
+    "sites": { "home": "slavekm.pl", "oxiui": "OxiUI", "oxiscript": "OxiScript" }
+  },
+  "home": {
+    "nav": { "index": "Start" },
+    "pages": {
+      "index": {
+        "title": "Projekty",
+        "desc": "Strona domowa z projektami OxiUI i OxiScript.",
+        "hero": {
+          "title": "slavekm.pl",
+          "lead": "[DO UZUPEŁNIENIA: jedno lub dwa zdania o tym, kim jesteś i czym jest ta strona. Pisze właściciel.]"
+        },
+        "blocks": [
+          { "t": "h2", "x": "Projekty" },
+          { "t": "widget", "id": "projectcards" },
+          { "t": "h2", "x": "O mnie" },
+          { "t": "p", "x": "[DO UZUPEŁNIENIA: kto, co, dlaczego. Pisze właściciel. Na razie nie ma tu żadnego życiorysu.]" },
+          { "t": "widget", "id": "latinnote" },
+          { "t": "widget", "id": "dedication" }
+        ]
+      }
+    },
+    "cards": {
+      "oxiui": { "text": "Jedna strona w THTML i TCSS, rysowana w terminalu przez SSH, w przeglądarce i w WebAssembly na Twoim własnym urządzeniu.", "cta": "Otwórz OxiUI" },
+      "oxiscript": { "text": "Język o składni jak TypeScript, ściśle typowany, kompilowany do WebAssembly. Sprawdzanie typów działa w Twojej przeglądarce.", "cta": "Otwórz OxiScript" },
+      "next": { "title": "Więcej wkrótce", "text": "Miejsce na przyszłe projekty." }
+    },
+    "latinNote": "[DO UZUPEŁNIENIA: krótka, neutralna notka napisana przez właściciela, dlaczego ta strona mówi także po łacinie.]",
+    "dedication": {
+      "title": "In memoriam",
+      "text": "[DO UZUPEŁNIENIA: dedykacja, własnymi słowami właściciela]",
+      "name": "[DO UZUPEŁNIENIA: imię i nazwisko nauczyciela]",
+      "note": "[DO UZUPEŁNIENIA: opcjonalna linijka]"
+    }
+  },
+  "oxiui": {
+    "nav": { "index": "Demo na żywo", "gallery": "Galeria", "how": "Jak to działa", "docs": "Dokumentacja", "roadmap": "Plan" },
+    "pages": {
+      "index": {
+        "title": "Jedna strona, każdy ekran",
+        "desc": "OxiUI rysuje jedną stronę THTML i TCSS w terminalu, w przeglądarce, a później na mikrokontrolerze. Ta strona uruchamia go na żywo w Twojej przeglądarce.",
+        "hero": {
+          "title": "Napisz stronę raz. Pokaż ją w terminalu, w przeglądarce albo na urządzeniu.",
+          "lead": "OxiUI renderuje THTML (znaczniki podobne do HTML) i TCSS (style podobne do CSS) do terminali SSH, płótna w przeglądarce i WebAssembly działającego na Twojej maszynie. Ekrany ESP32 są następne."
+        },
+        "blocks": [
+          { "t": "widget", "id": "demo" },
+          { "t": "h2", "x": "Na co patrzysz" },
+          { "t": "p", "x": "Demo powyżej to zwykła strona OxiUI. To nie film ani zrzut ekranu: rdzeń OxiUI skompilowano do WebAssembly, przeglądarka go pobrała i lokalnie układa, rysuje i obsługuje kliknięcia. Ta sama strona może być też podana przez SSH do prawdziwego terminala." },
+          { "t": "ul", "items": [
+            "**Terminal przez SSH:** działa, to pierwotny cel.",
+            "**Przeglądarka, sterowana serwerem:** działa (klient na płótnie, tekst proporcjonalny).",
+            "**Przeglądarka, tryb lokalny:** działa i to właśnie widzisz; serwer nie jest potrzebny.",
+            "**Powłoka Android, framebuffer Linux (OxiDE), okno natywne:** planowane lub w toku, zobacz [plan](@oxiui:roadmap).",
+            "**Ekrany dotykowe ESP32:** planowane, gdy kompilator OxiScript będzie uruchamiał programy."
+          ] },
+          { "t": "links", "items": [
+            { "label": "Galeria przykładów", "href": "@oxiui:gallery", "primary": true },
+            { "label": "Jak to działa", "href": "@oxiui:how" },
+            { "label": "Dokumentacja", "href": "@oxiui:docs" }
+          ] }
+        ]
+      },
+      "gallery": {
+        "title": "Galeria przykładów",
+        "h1": "Galeria przykładów",
+        "desc": "Przykłady THTML ze źródłem i wynikiem na żywo, w który można klikać.",
+        "lead": "Każdy przykład to prawdziwa strona THTML z repozytorium. Uruchom go, aby wypróbować, albo otwórz źródło i zobacz, jak mało znaczników potrzeba.",
+        "blocks": [ { "t": "widget", "id": "gallery" } ]
+      },
+      "how": {
+        "title": "Jak to działa",
+        "h1": "Jak to działa",
+        "desc": "Od jednej strony THTML do terminala, przeglądarki lub urządzenia.",
+        "lead": "Strona to plik tekstowy. Rdzeń zamienia go w listę rysowania, a mały klient dla każdego celu ją rysuje.",
+        "blocks": [
+          { "t": "h2", "x": "Od tekstu do pikseli" },
+          { "t": "ol", "items": [
+            "Piszesz stronę w THTML (pudełka, tekst, przyciski, pola) i stylizujesz ją w TCSS (kolory, ramki, układ flex, w całych komórkach znakowych).",
+            "Rdzeń ją analizuje, układa i tworzy listę rysowania: wypełnienia, ramki, ścieżki i ustawione ciągi glifów.",
+            "Klient rysuje listę. Klient terminalowy zamienia ją na komórki i sekwencje sterujące, klient przeglądarkowy maluje ją na płótnie, a klient urządzenia będzie rysował na ekranie.",
+            "Kliknięcia i klawisze wracają jako zdarzenia. Akcje wbudowane (`inc:count`, `toggle:open`, `set:tab=a`) wykonuje rdzeń; resztę dostaje Twój serwer aplikacji."
+          ] },
+          { "t": "h2", "x": "Trzy miejsca, gdzie działa rdzeń" },
+          { "t": "table", "head": ["Tryb", "Gdzie działa rdzeń", "Status"], "rows": [
+            ["Terminal", "Na serwerze; użytkownik łączy się przez `ssh`", "działa"],
+            ["Przeglądarka, sterowana serwerem", "Na serwerze; przeglądarka to cienki klient na płótnie", "działa"],
+            ["Przeglądarka, lokalnie", "W Twojej przeglądarce, jako WebAssembly (ta witryna)", "działa"],
+            ["Urządzenie (ESP32, konsola Linux, Android)", "Na urządzeniu", "planowane"]
+          ] },
+          { "t": "h2", "x": "Dlaczego plik tekstowy" },
+          { "t": "p", "x": "Strony tekstowe łatwo czytać, recenzować, porównywać i generować. Przeładowują się na gorąco, są małe, a agent AI potrafi je pisać i naprawiać. Model układu jest celowo mały: albo głośno zawodzi, albo robi to, co mówi." },
+          { "t": "links", "items": [ { "label": "Notatki o architekturze w repozytorium", "href": "repo:docs/oxi-ui.md" } ] }
+        ]
+      },
+      "docs": {
+        "title": "Podstawy THTML i TCSS",
+        "h1": "Podstawy THTML i TCSS",
+        "desc": "Najważniejsze o języku znaczników i języku stylów.",
+        "lead": "THTML wygląda jak HTML, a TCSS jak CSS, ale oba są znacznie mniejsze. Nieznane właściwości TCSS są ignorowane bez błędu, więc używaj tylko tych z listy.",
+        "blocks": [
+          { "t": "h2", "x": "Pierwsza strona" },
+          { "t": "code", "lang": "thtml", "src": "<box style=\"bg: #1e293b; padding: 2; flex-direction: column;\">\n  <text style=\"fg: #38bdf8;\">Counter: </text>\n  <text bind-state=\"count\" style=\"fg: #38bdf8;\">0</text>\n  <button event-htmx=\"inc:count\" style=\"fg: #4ade80;\">[ + ] Increment</button>\n</box>" },
+          { "t": "h2", "x": "Znaczniki" },
+          { "t": "table", "head": ["Znacznik", "Do czego"], "rows": [
+            ["`<box>`", "Kontener z układem flex, jak `div`."],
+            ["`<text>`", "Sam tekst. Nie zwęża się, chyba że ustawisz `wrap: word`."],
+            ["`<button>`", "Przycisk z fokusem, tylko tekst."],
+            ["`<input>`", "Pole tekstowe; wymaga `bind-value`."],
+            ["`<img>`, `<video>`", "Wymagają `src`, `width` i `height`."],
+            ["`<for>`", "Powtarza jeden szablon dla listy ze stanu."],
+            ["`<diagram>`", "Diagram Mermaid rysowany w komórkach."]
+          ] },
+          { "t": "h2", "x": "Stan i akcje" },
+          { "t": "table", "head": ["Atrybut / akcja", "Efekt"], "rows": [
+            ["`bind-state=\"key\"`", "Pokazuje wartość ze stanu; odświeża się przy zmianie."],
+            ["`bind-show=\"key=value\"`", "Pokazuje węzeł tylko gdy stan się zgadza."],
+            ["`event-htmx=\"inc:key\"`", "Dodaje jeden; są też `dec:`, `toggle:`, `set:key=value`, `append:`, `clear:`."],
+            ["`event-htmx=\"page.thtml\"`", "Przechodzi do innej strony, zachowując stan."],
+            ["`event-htmx=\"open:https://...\"`", "Otwiera odnośnik (tylko w przeglądarce)."],
+            ["dowolny inny napis", "Trafia do Twojego serwera aplikacji."]
+          ] },
+          { "t": "h2", "x": "Właściwości TCSS" },
+          { "t": "table", "head": ["Właściwość", "Wartości"], "rows": [
+            ["`width`, `height`", "Całkowite liczby komórek. Nigdy `auto`."],
+            ["`fg`, `bg`, `border-color`", "Kolor: `#rrggbb`, nazwa lub 0-255."],
+            ["`padding`, `margin` (i `-top` itd.)", "Liczby całkowite."],
+            ["`flex-direction`, `align-items`, `justify-content`, `flex`", "Układ flex w jednym wymiarze."],
+            ["`border`, `border-style`", "`single`, `double` lub `rounded`. Ramka kosztuje 2 wiersze i 2 kolumny."],
+            ["`position`, `top`, `left`, `z-index`", "Położenie absolutne i stałe."],
+            ["`opacity`, `transition`", "Zanikanie i płynne przejścia."],
+            ["`wrap`", "`word` zawija na spacjach."]
+          ] },
+          { "t": "note", "x": "Zasady kciuka: ramkowane pudełko ma co najmniej 3 wiersze; w klikalnych etykietach używaj ASCII; jeśli właściwości nie ma na tej liście, to ona nie istnieje." },
+          { "t": "links", "items": [
+            { "label": "Pełna dokumentacja THTML", "href": "repo:docs/thtml-reference.md" },
+            { "label": "Pełna dokumentacja TCSS", "href": "repo:docs/tcss-reference.md" },
+            { "label": "Przykłady", "href": "repotree:examples" }
+          ] }
+        ]
+      },
+      "roadmap": {
+        "title": "Plan i dziennik fal",
+        "h1": "Plan i dziennik fal",
+        "desc": "Co jest zrobione, co dalej i co znalazły przeciwne przeglądy.",
+        "lead": "Plan jest jawny i liczby też. Każdy etap buduje agent, a potem osobny agent BAD ACTOR próbuje go złamać, zanim zostanie włączony.",
+        "blocks": [ { "t": "widget", "id": "roadmap" } ]
+      }
+    },
+    "gallery": {
+      "counter": { "title": "Licznik", "desc": "Stan, przyciski i akcje `inc`, `dec`, `clear`." },
+      "state": { "title": "Typy stanu", "desc": "Liczby, wartości logiczne, napisy i listy związane ze stroną." },
+      "input": { "title": "Pola wprowadzania", "desc": "Pole tekstowe związane ze stanem, pokazywane na żywo." },
+      "todo": { "title": "Lista zadań", "desc": "Lista w stanie, rysowana przez `for`." },
+      "styles": { "title": "Style", "desc": "Ramki, kolory i układ flex." },
+      "showcase": { "title": "Pokaz", "desc": "Kilka możliwości na jednej stronie." }
+    },
+    "demo": {
+      "heading": "demo na żywo",
+      "intro": "Ta strona działa w Twojej przeglądarce. Klikaj przyciski.",
+      "counter": "Licznik: stan żyje w stronie.",
+      "toggle": "Pokaż i ukryj: węzeł związany ze stanem.",
+      "toggleButton": "Pokaż lub ukryj wiadomość",
+      "revealed": "Witaj. Ten tekst pojawia się, gdy stan na to pozwala.",
+      "mode": "Wybierz tryb: napis w stanie.",
+      "modeA": "cichy",
+      "modeB": "jasny",
+      "modeC": "głośny",
+      "modeIs": "Tryb:",
+      "footer": "[Tab] zmiana fokusu  [Enter] naciśnij"
+    }
+  },
+  "oxiscript": {
+    "nav": { "index": "Plac zabaw", "ts": "Dla programistów TypeScript", "tour": "Wycieczka", "course": "Kurs", "roadmap": "Plan" },
+    "pages": {
+      "index": {
+        "title": "Jak TypeScript, ściśle typowany, kompilowany do WebAssembly",
+        "desc": "OxiScript to młody, ściśle typowany język, który wygląda jak TypeScript i kompiluje się do WebAssembly. Wypróbuj sprawdzanie typów w przeglądarce.",
+        "hero": {
+          "title": "Język, który czyta się jak TypeScript, a sprawdza jak Rust.",
+          "lead": "OxiScript jest typowany statycznie i rzetelnie, błędy są wartościami, a typowe pomyłki mają mechaniczne poprawki. Kompiluje się do WebAssembly. Poniżej w Twojej przeglądarce działa prawdziwy kompilator sprawdzający i formatujący."
+        },
+        "blocks": [
+          { "t": "widget", "id": "playground" },
+          { "t": "h2", "x": "Co działa dziś" },
+          { "t": "ul", "items": [
+            "Parser, formater i sprawdzanie typów (ten sam kod, którego używasz powyżej, skompilowany do WebAssembly).",
+            "Rejestr stałych kodów błędów, każdy z wyjaśnieniem i często z mechaniczną poprawką.",
+            "Interfejsy możliwości hosta (`log`, `state`), które programy importują przez moduły `host:`."
+          ] },
+          { "t": "h2", "x": "Co jeszcze nie działa" },
+          { "t": "ul", "items": [
+            "**Uruchamianie programów.** Generator kodu istnieje, ale etap zamiany, który łączy z nim sprawdzanie typów, jest jeszcze budowany. Przycisk Uruchom jest do tego czasu wyłączony.",
+            "Biblioteka standardowa, pakiety, serwer języka, urządzenia. Wszystko planowane, nic gotowe."
+          ] },
+          { "t": "links", "items": [
+            { "label": "Dla programistów TypeScript", "href": "@oxiscript:ts", "primary": true },
+            { "label": "Wycieczka po języku", "href": "@oxiscript:tour" },
+            { "label": "Gramatyka i specyfikacja", "href": "repo:docs/oxiscript/grammar.md" }
+          ] }
+        ]
+      },
+      "ts": {
+        "title": "OxiScript dla programistów TypeScript",
+        "h1": "Dla programistów TypeScript",
+        "desc": "Co zostaje takie samo, co się zmienia i gdzie OxiScript jest gorszy od TypeScript.",
+        "lead": "Czytanie OxiScript nie powinno wymagać nauki. Pisanie czasem wymaga poprawki. Ta strona jest uczciwa w obu sprawach.",
+        "blocks": [
+          { "t": "h2", "x": "Ten sam program, prawie ten sam tekst" },
+          { "t": "compare", "cmp": "shapes" },
+          { "t": "p", "x": "Tylko `number` zmieniło się w `f64`. Unie z dyskryminantem, zawężanie w `switch`, `const`, funkcje strzałkowe i szablony napisów to TypeScript, który znasz." },
+          { "t": "h2", "x": "Gdzie się różni" },
+          { "t": "table", "head": ["TypeScript", "OxiScript", "Dlaczego"], "rows": [
+            ["`number`", "`i32`, `i64`, `f64` i pokrewne", "Całkowite i zmiennoprzecinkowe to różne rzeczy; przepełnienie jest zdefiniowane i kończy się pułapką."],
+            ["`a == b`", "tylko `a === b` (`==` to błąd z poprawką)", "Jedna równość, bez konwersji."],
+            ["`throw` / `try`", "`Result<T, E>` i przyrostkowe `?`", "Błędy są wartościami. Błędy programisty kończą się pułapką."],
+            ["`x as T`", "`x.downcast<T>()` i sprawdzane `as` dla liczb", "Żadne rzutowanie nie może kłamać o typie."],
+            ["`undefined`", "tylko `null`", "Jedna wartość nieobecności."],
+            ["Opcjonalne średniki", "Średniki obowiązkowe", "Jednoznaczna gramatyka, przyjaźniejsza dla narzędzi."],
+            ["`arr[i]` poza zakresem daje `undefined`", "Pułapka", "Zdefiniowane zachowanie każdej operacji."],
+            ["`class B extends A`", "Interfejsy i kompozycja", "Brak kruchych klas bazowych."]
+          ] },
+          { "t": "compare", "cmp": "errors" },
+          { "t": "h2", "x": "Gdzie OxiScript jest dziś gorszy" },
+          { "t": "ul", "items": [
+            "Nie potrafi jeszcze uruchamiać programów. TypeScript potrafi.",
+            "Nie ma npm. Brak ekosystemu, malutka biblioteka standardowa, brak `async` (zarezerwowane, niezbudowane).",
+            "Brak `any`, `eval` i cech dynamicznych. Taki jest cel, ale to też koszt przy przenoszeniu JavaScriptu.",
+            "Na razie identyfikatory wyłącznie ASCII.",
+            "Jest młody. Spodziewaj się chropowatości i zmian łamiących zgodność."
+          ] },
+          { "t": "links", "items": [
+            { "label": "Wypróbuj sprawdzanie typów", "href": "@oxiscript:index", "primary": true },
+            { "label": "Pełna lista różnic", "href": "repo:docs/oxiscript/grammar.md" }
+          ] }
+        ]
+      },
+      "tour": {
+        "title": "Wycieczka po języku",
+        "h1": "Wycieczka po języku",
+        "desc": "Krótka wycieczka po OxiScript ze sprawdzonymi przykładami.",
+        "lead": "Każdy fragment tutaj jest sprawdzany przez kompilator podczas budowania tej witryny, więc wycieczka nie pokaże kodu, który nie działa.",
+        "blocks": [
+          { "t": "h2", "x": "Witaj, z możliwością" },
+          { "t": "p", "x": "Program prosi hosta o to, czego potrzebuje, przez parametry `main`. Tutaj prosi o logowanie." },
+          { "t": "code", "oxs": "hello" },
+          { "t": "h2", "x": "Struktury są wartościami" },
+          { "t": "code", "oxs": "structs" },
+          { "t": "h2", "x": "Typy sumy to unie z dyskryminantem" },
+          { "t": "code", "oxs": "shapes" },
+          { "t": "h2", "x": "Błędy są wartościami" },
+          { "t": "code", "oxs": "errors" },
+          { "t": "h2", "x": "Stan, który przeżywa przeładowanie" },
+          { "t": "code", "oxs": "counter" },
+          { "t": "h2", "x": "Prawa" },
+          { "t": "p", "x": "Prawo to własność, którą program musi zachować. Prawa będą testowane, a później dowodzone." },
+          { "t": "code", "oxs": "laws" },
+          { "t": "links", "items": [ { "label": "Otwórz je na placu zabaw", "href": "@oxiscript:index", "primary": true } ] }
+        ]
+      },
+      "course": {
+        "title": "Kurs: od zera do bohatera",
+        "h1": "Kurs: od zera do bohatera",
+        "desc": "Planowany kurs od pierwszej zmiennej do małej sztucznej inteligencji, po polsku i angielsku, ze ścieżką dla rodzica i dziecka.",
+        "lead": "Wkrótce. Każda lekcja będzie krótkim tekstem, edytorem, przyciskiem Uruchom i automatyczną oceną, z poprawkami kompilatora jako podpowiedziami. Oto plan.",
+        "blocks": [
+          { "t": "widget", "id": "course" },
+          { "t": "h2", "x": "Ścieżka dla rodzica i dziecka" },
+          { "t": "p", "x": "Pierwsze poziomy będą miały dwa głosy: jeden dla dziecka, drugi dla dorosłego obok. Każdy przykład i rozwiązanie będzie sprawdzany w CI, więc kurs się nie zestarzeje." },
+          { "t": "note", "x": "Jeszcze niezbudowane. Lekcje potrzebują przycisku Uruchom, który czeka na etap zamiany." }
+        ]
+      },
+      "roadmap": {
+        "title": "Plan i dziennik fal",
+        "h1": "Plan i dziennik fal",
+        "desc": "Co jest zrobione, co dalej i co znalazły przeciwne przeglądy.",
+        "lead": "Plan jest jawny i liczby też.",
+        "blocks": [
+          { "t": "widget", "id": "roadmap" },
+          { "t": "links", "items": [
+            { "label": "Gramatyka i specyfikacja", "href": "repo:docs/oxiscript/grammar.md" },
+            { "label": "AGENTS.md (dodawany przez etap DevKit)", "href": "repo:AGENTS.md" },
+            { "label": "llms.txt (dodawany przez etap DevKit)", "href": "repo:llms.txt" }
+          ] }
+        ]
+      }
+    },
+    "playground": {
+      "title": "Plac zabaw",
+      "check": "Sprawdź",
+      "format": "Formatuj",
+      "run": "Uruchom",
+      "runSoon": "Uruchom: wkrótce, razem z 8.L (etap zamiany).",
+      "examples": "Przykład:",
+      "apply": "Zastosuj poprawkę",
+      "explain": "Wyjaśnij {code}",
+      "noProblems": "Brak problemów.",
+      "problems": "Problemów: {n}.",
+      "loading": "Ładowanie kompilatora (około 0,5 MB)...",
+      "failed": "Kompilator nie mógł się uruchomić. Odśwież stronę.",
+      "close": "Zamknij",
+      "line": "Wiersz",
+      "formatFailed": "Nie można sformatować: najpierw popraw błędy.",
+      "formatted": "Sformatowano.",
+      "sourceLabel": "Kod źródłowy OxiScript",
+      "warning": "ostrzeżenie",
+      "error": "błąd",
+      "fixes": "Jak naprawić:",
+      "thtmlNote": "Plac zabaw to edytor i wymaga zwykłej strony internetowej."
+    },
+    "course": {
+      "levels": [
+        { "name": "Poziom 0, Zero:", "text": "czym jest zmienna; rysowanie żółwiem." },
+        { "name": "Poziom 1, Uczeń:", "text": "podstawy języka, małe programy." },
+        { "name": "Poziom 2, Rzemieślnik:", "text": "większy projekt: Wąż." },
+        { "name": "Poziom 3, Inżynier:", "text": "aplikacja OxiUI, Result, prawa." },
+        { "name": "Poziom 4, Majsterkowicz:", "text": "możliwości, crate'y Rusta, symulator ESP32, a potem płytka." },
+        { "name": "Poziom 5, Bohater:", "text": "wydajność i pierwsza sztuczna inteligencja: perceptron, rozpoznawanie cyfr uczone na żywo, malutki model językowy." }
+      ]
+    }
+  }
+}

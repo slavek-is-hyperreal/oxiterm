@@ -1,0 +1,7 @@
+function add(a: i32, b: i32): i32 {
+  return a + b;
+}
+
+law add_commutes(a: i32, b: i32) when a > -1000 && b > -1000 {
+  add(a, b) === add(b, a)
+}

@@ -1,0 +1,17 @@
+import { Log } from "host:log";
+import { State } from "host:state";
+
+function bump(state: State, log: Log): Result<i64, i32> {
+  const slot = state.open("counter")?;
+  const next = state.get_i64(slot)? + 1;
+  state.set_i64(slot, next)?;
+  log.write(2, `counter = ${next}`);
+  return Ok(next);
+}
+
+export function main(log: Log, state: State): void {
+  const r = bump(state, log);
+  if (r.kind === "err") {
+    log.write(4, "state is not available");
+  }
+}

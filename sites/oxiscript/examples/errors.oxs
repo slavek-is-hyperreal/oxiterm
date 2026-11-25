@@ -1,0 +1,16 @@
+function parsePort(n: i64): Result<u16, string> {
+  if (n < 1 || n > 65535) {
+    return Err("port out of range");
+  }
+  return Ok(n as u16);
+}
+
+export function describe(n: i64): string {
+  const r = parsePort(n);
+  switch (r.kind) {
+    case "ok":
+      return "port ok";
+    case "err":
+      return r.error;
+  }
+}
