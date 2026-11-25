@@ -61,6 +61,8 @@ The repository is **public**, so anything committed there may end up in future t
 | **Test set** | >= 60 tasks | **not in the public repo** (owner's private storage, section 10, question 1) | only for reported numbers |
 
 Rules:
+- **The test set lives outside the repository tree.** The harness takes its path as an argument. R1 and R2 prompts name that external path and forbid writing test tasks anywhere under the repo (worktrees are merged into the public repo, so a test task written in a worktree would be published).
+- **The canary is also a guard.** A pre-commit hook and a CI step fail on the canary GUID, so a leaked test file cannot be committed.
 - Docs, hints and language changes may be motivated **only by dev-set failures**. Tuning on the test set invalidates it.
 - The test set is run once per toolchain release. Results are published as aggregates plus a few sample tasks retired into the dev set.
 - A canary string (a random GUID) is placed in every test-set file. If a model reproduces it, the set is contaminated and is replaced.
@@ -80,7 +82,7 @@ All conditions use the same `prompt.md`.
 
 ### 4.3 Why the TS twin
 
-Without it we cannot tell whether a failure is caused by OxiScript or by the task being hard. The headline language effect is **pass rate (OxiScript, C2) minus pass rate (TS)** per task, averaged. The TS twin uses the same hidden test cases, translated by R1 and verified by R2 (gate 2.3.1 for both languages).
+Without it we cannot tell whether a failure is caused by OxiScript or by the task being hard. The headline language effect is **pass rate (OxiScript, C2) minus pass rate (TS)** per task, averaged. Some tasks have no honest TS twin (integer overflow traps, `Result` + `?` semantics, capabilities, laws). They are marked `ts_twin = none`. The TS gap is reported **only on the subset that has a twin, with that subset's size**, never as if it covered all tasks. The TS twin uses the same hidden test cases, translated by R1 and verified by R2 (gate 2.3.1 for both languages).
 
 ## 5. Running (R3, the harness)
 
@@ -89,7 +91,8 @@ Without it we cannot tell whether a failure is caused by OxiScript or by the tas
 - **Sampling:** **k = 5 independent samples** per (task, model, condition) at the provider's default temperature (recorded). With 60 tasks this gives 300 samples per cell.
 - **Budgets:** the same maximum output tokens, the same wall-clock timeout per sample, and the same number of tool rounds. API errors, rate limits and timeouts caused by the provider are retried up to 3 times and are **not** counted as failures; they are logged and reported.
 - **Extraction:** the final answer must contain exactly one fenced `oxs` (or `ts`) block. No block, or several, counts as a failure (category "format"). The extraction rule is committed with the harness.
-- **Isolation:** each sample runs in a fresh temporary directory. Hidden tests are copied in only after the subject has finished.
+- **Subject isolation (hard rule).** Subjects are called **only through a plain model API** by the harness. They have no filesystem, no shell, no repository and no tools except the harness's `oxi_check` and `oxi_run`. Running subjects as coding agents or subagents inside this repository is forbidden: they could read `AGENTS.md`, `grammar.md`, skills or test files and invalidate C0/C1 and the hidden tests. (The agent-mode variant of question 10.4 is a separate study with its own sandbox.)
+- **Isolation of samples:** each sample runs in a fresh temporary directory. Hidden tests are copied in only after the subject has finished.
 - **Logging:** full transcripts, tool calls, diagnostics, test outputs and timings are stored, raw and append-only.
 
 ## 6. Grading and metrics (R3 and R5 scripts only, no model judges)
@@ -160,7 +163,7 @@ The owner approves this commit. Any later change creates a new methodology versi
 ## 10. Open questions for the owner
 
 1. **Where does the private test set live?** For example a private GitHub repo, or a local directory outside the public repo with a backup.
-2. **Which models, and who pays?** Claude is available here. Gemini, GPT and open models need API keys and budget. The rough cost is `models × conditions × 60 tasks × 5 samples` calls.
+2. **Which models, and who pays? (blocking)** Subjects must be called through APIs (section 5), so without keys only Claude can be measured, and only through an API key, not through this coding session. Claude is available here. Gemini, GPT and open models need API keys and budget. The rough cost is `models × conditions × 60 tasks × 5 samples` calls.
 3. **Is C3 (own runs) in v0.1, or later?**
 4. **Agent mode:** should we later add a variant where real coding agents (Claude Code, Gemini CLI, Cursor) solve the tasks in a scratch project? That measures the whole product, not only the model, but it is harder to keep fair.
 5. Is the TS twin enough as a baseline, or do we also want **AssemblyScript** (the closest "TS to Wasm" language)?
