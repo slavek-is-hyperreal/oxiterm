@@ -380,6 +380,8 @@ pub struct Checked {
     pub instances: Vec<Instance>,
     /// Exported function `main` of the entry module, if present.
     pub entry: Option<DefId>,
+    /// Index of the implicit prelude module (`Result`, `Ok`, `Err`), always the last module.
+    pub prelude: Option<u32>,
 }
 
 impl Checked {

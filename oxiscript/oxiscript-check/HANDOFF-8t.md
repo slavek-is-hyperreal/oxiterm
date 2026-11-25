@@ -8,7 +8,7 @@ Verify: `cd <worktree> && CARGO_BUILD_JOBS=2 cargo test -p oxiscript-check` (and
 
 ## Status
 - [x] M0 orientation, advisor consult, corpus triage (below)
-- [ ] M1 API skeleton (types, Checked tables), contracts.md 8.T section
+- [~] M1 DONE so far: Cargo.toml (deps syntax+abi), src/ty.rs (interner, subst), src/output.rs (Checked API), registry codes E0107-E0126, E0302, E0303, W0004 added (abi tests green). TODO: lib.rs Checker + driver, decl.rs, expr.rs, stmt.rs, flow.rs, builtins.rs; contracts.md 8.T section
 - [ ] M2 declarations/resolution/IDL hosts/modules
 - [ ] M3 expressions, statements, numerics
 - [ ] M4 narrowing, switch exhaustiveness, definite assignment, termination
@@ -40,3 +40,10 @@ Other: 06 i32 ternary cond, 08 `new` on struct, 11 string+i32, 14 ternary branch
 unbounded T, 18 unknown attr `@a` and `@@inline`, 25 interface as value type, 27 `as Array<i32>`/`as (u8|null)`,
 30 `(a ?? b) || 1` on u32, 45 `for (const p of ...) p.x += ` mutates const struct copy.
 (Table to be completed with the real diagnostics once the checker runs; list of changed files goes in the report.)
+
+## Lead note (reuse; apply)
+- ena: not used; checker has no inference variables (one-way matching, TS two-phase). State this reason in report.
+- Exhaustiveness: implement Maranget usefulness (matrix of constructor rows) in src/exhaust.rs, used by switch stmt/expr.
+- Cite Dunfield-Krishnaswami / Pierce-Turner local inference (check vs synth modes) in crate docs.
+- Narrowing: TS flow-node model (our Flow state is a flow-node walk); messages mirror TS wording in `detail` strings.
+- Report must list reused vs written mechanisms.
