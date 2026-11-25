@@ -1,0 +1,19 @@
+/// A counter with a law.
+import { Log } from "host:log";
+
+@expect(no_alloc)
+export function step(n: u8, by: u8): Result<u8, string> {
+  const next = n +% by;
+  if (next === 0u8) { return Err("zero"); }
+  return Ok(next);
+}
+
+law step_is_total(n: u8) when n < 200u8 {
+  step(n, 1u8) === step(n, 1u8)
+}
+
+export function main(log: Log): void {
+  const r = step(1u8, 2u8);
+  const v = r.kind === "ok" ? r.value : 0u8;
+  log.write(2, `v = ${v}`);
+}

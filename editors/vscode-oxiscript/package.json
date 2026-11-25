@@ -1,0 +1,101 @@
+{
+  "name": "oxiscript",
+  "displayName": "OxiScript",
+  "description": "OxiScript (.oxs): syntax highlighting, diagnostics and quick fixes from `oxi check`, format on save with `oxi fmt`, snippets.",
+  "version": "0.1.0",
+  "publisher": "oxiterm",
+  "license": "MIT",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Linters", "Formatters", "Snippets"],
+  "keywords": ["oxiscript", "oxs", "oxi"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onLanguage:oxiscript"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "oxiscript.oxiPath (the program the extension runs) is only read from user or machine settings, never from the workspace; `oxi` itself is looked up on PATH.",
+      "restrictedConfigurations": ["oxiscript.oxiPath"]
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "oxiscript",
+        "aliases": ["OxiScript", "oxiscript"],
+        "extensions": [".oxs"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "oxiscript",
+        "scopeName": "source.oxiscript",
+        "path": "./syntaxes/oxiscript.tmLanguage.json",
+        "embeddedLanguages": { "meta.embedded.expression.oxiscript": "oxiscript" }
+      }
+    ],
+    "snippets": [{ "language": "oxiscript", "path": "./snippets/oxiscript.json" }],
+    "configurationDefaults": {
+      "[oxiscript]": {
+        "editor.defaultFormatter": "oxiterm.oxiscript",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+      }
+    },
+    "configuration": {
+      "title": "OxiScript",
+      "properties": {
+        "oxiscript.oxiPath": {
+          "type": "string",
+          "default": "oxi",
+          "scope": "machine",
+          "description": "Absolute path to the `oxi` executable, or a bare command name looked up on PATH (never in the workspace). Machine-scoped: a workspace cannot set it."
+        },
+        "oxiscript.semicolons.fixOnSave": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "On save, insert the missing `;` (only that, through `oxi check --fix-only semicolons`; never where a `;` would change the meaning, e.g. before a line starting with `(` or `[`)."
+        },
+        "oxiscript.check.on": {
+          "type": "string",
+          "enum": ["type", "save"],
+          "default": "type",
+          "description": "When to run `oxi check`: after typing stops (checks the unsaved buffer) or only when a file is opened or saved."
+        },
+        "oxiscript.check.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "description": "Delay after the last keystroke before `oxi check` runs (only with check.on = type)."
+        },
+        "oxiscript.check.timeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 500,
+          "description": "Kill `oxi` if it takes longer than this."
+        }
+      }
+    },
+    "commands": [
+      { "command": "oxiscript.checkNow", "title": "OxiScript: Check this file now" },
+      { "command": "oxiscript.showOutput", "title": "OxiScript: Show output" }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "test": "npm run compile && node --test test/",
+    "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository --skip-license"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.6.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.1.0"
+  }
+}

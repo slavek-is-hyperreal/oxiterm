@@ -1,0 +1,301 @@
+// float suffix
+const a = 1f32;
+=====
+// int to float
+const a: i32 = 1;
+const b: f64 = a;
+=====
+// semicolon
+const a: i32 = 1
+const b: i32 = 2;
+=====
+// throw
+function f(): void {
+  throw "x";
+}
+=====
+// try catch
+function f(): void {
+  try { const a = 1; } catch (e) { }
+}
+=====
+// object literal no ctx
+const a = { x: 1 };
+=====
+// bitwise
+function f(a: i32, b: i32, c: i32): bool { return a & b === c; }
+=====
+// nonexhaustive
+type S = { kind: "a" } | { kind: "b" };
+function f(s: S): i32 {
+  switch (s.kind) {
+    case "a": return 1;
+  }
+}
+=====
+// extends
+class A { }
+class B extends A { }
+=====
+// any
+function f(x: any): void { }
+=====
+// undefined
+const a = undefined;
+=====
+// i++ value
+function f(): void { let i: i32 = 0; const j = i++; }
+=====
+// null
+function f(s: string | null): i32 { return s.byteLength; }
+=====
+// for in
+function f(xs: i32[]): void { for (const k in xs) { } }
+=====
+// cast
+type S = { kind: "a" } | { kind: "b" };
+function f(s: S): void { const x = s as S; }
+=====
+// ternary space
+function g(): Result<i32, string> { return Ok(1); }
+function f(): Result<i32, string> { const a = g() ?; return Ok(a); }
+=====
+// try in non-result
+function g(): Result<i32, string> { return Ok(1); }
+function f(): void { const a = g()?; }
+=====
+// optional chain on result
+function g(): Result<string, string> { return Ok("a"); }
+function f(): Result<i32, string> { const a = g()?.byteLength; return Ok(1); }
+=====
+// string index
+function f(s: string): void { const c = s[0]; }
+=====
+// mixed arithmetic
+function f(a: i32, b: i64): i64 { return a + b; }
+=====
+// int overflow literal
+const a: u8 = 300;
+=====
+// function missing types export
+export function f(a) { return 1; }
+=====
+// capabilities ambient
+function f(): void { log.write(2, "x"); }
+=====
+// let no init
+let a;
+=====
+// array of numbers
+const a: number[] = [1];
+=====
+// string eq ==
+const a = "a" == "b";
+=====
+// var
+var x = 1;
+=====
+// not assigned const
+const a: i32 = 1;
+function f(): void { a = 2; }
+=====
+// struct equality
+struct P { x: i32; }
+function f(a: P, b: P): bool { return a === b; }
+=====
+// unused result
+function g(): Result<i32, string> { return Ok(1); }
+function f(): void { g(); }
+=====
+// Ok void
+function g(): Result<void, string> { return Ok(); }
+=====
+// string concat plus
+function f(a: i32): string { return "n=" + a; }
+=====
+// arrow with unannotated
+function f(): void { const h = (a) => a; }
+=====
+// class inheritance interface
+interface Shape { area(): f64; }
+struct Sq implements Shape { s: f64; area(): f64 { return this.s * this.s; } }
+function total<T extends Shape>(x: T): f64 { return x.area(); }
+=====
+// mutating
+struct C { n: i32; inc(): void { this.n += 1; } }
+=====
+// division
+function f(a: i32, b: i32): i32 { return a / b; }
+function g(a: f64): i32 { return Math.floor(a); }
+=====
+// E0001
+const a = (1;
+=====
+// E0002
+const s = "abc;
+=====
+// E0006
+function g(): Result<i32, string> { return Ok(1); }
+export function f(): Result<i32, string> { const a = g() ?; return Ok(a); }
+=====
+// E0008
+export function f(a: u32, b: u32): u32 { return a << b + 1u32; }
+=====
+// E0009
+export function f(a: i32 | null, b: i32): i32 { return a ?? b || 0; }
+=====
+// E0010
+export function f(x: u16): u16 { return x as u8 | 1; }
+=====
+// E0013
+const s = "\q";
+=====
+// E0014
+const a = 1 # 2;
+=====
+// E0015
+export function f(): void { 1 = 2; }
+=====
+// E0107
+function g(a: i32): i32 { return a; }
+export function f(): i32 { return g(1, 2); }
+=====
+// E0111
+export function f(): i32 { return "a" as i32; }
+=====
+// E0112
+export function f(): void { const a = 1; a(); }
+=====
+// E0114
+export function f(a: i32): i32 {
+  if (a > 0) { return 1; }
+}
+=====
+// E0115
+export function f(a: string | i32): void { }
+=====
+// E0116
+export function f(a: i32): void { switch (a) { case "x": return; default: return; } }
+=====
+// E0117
+export function f(): void { const a: Array<i32, i32> = []; }
+=====
+// E0118
+export function f(): i32 { let a: i32; return a; }
+=====
+// E0119
+class C { private n: i32 = 0; }
+export function f(c: C): i32 { return c.n; }
+=====
+// E0120
+struct P { x: i32; }
+export function f(): P { return { x: 1, y: 2 }; }
+=====
+// E0121
+export function main(x: i32): void { }
+=====
+// E0122
+export function f(): void { break; }
+=====
+// E0124
+@foo
+export function f(): void { }
+=====
+// E0127
+export function f(a: i32): i32 { return a ?? 0; }
+=====
+// E0301
+export function f(): void { }
+export function f(): void { }
+=====
+// E0302
+import { a } from "./nope";
+=====
+// E0303
+struct P { x: i32; }
+export function f(): void { const a = P; }
+=====
+// E0400
+import { Beep } from "host:beep";
+=====
+// E0401
+import { Nope } from "host:log";
+=====
+// E0500
+@@profile(realtime)
+export function f(): void { }
+=====
+// W0001
+export function f(): void { const unused = 1; }
+=====
+// W0004
+export function f(): void { 1 + 2; }
+=====
+// W0002
+@allow("OXS-P0102")
+export function f(): void { }
+=====
+// E0101 only
+type S = { kind: "a" } | { kind: "b" };
+export function f(s: S): void {
+  switch (s.kind) {
+    case "a": return;
+  }
+}
+=====
+// E0125
+import { Log } from "host:log";
+law l(log: Log) { true }
+=====
+// E0126
+export function f(): void { let i = 0; const g = () => { i = 1; }; }
+=====
+// E0123
+export function f(): void { let a; }
+=====
+// E0116 b
+enum C: u8 { A, B }
+export function f(c: C): void { switch (c) { case 1: return; default: return; } }
+=====
+// E0409 main param
+import { Log } from "host:log";
+export function main(log: Log, n: i32): void { }
+=====
+// E0110 b
+export function f(a: bool): i32 { return a + 1; }
+=====
+// E0128 b
+export function f(a: bool): i32 { return -a; }
+=====
+// for-in value
+export function f(xs: i32[]): i32 {
+  let t: i32 = 0;
+  for (const k in xs) { t += xs[k]; }
+  return t;
+}
+=====
+// unterminated string
+const s = "abc;
+=====
+// hash char
+const a = 1 # 2;
+=====
+// catch on its own line
+export function f(): void {
+  try {
+    const a: i32 = 1;
+  }
+  catch (e) {
+    const b: i32 = 2;
+  }
+}
+=====
+// if throw
+export function f(a: i32): void {
+  if (a > 0) throw "y";
+}
+=====
+// finally
+export function f(): void {
+  try { const a: i32 = 1; } finally { const b: i32 = 2; }
+}

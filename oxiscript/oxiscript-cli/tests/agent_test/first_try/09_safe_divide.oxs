@@ -1,0 +1,20 @@
+function divide(a: i32, b: i32): Result<i32, string> {
+  if (b === 0) {
+    return Err("division by zero");
+  }
+  return Ok(a / b);
+}
+
+function ratio(a: i32, b: i32, c: i32): Result<i32, string> {
+  const first = divide(a, b)?;
+  const second = divide(first, c)?;
+  return Ok(second);
+}
+
+export function run(): string {
+  const r = ratio(100, 5, 0);
+  if (r.kind === "err") {
+    return r.error;
+  }
+  return `${r.value}`;
+}

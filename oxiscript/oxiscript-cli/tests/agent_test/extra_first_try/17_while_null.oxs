@@ -1,0 +1,17 @@
+class Node {
+  value: i32;
+  next: Node | null = null;
+  constructor(value: i32) {
+    this.value = value;
+  }
+}
+
+export function length(head: Node | null): i32 {
+  let n = 0;
+  let cur = head;
+  while (cur !== null) {
+    n++;
+    cur = cur.next;
+  }
+  return n;
+}

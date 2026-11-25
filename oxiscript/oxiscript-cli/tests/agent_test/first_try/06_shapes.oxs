@@ -1,0 +1,26 @@
+type Shape =
+  | { kind: "circle"; r: f64 }
+  | { kind: "rect"; w: f64; h: f64 }
+  | { kind: "square"; side: f64 };
+
+export function area(s: Shape): f64 {
+  switch (s.kind) {
+    case "circle":
+      return 3.14159 * s.r * s.r;
+    case "rect":
+      return s.w * s.h;
+    case "square":
+      return s.side * s.side;
+  }
+}
+
+export function perimeter(s: Shape): f64 {
+  switch (s.kind) {
+    case "circle":
+      return 2.0 * 3.14159 * s.r;
+    case "rect":
+      return 2.0 * (s.w + s.h);
+    case "square":
+      return 4.0 * s.side;
+  }
+}

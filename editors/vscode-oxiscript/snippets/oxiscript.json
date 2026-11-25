@@ -1,0 +1,127 @@
+{
+  "main with a log capability": {
+    "prefix": "main",
+    "description": "Entry point: capabilities arrive as parameters of main",
+    "body": [
+      "import { Log } from \"host:log\";",
+      "",
+      "export function main(log: Log): void {",
+      "  log.write(2, \"${1:started}\");",
+      "  $0",
+      "}"
+    ]
+  },
+  "main with log and state capabilities": {
+    "prefix": "mainstate",
+    "description": "Entry point with the log and state capabilities (the order is the order in oxi.toml needs)",
+    "body": [
+      "import { Log } from \"host:log\";",
+      "import { State } from \"host:state\";",
+      "",
+      "export function main(log: Log, state: State): void {",
+      "  log.write(2, \"${1:started}\");",
+      "  $0",
+      "}"
+    ]
+  },
+  "law": {
+    "prefix": "law",
+    "description": "A property the program must satisfy (the last expression has no semicolon)",
+    "body": [
+      "law ${1:add_commutes}(${2:a: i32, b: i32}) when ${3:a > -1000 && b > -1000} {",
+      "  ${4:a + b === b + a}",
+      "}"
+    ]
+  },
+  "struct (value type)": {
+    "prefix": "struct",
+    "description": "A value type: copied on assignment",
+    "body": [
+      "struct ${1:Point} {",
+      "  ${2:x}: ${3:f64};",
+      "  ${4:y}: ${3:f64};",
+      "}"
+    ]
+  },
+  "class (reference type)": {
+    "prefix": "class",
+    "description": "A reference type with identity",
+    "body": [
+      "class ${1:Counter} {",
+      "  ${2:n}: ${3:i32} = ${4:0};",
+      "  ${5:inc}(): void {",
+      "    this.${2:n} += ${6:1};",
+      "  }",
+      "}"
+    ]
+  },
+  "union and exhaustive switch": {
+    "prefix": "union",
+    "description": "Discriminated union plus a function that switches on it exhaustively",
+    "body": [
+      "type ${1:Shape} = { kind: \"${2:circle}\"; ${3:r}: f64 } | { kind: \"${4:rect}\"; ${5:w}: f64; ${6:h}: f64 };",
+      "",
+      "export function ${7:area}(s: ${1:Shape}): f64 {",
+      "  switch (s.kind) {",
+      "    case \"${2:circle}\":",
+      "      return 3.14159 * s.${3:r} * s.${3:r};",
+      "    case \"${4:rect}\":",
+      "      return s.${5:w} * s.${6:h};",
+      "  }",
+      "}"
+    ]
+  },
+  "Result and ?": {
+    "prefix": "result",
+    "description": "A function returning Result and one that propagates with ?",
+    "body": [
+      "function ${1:checked}(n: i32): Result<i32, string> {",
+      "  if (n < 0) {",
+      "    return Err(\"${2:negative}\");",
+      "  }",
+      "  return Ok(n);",
+      "}",
+      "",
+      "export function ${3:use}(n: i32): Result<i32, string> {",
+      "  const v = ${1:checked}(n)?;",
+      "  return Ok(v + 1);",
+      "}"
+    ]
+  },
+  "state counter": {
+    "prefix": "state",
+    "description": "Read-modify-write a persistent counter through the state capability",
+    "body": [
+      "import { State } from \"host:state\";",
+      "",
+      "export function ${1:bump}(state: State, key: string): Result<i64, i32> {",
+      "  const slot = state.open(key)?;",
+      "  const next = state.get_i64(slot)? + 1;",
+      "  state.set_i64(slot, next)?;",
+      "  return Ok(next);",
+      "}"
+    ]
+  },
+  "function": {
+    "prefix": "fn",
+    "description": "An exported function with explicit types",
+    "body": [
+      "export function ${1:name}(${2:a: i32}): ${3:i32} {",
+      "  return ${4:a};",
+      "}"
+    ]
+  },
+  "for of loop in a function": {
+    "prefix": "forof",
+    "description": "Sum an array with for...of",
+    "body": [
+      "function ${1:sum}(xs: i32[]): i32 {",
+      "  let total: i32 = 0;",
+      "  for (const x of xs) {",
+      "    total += x;",
+      "  }",
+      "  return total;",
+      "}"
+    ]
+  }
+}

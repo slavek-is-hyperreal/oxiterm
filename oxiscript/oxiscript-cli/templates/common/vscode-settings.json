@@ -1,0 +1,9 @@
+{
+  "[oxiscript]": {
+    "editor.defaultFormatter": "oxiterm.oxiscript",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "files.associations": { "*.oxs": "oxiscript" }
+}

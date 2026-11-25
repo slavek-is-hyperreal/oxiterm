@@ -1,0 +1,17 @@
+struct Reading {
+  celsius: f64;
+  label: string;
+}
+
+function toFahrenheit(c: f64): f64 {
+  return c * 9.0 / 5.0 + 32.0;
+}
+
+export function describe(r: Reading): string {
+  const f = toFahrenheit(r.celsius);
+  return `${r.label}: ${r.celsius}C = ${f}F`;
+}
+
+export function boiling(): Reading {
+  return { celsius: 100, label: "water" };
+}

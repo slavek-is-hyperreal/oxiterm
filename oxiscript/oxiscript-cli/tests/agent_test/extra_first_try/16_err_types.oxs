@@ -1,0 +1,8 @@
+function a(): Result<i32, i32> {
+  return Ok(1);
+}
+
+export function b(): Result<i32, string> {
+  const v = a()?;
+  return Ok(v);
+}

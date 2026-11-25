@@ -1,0 +1,10 @@
+// PLACEHOLDER: the real UI capability arrives with slices 8.S1 / 8.G (OxiUI).
+// It is declared here, in your project, so this example type-checks today.
+// Widgets are host handles; a handle value is a plain `i32` id on the script side.
+interface Ui "host:ui" @1 {
+    callback OnTap();
+
+    fn label(text: str) -> result<i32>;
+    fn set_label(widget: i32, text: str) -> result<void>;
+    fn button(text: str, on_tap: OnTap) -> result<i32>;
+}

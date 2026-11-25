@@ -2554,9 +2554,12 @@ dependencies = [
 name = "oxiscript-cli"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "oxiscript-abi",
  "oxiscript-check",
  "oxiscript-syntax",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

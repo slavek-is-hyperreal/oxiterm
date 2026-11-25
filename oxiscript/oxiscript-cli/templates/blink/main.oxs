@@ -1,0 +1,29 @@
+// Blink an LED. `gpio` and `clock` are capabilities: the program can only touch
+// hardware that `main` was handed (and `oxi.toml` lists under `needs`).
+import { Log } from "host:log";
+import { Gpio } from "host:gpio";
+import { Clock } from "host:clock";
+
+const LED_PIN: u8 = 2;
+const BLINKS: i32 = 10;
+
+function blink(gpio: Gpio, clock: Clock): Result<i32, i32> {
+  const led = gpio.open(LED_PIN)?;
+  for (let i = 0; i < BLINKS; i++) {
+    gpio.write(led, true)?;
+    clock.sleep_ms(250);
+    gpio.write(led, false)?;
+    clock.sleep_ms(250);
+  }
+  return Ok(BLINKS);
+}
+
+export function main(log: Log, gpio: Gpio, clock: Clock): void {
+  const r = blink(gpio, clock);
+  switch (r.kind) {
+    case "ok":
+      log.write(2, `blinked ${r.value} times`);
+    case "err":
+      log.write(4, `gpio failed with status ${r.error}`);
+  }
+}

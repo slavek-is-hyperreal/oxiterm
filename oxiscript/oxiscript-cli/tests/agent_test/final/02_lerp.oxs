@@ -1,0 +1,17 @@
+export function clamp(x: f64, lo: f64, hi: f64): f64 {
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
+  return x;
+}
+
+export function lerp(a: f64, b: f64, t: f64): f64 {
+  return a + (b - a) * clamp(t, 0, 1);
+}
+
+export function steps(n: i32): f64 {
+  return lerp(0.0, 100.0, (n as f64) / 10.0);
+}

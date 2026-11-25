@@ -1,0 +1,13 @@
+export function countVowels(s: string): i32 {
+  let n = 0;
+  for (const c of s.chars()) {
+    if (c === 97 || c === 101 || c === 105 || c === 111 || c === 117) {
+      n++;
+    }
+  }
+  return n;
+}
+
+export function isHello(s: string): bool {
+  return s.startsWith("hello");
+}

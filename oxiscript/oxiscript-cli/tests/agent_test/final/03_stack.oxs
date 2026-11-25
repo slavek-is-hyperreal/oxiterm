@@ -1,0 +1,26 @@
+class Stack {
+  items: i32[] = [];
+  push(v: i32): void {
+    this.items.push(v);
+  }
+  pop(): i32 | null {
+    return this.items.pop();
+  }
+  peek(): i32 | null {
+    if (this.items.length === 0) {
+      return null;
+    }
+    return this.items[this.items.length - 1];
+  }
+  size(): i32 {
+    return this.items.length;
+  }
+}
+
+export function demo(): i32 {
+  const s = new Stack();
+  s.push(1);
+  s.push(2);
+  const top = s.pop();
+  return top ?? -1;
+}

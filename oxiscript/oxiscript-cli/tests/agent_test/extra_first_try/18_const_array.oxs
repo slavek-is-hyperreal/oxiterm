@@ -1,0 +1,19 @@
+export function sumTo(n: i32): i32 {
+  const xs: i32[] = [];
+  for (let i = 1; i <= n; i++) {
+    xs.push(i);
+  }
+  let s = 0;
+  for (const x of xs) {
+    s += x;
+  }
+  return s;
+}
+
+export function evens(): i32[] {
+  const out: i32[] = [];
+  for (const i of range(0, 10)) {
+    out.push(i);
+  }
+  return out;
+}

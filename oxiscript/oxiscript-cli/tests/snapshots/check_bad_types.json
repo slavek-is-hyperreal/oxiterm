@@ -1,0 +1,80 @@
+{
+  "diagnostics": [
+    {
+      "code": "OXS-E0100",
+      "file": "bad.oxs",
+      "fixes": [
+        {
+          "applicability": "maybe-incorrect",
+          "edits": [
+            {
+              "file": "bad.oxs",
+              "new_text": "(",
+              "range": {
+                "end": {
+                  "byte": 107,
+                  "col": 10,
+                  "line": 6,
+                  "utf16": 10
+                },
+                "start": {
+                  "byte": 107,
+                  "col": 10,
+                  "line": 6,
+                  "utf16": 10
+                }
+              }
+            },
+            {
+              "file": "bad.oxs",
+              "new_text": " as f64)",
+              "range": {
+                "end": {
+                  "byte": 108,
+                  "col": 11,
+                  "line": 6,
+                  "utf16": 11
+                },
+                "start": {
+                  "byte": 108,
+                  "col": 11,
+                  "line": 6,
+                  "utf16": 11
+                }
+              }
+            }
+          ],
+          "title": "Convert with `as f64`"
+        }
+      ],
+      "message": "expected `f64`, found `i32`",
+      "range": {
+        "end": {
+          "byte": 108,
+          "col": 11,
+          "line": 6,
+          "utf16": 11
+        },
+        "start": {
+          "byte": 107,
+          "col": 10,
+          "line": 6,
+          "utf16": 10
+        }
+      },
+      "severity": "error"
+    }
+  ],
+  "fatal": null,
+  "files": [
+    "bad.oxs"
+  ],
+  "ok": false,
+  "schema": 1,
+  "summary": {
+    "errors": 1,
+    "warnings": 0
+  },
+  "tool": "oxi",
+  "version": "0.1.0"
+}

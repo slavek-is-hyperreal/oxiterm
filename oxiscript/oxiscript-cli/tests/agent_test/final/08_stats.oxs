@@ -1,0 +1,24 @@
+struct Stats {
+  min: i32;
+  max: i32;
+  sum: i32;
+}
+
+export function stats(xs: i32[]): Stats {
+  let min = xs[0];
+  let max = xs[0];
+  const sum = xs.reduce((acc, x) => acc + x, 0);
+  for (const x of xs) {
+    if (x < min) {
+      min = x;
+    }
+    if (x > max) {
+      max = x;
+    }
+  }
+  return { min: min, max: max, sum: sum };
+}
+
+export function mean(xs: i32[]): f64 {
+  return (stats(xs).sum as f64) / (xs.length as f64);
+}

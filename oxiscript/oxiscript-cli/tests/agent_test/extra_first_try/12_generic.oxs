@@ -1,0 +1,11 @@
+export function first<T>(xs: T[]): T | null {
+  if (xs.length === 0) {
+    return null;
+  }
+  return xs[0];
+}
+
+export function demo(): i32 {
+  const xs: i32[] = [4, 5];
+  return first(xs) ?? 0;
+}
