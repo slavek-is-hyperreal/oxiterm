@@ -1,0 +1,25 @@
+class Counter {
+  private n: i32 = 0;
+  readonly label: string;
+  static created: i32 = 0;
+
+  constructor(label: string) {
+    this.label = label;
+    Counter.created += 1;
+  }
+
+  inc(): void { this.n += 1; }
+  get_n(): i32 { return this.n; }
+  private reset(): void { this.n = 0; }
+  static make(): Counter { return new Counter("x"); }
+}
+
+struct Vec2 {
+  x: f64;
+  y: f64;
+  mutating scale(k: f64): void {
+    this.x *= k;
+    this.y *= k;
+  }
+  length2(): f64 { return this.x * this.x + this.y * this.y; }
+}

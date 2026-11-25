@@ -1,0 +1,12 @@
+function bits(a: u32, b: u32): u32 {
+  const x = (a << 2) | (b >> 3);
+  const y = a & b & 0xff;
+  const z = a | b | 1;
+  const w = a ^ b ^ 1;
+  const v = (a & b) | (a ^ b);
+  const u = a << (b + 1);
+  const t = (a + b) >> 1;
+  const s = a ?? b ?? 1;
+  const r = (a ?? b) || 1;
+  return x + y + z + w + v + u + t;
+}

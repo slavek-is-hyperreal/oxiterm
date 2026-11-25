@@ -1,0 +1,3 @@
+function f(a: i32, b: i32 = 2, c: (x: i32) => i32 = x => x): i32 {
+  return c(a + b);
+}

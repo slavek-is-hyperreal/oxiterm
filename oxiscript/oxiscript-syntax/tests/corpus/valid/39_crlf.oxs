@@ -1,0 +1,8 @@
+// crlf file
+function f(): i32 {
+  return 1;
+}
+
+
+const x = `a
+b`;

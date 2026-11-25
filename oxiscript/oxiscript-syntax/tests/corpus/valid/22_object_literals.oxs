@@ -1,0 +1,11 @@
+struct P { x: i32; y: i32; }
+
+function mk(x: i32): P {
+  const p: P = { x, y: x + 1 };
+  const q: P = {
+    x: 1,
+    y: 2,
+  };
+  const empty = {};
+  return { x: p.x, y: q.y };
+}

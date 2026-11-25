@@ -1,0 +1,12 @@
+function ops(a: i32, b: i32, c: u8): i32 {
+  let r = a + b * 2 - (a / 3) % 4;
+  r = (a +% b) +| (b -% a) -| (a *% b) *| 2;
+  r += 1; r -= 1; r *= 2; r /= 2; r %= 7;
+  r +%= 1; r -%= 1; r *%= 1; r +|= 1; r -|= 1; r *|= 1;
+  r &= 255; r |= 1; r ^= 2; r <<= 1; r >>= 1;
+  const m = (a & b) | (a ^ b);
+  const s = (a << 2) + (b >> 1);
+  const n = ~a + -b;
+  const u = c as i32 + 1;
+  return r + m + s + n + u;
+}

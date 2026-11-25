@@ -1,0 +1,6 @@
+function t(x: bool, y: i32, z: i32): i32 {
+  const a = x ? (y) : z => z;
+  const b = x ? (y): i32 => y : z;
+  const c = x ? y : x ? z : y;
+  return x ? y : z;
+}

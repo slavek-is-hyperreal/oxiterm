@@ -1,0 +1,11 @@
+struct Node { next: Node | null; value: i32; }
+
+function f(n: Node | null, g: (() => i32) | null, a: i32[] | null): i32 {
+  const x = n?.value ?? 0;
+  const y = n?.next?.value ?? -1;
+  const z = a?.[0] ?? 0;
+  const w = g?.() ?? 1;
+  const v = n
+    ?.next;
+  return x + y + z + w;
+}

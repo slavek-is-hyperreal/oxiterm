@@ -1,0 +1,42 @@
+import { Log } from "host:log";
+import { Canvas } from "host:canvas";
+
+const WIDTH: i32 = 80;
+const HEIGHT: i32 = 24;
+const GRAVITY: f32 = 9.8f32;
+
+struct Ball {
+  x: f32;
+  y: f32;
+  vx: f32;
+  vy: f32;
+}
+
+let ball: Ball = { x: 10.0f32, y: 2.0f32, vx: 1.5f32, vy: 0.0f32 };
+let frame: i64 = 0i64;
+
+function step(dt: f32): void {
+  ball.vy += GRAVITY * dt;
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  if (ball.y > 23.0f32) {
+    ball.y = 23.0f32;
+    ball.vy = -ball.vy * 0.8f32;
+  } else if (ball.y < 0.0f32) {
+    ball.y = 0.0f32;
+  }
+  if (ball.x < 0.0f32 || ball.x > 79.0f32) {
+    ball.vx = -ball.vx;
+  }
+}
+
+export function tick(canvas: Canvas, dt: f32): void {
+  step(dt);
+  canvas.clear();
+  canvas.put(ball.x as i32, ball.y as i32, "o");
+  frame += 1i64;
+}
+
+export function main(log: Log): void {
+  log.write(1, `size ${WIDTH}x${HEIGHT}`);
+}

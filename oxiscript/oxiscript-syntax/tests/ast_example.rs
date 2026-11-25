@@ -22,6 +22,7 @@
 //! }
 //! ```
 
+mod common;
 use oxiscript_syntax::*;
 use std::collections::HashSet;
 
@@ -422,4 +423,31 @@ fn reserved_slots_default_to_off() {
     };
     assert!(!parallel);
     assert_eq!(f.params[0].mode, ParamMode::Value);
+}
+
+/// 8.P: the parser produces exactly the hand-built tree (spans and ids aside).
+#[test]
+fn parsed_source_equals_hand_built_ast() {
+    let src = r#"import { Log } from "host:log";
+
+type Shape = { kind: "circle"; r: f64 } | { kind: "rect"; w: f64; h: f64 };
+
+export function area(s: Shape): f64 {
+  switch (s.kind) {
+    case "circle": return s.r * s.r;
+    case "rect": return s.w * s.h;
+  }
+}
+
+@expect(simd)
+function sum(xs: f64[]): f64 {
+  let acc = 0.0;
+  for (const x of xs) { acc += x; }
+  return acc;
+}
+"#;
+    let (parsed, d) = parse_module(src);
+    assert!(d.is_empty(), "{d:?}");
+    let built = build();
+    assert_eq!(common::shape(&parsed), common::shape(&built));
 }

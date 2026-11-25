@@ -1,0 +1,33 @@
+import { Log } from "host:log";
+import { Ui } from "host:ui";
+
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+let dragging = false;
+let origin: Point = { x: 0.0, y: 0.0 };
+let pos: Point = { x: 10.0, y: 10.0 };
+
+function onDown(x: f64, y: f64): void {
+  dragging = true;
+  origin = { x: x - pos.x, y: y - pos.y };
+}
+
+function onMove(ui: Ui, x: f64, y: f64): void {
+  if (!dragging) return;
+  pos = { x: x - origin.x, y: y - origin.y };
+  ui.moveTo("box", pos.x, pos.y);
+}
+
+function onUp(): void {
+  dragging = false;
+}
+
+export function main(log: Log, ui: Ui): void {
+  ui.onPointerDown((x, y) => onDown(x, y));
+  ui.onPointerMove((x: f64, y: f64) => { onMove(ui, x, y); });
+  ui.onPointerUp(() => onUp());
+  log.write(1, "drag ready");
+}

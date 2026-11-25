@@ -1,0 +1,3 @@
+function f(): void {
+  1 = 2;
+}

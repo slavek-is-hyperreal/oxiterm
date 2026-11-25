@@ -1,0 +1,8 @@
+enum Dir { Up, Down, Left, Right }
+enum Flags: u8 {
+  None = 0,
+  Read = 1 << 0,
+  Write = 1 << 1,
+  All = 3,
+}
+const d = Dir.Up;

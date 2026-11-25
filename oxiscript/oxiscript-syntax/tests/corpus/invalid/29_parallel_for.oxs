@@ -1,0 +1,3 @@
+function f(xs: i32[]): void {
+  parallel for (const i of xs) { }
+}

@@ -1,0 +1,12 @@
+function f(xs: i32[]): i32 {
+  return xs.filter((x) => x > 0).map((x) => x * 2).reduce((acc, x) => acc + x, 0);
+}
+function g(items: Item[]): void {
+  items.forEach((item) => {
+    if (item.done) {
+      return;
+    }
+    process(item);
+  });
+  register("click", (e) => { handle(e); }, true);
+}

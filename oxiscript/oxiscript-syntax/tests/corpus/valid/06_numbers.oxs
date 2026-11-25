@@ -1,0 +1,15 @@
+const a = 42;
+const b = 1_000_000;
+const c = 0xff;
+const d = 0b1010u8;
+const e = 0o777;
+const f = 3.14;
+const g = .5;
+const h = 1e3;
+const i = 2.5E-3f32;
+const j = 1.0f64;
+const k = 0xffu8;
+const l = 7i64;
+const m = 0x1f32;
+const n = .5f32;
+const o: f64 = a ? .5 : 1.5;

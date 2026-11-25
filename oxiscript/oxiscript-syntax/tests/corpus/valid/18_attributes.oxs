@@ -1,0 +1,21 @@
+@@profile(safety);
+@@inline;
+
+@expect(simd)
+function sum(xs: f64[]): f64 {
+  let acc = 0.0;
+  @expect(simd, no_alloc)
+  for (const x of xs) { acc += x; }
+  return acc;
+}
+
+@allow("OXS-P0102", "reason given")
+@export_name("init")
+export function init(): void {}
+
+struct S {
+  @inline
+  m(): void {}
+  @a(on: browser, n: 3, ok: true, path: a.b.c)
+  f: i32;
+}

@@ -1,0 +1,3 @@
+function f(x: i32): void {
+  const t = typeof x;
+}

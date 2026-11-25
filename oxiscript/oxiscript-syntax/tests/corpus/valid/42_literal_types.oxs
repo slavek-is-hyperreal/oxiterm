@@ -1,0 +1,6 @@
+type Msg =
+  | { kind: 1; a: i32 }
+  | { kind: 2; b: string }
+  | { kind: 3 };
+type Flag = { kind: true } | { kind: false };
+type Alias2<T> = Array<T>;

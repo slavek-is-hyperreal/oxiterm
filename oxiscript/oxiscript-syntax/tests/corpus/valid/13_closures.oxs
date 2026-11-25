@@ -1,0 +1,13 @@
+function apply(f: (x: i32) => i32, v: i32): i32 { return f(v); }
+
+function counter(): () => i32 {
+  let n = 0;
+  return () => { n += 1; return n; };
+}
+
+const inc = (x: i32): i32 => x + 1;
+const add = (a: i32, b: i32 = 3) => a + b;
+const mk = (): (a: i32) => i32 => (a) => a * 2;
+const obj = () => ({ x: 1, y: 2 });
+const r = apply(x => x * x, 4);
+const c = true ? (r) : r;

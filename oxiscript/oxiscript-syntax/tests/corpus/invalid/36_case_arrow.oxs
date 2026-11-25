@@ -1,0 +1,4 @@
+function f(x: i32): i32 {
+  const y = switch (x) { case 1 => 2, default: 3 };
+  return y;
+}

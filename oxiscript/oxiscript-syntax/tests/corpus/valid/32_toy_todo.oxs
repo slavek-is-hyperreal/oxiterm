@@ -1,0 +1,40 @@
+import { State } from "host:state";
+import { Log } from "host:log";
+
+struct Todo {
+  title: string;
+  done: bool;
+}
+
+let todos: Todo[] = [];
+let filter: i32 = 0;
+
+function visible(t: Todo): bool {
+  return switch (filter) {
+    case 0: true,
+    case 1: !t.done,
+    default: t.done,
+  };
+}
+
+export function add(title: string): void {
+  if (title.byteLength === 0) return;
+  todos.push({ title, done: false });
+}
+
+export function toggle(i: i32): void {
+  const t = todos[i];
+  todos[i] = { title: t.title, done: !t.done };
+}
+
+export function remaining(): i32 {
+  let n = 0;
+  for (const t of todos) {
+    if (!t.done) n++;
+  }
+  return n;
+}
+
+export function main(log: Log, state: State): void {
+  log.write(1, `todos: ${todos.length}`);
+}

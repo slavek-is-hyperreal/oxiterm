@@ -1,0 +1,11 @@
+import { Log } from "host:log";
+let ticks: u64 = 0u64;
+let running = true;
+export function tick(log: Log): void {
+  if (!running) return;
+  ticks += 1u64;
+  const secs = ticks / 60u64;
+  const mins = secs / 60u64;
+  log.write(1, `${mins}:${secs % 60u64}`);
+}
+export function toggle(): void { running = !running; }

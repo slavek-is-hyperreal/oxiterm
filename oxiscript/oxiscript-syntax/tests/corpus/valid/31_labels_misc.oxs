@@ -1,0 +1,16 @@
+function f(): void {
+  ;
+  {
+    let x = 1;
+  }
+  lbl: {
+    break lbl;
+  }
+  return;
+}
+let m: i32[][] = [];
+const fnType: (a: i32, b: string) => void = (a, b) => {};
+const arrFn: ((x: i32) => i32)[] = [];
+let u: (i32 | null)[] = [];
+let v: i32 | null = null;
+let ns: ns.Type<i32> = x;
