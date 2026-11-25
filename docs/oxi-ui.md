@@ -2,6 +2,8 @@
 
 This document is the implementation plan for evolving **OxiTerm** into **OxiUI**: a rendering engine in which the existing terminal renderer becomes *one backend among several* (TUI, web canvas, native GPU window, mobile), all driven by the same THTML/TCSS documents, the same session/state machinery, and the same App Server protocol.
 
+> **Handoff:** see [HANDOFF.md](HANDOFF.md) (2026-11-25).
+>
 > **Status:** Phases 0–2, 3a–3c, 4 and 6 done; Phase 5 stages 5.0–5.1 done; Phase 7, Phase 5 stages 5.2–5.7 and Phase 8 (OxiScript) planned.
 
 ---
@@ -677,8 +679,9 @@ Not reusable as code: the cycle collector for RC in Wasm linear memory (algorith
 |---|---|---|---|---|---|
 | 8.C Contracts | 31 min (+3 min lead amendment) | ~15 min | 21 min | 28 (verifier crash, pointer forging, RC use-after-free in the spec, grammar ambiguities) | 2026-11-25, `2ba1aa0` |
 | 7.1 WASM local mode | 41 min | ~17 min | ~29 min | 8 (incl. a pre-existing server abort via a 65535×65535 resize) | 2026-11-25, `77f9002` |
-| 7.2 OxiDE sink | 30 min | ~10 min | in progress | 19 + 2 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) | — |
-| 8.P Parser + formatter | ~45 min | in progress | — | — | — |
+| 7.2 OxiDE sink | 30 min | ~10 min | in progress (WIP on branch `worktree-agent-a6017513dcb858da6`) | 19 + 2 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) | — |
+| 8.P Parser + formatter | ~45 min | stopped for handoff (re-run) | — | — | WIP branch `worktree-agent-a72b9ecc8e38909a3` |
+| 8.R Runtime | ~26 min | stopped for handoff (re-run) | — | — | WIP branch `worktree-agent-a1cdc4c2eebac9a97` |
 
 Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
 
