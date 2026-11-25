@@ -289,6 +289,14 @@ pub(crate) fn make_import(
             }
         };
 
+        let extra = caller.data_mut().caps[ci]
+            .imp
+            .as_mut()
+            .map_or(0, |c| c.take_fuel_cost());
+        if extra > 0 {
+            charge(&mut caller, extra)?;
+        }
+
         // 4. results.
         let value = match outcome {
             Ok(v) => v,
@@ -306,7 +314,11 @@ pub(crate) fn make_import(
             Err(HostError::Trap(m)) => {
                 return Err(trap(TrapCause::HostFailure(format!("{}: {m}", f.name))))
             }
+            Err(HostError::QueueFull(m)) => {
+                return Err(trap(TrapCause::QueueFull(format!("{}: {m}", f.name))))
+            }
         };
+
         let wrong = || {
             trap(TrapCause::HostFailure(format!(
                 "{}: capability returned a value of the wrong type",

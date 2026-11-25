@@ -17,11 +17,13 @@ oxiscript-abi = { path = "../oxiscript-abi" }
 # canonical NaNs from float operations; default `wat`/`memory64` are not wanted.
 wasmi = { version = "2.0.3", default-features = false, features = ["validate", "deterministic", "stable", "auto-dispatch"] }
 
+# Export-section scan (re-exports of imports); the same version wasmi pulls in.
+wasmparser = { version = "0.228", default-features = false, features = ["std", "validate", "features"] }
+
 [dev-dependencies]
 # Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.
 wat = "1"
 # Bytecode Alliance, Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.
 wasm-smith = "0.263"
-wasmparser = "0.263"
 # MIT OR Apache-2.0; tests only.
 arbitrary = "1.4"

@@ -22,17 +22,30 @@ pub struct HandleTable<T> {
     live: usize,
     cap: usize,
     seed: u32,
+    /// XOR mask applied to every handle so its value reveals neither slot
+    /// order nor generation (opaque; derived from the seed).
+    mask: u32,
+}
+
+/// SplitMix64 finaliser: cheap, deterministic seed mixing (not a CSPRNG).
+pub fn mix(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
 }
 
 impl<T> HandleTable<T> {
     /// `cap` is the maximum number of live entries (clamped to [`MAX_HANDLES`]).
-    pub fn new(cap: usize, seed: u32) -> Self {
+    pub fn new(cap: usize, seed: u64) -> Self {
+        let m = mix(seed);
         HandleTable {
             entries: Vec::new(),
             free: Vec::new(),
             live: 0,
             cap: cap.min(MAX_HANDLES),
-            seed: seed & GEN_MASK,
+            seed: (m as u32) & GEN_MASK,
+            mask: ((m >> 32) as u32) & 0x7FFF_FFFF,
         }
     }
 
@@ -44,14 +57,15 @@ impl<T> HandleTable<T> {
         self.live == 0
     }
 
-    fn encode(index: usize, generation: u32) -> u32 {
-        ((generation & GEN_MASK) << 16) | (index as u32 + 1)
+    fn encode(&self, index: usize, generation: u32) -> u32 {
+        (((generation & GEN_MASK) << 16) | (index as u32 + 1)) ^ self.mask
     }
 
-    fn decode(h: u32) -> Option<(usize, u32)> {
+    fn decode(&self, h: u32) -> Option<(usize, u32)> {
         if h >> 31 != 0 {
             return None;
         }
+        let h = h ^ self.mask;
         let idx = h & 0xFFFF;
         if idx == 0 {
             return None;
@@ -73,14 +87,17 @@ impl<T> HandleTable<T> {
             });
             self.entries.len() - 1
         };
-        let e = &mut self.entries[index];
-        e.value = Some(value);
+        let generation = {
+            let e = &mut self.entries[index];
+            e.value = Some(value);
+            e.generation
+        };
         self.live += 1;
-        Some(Self::encode(index, e.generation))
+        Some(self.encode(index, generation))
     }
 
     pub fn get(&self, h: u32) -> Option<&T> {
-        let (i, g) = Self::decode(h)?;
+        let (i, g) = self.decode(h)?;
         let e = self.entries.get(i)?;
         if e.generation != g {
             return None;
@@ -89,7 +106,7 @@ impl<T> HandleTable<T> {
     }
 
     pub fn get_mut(&mut self, h: u32) -> Option<&mut T> {
-        let (i, g) = Self::decode(h)?;
+        let (i, g) = self.decode(h)?;
         let e = self.entries.get_mut(i)?;
         if e.generation != g {
             return None;
@@ -98,7 +115,7 @@ impl<T> HandleTable<T> {
     }
 
     pub fn remove(&mut self, h: u32) -> Option<T> {
-        let (i, g) = Self::decode(h)?;
+        let (i, g) = self.decode(h)?;
         let e = self.entries.get_mut(i)?;
         if e.generation != g {
             return None;
@@ -114,7 +131,7 @@ impl<T> HandleTable<T> {
         self.entries
             .iter()
             .enumerate()
-            .filter_map(|(i, e)| e.value.as_ref().map(|v| (Self::encode(i, e.generation), v)))
+            .filter_map(|(i, e)| e.value.as_ref().map(|v| (self.encode(i, e.generation), v)))
     }
 }
 
@@ -136,6 +153,10 @@ mod tests {
         assert_eq!(t.get(u32::MAX), None);
         assert_eq!(t.get(0x8000_0001), None);
         assert_eq!(t.get(b ^ 0x10000), None);
+        let t2: HandleTable<u8> = HandleTable::new(4, 8);
+        let mut t1 = HandleTable::new(4, 7);
+        let mut t2 = t2;
+        assert_ne!(t1.insert(1u8), t2.insert(1u8), "seed changes the value");
     }
 
     #[test]

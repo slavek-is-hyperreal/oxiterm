@@ -30,6 +30,17 @@ pub struct Limits {
     /// Callbacks delivered per [`crate::Runtime::pump`] (a watcher that
     /// writes the state it watches would otherwise loop forever).
     pub max_events_per_pump: usize,
+    /// Aggregate budget of one `pump`: it stops starting new guest entries
+    /// once this much fuel was spent (the first entry always runs, so a pump
+    /// always makes progress). Leftovers carry to the next pump; events and
+    /// releases alternate, so neither starves the other.
+    pub pump_fuel: u64,
+    /// Wall-time cap of one pump in microseconds (0 = off). Needs a clock
+    /// (`Host::set_clock`); makes pump non-deterministic, leave it unset in
+    /// deterministic tests.
+    pub pump_wall_micros: u64,
+    /// Bound of the release queue (guest closures the host dropped).
+    pub max_pending_releases: usize,
     /// Largest `oxi.manifest` section.
     pub max_manifest_bytes: usize,
 }
@@ -48,6 +59,9 @@ impl Default for Limits {
             max_instances: 16,
             max_host_payload: 64 * 1024,
             max_events_per_pump: 256,
+            pump_fuel: 30_000_000,
+            pump_wall_micros: 50_000,
+            max_pending_releases: 1024,
             max_manifest_bytes: 4096,
         }
     }

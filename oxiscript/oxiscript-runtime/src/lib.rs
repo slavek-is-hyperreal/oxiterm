@@ -38,4 +38,4 @@ pub use capability::{CallbackEvent, Capability, CapabilityProvider, Grants, Host
 pub use error::{Error, Rejection, Result, TrapCause, TrapInfo};
 pub use handle::HandleTable;
 pub use limits::Limits;
-pub use runtime::{Host, PumpStats, ReloadStats, Runtime};
+pub use runtime::{Clock, Host, HostOptions, PumpStats, ReloadStats, Runtime};

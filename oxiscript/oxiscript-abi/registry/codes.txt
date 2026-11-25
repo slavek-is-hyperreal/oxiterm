@@ -274,6 +274,13 @@ title Engine trap
 message the engine trapped: {detail}
 fix See the trap description.
 
+code OXS-E0429
+severity error
+phase runtime
+title Host queue full
+message a bounded host queue is full: {detail}
+fix Do less per turn (for example fewer re-registrations of a callback) or let the host pump between turns.
+
 code OXS-E0500
 severity error
 phase check

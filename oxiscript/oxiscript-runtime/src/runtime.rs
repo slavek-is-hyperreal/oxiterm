@@ -31,9 +31,9 @@
 //!   Runtime` methods; capability code receives plain values, never the
 //!   engine, so a host import cannot call the guest.
 
-use crate::capability::{CallbackEvent, CapabilityProvider, Grants, Value};
+use crate::capability::{CallbackEvent, CapabilityProvider, Grants, InstanceCtx, Value};
 use crate::error::{Error, Result, TrapCause, TrapInfo};
-use crate::handle::HandleTable;
+use crate::handle::{mix, HandleTable};
 use crate::host::{make_import, CapSlot, Data, HostTrap};
 use crate::limits::Limits;
 use crate::load::{self, val_ty};
@@ -42,9 +42,9 @@ use oxiscript_abi::idl::{IdlTy, Interface};
 use oxiscript_abi::layout::{ABI_VERSION, RESERVED_LOW_BYTES};
 use oxiscript_abi::trap::TrapKind;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use wasmi::{
     CompilationMode, Config, EnforcedLimits, Engine, ExternType, Func, FuncType, Global, Linker,
     Memory, Module, Store, StoreLimitsBuilder, TrapCode, Val, ValType,
@@ -61,6 +61,44 @@ struct HostInner {
     providers: Mutex<Vec<Arc<dyn CapabilityProvider>>>,
     live: AtomicUsize,
     epoch: AtomicU32,
+    /// Counter for automatic namespace names.
+    ns_counter: AtomicU64,
+    /// Embedder-supplied entropy for opaque handle values (`None` =
+    /// deterministic mode: handle values depend on nothing but the module).
+    entropy: Option<u64>,
+    /// Monotonic microseconds; `None` disables every wall-clock feature.
+    clock: Option<Clock>,
+}
+
+/// A monotonic clock in microseconds, supplied by the embedder.
+pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
+
+/// Optional host services. The defaults are fully deterministic except the
+/// clock, which defaults to `std::time::Instant` where it exists (not on
+/// `wasm32-unknown-unknown`, where it would panic: supply one there).
+#[derive(Clone, Default)]
+pub struct HostOptions {
+    /// Secret entropy (any 16 bytes from the embedder's CSPRNG) mixed into
+    /// every instance's handle seed, so handle values are unpredictable and
+    /// differ per instance. `None` = deterministic mode (tests, replays).
+    pub entropy: Option<[u8; 16]>,
+    /// Overrides the default clock.
+    pub clock: Option<Clock>,
+    /// Run with no clock at all (no wall-time pump cap, zero reload timing).
+    pub no_clock: bool,
+}
+
+fn default_clock() -> Option<Clock> {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        let t0 = std::time::Instant::now();
+        let c: Clock = Arc::new(move || t0.elapsed().as_micros() as u64);
+        Some(c)
+    }
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        None
+    }
 }
 
 /// The shared, long-lived part: engine configuration, limits and the
@@ -72,6 +110,21 @@ pub struct Host {
 
 impl Host {
     pub fn new(limits: Limits) -> Host {
+        Host::with_options(limits, HostOptions::default())
+    }
+
+    /// Like [`Host::new`] with secret entropy for unpredictable handles.
+    pub fn with_entropy(limits: Limits, entropy: [u8; 16]) -> Host {
+        Host::with_options(
+            limits,
+            HostOptions {
+                entropy: Some(entropy),
+                ..HostOptions::default()
+            },
+        )
+    }
+
+    pub fn with_options(limits: Limits, opts: HostOptions) -> Host {
         let mut c = Config::default();
         // Exactly the ABI's feature set: MVP + multi-value + bulk-memory +
         // sign-extension, plus mutable globals (needed for the exported
@@ -103,6 +156,16 @@ impl Host {
                 providers: Mutex::new(Vec::new()),
                 live: AtomicUsize::new(0),
                 epoch: AtomicU32::new(1),
+                ns_counter: AtomicU64::new(1),
+                entropy: opts.entropy.map(|e| {
+                    mix(u64::from_le_bytes(e[..8].try_into().unwrap()))
+                        ^ mix(u64::from_le_bytes(e[8..].try_into().unwrap()) ^ 0xA5A5)
+                }),
+                clock: if opts.no_clock {
+                    None
+                } else {
+                    opts.clock.or_else(default_clock)
+                },
             }),
         }
     }
@@ -131,9 +194,19 @@ impl Host {
         self.inner.live.load(Ordering::SeqCst)
     }
 
-    /// Build a runtime from a `.wasm` module.
+    /// Build a runtime from a `.wasm` module in a fresh anonymous state
+    /// namespace (freed when the `Runtime` drops).
     pub fn instantiate(&self, wasm: &[u8], grants: Grants) -> Result<Runtime> {
-        Runtime::new(self, wasm, grants)
+        let ns = format!("~rt{}", self.inner.ns_counter.fetch_add(1, Ordering::SeqCst));
+        Runtime::new(self, wasm, grants, ns, true)
+    }
+
+    /// Build a runtime whose persistent state lives in the named namespace
+    /// (an app identity). The namespace is *not* freed on drop; the embedder
+    /// decides with `StateStore::clear_ns`. Two runtimes with the same name
+    /// share their state, so only the embedder may choose names.
+    pub fn instantiate_in(&self, wasm: &[u8], grants: Grants, namespace: &str) -> Result<Runtime> {
+        Runtime::new(self, wasm, grants, namespace.to_string(), false)
     }
 }
 
@@ -170,6 +243,10 @@ struct Instance {
     dropped_events: u64,
     /// Closure pointers the host dropped, waiting for `oxi_release`.
     pending_releases: std::collections::VecDeque<u32>,
+    /// Events taken from capabilities but not yet delivered (bounded by
+    /// `max_events_per_pump`); they belong to this instance's memory and die
+    /// with it.
+    pending_events: std::collections::VecDeque<(usize, CallbackEvent)>,
     // Dropped last (fields drop in order): the live-instance count falls only
     // after the store and its capability objects are gone.
     _guard: Guard,
@@ -184,12 +261,17 @@ pub struct PumpStats {
     /// callback).
     pub dropped: usize,
     pub released: usize,
+    /// Events still queued after this pump (carried to the next one).
+    pub pending_events: usize,
+    /// Releases still queued after this pump.
+    pub pending_releases: usize,
 }
 
 /// What a successful reload cost.
 #[derive(Clone, Copy, Debug)]
 pub struct ReloadStats {
     /// Validate + translate + instantiate + `oxi_init`.
+    /// Zero when the host has no clock.
     pub build: Duration,
 }
 
@@ -198,6 +280,10 @@ pub struct Runtime {
     host: Arc<HostInner>,
     grants: Grants,
     wasm: Vec<u8>,
+    namespace: String,
+    anonymous: bool,
+    /// Sticky revocations (`host:name@N`): applied to every later build.
+    revoked: Vec<String>,
     inst: Instance,
 }
 
@@ -222,7 +308,13 @@ fn from_val(v: &Val) -> Value {
 }
 
 impl Instance {
-    fn build(host: &Arc<HostInner>, wasm: &[u8], grants: &Grants) -> Result<Instance> {
+    fn build(
+        host: &Arc<HostInner>,
+        wasm: &[u8],
+        grants: &Grants,
+        namespace: &str,
+        revoked: &[String],
+    ) -> Result<Instance> {
         let limits = &host.limits;
         if wasm.len() > limits.max_module_bytes {
             return Err(Error::reject(
@@ -242,20 +334,42 @@ impl Instance {
             .map_err(|_| Error::reject("OXS-E0408", "the engine panicked on this module"))?
             .map_err(|e| Error::reject("OXS-E0408", e.to_string()))?;
         let providers = host.providers.lock().unwrap().clone();
+        load::reject_reexports(wasm)?;
         let plan = load::check(&module, limits, &providers, grants)?;
 
         // Capability objects, one per `needs` line; handles seeded per
         // instance so a handle from another instance never validates.
-        let seed = host.epoch.fetch_add(1, Ordering::SeqCst).wrapping_mul(2654);
+        let counter = u64::from(host.epoch.fetch_add(1, Ordering::SeqCst));
+        let seed = match host.entropy {
+            Some(e) => mix(e ^ counter),
+            None => 0x5EED_5EED,
+        };
+        let ctx = InstanceCtx {
+            namespace: namespace.to_string(),
+            seed,
+        };
         let mut handles = HandleTable::new(oxiscript_abi::manifest::MAX_NEEDS, seed);
         let mut caps = Vec::new();
         let mut cap_handles = Vec::new();
         for (i, p) in plan.providers.iter().enumerate() {
-            caps.push(CapSlot {
-                interface: Arc::new(p.interface().clone()),
-                imp: Some(p.instantiate()),
-            });
-            cap_handles.push(handles.insert(i).expect("MAX_NEEDS entries fit"));
+            let itf = Arc::new(p.interface().clone());
+            let h = handles.insert(i).expect("MAX_NEEDS entries fit");
+            if revoked.contains(&itf.import_module()) {
+                // Sticky revocation: no object is created (so nothing is
+                // registered anywhere); the guest gets a dead handle, so every
+                // call through it is denied.
+                handles.remove(h);
+                caps.push(CapSlot {
+                    interface: itf,
+                    imp: None,
+                });
+            } else {
+                caps.push(CapSlot {
+                    interface: itf,
+                    imp: Some(p.instantiate(&ctx)),
+                });
+            }
+            cap_handles.push(h);
         }
         let store_limits = StoreLimitsBuilder::new()
             .memory_size(limits.max_memory_pages as usize * PAGE)
@@ -372,6 +486,7 @@ impl Instance {
             last_fuel_used: 0,
             dropped_events: 0,
             pending_releases: std::collections::VecDeque::new(),
+            pending_events: std::collections::VecDeque::new(),
             _guard: guard,
         };
         let init = inst
@@ -505,22 +620,48 @@ impl Instance {
 }
 
 impl Runtime {
-    pub fn new(host: &Host, wasm: &[u8], grants: Grants) -> Result<Runtime> {
-        let inst = Instance::build(&host.inner, wasm, &grants)?;
+    fn new(
+        host: &Host,
+        wasm: &[u8],
+        grants: Grants,
+        namespace: String,
+        anonymous: bool,
+    ) -> Result<Runtime> {
+        let inst = match Instance::build(&host.inner, wasm, &grants, &namespace, &[]) {
+            Ok(i) => i,
+            Err(e) => {
+                if anonymous {
+                    release_ns(&host.inner, &namespace);
+                }
+                return Err(e);
+            }
+        };
         Ok(Runtime {
             host: Arc::clone(&host.inner),
             grants,
             wasm: wasm.to_vec(),
+            namespace,
+            anonymous,
+            revoked: Vec::new(),
             inst,
         })
+    }
+
+    /// The state namespace of this runtime (stable across `restart` and
+    /// `reload`).
+    pub fn namespace(&self) -> &str {
+        &self.namespace
     }
 
     /// Replace the running code with `wasm`: build and `oxi_init` the new
     /// instance first, then swap. On error the old instance is untouched.
     pub fn reload(&mut self, wasm: &[u8]) -> Result<ReloadStats> {
-        let t = Instant::now();
-        let new = Instance::build(&self.host, wasm, &self.grants)?;
-        let build = t.elapsed();
+        let t = self.host.clock.as_ref().map(|c| c());
+        let new = Instance::build(&self.host, wasm, &self.grants, &self.namespace, &self.revoked)?;
+        let build = match (t, self.host.clock.as_ref()) {
+            (Some(t0), Some(c)) => Duration::from_micros(c().saturating_sub(t0)),
+            _ => Duration::ZERO,
+        };
         self.inst = new;
         self.wasm = wasm.to_vec();
         Ok(ReloadStats { build })
@@ -575,7 +716,20 @@ impl Runtime {
         let h = self.inst.cap_handles[ci];
         d.handles.remove(h);
         d.caps[ci].imp = None;
+        // Sticky: `restart` and `reload` keep it revoked (a guest can trap
+        // itself to force a restart, so recovery must not hand authority back).
+        if !self.revoked.iter().any(|m| m == module_at_version) {
+            self.revoked.push(module_at_version.to_string());
+        }
         true
+    }
+
+    /// Lift a revocation. Only the embedder can call this; it takes effect at
+    /// the next `restart`/`reload` (the running instance's handle stays dead).
+    pub fn regrant(&mut self, module_at_version: &str) -> bool {
+        let n = self.revoked.len();
+        self.revoked.retain(|m| m != module_at_version);
+        n != self.revoked.len()
     }
 
     fn user_func(&self, name: &str) -> Result<Func> {
@@ -651,39 +805,81 @@ impl Runtime {
         if self.inst.poisoned {
             return Err(Error::Poisoned);
         }
+        let lim = Arc::clone(&self.host.limits);
+        let clock = self.host.clock.clone();
+        let t0 = clock.as_ref().map(|c| c());
         let mut stats = PumpStats::default();
         let release = self.rt_func(exports::RELEASE);
         let ncaps = self.inst.store.data().caps.len();
+        // Refill the bounded runtime queues from the capabilities (never
+        // beyond the bounds: what does not fit stays inside the capability).
         for ci in 0..ncaps {
+            let room = lim
+                .max_pending_releases
+                .saturating_sub(self.inst.pending_releases.len());
+            if room == 0 {
+                break;
+            }
             let rel = match self.inst.store.data_mut().caps[ci].imp.as_mut() {
-                Some(imp) => imp.take_releases(),
+                Some(imp) => imp.take_releases(room),
                 None => Vec::new(),
             };
             self.inst.pending_releases.extend(rel);
         }
-        // Bounded like events: a guest that makes the host queue thousands of
-        // releases must not turn one pump into thousands of guest entries.
-        let mut rel_budget = self.host.limits.max_events_per_pump;
-        while rel_budget > 0 {
-            let Some(ptr) = self.inst.pending_releases.pop_front() else {
-                break;
-            };
-            rel_budget -= 1;
-            self.inst.invoke(release, &[Val::I32(ptr as i32)], None)?;
-            stats.released += 1;
-        }
-        let mut budget = self.host.limits.max_events_per_pump;
         for ci in 0..ncaps {
-            if budget == 0 {
+            let room = lim
+                .max_events_per_pump
+                .saturating_sub(self.inst.pending_events.len());
+            if room == 0 {
                 break;
             }
             let evs = match self.inst.store.data_mut().caps[ci].imp.as_mut() {
-                Some(imp) => imp.take_events(budget),
+                Some(imp) => imp.take_events(room),
                 None => Vec::new(),
             };
-            let itf = Arc::clone(&self.inst.store.data().caps[ci].interface);
-            for ev in evs.into_iter().take(budget) {
-                budget -= 1;
+            self.inst
+                .pending_events
+                .extend(evs.into_iter().take(room).map(|e| (ci, e)));
+        }
+        // Fairness: releases and events alternate, so neither starves the
+        // other; the aggregate fuel/wall budget caps the whole pump. The first
+        // entry always runs, so every pump makes progress.
+        let mut spent: u64 = 0;
+        let mut first = true;
+        let mut turn_release = true;
+        let (mut rel_n, mut ev_n) = (0usize, 0usize);
+        loop {
+            if !first {
+                if spent >= lim.pump_fuel {
+                    break;
+                }
+                if lim.pump_wall_micros > 0 {
+                    if let (Some(t), Some(c)) = (t0, clock.as_ref()) {
+                        if c().saturating_sub(t) >= lim.pump_wall_micros {
+                            break;
+                        }
+                    }
+                }
+            }
+            let can_rel = rel_n < lim.max_events_per_pump && !self.inst.pending_releases.is_empty();
+            let can_ev = ev_n < lim.max_events_per_pump && !self.inst.pending_events.is_empty();
+            let do_release = match (can_rel, can_ev) {
+                (false, false) => break,
+                (true, false) => true,
+                (false, true) => false,
+                (true, true) => turn_release,
+            };
+            turn_release = !turn_release;
+            first = false;
+            if do_release {
+                let ptr = self.inst.pending_releases.pop_front().expect("checked");
+                rel_n += 1;
+                self.inst.invoke(release, &[Val::I32(ptr as i32)], None)?;
+                stats.released += 1;
+            } else {
+                let (ci, ev) = self.inst.pending_events.pop_front().expect("checked");
+                ev_n += 1;
+                let itf = Arc::clone(&self.inst.store.data().caps[ci].interface);
                 if self.deliver(&itf, ev)? {
                     stats.delivered += 1;
                 } else {
@@ -691,7 +887,10 @@ impl Runtime {
                     self.inst.dropped_events += 1;
                 }
             }
+            spent = spent.saturating_add(self.inst.last_fuel_used);
         }
+        stats.pending_events = self.inst.pending_events.len();
+        stats.pending_releases = self.inst.pending_releases.len();
         Ok(stats)
     }
 
@@ -806,5 +1005,21 @@ impl Host {
             .iter()
             .map(|p| p.interface().clone())
             .collect()
+    }
+}
+
+fn release_ns(host: &HostInner, ns: &str) {
+    let ps = host.providers.lock().unwrap().clone();
+    for p in ps {
+        p.release_namespace(ns);
+    }
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        // An anonymous namespace can never be addressed again.
+        if self.anonymous {
+            release_ns(&self.host, &self.namespace);
+        }
     }
 }

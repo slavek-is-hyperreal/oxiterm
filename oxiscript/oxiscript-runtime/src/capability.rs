@@ -45,6 +45,9 @@ pub enum HostError {
     Status(i32),
     /// Unconditionally trap the instance (resource abuse, host bug).
     Trap(String),
+    /// A bounded host-side queue (releases, ...) is full: the instance traps
+    /// with the dedicated reason `OXS-E0429` instead of growing host memory.
+    QueueFull(String),
 }
 
 /// A host-to-guest callback ready for delivery (between calls only).
@@ -78,10 +81,20 @@ pub trait Capability: Send {
         Vec::new()
     }
 
-    /// Closure pointers whose registration the host dropped; the runtime
-    /// calls `oxi_release` on each at the next quiescent point (abi.md 5.3).
-    fn take_releases(&mut self) -> Vec<u32> {
+    /// At most `max` closure pointers whose registration the host dropped;
+    /// the runtime calls `oxi_release` on each at a quiescent point (abi.md
+    /// 5.3). The rest stay queued (queues must be bounded: see
+    /// [`HostError::QueueFull`]).
+    fn take_releases(&mut self, max: usize) -> Vec<u32> {
+        let _ = max;
         Vec::new()
+    }
+
+    /// Extra fuel the last `call` cost the host beyond the flat per-call and
+    /// per-byte charges (e.g. subscribers notified). Read and reset by the
+    /// runtime after every call.
+    fn take_fuel_cost(&mut self) -> u64 {
+        0
     }
 }
 
@@ -91,7 +104,22 @@ pub trait CapabilityProvider: Send + Sync {
     /// A fresh capability for a new instance. Called while an instance is
     /// being built; if the build fails the object is dropped (it must undo
     /// any registration it made in shared state, i.e. clean up in `Drop`).
-    fn instantiate(&self) -> Box<dyn Capability>;
+    fn instantiate(&self, ctx: &InstanceCtx) -> Box<dyn Capability>;
+    /// The anonymous namespace `ns` can never be addressed again (its
+    /// `Runtime` was dropped): free whatever the provider keeps for it.
+    fn release_namespace(&self, ns: &str) {
+        let _ = ns;
+    }
+}
+
+/// What a provider learns about the instance it serves.
+#[derive(Clone, Debug)]
+pub struct InstanceCtx {
+    /// The runtime's identity (stable across `restart`/`reload`). Providers
+    /// that keep persistent per-app data (the `state` store) key it by this.
+    pub namespace: String,
+    /// Per-instance seed for opaque handle values (see `Host::with_entropy`).
+    pub seed: u64,
 }
 
 /// Which capabilities a runtime may be granted: a module whose manifest asks

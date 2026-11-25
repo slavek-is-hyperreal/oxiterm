@@ -1624,11 +1624,6 @@ name = "hashbrown"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
-dependencies = [
- "foldhash 0.2.0",
- "serde",
- "serde_core",
-]
 
 [[package]]
 name = "heck"
@@ -1971,8 +1966,6 @@ checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.2",
- "serde",
- "serde_core",
 ]
 
 [[package]]
@@ -2561,7 +2554,7 @@ dependencies = [
  "oxiscript-abi",
  "wasm-smith",
  "wasmi",
- "wasmparser 0.263.0",
+ "wasmparser 0.228.0",
  "wat",
 ]
 
@@ -4923,10 +4916,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f5fa0a054ae153606df820eb0a84213e28cda41bbe04ba2628e71b6ba100fcb"
 dependencies = [
  "bitflags 2.13.2",
- "hashbrown 0.17.2",
  "indexmap",
  "semver",
- "serde",
 ]
 
 [[package]]

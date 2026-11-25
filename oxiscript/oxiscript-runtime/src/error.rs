@@ -32,6 +32,8 @@ pub enum TrapCause {
     HostDenied { interface: String, func: String },
     /// A capability implementation reported an unrecoverable condition.
     HostFailure(String),
+    /// A bounded host queue was full (`OXS-E0429`).
+    QueueFull(String),
     /// Any other engine trap (division by zero, bad table access, ...).
     Engine(String),
 }
@@ -58,6 +60,7 @@ impl TrapInfo {
             TrapCause::HostBadArgument(_) => "OXS-E0423",
             TrapCause::HostDenied { .. } => "OXS-E0424",
             TrapCause::HostFailure(_) => "OXS-E0428",
+            TrapCause::QueueFull(_) => "OXS-E0429",
             TrapCause::Unreachable => "OXS-E0425",
             TrapCause::Engine(_) => "OXS-E0428",
         }

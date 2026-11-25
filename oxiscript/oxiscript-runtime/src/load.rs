@@ -59,6 +59,39 @@ fn expect_sig(ft: &FuncType, params: &[ValType], results: &[ValType]) -> bool {
     ft.params() == params && ft.results() == results
 }
 
+/// Reject any export that is a re-export of an imported function: user
+/// exports, `cb:*` trampolines and ABI rows must be *defined* in the module,
+/// otherwise the embedder could be handed a raw host import as an entry point.
+pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
+    use wasmparser::{ExternalKind, Parser, Payload, TypeRef};
+    let bad = |e: wasmparser::BinaryReaderError| Error::reject("OXS-E0408", e.to_string());
+    let mut imported_funcs = 0u32;
+    for payload in Parser::new(0).parse_all(wasm) {
+        match payload.map_err(bad)? {
+            Payload::ImportSection(r) => {
+                for imp in r {
+                    if matches!(imp.map_err(bad)?.ty, TypeRef::Func(_)) {
+                        imported_funcs += 1;
+                    }
+                }
+            }
+            Payload::ExportSection(r) => {
+                for e in r {
+                    let e = e.map_err(bad)?;
+                    if e.kind == ExternalKind::Func && e.index < imported_funcs {
+                        return Err(Error::reject(
+                            "OXS-E0407",
+                            format!("export `{}` re-exports an imported host function", e.name),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn check(
     module: &Module,
     limits: &Limits,
