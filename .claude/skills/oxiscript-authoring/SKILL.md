@@ -38,7 +38,7 @@ Full list with reasons: `docs/oxiscript/grammar.md` section 6. The ones that fai
 | `const p = { x: 1 }` | needs a `struct` type from context | E0103 |
 | `x: i32` used as `f64` | explicit `x as f64` (no implicit numeric mixing) | E0100 / E0110 |
 | `a + b as f64`, `n / 10` for a float | `as` binds looser than `+`: `(a as f64) + (b as f64)`; convert both operands before `/` | E0110 / E0100 |
-| `export function f<T>(...)` | exported functions cannot be generic | E0121 |
+| `@host export function f<T>(...)` | a `@host` (host-called) function cannot be generic; plain `export` of a generic is fine | E0121 |
 | `?` across different error types | `?` needs the same `E`; map it with a `switch` | E0104 |
 | `class B extends A`, `any`, `var`, `undefined`, `for...in` | not in the language | E0900 / E0001 |
 | `console.log`, `Math.*`, `fetch` | none exist; `main` receives capabilities (`log: Log`) | E0300 |

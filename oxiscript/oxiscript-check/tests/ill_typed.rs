@@ -237,7 +237,7 @@ function f(): void {}"#),
     ("exported_function_without_return_type", r"export function f(a: i32) { //! E0103
   return a;
 }"),
-    ("exported_function_with_two_strings", r"export function f(a: string, b: string): void {} //! E0121"),
+    ("exported_function_with_two_strings", r"@host export function f(a: string, b: string): void {} //! E0121"),
     ("main_with_non_capability_parameter", r"export function main(x: i32): void {} //! E0121"),
     ("main_not_exported", r"function main(): void {} //! E0121"),
     ("main_returning_a_value", r"export function main(): i32 { return 1; } //! E0121"),

@@ -56,14 +56,14 @@ export function main(log: Log): void {
 fn p03_overflow_traps() {
     let mut p = Prog::new(&prog(
         r#"
-export function add_max(): i32 { let x: i32 = 2147483647; x += 1; return x; }
-export function neg_min(): i32 { const m: i32 = -2147483647 - 1; return -m; }
-export function u8_sub(): u8 { const z: u8 = 0u8; const o: u8 = 1u8; return z - o; }
-export function mul_big(): i64 { const a: i64 = 9223372036854775807i64; return a * 2i64; }
-export function cast_bad(): u8 { const x: i32 = 300; return x as u8; }
-export function div_zero(): i32 { const z: i32 = 0; return 5 / z; }
-export function rem_zero(): i32 { const z: i32 = 0; return 5 % z; }
-export function shift_big(): i32 { const s: i32 = 40; return 1 << s; }
+@host export function add_max(): i32 { let x: i32 = 2147483647; x += 1; return x; }
+@host export function neg_min(): i32 { const m: i32 = -2147483647 - 1; return -m; }
+@host export function u8_sub(): u8 { const z: u8 = 0u8; const o: u8 = 1u8; return z - o; }
+@host export function mul_big(): i64 { const a: i64 = 9223372036854775807i64; return a * 2i64; }
+@host export function cast_bad(): u8 { const x: i32 = 300; return x as u8; }
+@host export function div_zero(): i32 { const z: i32 = 0; return 5 / z; }
+@host export function rem_zero(): i32 { const z: i32 = 0; return 5 % z; }
+@host export function shift_big(): i32 { const s: i32 = 40; return 1 << s; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));
@@ -132,8 +132,8 @@ export function main(log: Log): void {
 fn p06_float_to_int_traps() {
     let mut p = Prog::new(&prog(
         r#"
-export function nan_cast(): i32 { const n = 0.0 / 0.0; return n as i32; }
-export function big_cast(): i32 { const b: f64 = 1.0e12; return b as i32; }
+@host export function nan_cast(): i32 { const n = 0.0 / 0.0; return n as i32; }
+@host export function big_cast(): i32 { const b: f64 = 1.0e12; return b as i32; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));
@@ -191,8 +191,8 @@ export function main(log: Log): void {
 fn p09_string_slice_traps() {
     let mut p = Prog::new(&prog(
         r#"
-export function bad_slice(): i32 { const s = "héllo"; return s.slice(0, 2).byteLength; }
-export function oob_slice(): i32 { const s = "abc"; return s.slice(0, 10).byteLength; }
+@host export function bad_slice(): i32 { const s = "héllo"; return s.slice(0, 2).byteLength; }
+@host export function oob_slice(): i32 { const s = "abc"; return s.slice(0, 10).byteLength; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));
@@ -207,9 +207,9 @@ export function main(log: Log): void { log.write(2, "up"); }
 fn p10_exports_with_scalars_and_strings() {
     let mut p = Prog::new(&prog(
         r#"
-export function twice(x: i32): i32 { return x * 2; }
-export function mix(a: i64, b: f64, c: bool): f64 { return c ? (a as f64) + b : 0.0; }
-export function greet(name: string): i32 { return name.byteLength; }
+@host export function twice(x: i32): i32 { return x * 2; }
+@host export function mix(a: i64, b: f64, c: bool): f64 { return c ? (a as f64) + b : 0.0; }
+@host export function greet(name: string): i32 { return name.byteLength; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));

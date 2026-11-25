@@ -123,7 +123,7 @@ export function main(log: Log): void {
 // ---- L08: unfit exports are errors in 8.T ----
 #[test]
 fn l08_checker_message() {
-    let src = format!("{HDR}type U = {{ kind: \"a\" }} | {{ kind: \"b\" }};\nexport function area(u: U): f64 {{ return 1.0; }}\nexport function main(log: Log): void {{ }}\n");
+    let src = format!("{HDR}type U = {{ kind: \"a\" }} | {{ kind: \"b\" }};\n@host export function area(u: U): f64 {{ return 1.0; }}\nexport function main(log: Log): void {{ }}\n");
     let e = oxiscript_lower::compile_source(&src, &interfaces(), &oxiscript_lower::Options::default()).expect_err("must be rejected");
     let t = e.to_string();
     assert!(t.contains("OXS-E0121") && t.contains("area") && t.contains("ABI 1.0"), "{t}");
@@ -196,8 +196,8 @@ fn l03_no_compiler_panic_on_null_narrowed_shapes() {
 fn l06_drop_alone_under_default_fuel() {
     let src = format!("{HDR}{}", r#"class N { v: i32; next: N | null; constructor(v: i32, next: N | null) { this.v = v; this.next = next; } }
 let head: N | null = null;
-export function build(n: i32): i32 { for (let i = 0; i < n; i++) { head = new N(i, head); } return n; }
-export function drop(): i32 { head = null; return 1; }
+@host export function build(n: i32): i32 { for (let i = 0; i < n; i++) { head = new N(i, head); } return n; }
+@host export function drop(): i32 { head = null; return 1; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#);
     let mut p = Prog::new(&src);

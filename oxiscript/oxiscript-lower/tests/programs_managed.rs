@@ -49,8 +49,8 @@ export function main(log: Log): void {
 fn p12_array_traps() {
     let mut p = Prog::new(&prog(
         r#"
-export function get(i: i32): i32 { const xs: i32[] = [1, 2, 3]; return xs[i]; }
-export function set(i: i32): void { const xs: i32[] = [1, 2, 3]; xs[i] = 9; }
+@host export function get(i: i32): i32 { const xs: i32[] = [1, 2, 3]; return xs[i]; }
+@host export function set(i: i32): void { const xs: i32[] = [1, 2, 3]; xs[i] = 9; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));

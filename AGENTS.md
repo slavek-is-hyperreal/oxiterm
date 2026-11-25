@@ -30,7 +30,7 @@ Run the tool: `cargo run -p oxiscript-cli --bin oxi -- check path/to/file.oxs --
 7. **Capabilities come in through `main`.** There are no globals such as `console`, `fetch`, `Math`, `process`. A program touches the outside world only through values its `export function main(log: Log, ...)` receives; their types come from `import { Log } from "host:log";`. Host calls return `Result<T, i32>` when they can fail (the `i32` is a host status code). In a project, `oxi check` enforces `oxi.toml` `needs`: every `host:` module the program imports must be listed (`OXS-E0400`), and `needs` must equal the host interfaces `main` takes, in parameter order (`OXS-E0402`).
 8. **Strings are UTF-8.** `s.byteLength`, not `.length`; no `s[i]`; iterate with `s.chars()` (code points) or `s.bytes()`. Template literals work: `` `n = ${n}` ``. `+` does not join a string and a number.
 9. **The `?` whitespace rule.** `f()?` (no space before `?`) is the try operator; `c ? a : b` (space before `?`) is the conditional; `a?.b` is optional chaining on `T | null`. Do not write `f() ?`.
-10. **No `any`, `undefined`, `var`, `typeof`, `instanceof`, `for...in`, `async`, `delete`.** Absence is `T | null` (`null`, `??`, `?.`). Declarations need explicit parameter and return types where exported, and an exported function cannot be generic (generic helpers are fine unexported). `i++` is a statement, not a value. Mixing `&`, `|`, `<<`, `??` with other operators needs parentheses (`OXS-E0007`..`E0009`).
+10. **No `any`, `undefined`, `var`, `typeof`, `instanceof`, `for...in`, `async`, `delete`.** Absence is `T | null` (`null`, `??`, `?.`). Declarations need explicit parameter and return types where exported. `export` is module visibility, exactly like TypeScript, in every module including the entry module: any signature is allowed, generics included. A function the *host* calls is marked `@host` and must be exported from the entry module: `@host export function step(dt: f64): void`. Only `main` and `@host` functions become Wasm exports, and a `@host` signature must fit the host boundary: parameters are numbers, `bool`, enums, at most one `string` or `u8[]`; the result is a number, `bool`, enum or `void`; not generic (`OXS-E0121`). Do not put `@host` on helpers. `i++` is a statement, not a value. Mixing `&`, `|`, `<<`, `??` with other operators needs parentheses (`OXS-E0007`..`E0009`).
 
 ## Complete examples
 
@@ -147,6 +147,15 @@ export function same(a: i32, b: i32): bool {
 ```oxs-err OXS-E0300
 export function half(x: number): number {
   return x / 2;
+}
+```
+
+```oxs-err OXS-E0121
+struct P {
+  x: i32;
+}
+@host export function f(p: P): i32 {
+  return p.x;
 }
 ```
 

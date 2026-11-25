@@ -415,6 +415,15 @@ pub struct Checked {
 }
 
 impl Checked {
+    /// Whether the function carries `@host` (it becomes a Wasm export of the entry module).
+    pub fn is_host_fn(&self, d: DefId) -> bool {
+        let info = &self.defs[d.0 as usize];
+        self.modules
+            .get(info.module as usize)
+            .and_then(|m| m.attrs.get(&info.node))
+            .is_some_and(|v| v.iter().any(|(n, _)| n == "host"))
+    }
+
     /// Name of the first side table that holds the poison type, if any. Poison is only legal in
     /// a program that already has errors; an error-free program must be free of it by construction.
     pub(crate) fn poisoned_table(&self) -> Option<&'static str> {

@@ -321,8 +321,8 @@ fn p32_never_function_and_traps_in_exports() {
     let mut p = Prog::new(&prog(
         r#"
 function fail(): never { const z: i32 = 0; const q = 1 / z; return fail(); }
-export function ok(): i32 { return 5; }
-export function boom(c: bool): i32 { if (c) { fail(); } return 1; }
+@host export function ok(): i32 { return 5; }
+@host export function boom(c: bool): i32 { if (c) { fail(); } return 1; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#,
     ));

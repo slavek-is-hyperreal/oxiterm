@@ -186,7 +186,7 @@ fn p39_cap_in_other_function_gets_a_needs_line() {
         r#"
 import { Log } from "host:log";
 import { Canvas } from "host:canvas";
-export function draw(canvas: Canvas, x: i32): void { canvas.put(x, 0, "o"); }
+@host export function draw(canvas: Canvas, x: i32): void { canvas.put(x, 0, "o"); }
 export function main(log: Log): void { log.write(2, "ready"); }
 "#,
     );

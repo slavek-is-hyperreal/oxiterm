@@ -584,10 +584,9 @@ fn agent_test_record_still_holds() {
     let extra: Vec<_> = run("extra_first_try").into_iter().filter(|(_, c)| !c.is_empty()).collect();
     assert_eq!(
         extra,
-        vec![
-            ("12_generic.oxs".to_string(), vec!["OXS-E0121".to_string()]),
-            ("16_err_types.oxs".to_string(), vec!["OXS-E0104".to_string()]),
-        ]
+        // 12_generic.oxs failed with E0121 under the old entry-module export rule (2026-11-25); since the
+        // 2026-11-26 decision `export` is module visibility only, so an exported generic is fine.
+        vec![("16_err_types.oxs".to_string(), vec!["OXS-E0104".to_string()])]
     );
 }
 

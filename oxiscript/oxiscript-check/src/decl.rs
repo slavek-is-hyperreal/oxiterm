@@ -15,7 +15,7 @@ pub(crate) struct SavedEnv {
     swapped: bool,
 }
 
-const KNOWN_ATTRS: [&str; 6] = ["expect", "profile", "allow", "inline", "noinline", "export_name"];
+const KNOWN_ATTRS: [&str; 7] = ["expect", "profile", "allow", "inline", "noinline", "export_name", "host"];
 
 impl<'a> Checker<'a> {
     // ---- environments -----------------------------------------------------
@@ -163,6 +163,7 @@ impl<'a> Checker<'a> {
             self.err("OXS-E0123", item.span, &[("detail", "nested declarations cannot be exported")]);
         }
         self.check_attrs(&item.attrs, "item", item.id);
+        self.check_host_placement(item, local);
         let id = item.id;
         let sp = item.span;
         let d = match &item.kind {
@@ -273,6 +274,39 @@ impl<'a> Checker<'a> {
 
     // ---- attributes ---------------------------------------------------------
 
+    /// Whether the function definition carries `@host` (recorded by `check_attrs`).
+    pub fn is_host_fn(&self, d: DefId) -> bool {
+        let info = &self.defs[d.0 as usize].info;
+        self.mods
+            .get(info.module as usize)
+            .and_then(|m| m.out.attrs.get(&info.node))
+            .is_some_and(|v| v.iter().any(|(n, _)| n == "host"))
+    }
+
+    /// `@host` is legal only on an exported, non-generic, module-level function of the entry module.
+    fn check_host_placement(&mut self, item: &'a Item, local: bool) {
+        let Some(a) = item.attrs.iter().find(|a| !a.inner && a.name.name == "host") else { return };
+        let detail = match &item.kind {
+            ItemKind::Fn(f) => {
+                if local {
+                    "`@host` cannot be applied to a nested function"
+                } else if !item.export {
+                    "`@host` needs `export`: `@host export function f(...)`"
+                } else if self.cm != 0 {
+                    "`@host` is only allowed in the entry module; other modules cannot expose Wasm exports"
+                } else if !f.type_params.is_empty() {
+                    "a `@host` function cannot be generic"
+                } else if f.name.name == "main" {
+                    "`main` is the entry point and needs no `@host`"
+                } else {
+                    return;
+                }
+            }
+            _ => "`@host` applies only to an exported function of the entry module",
+        };
+        self.err("OXS-E0121", a.span, &[("detail", detail)]);
+    }
+
     pub fn check_attrs(&mut self, attrs: &'a [Attribute], what: &str, node: NodeId) {
         let mut rec: Vec<(String, Vec<String>)> = Vec::new();
         for a in attrs {
@@ -327,6 +361,15 @@ impl<'a> Checker<'a> {
                 "export_name" => {
                     if a.args.len() != 1 || !matches!(&a.args[0].value, AttrValue::Lit(l) if matches!(l.kind, LitKind::Str(_))) {
                         self.err("OXS-E0123", a.span, &[("detail", "`@export_name` takes one string: `@export_name(\"init\")`")]);
+                    } else if args[0].is_empty() || !args[0].bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                        self.err("OXS-E0123", a.span, &[("detail", "`@export_name` must be a non-empty name of ASCII letters, digits and `_`")]);
+                    }
+                }
+                "host" => {
+                    if !a.args.is_empty() {
+                        self.err("OXS-E0123", a.span, &[("detail", "`@host` takes no arguments; the Wasm name comes from `@export_name(\"x\")`")]);
+                    } else if what != "item" {
+                        self.err("OXS-E0121", a.span, &[("detail", "`@host` applies only to an exported function of the entry module: `@host export function f(...)`")]);
                     }
                 }
                 "inline" | "noinline" => {
@@ -337,6 +380,11 @@ impl<'a> Checker<'a> {
                 _ => {}
             }
             rec.push((n.to_string(), args));
+        }
+        if let Some(a) = attrs.iter().find(|a| !a.inner && a.name.name == "export_name") {
+            if !attrs.iter().any(|b| !b.inner && b.name.name == "host") {
+                self.err("OXS-E0123", a.span, &[("detail", "`@export_name` only applies to a host-callable function: add `@host`")]);
+            }
         }
         if !rec.is_empty() {
             self.mods[self.cm].out.attrs.insert(node, rec);
@@ -1328,22 +1376,20 @@ impl<'a> Checker<'a> {
         let Some(sig) = self.fns.get(&d).cloned() else { return };
         let info = self.defs[d.0 as usize].info.clone();
         let name = info.name.clone();
+        let host = self.is_host_fn(d);
         let strs = sig
             .params
             .iter()
             .filter(|p| p.ty == STR || *self.tys.kind(p.ty) == TyKind::Array(U8))
             .count();
-        if info.exported && strs > 1 {
+        if host && strs > 1 {
             self.err(
                 "OXS-E0121",
                 info.span,
-                &[("detail", &format!("exported function `{name}` has more than one `string`/`u8[]` parameter; the host can deliver at most one string per call"))],
+                &[("detail", &format!("`@host` function `{name}` has more than one `string`/`u8[]` parameter; the host can deliver at most one string per call"))],
             );
         }
-        if info.exported && !sig.tparams.is_empty() {
-            self.err("OXS-E0121", info.span, &[("detail", &format!("exported function `{name}` cannot be generic"))]);
-        }
-        if info.exported && info.module == 0 && name != "main" && sig.tparams.is_empty() {
+        if host && info.module == 0 && name != "main" && sig.tparams.is_empty() {
             // ABI 1.0 export boundary: scalar (number, bool, enum) or `string`/`u8[]` parameters, scalar or void result.
             for p in &sig.params {
                 if !self.abi_param_ok(p.ty) {
@@ -1351,7 +1397,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         "OXS-E0121",
                         info.span,
-                        &[("detail", &format!("exported function `{name}`: parameter `{}: {s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums, `string` and `u8[]` parameters); make the function non-exported or change the signature", p.name))],
+                        &[("detail", &format!("`@host` function `{name}`: parameter `{}: {s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums, `string` and `u8[]` parameters); drop `@host` or change the signature", p.name))],
                     );
                 }
             }
@@ -1360,7 +1406,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     "OXS-E0121",
                     info.span,
-                    &[("detail", &format!("exported function `{name}`: result type `{s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums or `void`); make the function non-exported or change the signature"))],
+                    &[("detail", &format!("`@host` function `{name}`: result type `{s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums or `void`); drop `@host` or change the signature"))],
                 );
             }
         }

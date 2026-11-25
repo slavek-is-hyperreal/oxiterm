@@ -7,7 +7,7 @@ use oxiscript_runtime::Value;
 fn many_tiny_methods_module() {
     let mut src = String::from("import { Log } from \"host:log\";\n");
     for i in 0..1200 {
-        src.push_str(&format!("export function g{i}(): i32 {{ return {i}; }}\n"));
+        src.push_str(&format!("@host export function g{i}(): i32 {{ return {i}; }}\n"));
     }
     src.push_str("export function main(log: Log): void { log.write(2, \"ok\"); }\n");
     let wasm = compile(&src);
@@ -34,8 +34,8 @@ fn differential_scalar_expressions() {
         cases.push((lcg(&mut seed), lcg(&mut seed), lcg(&mut seed)));
     }
     let src = "import { Log } from \"host:log\";\n\
-export function f(a: i64, b: i64, c: i64): i64 { return (a * b + c) % 97 - (a ^ c) + ((b & 255) << 2) - (a >> 3); }\n\
-export function g(a: i64, b: i64): i64 { return a *% 3i64 +% b -% (a | b); }\n\
+@host export function f(a: i64, b: i64, c: i64): i64 { return (a * b + c) % 97 - (a ^ c) + ((b & 255) << 2) - (a >> 3); }\n\
+@host export function g(a: i64, b: i64): i64 { return a *% 3i64 +% b -% (a | b); }\n\
 export function main(log: Log): void { log.write(2, \"x\"); }\n";
     let mut p = Prog::new(src);
     for (a, b, c) in cases {
