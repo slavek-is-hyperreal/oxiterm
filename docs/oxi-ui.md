@@ -679,11 +679,11 @@ Not reusable as code: the cycle collector for RC in Wasm linear memory (algorith
 |---|---|---|---|---|---|
 | 8.C Contracts | 31 min (+3 min lead amendment) | ~15 min | 21 min | 28 (verifier crash, pointer forging, RC use-after-free in the spec, grammar ambiguities) | 2026-11-25, `2ba1aa0` |
 | 7.1 WASM local mode | 41 min | ~17 min | ~29 min | 8 (incl. a pre-existing server abort via a 65535×65535 resize) | 2026-11-25, `77f9002` |
-| 7.2 OxiDE sink | 30 min | ~10 min | in progress (WIP on branch `worktree-agent-a6017513dcb858da6`) | 19 + 2 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) | — |
-| 8.P Parser + formatter | ~45 min | stopped for handoff (re-run) | — | — | WIP branch `worktree-agent-a72b9ecc8e38909a3` |
-| 8.R Runtime | ~26 min | stopped for handoff (re-run) | — | — | WIP branch `worktree-agent-a1cdc4c2eebac9a97` |
+| 7.2 OxiDE sink | 30 min | ~10 min | ~1 h incl. 200k-case fuzz run | 21 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) + 1 found during fixes | 2026-11-25, `78fcdb5` |
+| 8.P Parser + formatter | ~45 min | ~20 min | in progress | 16 (formatter changes meaning/breaks code with comments, ~3 KB stack per nesting level, Trojan-Source escapes, quadratic comments) | — |
+| 8.R Runtime | ~26 min | ~25 min | in progress | 7, no sandbox escape (sticky revocation, pump budget, subscription scan DoS, guessable handles, shared-store quota, log injection) | — |
 
-Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
+**Wave 1 (7.1, 7.2, 8.C) closed 2026-11-25 12:5x.** Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
 
 
 **Decisions (owner, 2026-11-24 — decided now, deliberately, accepting that some may be regretted later)**
