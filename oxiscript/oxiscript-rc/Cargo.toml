@@ -8,6 +8,12 @@ description = "OxiScript memory runtime: reference counting with a cycle collect
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["float-fmt"]
+# `oxi_str_from_f64` (shortest round-trip printing via core::fmt, ~25 KB of wasm).
+# Without it the export still exists but traps `Unreachable`; for size experiments only.
+float-fmt = []
+
 [dependencies]
 # Guest allocator (MIT OR Apache-2.0). Used by the wasm32 build (memory.grow backed)
 # and, with an arena back end, by the native test heap.

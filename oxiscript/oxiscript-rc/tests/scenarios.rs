@@ -1,4 +1,5 @@
 //! Hand-written graph scenarios against the native checked heap.
+#![allow(clippy::many_single_char_names, clippy::too_many_lines, clippy::cast_possible_wrap, clippy::cast_possible_truncation, clippy::doc_markdown, clippy::manual_is_multiple_of, clippy::similar_names)]
 
 use oxiscript_rc::rt::{STEP_DEFERRED, STEP_MORE};
 use oxiscript_rc::sim::Trap;
@@ -95,6 +96,7 @@ fn dag_sharing_exact_counts() {
 #[test]
 fn self_and_mutual_and_triple_cycles_need_the_collector() {
     let mut g = SimGuest::standard();
+    let base_bytes = g.live_bytes();
     // self cycle
     let a = g.alloc(ty::NODE);
     link(&mut g, a, A, a);
@@ -119,7 +121,7 @@ fn self_and_mutual_and_triple_cycles_need_the_collector() {
     assert_eq!(g.stat(1), 6, "candidates: a, b, c and ring members (strings are green)");
     assert_eq!(g.collect(), 1 + 2 + 3 + 3 /* strings via green release, counted separately */ - 3);
     assert_eq!(g.live_objects(), 0);
-    assert_eq!(g.live_bytes(), g.live_bytes()); // stable
+    assert_eq!(g.live_bytes(), base_bytes, "every byte came back");
 }
 
 #[test]
@@ -332,14 +334,14 @@ fn out_of_memory_traps_after_reclaiming_pending_garbage() {
     let mut g = SimGuest::new(2 << 20, true);
     install_types(&mut g, &standard_types());
     let mut head = 0;
-    let mut count = 0;
+    let count = std::cell::Cell::new(0u32);
     let _ = trap_of(|| loop {
         let n = g.alloc(ty::NODE);
         g.wr(n + A, head);
         head = n;
-        count += 1;
+        count.set(count.get() + 1);
     });
-    let count = count;
+    let count = count.get();
     // `head` is the last fully built node (the trap came from the next alloc)
     g.release(head);
     let again = g.alloc(ty::NODE);
@@ -371,12 +373,13 @@ fn clone_retains_children_and_arrays_copy() {
 }
 
 #[test]
-fn misuse_traps_instead_of_corrupting() {
+fn misuse_is_detected_by_the_checked_heap_and_by_argument_traps() {
     let mut g = SimGuest::standard();
     let n = g.alloc(ty::NODE);
     g.release(n);
     assert_eq!(g.live_objects(), 0);
-    // use after free is caught by the checked heap (access outside any live block)
+    // Use after free is caught by the *checked native heap* (access outside any live
+    // block). The release wasm build has no such detection (see crate docs).
     assert!(catch_unwind(AssertUnwindSafe(|| g.release(n))).is_err());
 
     let mut g = SimGuest::standard();

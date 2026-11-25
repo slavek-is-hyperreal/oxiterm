@@ -1,8 +1,9 @@
 //! Integration tests of the real wasm build under wasmi.
+#![allow(clippy::many_single_char_names, clippy::too_many_lines, clippy::cast_possible_wrap, clippy::cast_possible_truncation, clippy::doc_markdown, clippy::manual_is_multiple_of, clippy::similar_names)]
 
 mod common;
 
-use common::{build_wasm, WasmGuest};
+use common::{build_wasm, wasm_available, WasmGuest};
 use oxiscript_abi::exports::{self, ExportKind, Provider};
 use oxiscript_abi::WasmTy;
 use oxiscript_rc::testkit::{fuzz, ty, Guest};
@@ -26,6 +27,9 @@ fn conv(t: WasmTy) -> wasmi::ValType {
 
 #[test]
 fn module_has_no_imports_and_exports_every_runtime_row() {
+    if !wasm_available() {
+        return;
+    }
     let g = WasmGuest::load(wasm_path());
     assert_eq!(g.module.imports().count(), 0, "the runtime must be self-contained: no imports");
     let ex: std::collections::HashMap<String, ExternType> =
@@ -70,6 +74,9 @@ fn module_has_no_imports_and_exports_every_runtime_row() {
 
 #[test]
 fn scratch_region_and_trap_cell() {
+    if !wasm_available() {
+        return;
+    }
     let mut g = WasmGuest::standard(wasm_path());
     let p = g.global_i32("oxi_scratch_ptr");
     assert!(p >= 1024 && p % 8 == 0);
@@ -99,6 +106,9 @@ fn scratch_region_and_trap_cell() {
 
 #[test]
 fn fuzz_wasm_matches_reference_model() {
+    if !wasm_available() {
+        return;
+    }
     let mut total = 0;
     for seed in 0..40 {
         let mut g = WasmGuest::standard(wasm_path());
@@ -110,8 +120,12 @@ fn fuzz_wasm_matches_reference_model() {
 
 #[test]
 fn long_list_does_not_overflow_the_wasm_stack() {
+    if !wasm_available() {
+        return;
+    }
     let mut g = WasmGuest::standard(wasm_path());
-    let n = 200_000;
+    // 1M nodes in release; the unoptimised wasmi host of a debug `cargo test` is ~30x slower
+    let n = if cfg!(debug_assertions) { 100_000 } else { 1_000_000 };
     let mut head = 0;
     for _ in 0..n {
         let node = g.alloc(ty::NODE);
@@ -128,6 +142,9 @@ fn long_list_does_not_overflow_the_wasm_stack() {
 
 #[test]
 fn strings_and_arrays_api() {
+    if !wasm_available() {
+        return;
+    }
     let mut g = WasmGuest::standard(wasm_path());
     let a = g.str_new("héllo");
     let b = g.str_new(" wörld");
@@ -157,4 +174,51 @@ fn strings_and_arrays_api() {
     }
     g.collect();
     assert_eq!(g.live_objects(), 0);
+}
+
+#[test]
+fn debug_wasm_build_with_poisoning_passes_the_same_fuzz() {
+    if !wasm_available() {
+        return;
+    }
+    // debug_assertions poison freed memory (0xDD); a stale read would then show garbage.
+    let path = build_wasm("dev");
+    let mut total = 0;
+    for seed in 100..120 {
+        let mut g = WasmGuest::standard(&path);
+        total += fuzz(&mut g, seed, 120).ops;
+    }
+    eprintln!("wasm debug fuzz: {total} ops");
+}
+
+#[test]
+fn one_million_node_ring_is_collected_under_a_64k_stack() {
+    if !wasm_available() {
+        return;
+    }
+    let mut g = WasmGuest::standard(wasm_path());
+    let n = if cfg!(debug_assertions) { 100_000usize } else { 1_000_000 };
+    let nodes: Vec<u32> = (0..n).map(|_| g.alloc(ty::NODE)).collect();
+    for i in 0..n {
+        let next = nodes[(i + 1) % n];
+        g.retain(next);
+        g.wr(nodes[i], next);
+    }
+    for &p in &nodes {
+        g.release(p);
+    }
+    assert_eq!(g.live_objects() as usize, n);
+    assert_eq!(g.collect() as usize, n);
+    assert_eq!(g.live_objects(), 0);
+}
+
+#[test]
+fn initial_linear_memory_is_small() {
+    if !wasm_available() {
+        return;
+    }
+    let g = WasmGuest::load(wasm_path());
+    let pages = g.memory.ty(&g.store).minimum();
+    eprintln!("initial memory: {pages} pages ({} KiB)", pages * 64);
+    assert!(pages <= 3, "64 KiB shadow stack + data + 1 page: {pages} pages");
 }

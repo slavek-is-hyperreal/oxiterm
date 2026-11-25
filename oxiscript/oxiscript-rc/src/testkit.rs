@@ -257,6 +257,7 @@ pub struct FuzzStats {
     pub steps: u64,
     pub max_live: u64,
     pub cycle_freed: u64,
+    pub aborts: u64,
 }
 
 struct Model {
@@ -294,7 +295,11 @@ impl Model {
         if self.roots.is_empty() {
             return None;
         }
-        let mut cur = self.roots[rng.below(self.roots.len())];
+        let start = self.roots[rng.below(self.roots.len())];
+        Some(self.walk_from(start, rng))
+    }
+    fn walk_from(&self, start: usize, rng: &mut Rng) -> usize {
+        let mut cur = start;
         for _ in 0..rng.below(4) {
             let kids: Vec<usize> = self.objs[cur].slots.iter().flatten().copied().collect();
             if kids.is_empty() {
@@ -302,7 +307,7 @@ impl Model {
             }
             cur = kids[rng.below(kids.len())];
         }
-        Some(cur)
+        cur
     }
 }
 
@@ -351,11 +356,6 @@ pub fn fuzz<G: Guest>(g: &mut G, seed: u64, ops: usize) -> FuzzStats {
     for step in 0..ops {
         st.ops += 1;
         let r = rng.below(100);
-        if std::env::var("FUZZ_TRACE").is_ok() { eprintln!("op {step} r={r} roots={} tys={:?}", m.roots.len(), m.objs.iter().map(|o| (o.ty, o.slots.len())).collect::<Vec<_>>()); }
-        let dis: u32 = std::env::var("FUZZ_DIS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-        if (dis & 1 != 0 && (89..=90).contains(&r)) || (dis & 2 != 0 && (91..=94).contains(&r)) || (dis & 4 != 0 && (84..=86).contains(&r)) || (dis & 8 != 0 && (87..=88).contains(&r)) {
-            continue;
-        }
         match r {
             0..=29 => {
                 let t = all[rng.below(all.len())];
@@ -392,7 +392,15 @@ pub fn fuzz<G: Guest>(g: &mut G, seed: u64, ops: usize) -> FuzzStats {
                 }
             }
             59..=83 => {
-                let (Some(src), dst) = (m.walk(&mut rng), if rng.chance(10) { None } else { m.walk(&mut rng) }) else { continue };
+                let Some(src) = m.walk(&mut rng) else { continue };
+                // a third of the links point back into the source's own subgraph: cycles
+                let dst = if rng.chance(10) {
+                    None
+                } else if rng.chance(35) {
+                    Some(m.walk_from(src, &mut rng))
+                } else {
+                    m.walk(&mut rng)
+                };
                 if m.objs[src].slots.is_empty() {
                     continue;
                 }
@@ -432,9 +440,7 @@ pub fn fuzz<G: Guest>(g: &mut G, seed: u64, ops: usize) -> FuzzStats {
                 let dst = if rng.chance(15) { None } else { m.walk(&mut rng) };
                 let p = m.objs[a].rt;
                 let len = g.rd(p);
-                if len != m.objs[a].slots.len() as u32 {
-                    panic!("array len mismatch");
-                }
+                assert_eq!(len, m.objs[a].slots.len() as u32, "array len mismatch");
                 g.array_grow(p, len + 1);
                 let esz = if t == ty::REFARRAY { 4 } else { 8 };
                 let data = g.rd(p + 8);
@@ -455,9 +461,7 @@ pub fn fuzz<G: Guest>(g: &mut G, seed: u64, ops: usize) -> FuzzStats {
                     if !m.objs[o].immortal && rng.chance(30) {
                         g.wr(m.objs[o].rt - 8, 0x7FFF_FFFF);
                         g.retain(m.objs[o].rt);
-                        if g.rd(m.objs[o].rt - 8) < 0x8000_0000 {
-                            panic!("retain at 2^31-1 did not saturate");
-                        }
+                        assert!(g.rd(m.objs[o].rt - 8) >= 0x8000_0000, "retain at 2^31-1 did not saturate");
                         m.objs[o].immortal = true;
                     }
                 }
@@ -493,6 +497,7 @@ pub fn fuzz<G: Guest>(g: &mut G, seed: u64, ops: usize) -> FuzzStats {
         g.release(m.objs[o].rt);
     }
     check_full(g, &m, base_bytes, base_objs, &mut st);
+    st.aborts = u64::from(g.stat(6));
     st
 }
 

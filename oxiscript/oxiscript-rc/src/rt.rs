@@ -84,7 +84,7 @@ pub const STAT_COLLECTIONS: u32 = 2;
 pub const STAT_CYCLE_FREED: u32 = 3;
 pub const STAT_INTERNAL_BYTES: u32 = 4;
 pub const STAT_GC_WANTED: u32 = 5;
-pub const STAT_HEAP_BYTES: u32 = 6;
+pub const STAT_ABORTS: u32 = 6;
 // config keys (`oxi_gc_config`)
 pub const CFG_DRAIN_BUDGET: u32 = 0;
 pub const CFG_ROOT_THRESHOLD: u32 = 1;
@@ -177,15 +177,18 @@ pub struct Rt<H: Heap> {
     stack: V32,
     log: V32,
     step_cursor: u32,
+    step_write: u32,
     live_objects: u32,
     live_bytes: u64,
     zombie_objects: u32,
     zombie_bytes: u64,
     internal_bytes: u64,
     collections: u32,
+    aborts: u32,
     cycle_freed: u64,
     work: u32,
     limit: u32,
+    in_trial: bool,
     pub cfg: Config,
 }
 
@@ -205,15 +208,18 @@ impl<H: Heap> Rt<H> {
             stack: V32::new(),
             log: V32::new(),
             step_cursor: 0,
+            step_write: 0,
             live_objects: 0,
             live_bytes: 0,
             zombie_objects: 0,
             zombie_bytes: 0,
             internal_bytes: 0,
             collections: 0,
+            aborts: 0,
             cycle_freed: 0,
             work: 0,
             limit: u32::MAX,
+            in_trial: false,
             cfg: Config { drain_budget: 256, root_threshold: 1024 },
         }
     }
@@ -263,7 +269,11 @@ impl<H: Heap> Rt<H> {
         let mut p = self.heap.alloc(size);
         if p == 0 {
             // Memory is tight: reclaim everything already known dead and retry.
-            self.drain(u32::MAX);
+            // (Not inside a trial: the graph is mid-colouring and a drain must not
+            // touch it.)
+            if !self.in_trial {
+                self.drain(u32::MAX);
+            }
             p = self.heap.alloc(size);
             if p == 0 {
                 self.trap(T_OOM);
@@ -596,11 +606,12 @@ impl<H: Heap> Rt<H> {
     pub fn stat(&self, key: u32) -> u32 {
         match key {
             STAT_PENDING => self.q_len,
-            STAT_CANDIDATES => self.roots.len,
+            STAT_CANDIDATES => self.roots.len - (self.step_cursor - self.step_write),
             STAT_COLLECTIONS => self.collections,
             STAT_CYCLE_FREED => u32::try_from(self.cycle_freed).unwrap_or(u32::MAX),
             STAT_INTERNAL_BYTES => u32::try_from(self.internal_bytes).unwrap_or(u32::MAX),
             STAT_GC_WANTED => u32::from(self.roots.len >= self.cfg.root_threshold),
+            STAT_ABORTS => self.aborts,
             _ => 0,
         }
     }
@@ -657,6 +668,7 @@ impl<H: Heap> Rt<H> {
 
     /// Exactly reverse every `mark_gray` side effect recorded in the log.
     fn undo_gray(&mut self) {
+        self.aborts += 1;
         self.stack.len = 0;
         for i in 0..self.log.len {
             let n = self.heap.ld32(self.log.ptr + 4 * i);
@@ -747,6 +759,13 @@ impl<H: Heap> Rt<H> {
     /// One trial over `roots[start..end]`. `Ok(freed)` or `Err(work_used)`
     /// when the limit was hit (state fully restored).
     fn trial(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32), u32> {
+        self.in_trial = true;
+        let r = self.trial_inner(start, end, limit);
+        self.in_trial = false;
+        r
+    }
+
+    fn trial_inner(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32), u32> {
         self.work = 0;
         self.limit = limit;
         self.log.len = 0;
@@ -836,6 +855,7 @@ impl<H: Heap> Rt<H> {
         }
         self.roots.len = w;
         self.step_cursor = 0;
+        self.step_write = 0;
     }
 
     /// `oxi_collect_cycles`: drain the destruction queue and examine every
@@ -880,6 +900,8 @@ impl<H: Heap> Rt<H> {
         if self.q_head != 0 {
             return STEP_MORE;
         }
+        // In-place incremental compaction: `[0, write)` are survivors of this
+        // sweep, `[write, cursor)` is a gap of zeros, `[cursor, len)` is unexamined.
         while left > 0 && self.step_cursor < self.roots.len {
             let i = self.step_cursor;
             let s = self.heap.ld32(self.roots.ptr + 4 * i);
@@ -894,9 +916,20 @@ impl<H: Heap> Rt<H> {
                 }
                 Err(used) => left = left.saturating_sub(used.max(1)),
             }
+            let s2 = self.heap.ld32(self.roots.ptr + 4 * i);
+            if s2 != 0 {
+                let w = self.step_write;
+                self.heap.st32(self.roots.ptr + 4 * w, s2);
+                if w != i {
+                    self.heap.st32(self.roots.ptr + 4 * i, 0);
+                }
+                self.step_write += 1;
+            }
         }
         if self.step_cursor >= self.roots.len {
-            self.compact_roots();
+            self.roots.len = self.step_write;
+            self.step_cursor = 0;
+            self.step_write = 0;
             if self.roots.len > 0 {
                 // survivors are candidates whose trial exceeded the budget
                 return if self.q_head != 0 { STEP_MORE | STEP_DEFERRED } else { STEP_DEFERRED };
@@ -1100,6 +1133,12 @@ impl<H: Heap> Rt<H> {
         self.string_from_bytes(&buf[i..])
     }
 
+    #[cfg(not(feature = "float-fmt"))]
+    pub fn str_from_f64(&mut self, _v: f64) -> u32 {
+        self.trap(T_UNREACHABLE)
+    }
+
+    #[cfg(feature = "float-fmt")]
     pub fn str_from_f64(&mut self, v: f64) -> u32 {
         use core::fmt::Write;
         struct Buf([u8; 40], usize);

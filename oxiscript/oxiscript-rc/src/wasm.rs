@@ -80,7 +80,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "C" fn oxi_trap(kind: u32) {
-    rt().heap.trap(kind)
+    rt().heap.trap(kind);
 }
 #[no_mangle]
 pub extern "C" fn oxi_alloc(type_id: u32) -> u32 {
@@ -92,15 +92,15 @@ pub extern "C" fn oxi_alloc_bytes(size: u32) -> u32 {
 }
 #[no_mangle]
 pub extern "C" fn oxi_free_bytes(ptr: u32, size: u32) {
-    rt().free_bytes(ptr, size)
+    rt().free_bytes(ptr, size);
 }
 #[no_mangle]
 pub extern "C" fn oxi_retain(p: u32) {
-    rt().retain(p)
+    rt().retain(p);
 }
 #[no_mangle]
 pub extern "C" fn oxi_release(p: u32) {
-    rt().release(p)
+    rt().release(p);
 }
 #[no_mangle]
 pub extern "C" fn oxi_clone(p: u32) -> u32 {
@@ -156,7 +156,7 @@ pub extern "C" fn oxi_array_new(type_id: u32, len: u32) -> u32 {
 }
 #[no_mangle]
 pub extern "C" fn oxi_array_grow(a: u32, min_cap: u32) {
-    rt().array_grow(a, min_cap)
+    rt().array_grow(a, min_cap);
 }
 
 // ---- extension exports (not in the ABI table; see crate docs) ----
@@ -165,7 +165,7 @@ pub extern "C" fn oxi_array_grow(a: u32, min_cap: u32) {
 /// runtime call (the compiler's `oxi_init` calls it first).
 #[no_mangle]
 pub extern "C" fn oxi_rt_init(base: u32, count: u32) {
-    rt().init(base, count)
+    rt().init(base, count);
 }
 /// Size of the scratch region (a Wasm global in the ABI; see "Linking model").
 #[no_mangle]
@@ -184,5 +184,5 @@ pub extern "C" fn oxi_gc_stat(key: u32) -> u32 {
 }
 #[no_mangle]
 pub extern "C" fn oxi_gc_config(key: u32, value: u32) {
-    rt().config(key, value)
+    rt().config(key, value);
 }

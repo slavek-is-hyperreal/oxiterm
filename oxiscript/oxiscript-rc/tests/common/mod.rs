@@ -1,6 +1,6 @@
 //! Shared by the wasm tests: build the guest, load it in wasmi, drive it through
 //! the same `Guest` trait the native tests use.
-#![allow(dead_code)]
+#![allow(dead_code, clippy::cast_possible_wrap)]
 
 use oxiscript_rc::testkit::Guest;
 use std::collections::HashMap;
@@ -8,8 +8,24 @@ use std::path::PathBuf;
 use std::process::Command;
 use wasmi::{Engine, Func, Instance, Linker, Memory, Module, Store, Val};
 
+/// True if the wasm32 target is installed. CI installs it; a developer machine
+/// without it gets a loud SKIP line instead of a red test (set
+/// `OXI_REQUIRE_WASM=1` to make the absence an error).
+pub fn wasm_available() -> bool {
+    let out = Command::new("rustc").args(["--print", "target-libdir", "--target", "wasm32-unknown-unknown"]).output();
+    let ok = out.ok().and_then(|o| String::from_utf8(o.stdout).ok()).is_some_and(|d| std::path::Path::new(d.trim()).is_dir());
+    if !ok {
+        assert!(
+            std::env::var_os("OXI_REQUIRE_WASM").is_none(),
+            "wasm32-unknown-unknown target missing: rustup target add wasm32-unknown-unknown"
+        );
+        eprintln!("SKIP: wasm32-unknown-unknown target not installed; wasm tests not run");
+    }
+    ok
+}
+
 /// Build the wasm artefact (`release` or `dev`) into the test tmp dir and
-/// return its path. Panics loudly if the wasm32 target is missing.
+/// return its path.
 pub fn build_wasm(profile: &str) -> PathBuf {
     let target_dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("wasm-build");
     let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");

@@ -74,15 +74,38 @@
 //!   must be `retain`ed first. Borrows from parameters stay valid for the whole
 //!   call. An owned value (`c >= 1`) is protected exactly until its own release.
 //! * Retain of `null` and of sticky objects is a no-op, so elision need not
-//!   special-case them; `release` of a count that is already zero traps
-//!   (`Unreachable`) instead of corrupting memory.
+//!   special-case them. **There is no double-release / use-after-free
+//!   detection in release builds**: a stale `release` of a dead object reads
+//!   whatever the allocator left in its header. Corruption stays inside the
+//!   sandbox, but only the checked native heap (`sim`), the debug build's
+//!   poisoning and the RC-balance checker detect it; the compiler/elision pass
+//!   must emit balanced code.
 //! * A retained object is recoloured black (not a candidate), so
 //!   `retain`/`release` pairs elided around a still-live object cost the
 //!   collector nothing; conversely, every *non-final* release of a cyclic
 //!   type buffers a candidate, so removing such releases is the elision pass's
 //!   main lever against collector load. Types marked `#acyclic` never buffer.
 #![cfg_attr(target_arch = "wasm32", no_std)]
-#![allow(clippy::missing_safety_doc)]
+#![allow(
+    clippy::missing_safety_doc,
+    // low-level pointer code: single-letter names (p, c, n, m, s) are the idiom here,
+    // casts between u32 addresses/lengths are range-checked by the ABI
+    clippy::many_single_char_names,
+    clippy::too_many_lines,
+    clippy::doc_markdown,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_lossless,
+    clippy::similar_names,
+    clippy::match_same_arms,
+    clippy::must_use_candidate,
+    clippy::missing_panics_doc,
+    clippy::module_name_repetitions,
+    clippy::needless_pass_by_value,
+    clippy::struct_field_names,
+    clippy::items_after_statements,
+    clippy::should_implement_trait
+)]
 
 pub mod heap;
 pub mod rt;
