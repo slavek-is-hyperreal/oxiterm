@@ -3,7 +3,7 @@
     "name": "Polski",
     "short": "PL",
     "htmlLang": "pl",
-    "status": "reviewed"
+    "status": "draft"
   },
   "common": {
     "skip": "Przejdź do treści",
@@ -20,7 +20,7 @@
     "supportText": "Pracę finansuje jedna osoba. Jeśli Ci się przydaje, kawa pomaga (cele: nowa maszyna do budowania, płytki ESP32).",
     "supportButton": "Postaw mi kawę",
     "repo": "Kod źródłowy na GitHubie",
-    "footerFine": "Bez śledzenia, bez ciasteczek, bez skryptów firm trzecich. Kod na licencji MIT lub Apache-2.0.",
+    "footerFine": "Bez śledzenia, bez ciasteczek, bez skryptów firm trzecich, nic nie jest zapisywane w Twojej przeglądarce. Kod na licencji MIT lub Apache-2.0.",
     "demoHint": "To uruchamia OxiUI w Twojej przeglądarce, bez serwera. Pobiera około 1,5 MB.",
     "runDemo": "Uruchom demo na żywo",
     "demoWeight": "Nic nie jest nigdzie wysyłane: stronę rysuje WebAssembly na Twoim urządzeniu.",
@@ -62,7 +62,7 @@
         "desc": "Strona domowa z projektami OxiUI i OxiScript.",
         "hero": {
           "title": "slavekm.pl",
-          "lead": "[DO UZUPEŁNIENIA: jedno lub dwa zdania o tym, kim jesteś i czym jest ta strona. Pisze właściciel.]"
+          "lead": "Dwa otwarte projekty: OxiUI, język interfejsu dla terminali, przeglądarek i WebAssembly, oraz OxiScript, typowany język kompilowany do WebAssembly."
         },
         "blocks": [
           {
@@ -75,11 +75,34 @@
           },
           {
             "t": "h2",
-            "x": "O mnie"
+            "x": "Kod źródłowy i wsparcie"
           },
           {
             "t": "p",
-            "x": "[DO UZUPEŁNIENIA: kto, co, dlaczego. Pisze właściciel. Na razie nie ma tu żadnego życiorysu.]"
+            "x": "Kod źródłowy jest na GitHubie. Pracę opłaca jedna osoba, a kawa pomaga."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Kod źródłowy na GitHubie",
+                "href": "https://github.com/slavek-is-hyperreal/oxiterm"
+              },
+              {
+                "label": "Postaw mi kawę",
+                "href": "https://buycoffee.to/smajcher"
+              }
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "O mnie",
+            "flag": "home.about"
+          },
+          {
+            "t": "p",
+            "x": "[DO UZUPEŁNIENIA: kto, co, dlaczego. Pisze właściciel. Na razie nie ma tu żadnego życiorysu.]",
+            "flag": "home.about"
           },
           {
             "t": "widget",
@@ -763,7 +786,7 @@
               },
               {
                 "label": "llms.txt (dodawany przez etap DevKit)",
-                "href": "repo:llms.txt"
+                "href": "repo:docs/oxiscript/llms.txt"
               }
             ]
           }
@@ -791,7 +814,15 @@
       "warning": "ostrzeżenie",
       "error": "błąd",
       "fixes": "Jak naprawić:",
-      "thtmlNote": "Plac zabaw to edytor i wymaga zwykłej strony internetowej."
+      "thtmlNote": "Plac zabaw to edytor i wymaga zwykłej strony internetowej.",
+      "staleFix": "Kod zmienił się od ostatniego sprawdzenia. Sprawdzam ponownie; naciśnij przycisk poprawki jeszcze raz.",
+      "fixFailed": "Nie udało się zastosować tej poprawki.",
+      "tooLargeTitle": "Kod jest za duży",
+      "tooLarge": "Plac zabaw przyjmuje najwyżej {n} bajtów.",
+      "discardAsk": "Zastąpić Twoje zmiany przykładem {name}? Zmiany w edytorze zostaną utracone.",
+      "discard": "Zastąp",
+      "keepEditing": "Edytuj dalej",
+      "compilerEnglish": "Komunikaty kompilatora są po angielsku."
     },
     "course": {
       "levels": [

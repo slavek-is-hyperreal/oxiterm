@@ -48,7 +48,7 @@ fn utf16_at(src: &str, byte: usize) -> usize {
 fn too_big(src: &str) -> Option<Value> {
     (src.len() > MAX_SOURCE_BYTES).then(|| {
         json!({ "ok": false, "diagnostics": [{
-            "code": "", "severity": "error", "title": "Source too large",
+            "code": "", "kind": "too_large", "severity": "error", "title": "Source too large",
             "message": format!("the playground accepts at most {MAX_SOURCE_BYTES} bytes"),
             "start": 0, "end": 0, "line": 1, "col": 1, "endLine": 1, "endCol": 1, "fixes": [] }] })
     })
@@ -140,22 +140,65 @@ pub fn format_json(src: &str) -> String {
     }
 }
 
+/// What the page believes it is fixing: the diagnostic code, its UTF-16 range and the fix title,
+/// all taken from the last [`check_json`] result. [`apply_fix_json`] refuses to apply anything that
+/// no longer matches (the text changed since that check).
+pub struct FixExpect<'a> {
+    /// Reason code of the diagnostic, e.g. `OXS-E0005`.
+    pub code: &'a str,
+    /// UTF-16 start of the diagnostic.
+    pub start: f64,
+    /// UTF-16 end of the diagnostic.
+    pub end: f64,
+    /// Title of the fix.
+    pub title: &'a str,
+}
+
+/// A JS number that is a finite, non-negative integer below `len` (rejects NaN, infinities,
+/// fractions, negatives, `1e300`, `2**53`).
+fn index_in_range(x: f64, len: usize) -> Option<usize> {
+    // `len` is tiny (diagnostics are capped), so the cast to f64 is exact.
+    #[allow(clippy::cast_precision_loss)]
+    let ok = x.is_finite() && x >= 0.0 && x.fract() == 0.0 && x < len as f64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    ok.then_some(x as usize)
+}
+
+fn fix_error(kind: &str, msg: &str) -> String {
+    json!({ "ok": false, "kind": kind, "error": msg }).to_string()
+}
+
 /// Apply fix `fix` of diagnostic `diag` (indices into the list [`check_json`] returned for the same
-/// `src`): `{ "ok": true, "text": new source }` or `{ "ok": false, "error": "..." }`.
-pub fn apply_fix_json(src: &str, diag: usize, fix: usize) -> String {
+/// `src`): `{ "ok": true, "text": new source }` or `{ "ok": false, "kind": ..., "error": "..." }`.
+///
+/// The source is re-checked and the indexed diagnostic must still match `expect` (code, UTF-16
+/// span, fix title); otherwise the answer is `kind: "stale"` and nothing is applied. Indices must be
+/// finite non-negative integers in range (`kind: "range"` otherwise).
+pub fn apply_fix_json(src: &str, diag: f64, fix: f64, expect: &FixExpect) -> String {
     if src.len() > MAX_SOURCE_BYTES {
-        return json!({ "ok": false, "error": "source too large" }).to_string();
+        return fix_error("too_large", "source too large");
     }
     let diags = entry_diagnostics(src);
-    let Some(f) = diags.get(diag).and_then(|d| d.fixes.get(fix)) else {
-        return json!({ "ok": false, "error": "no such fix (the source changed?)" }).to_string();
+    let Some(di) = index_in_range(diag, diags.len()) else {
+        return fix_error("range", "no such fix (stale fix, re-check)");
     };
+    let d = &diags[di];
+    let Some(fi) = index_in_range(fix, d.fixes.len()) else {
+        return fix_error("range", "no such fix (stale fix, re-check)");
+    };
+    let f = &d.fixes[fi];
+    let lo = d.span.lo as usize;
+    let hi = (d.span.hi as usize).max(lo);
+    let (s, e) = (utf16_at(src, lo), utf16_at(src, hi));
+    let same_span = index_in_range(expect.start, usize::MAX) == Some(s)
+        && index_in_range(expect.end, usize::MAX) == Some(e);
+    if d.code != expect.code || !same_span || f.title != expect.title {
+        return fix_error("stale", "stale fix, re-check");
+    }
     let edits: Vec<TextEdit> = f.edits.clone();
     match apply_edits(src, &edits) {
         Some(text) => json!({ "ok": true, "text": text }).to_string(),
-        None => {
-            json!({ "ok": false, "error": "the fix does not apply to this source" }).to_string()
-        }
+        None => fix_error("inapplicable", "the fix does not apply to this source"),
     }
 }
 
@@ -192,10 +235,30 @@ pub fn check(src: &str) -> String {
 pub fn format(src: &str) -> String {
     format_json(src)
 }
-/// `apply_fix(src, diag, fix) -> JSON` (see [`apply_fix_json`]).
+/// `apply_fix(src, diag, fix, code, start, end, title) -> JSON` (see [`apply_fix_json`]).
+/// The indices are JS numbers (`f64`) on purpose: validation happens in Rust, wasm-bindgen's
+/// integer glue would silently turn NaN or 1e300 into 0.
 #[wasm_bindgen]
-pub fn apply_fix(src: &str, diag: usize, fix: usize) -> String {
-    apply_fix_json(src, diag, fix)
+pub fn apply_fix(
+    src: &str,
+    diag: f64,
+    fix: f64,
+    code: &str,
+    start: f64,
+    end: f64,
+    title: &str,
+) -> String {
+    apply_fix_json(
+        src,
+        diag,
+        fix,
+        &FixExpect {
+            code,
+            start,
+            end,
+            title,
+        },
+    )
 }
 /// `explain(code) -> JSON` (see [`explain_json`]).
 #[wasm_bindgen]
@@ -240,7 +303,10 @@ mod tests {
         let start = d["start"].as_u64().unwrap() as usize;
         let units: Vec<u16> = src.encode_utf16().collect();
         let tail = String::from_utf16(&units[start..]).unwrap();
-        assert!(tail.starts_with('"'), "range points at the literal, got {tail:?}");
+        assert!(
+            tail.starts_with('"'),
+            "range points at the literal, got {tail:?}"
+        );
         assert_eq!(d["line"], 2);
     }
 
@@ -256,10 +322,30 @@ mod tests {
             .find(|(_, d)| !d["fixes"].as_array().unwrap().is_empty())
             .expect("== has a fix");
         assert_eq!(d["code"], "OXS-E0005");
-        let r = parse(&apply_fix_json(src, di, 0));
+        let exp = FixExpect {
+            code: "OXS-E0005",
+            start: d["start"].as_f64().unwrap(),
+            end: d["end"].as_f64().unwrap(),
+            title: d["fixes"][0]["title"].as_str().unwrap(),
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let r = parse(&apply_fix_json(src, di as f64, 0.0, &exp));
         assert_eq!(r["ok"], true, "{r}");
         assert!(r["text"].as_str().unwrap().contains("==="));
-        assert!(apply_fix_json(src, 99, 0).contains("\"ok\":false"));
+        assert!(apply_fix_json(src, 99.0, 0.0, &exp).contains("\"ok\":false"));
+        for bad in [
+            f64::NAN,
+            f64::INFINITY,
+            -1.0,
+            0.5,
+            1e300,
+            9_007_199_254_740_992.0,
+        ] {
+            let r = parse(&apply_fix_json(src, bad, 0.0, &exp));
+            assert_eq!(r["ok"], false, "diag {bad}: {r}");
+            let r = parse(&apply_fix_json(src, 0.0, bad, &exp));
+            assert_eq!(r["ok"], false, "fix {bad}: {r}");
+        }
     }
 
     #[test]
@@ -299,7 +385,17 @@ mod tests {
         ] {
             let _ = check_json(s);
             let _ = format_json(s);
-            let _ = apply_fix_json(s, 0, 0);
+            let _ = apply_fix_json(
+                s,
+                0.0,
+                0.0,
+                &FixExpect {
+                    code: "",
+                    start: 0.0,
+                    end: 0.0,
+                    title: "",
+                },
+            );
         }
     }
 }

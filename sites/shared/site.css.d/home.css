@@ -1,5 +1,5 @@
 /* slavekm.pl: the quiet home page. Warm paper tones, serif headings. */
-:root { --heading: var(--serif); --acc: #fbbf24; --acc-fg: #1c1209; --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --card: #292524; --line: #57534e; --code-bg: #171413; --link: #fcd34d; }
-@media (prefers-color-scheme: light) { :root { --acc: #b45309; --acc-fg: #ffffff; --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --card: #ffffff; --line: #d6d3d1; --code-bg: #f5f5f4; --link: #92400e; } }
+:root { --ctl: #75726e; --heading: var(--serif); --acc: #fbbf24; --acc-fg: #1c1209; --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --card: #292524; --line: #57534e; --code-bg: #171413; --link: #fcd34d; }
+@media (prefers-color-scheme: light) { :root { --ctl: #8d8a88; --acc: #b45309; --acc-fg: #ffffff; --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --card: #ffffff; --line: #d6d3d1; --code-bg: #f5f5f4; --link: #92400e; } }
 .hero h1 { font-weight: 600; }
 .card { border-radius: 14px; }

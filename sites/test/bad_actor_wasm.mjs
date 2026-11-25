@@ -15,7 +15,7 @@ function run(name, input, fns = ['check', 'format']) {
   for (const fn of fns) {
     const t0 = performance.now(); let status = 'ok', size = 0;
     try {
-      const out = fn === 'apply_fix' ? mod.apply_fix(input, 0, 0) : mod[fn](input);
+      const out = fn === 'apply_fix' ? mod.apply_fix(input, 0, 0, '', 0, 0, '') : mod[fn](input);
       size = out.length; JSON.parse(out);
     } catch (e) { status = 'TRAP ' + String(e).slice(0, 80); traps++; try { init(); } catch (e2) { status += ' REINIT-FAIL ' + e2; } }
     const ms = performance.now() - t0;
@@ -77,9 +77,20 @@ for (let i = 0; i < 4000; i++) {
   results.length = before; fz++;
 }
 console.log(`random fuzz: ${fz} inputs x3 fns in ${(performance.now() - t0).toFixed(0)} ms, worst call ${worst.toFixed(1)} ms, traps so far ${traps}`);
-// mid-stream: apply_fix with out-of-range indices
-for (const [d, f] of [[-1, 0], [0, -1], [2 ** 31, 0], [2 ** 53, 0], [1e300, 0], [NaN, 0], [0, 1e9]]) {
-  try { const o = mod.apply_fix('const a: i32 = 1;\nconst b: bool = a == 1;\n', d, f); console.log('apply_fix', d, f, o.slice(0, 80)); } catch (e) { console.log('apply_fix', d, f, 'THROW', String(e).slice(0, 80)); traps++; init(); }
+// apply_fix with out-of-range / non-integer indices. FLIPPED for F11: these used to be coerced to 0 and applied
+// fix 0; now every one must be refused (ok:false) and a valid, matching call must still apply.
+const FIXSRC = 'const a: i32 = 1;\nconst b: bool = a == 1;\n';
+const fdiags = JSON.parse(mod.check(FIXSRC)).diagnostics;
+const d0 = fdiags.find((d) => d.fixes.length);
+const di = fdiags.indexOf(d0);
+const fx = (d, f, src = FIXSRC) => JSON.parse(mod.apply_fix(src, d, f, d0.code, d0.start, d0.end, d0.fixes[0].title));
+for (const [d, f] of [[-1, 0], [di, -1], [2 ** 31, 0], [2 ** 53, 0], [1e300, 0], [NaN, 0], [Infinity, 0], [di, NaN], [di, 0.5], [di, 1e9]]) {
+  try { const o = fx(d, f); console.log('apply_fix', d, f, JSON.stringify(o).slice(0, 80)); if (o.ok) { console.log('FAIL: accepted a bad index'); traps++; } } catch (e) { console.log('apply_fix', d, f, 'THROW', String(e).slice(0, 80)); traps++; init(); }
+}
+{
+  const good = fx(di, 0); const stale = fx(di, 0, 'const z: bool = 2 == 2;\n' + FIXSRC);
+  console.log('apply_fix matching ok=' + good.ok + ', stale kind=' + stale.kind);
+  if (!good.ok || stale.ok || stale.kind !== 'stale') { console.log('FAIL: stale-fix guard'); traps++; }
 }
 // explain with hostile codes
 for (const c of ['', '<script>', 'OXS-E0005\0', 'x'.repeat(1e6)]) { try { mod.explain(c); } catch (e) { console.log('explain THROW', String(e).slice(0, 60)); traps++; init(); } }

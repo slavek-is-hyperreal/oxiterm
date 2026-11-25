@@ -24,6 +24,10 @@ const ALL_LANGS = ['en', 'pl', 'la']; // la = Latin: draft, written but NOT publ
 // Published languages. Default pl,en. Enable Latin later with SITES_LANGS=pl,en,la. `en` is always built (site root).
 const LANGS = ALL_LANGS.filter((l) => l === 'en' || (process.env.SITES_LANGS || 'pl,en').split(',').map((x) => x.trim()).includes(l));
 const LATIN_ON = LANGS.includes('la');
+// Content flags (off by default). `SITES_FLAGS=home.about` publishes the About block on the home page once the
+// owner has written it (blocks carry `"flag": "home.about"` in sites/i18n/*.json).
+const FLAGS = new Set((process.env.SITES_FLAGS || '').split(',').map((x) => x.trim()).filter(Boolean));
+const blockOn = (b) => !b.flag || FLAGS.has(b.flag);
 const REPO_URL = 'https://github.com/slavek-is-hyperreal/oxiterm';
 const SUPPORT_URL = 'https://buycoffee.to/smajcher';
 
@@ -81,7 +85,16 @@ function resolveLink(site, lang, href) {
   }
   if (href.startsWith('repo:')) return `${REPO_URL}/blob/main/${href.slice(5)}`;
   if (href.startsWith('repotree:')) return `${REPO_URL}/tree/main/${href.slice(9)}`;
-  return href;
+  return safeUrl(href);
+}
+/** Only http, https, mailto and relative targets may reach an href or an open: action. Control characters and
+ *  whitespace are stripped before the scheme is tested (browsers ignore them inside "java\tscript:"). */
+function safeUrl(u) {
+  const probe = String(u).replace(/[\u0000-\u0020\u007f-\u009f]/g, '').toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(probe);
+  if (scheme && !['http', 'https', 'mailto'].includes(scheme[1])) throw new Error(`link scheme not allowed: ${JSON.stringify(u)}`);
+  if (probe.startsWith('//')) throw new Error(`protocol-relative link not allowed: ${JSON.stringify(u)}`);
+  return u;
 }
 const isExternal = (u) => /^https?:\/\//.test(u);
 
@@ -205,10 +218,10 @@ function roadmapHtml(site, lang) {
   const R = ROADMAP;
   const badge = (s) => `<span class="badge s-${s}">${esc(stateLabel(lang, s))}</span>`;
   let h = `<p class="note">${esc(T(lang, 'common.roadmapSource'))}${lang === 'en' ? '' : ' ' + esc(T(lang, 'common.roadmapEnglishOnly'))}</p>`;
-  h += `<h3>${esc(T(lang, 'common.phases'))}</h3><ul class="phases">${R.phases.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.title)}</li>`).join('')}</ul>`;
-  h += `<h3>${esc(T(lang, 'common.stages7'))}</h3><ul class="phases">${R.stages7.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.name)}</li>`).join('')}</ul>`;
-  h += `<h3>${esc(T(lang, 'common.slices8'))}</h3><div class="tablewrap"><table><thead><tr><th scope="col">${esc(T(lang, 'common.colSlice'))}</th><th scope="col">${esc(T(lang, 'common.colStatus'))}</th><th scope="col">${esc(T(lang, 'common.colWhat'))}</th></tr></thead><tbody>${R.slices.map((s) => `<tr><td><strong>${esc(s.id)}</strong> ${esc(s.name)}</td><td>${badge(s.state)}</td><td>${esc(s.what)}</td></tr>`).join('')}</tbody></table></div>`;
-  h += `<h3 id="wave-log">${esc(T(lang, 'common.waveLog'))}</h3><p>${esc(T(lang, 'common.waveLogIntro'))}</p>`;
+  h += `<h2 class="sub">${esc(T(lang, 'common.phases'))}</h2><ul class="phases">${R.phases.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.title)}</li>`).join('')}</ul>`;
+  h += `<h2 class="sub">${esc(T(lang, 'common.stages7'))}</h2><ul class="phases">${R.stages7.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.name)}</li>`).join('')}</ul>`;
+  h += `<h2 class="sub">${esc(T(lang, 'common.slices8'))}</h2><div class="tablewrap"><table><thead><tr><th scope="col">${esc(T(lang, 'common.colSlice'))}</th><th scope="col">${esc(T(lang, 'common.colStatus'))}</th><th scope="col">${esc(T(lang, 'common.colWhat'))}</th></tr></thead><tbody>${R.slices.map((s) => `<tr><td><strong>${esc(s.id)}</strong> ${esc(s.name)}</td><td>${badge(s.state)}</td><td>${esc(s.what)}</td></tr>`).join('')}</tbody></table></div>`;
+  h += `<h2 class="sub" id="wave-log">${esc(T(lang, 'common.waveLog'))}</h2><p>${esc(T(lang, 'common.waveLogIntro'))}</p>`;
   h += `<div class="tablewrap"><table><thead><tr>${R.wave.head.map((c) => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${R.wave.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   h += `<p class="note"><a href="${REPO_URL}/blob/main/docs/oxi-ui.md" rel="noopener">docs/oxi-ui.md</a></p>`;
   return h;
@@ -234,7 +247,8 @@ function widget(site, lang, id, b, ctx) {
 
 function playgroundHtml(site, lang, ctx) {
   const labels = {};
-  for (const k of ['check', 'format', 'run', 'runSoon', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes']) labels[k] = T(lang, `oxiscript.playground.${k}`);
+  for (const k of ['check', 'format', 'run', 'runSoon', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes', 'staleFix', 'fixFailed', 'tooLargeTitle', 'tooLarge', 'discardAsk', 'discard', 'keepEditing']) labels[k] = T(lang, `oxiscript.playground.${k}`);
+  const compilerEnglish = T(lang, 'oxiscript.playground.compilerEnglish'); // empty on the English page
   const examples = fs.readdirSync(path.join(HERE, 'oxiscript/examples')).filter((f) => f.endsWith('.oxs')).sort().map((f) => ({ id: f.replace(/\.oxs$/, ''), src: read(path.join(HERE, 'oxiscript/examples', f)) }));
   const json = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
   return `<section class="pg" id="playground" data-wasm="${ctx.playJs}" aria-labelledby="pg-h">
@@ -251,7 +265,9 @@ function playgroundHtml(site, lang, ctx) {
 <div class="pg-pane"><div class="pg-mirror" id="pg-mirror" aria-hidden="true"></div>
 <textarea id="pg-src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" maxlength="200000" aria-label="${esc(labels.sourceLabel)}"></textarea></div>
 </div>
+<p class="pg-confirm" id="pg-confirm" role="alert" hidden></p>
 <p class="pg-status" id="pg-status" role="status">${esc(labels.loading)}</p>
+${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 <ul class="pg-diags" id="pg-diags"></ul>
 <div class="pg-explain" id="pg-explain" hidden></div>
 <script type="application/json" id="pg-labels">${json(labels)}</script>
@@ -274,7 +290,7 @@ function layout(site, lang, id, page, ctx) {
   const hreflangs = LANGS.map((l) => `<link rel="alternate" hreflang="${I18N[l].meta.htmlLang}" href="${urlFor(l)}">`).join('') + `<link rel="alternate" hreflang="x-default" href="${urlFor('en')}">`;
   const draft = isDraft(lang) ? `<p class="draft" role="note">${esc(t('common.draft'))}</p>` : '';
   const hero = page.hero ? `<header class="hero"><p class="eyebrow">${esc(t(`common.sites.${site}`))}</p><h1>${inline(site, lang, page.hero.title)}</h1><p class="lead">${inline(site, lang, page.hero.lead)}</p></header>` : `<h1>${esc(page.h1 || page.title)}</h1>${page.lead ? `<p class="lead">${inline(site, lang, page.lead)}</p>` : ''}`;
-  const body = (page.blocks || []).map((b) => renderBlock(site, lang, b, ctx)).join('\n');
+  const body = (page.blocks || []).filter(blockOn).map((b) => renderBlock(site, lang, b, ctx)).join('\n');
   const viewLink = `<a class="viewlink" href="/app/?local=1&amp;page=${lang}/${id}.thtml" title="${esc(t('common.viewInOxiuiTitle'))}">${esc(t('common.viewInOxiui'))}</a>`;
   const title = id === 'index' ? `${t(`common.sites.${site}`)}: ${page.title}` : `${page.title} · ${t(`common.sites.${site}`)}`;
   const pal = PALETTE[site];
@@ -282,7 +298,7 @@ function layout(site, lang, id, page, ctx) {
 <html lang="${I18N[lang].meta.htmlLang}" data-site="${site}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+${ctx.is404 ? META_CSP + '\n' : ''}<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(page.desc || t(`${site}.pages.index.desc`))}">
 <meta name="color-scheme" content="dark light">
@@ -296,7 +312,7 @@ ${hreflangs}
 <body>
 <a class="skip" href="#main">${esc(t('common.skip'))}</a>
 <header class="top">
-<div class="bar projects" aria-label="${esc(t('common.projects'))}"><div class="wrap"><span class="bar-label">${esc(t('common.projects'))}:</span> ${projects}<span class="spacer"></span><nav class="lang" aria-label="${esc(t('common.language'))}">${langs}</nav></div></div>
+<nav class="bar projects" aria-label="${esc(t('common.projects'))}"><div class="wrap"><span class="bar-label">${esc(t('common.projects'))}:</span> ${projects}<span class="spacer"></span><nav class="lang" aria-label="${esc(t('common.language'))}">${langs}</nav></div></nav>
 <div class="bar"><div class="wrap"><a class="brand" href="${pagePath(lang, 'index')}">${esc(t(`common.sites.${site}`))}</a><nav class="main" aria-label="${esc(t('common.menu'))}">${nav}</nav></div></div>
 </header>
 <main id="main" class="wrap">
@@ -362,7 +378,7 @@ text { fg: #e2e8f0; }
     }
     out.push('  </box>');
   };
-  for (const b of page.blocks || []) {
+  for (const b of (page.blocks || []).filter(blockOn)) {
     switch (b.t) {
       case 'h2': case 'h3': textL('h2', plain(b.x)); break;
       case 'p': case 'note': textL('p', plain(b.x)); break;
@@ -418,13 +434,23 @@ function patchClient() {
   must("'/oxiui/local/pages.json'", "'./pages.json'");
   must("'/oxiui/local/asset/'", "'./asset/'");
   must('/*__OXITERM_WEB_TEST_HOOK__*/', '');
-  h = h.replace('<title>OxiTerm Console</title>', '<title>OxiUI</title>').replace(/OxiTerm Console/g, 'OxiUI');
+  h = h.replace('<title>OxiTerm Console</title>', '<title>OxiUI</title><link rel="icon" href="data:,">').replace(/OxiTerm Console/g, 'OxiUI');
   // No third-party requests: the Lottie CDN script is only needed for Lottie media, which no site page uses.
   h = h.replace(/\s*<script src="https:\/\/cdnjs[^>]*><\/script>/g, '');
   if (/https?:\/\/(?!localhost)[^"' )]*\.(js|css)/.test(h.replace(/<script type="module">[\s\S]*$/, ''))) throw new Error('app client: external resource remains');
   // Fonts come from the embedded faces in local mode; drop the third-party font request (no trackers).
   h = h.replace(/\s*<link rel="preconnect"[^>]*>/g, '').replace(/\s*<link href="https:\/\/fonts\.googleapis\.com[^>]*>/g, '');
-  return h;
+  // F7: the static demo has no App Server, so there is no app token to keep. Every Web Storage access of the copied
+  // client goes to an inert object: nothing is read from or written to the visitor's browser.
+  h = h.replace(/\b(?:local|session)Storage\b/g, 'noStore'); // also in comments, so the output never names Web Storage
+  must('<script type="module">\n', '<script type="module">\n        const noStore = { getItem() { return null; }, setItem() {}, removeItem() {} }; // static site: nothing is stored\n');
+  // 0x33 open-URL: http(s) and mailto only (generated `open:` links never need anything else)
+  must("window.open(url, '_blank', 'noopener');", "if (/^(https?:|mailto:)/i.test(url)) window.open(url, '_blank', 'noopener');");
+  // F6: no inline script or style, so the strict CSP applies to /app/ too. The caller writes both files.
+  const styleM = /<style>([\s\S]*?)<\/style>/.exec(h);
+  const scriptM = /<script type="module">([\s\S]*?)<\/script>/.exec(h);
+  if (!styleM || !scriptM) throw new Error('app client: inline <style>/<script type="module"> not found');
+  return { html: h, css: styleM[1], js: scriptM[1], styleTag: styleM[0], scriptTag: scriptM[0] };
 }
 const hashOf = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 10);
 
@@ -475,8 +501,14 @@ function buildSite(site) {
   const localPkg = process.env.OXI_LOCAL_PKG || path.join(HERE, '.build/pkg_local');
   if (localPkg) {
     const hash = copyBundle(localPkg, path.join(out, 'app'), ['oxiterm_local.js', 'oxiterm_local_bg.wasm']);
-    let client = patchClient().replace("'./oxiterm_local.js'", `'./${hash}/oxiterm_local.js'`);
-    if (!client.includes(`./${hash}/oxiterm_local.js`)) throw new Error('app client: bundle import not found');
+    const pc = patchClient();
+    // the client script lives in /app/<content hash>/ and imports the wasm bundle from its own hashed directory
+    if (!pc.js.includes("'./oxiterm_local.js'")) throw new Error('app client: bundle import not found');
+    const cjs = pc.js.replace("'./oxiterm_local.js'", `'../${hash}/oxiterm_local.js'`);
+    const ch = hashOf(cjs + pc.css);
+    write(path.join(out, 'app', ch, 'client.js'), cjs);
+    write(path.join(out, 'app', ch, 'client.css'), pc.css);
+    const client = pc.html.replace(pc.styleTag, () => `<link rel="stylesheet" href="./${ch}/client.css">`).replace(pc.scriptTag, () => `<script type="module" src="./${ch}/client.js"></script>`);
     write(path.join(out, 'app/index.html'), client);
     const extra = {};
     for (const g of GALLERY) {
@@ -510,19 +542,40 @@ function buildSite(site) {
       urls.push(ORIGIN[site] + pagePath(lang, id));
     }
   }
-  write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: T('en', 'common.notFound.title'), h1: T('en', 'common.notFound.title'), lead: LANGS.map((l) => T(l, 'common.notFound.lead')).join(' / '), blocks: [{ t: 'links', items: [{ label: LANGS.map((l) => T(l, 'common.notFound.home')).join(' / '), href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '' }));
+  write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: T('en', 'common.notFound.title'), h1: T('en', 'common.notFound.title'), lead: LANGS.map((l) => T(l, 'common.notFound.lead')).join(' / '), blocks: [{ t: 'links', items: [{ label: LANGS.map((l) => T(l, 'common.notFound.home')).join(' / '), href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '', is404: true }));
   write(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${ORIGIN[site]}/sitemap.xml\n`);
   write(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
-  write(path.join(out, '_headers'), headers());
+  write(path.join(out, '_headers'), headers([...LANGS.flatMap((lang) => SITES[site].pages.map((id) => ({ p: pagePath(lang, id), wasm: site === 'oxiscript' && id === 'index' }))), { p: '/404.html', wasm: false }]));
   return out;
 }
 
-function headers() {
-  return `# Cloudflare Pages headers (see sites/DEPLOY.md)
+// Content-Security-Policy (F6). Cloudflare Pages merges the headers of EVERY matching `_headers` rule (two CSPs would
+// both be enforced = their intersection), so the policies are attached to explicit, NON-overlapping paths: one rule
+// per HTML page and one for /app/*. sites/check.mjs verifies that no path gets two different CSPs.
+const CSP_BASE = ["default-src 'self'", "img-src 'self' data:", "font-src 'self'", "connect-src 'self'", "frame-src 'self'", "frame-ancestors 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"];
+const cspPage = (wasm, meta = false) => [...CSP_BASE.filter((d) => !(meta && d.startsWith('frame-ancestors'))), `script-src 'self'${wasm ? " 'wasm-unsafe-eval'" : ''}`, "style-src 'self'"].join('; ');
+// A real 404 is matched by Cloudflare against the REQUESTED path (which has no per-page rule), so 404.html carries its
+// policy in a <meta> too (frame-ancestors is not allowed in a meta policy and is simply left out there).
+const META_CSP = `<meta http-equiv="Content-Security-Policy" content="${cspPage(false, true)}">`;
+// /app/* (the copied 7.1 client, now with its script and style in files): wasm for the OxiUI core, blob: for the
+// media layer / canvas helpers. Still no inline script or style, no remote origins.
+const cspApp = () => [...CSP_BASE.map((d) => (d.startsWith('img-src') ? "img-src 'self' data: blob:" : d)), "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self'", "media-src 'self' blob:", "worker-src 'self' blob:"].join('; ');
+
+function headers(htmlPaths) {
+  const pageRules = htmlPaths.map(({ p, wasm }) => `${p}\n  Content-Security-Policy: ${cspPage(wasm)}\n`).join('\n');
+  return `# Cloudflare Pages headers (see sites/DEPLOY.md). Rules MERGE: do not add a second Content-Security-Policy to a path.
 /*
   X-Content-Type-Options: nosniff
-  Referrer-Policy: no-referrer
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+
+# One CSP per HTML page (strict: no inline script or style, own origin only; 'wasm-unsafe-eval' only on the playground page)
+${pageRules}
+/app/
+  Content-Security-Policy: ${cspApp()}
+
+/app/*
+  Content-Security-Policy: ${cspApp()}
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

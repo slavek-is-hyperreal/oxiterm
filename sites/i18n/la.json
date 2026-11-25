@@ -20,7 +20,7 @@
     "supportText": "Opus sumptibus unius hominis fit. Si tibi prodest, cafeum donare iuvat (proposita: novum computatrum ad aedificandum, tabellae ESP32).",
     "supportButton": "Cafeum mihi dona",
     "repo": "Codex fontis in GitHub",
-    "footerFine": "Sine vestigiis, sine crustulis, sine scriptis alienis. Codex sub licentia MIT vel Apache-2.0 est.",
+    "footerFine": "Sine vestigiis, sine crustulis, sine scriptis alienis, nihil in perlustratore tuo servatur. Codex sub licentia MIT vel Apache-2.0 est.",
     "demoHint": "Hoc OxiUI intra perlustratorem tuum agit, sine servo. Circiter 1,5 MB deponit.",
     "runDemo": "Demonstrationem vivam incipe",
     "demoWeight": "Nihil usquam mittitur: pagina a WebAssembly in instrumento tuo pingitur.",
@@ -62,7 +62,7 @@
         "desc": "Pagina domestica cum operibus OxiUI et OxiScript.",
         "hero": {
           "title": "slavekm.pl",
-          "lead": "[LOCUS VACUUS: una duaeve sententiae de te et de hac pagina. Dominus scribet.]"
+          "lead": "Duo proiecta aperta: OxiUI, lingua interfaciei pro terminalibus, perlustratoribus et WebAssembly, et OxiScript, lingua typis munita in WebAssembly compilata."
         },
         "blocks": [
           {
@@ -75,11 +75,34 @@
           },
           {
             "t": "h2",
-            "x": "De me"
+            "x": "Codex fontis et auxilium"
           },
           {
             "t": "p",
-            "x": "[LOCUS VACUUS: quis, quid, cur. Dominus scribet. Nulla adhuc vita hic narratur.]"
+            "x": "Codex fontis in GitHub est. Opus ab uno homine solvitur, et cafeum iuvat."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Codex fontis in GitHub",
+                "href": "https://github.com/slavek-is-hyperreal/oxiterm"
+              },
+              {
+                "label": "Cafeum mihi dona",
+                "href": "https://buycoffee.to/smajcher"
+              }
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "De me",
+            "flag": "home.about"
+          },
+          {
+            "t": "p",
+            "x": "[LOCUS VACUUS: quis, quid, cur. Dominus scribet. Nulla adhuc vita hic narratur.]",
+            "flag": "home.about"
           },
           {
             "t": "widget",
@@ -763,7 +786,7 @@
               },
               {
                 "label": "llms.txt (a gradu DevKit additur)",
-                "href": "repo:llms.txt"
+                "href": "repo:docs/oxiscript/llms.txt"
               }
             ]
           }
@@ -791,7 +814,15 @@
       "warning": "monitum",
       "error": "error",
       "fixes": "Quo modo corrigatur:",
-      "thtmlNote": "Palaestra editor est et paginam simplicem requirit."
+      "thtmlNote": "Palaestra editor est et paginam simplicem requirit.",
+      "staleFix": "Codex post ultimam examinationem mutatus est. Iterum examino; remedium iterum preme.",
+      "fixFailed": "Hoc remedium adhiberi non potuit.",
+      "tooLargeTitle": "Codex nimis magnus",
+      "tooLarge": "Palaestra non plus quam {n} octetos accipit.",
+      "discardAsk": "Mutationes tuas exemplo {name} substituere?  Mutationes in editore peribunt.",
+      "discard": "Substitue",
+      "keepEditing": "Pergere edere",
+      "compilerEnglish": "Nuntii compilatoris Anglice sunt."
     },
     "course": {
       "levels": [

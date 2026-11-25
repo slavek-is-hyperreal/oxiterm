@@ -25,7 +25,7 @@ a:hover { text-decoration-thickness: 2px; }
 h1, h2, h3 { font-family: var(--heading); line-height: 1.2; margin: 1.6em 0 0.5em; }
 h1 { font-size: clamp(1.9rem, 6vw, 3rem); margin-top: 0.8em; }
 h2 { font-size: clamp(1.35rem, 3.6vw, 1.8rem); }
-h3 { font-size: 1.15rem; }
+h3, h2.sub { font-size: 1.15rem; }
 p, ul, ol { margin: 0.8em 0; }
 li { margin: 0.25em 0; }
 code { font-family: var(--mono); font-size: 0.92em; background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 4px; }
@@ -48,7 +48,7 @@ code { font-family: var(--mono); font-size: 0.92em; background: var(--code-bg); 
 .main a { color: var(--fg); }
 
 /* buttons */
-.btn { display: inline-block; font: inherit; font-weight: 600; color: var(--fg); background: transparent; border: 2px solid var(--line); border-radius: 8px; padding: 8px 16px; min-height: 44px; text-decoration: none; cursor: pointer; line-height: 1.5; }
+.btn { display: inline-block; font: inherit; font-weight: 600; color: var(--fg); background: transparent; border: 2px solid var(--ctl); border-radius: 8px; padding: 8px 16px; min-height: 44px; text-decoration: none; cursor: pointer; line-height: 1.5; }
 .btn:hover:not(:disabled) { border-color: var(--acc); }
 .btn.primary { background: var(--acc); color: var(--acc-fg); border-color: var(--acc); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -96,8 +96,8 @@ summary { cursor: pointer; padding: 8px 0; min-height: 44px; }
 
 /* playground (oxiscript) */
 .pg-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
-.pg-bar select { font: inherit; min-height: 44px; background: var(--card); color: var(--fg); border: 2px solid var(--line); border-radius: 8px; padding: 0 8px; }
-.pg-editor { display: flex; border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); font: 0.9rem/1.5 var(--mono); height: 22rem; overflow: hidden; }
+.pg-bar select { font: inherit; min-height: 44px; background: var(--card); color: var(--fg); border: 2px solid var(--ctl); border-radius: 8px; padding: 0 8px; }
+.pg-editor { display: flex; border: 1px solid var(--ctl); border-radius: 8px; background: var(--code-bg); font: 0.9rem/1.5 var(--mono); height: 22rem; overflow: hidden; }
 .pg-gutter { margin: 0; padding: 10px 8px; text-align: right; color: var(--muted); user-select: none; border-right: 1px solid var(--line); overflow: hidden; min-width: 3ch; font: inherit; }
 .pg-gutter .e { color: var(--err); font-weight: 700; } .pg-gutter .w { color: var(--warn); font-weight: 700; }
 .pg-pane { position: relative; flex: 1; min-width: 0; }
@@ -106,6 +106,8 @@ summary { cursor: pointer; padding: 8px 0; min-height: 44px; }
 #pg-src { background: transparent; color: var(--fg); resize: none; outline-offset: -3px; caret-color: var(--acc); }
 .pg-mirror mark { color: transparent; background: transparent; text-decoration: underline wavy; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .pg-mirror mark.e { text-decoration-color: var(--err); } .pg-mirror mark.w { text-decoration-color: var(--warn); }
+.pg-confirm { border: 2px solid var(--warn); border-radius: 6px; padding: 8px 12px; margin: 8px 0; background: var(--card); }
+.pg-confirm[hidden] { display: none; }
 .pg-status { color: var(--muted); font-size: 0.92rem; min-height: 1.6em; }
 .pg-diags { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
 .pg-diags li { border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: 8px 12px; background: var(--card); }

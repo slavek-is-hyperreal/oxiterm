@@ -3,7 +3,7 @@
 //! and offer at least one fix. Examples shown on any page come from this directory, so the pages
 //! cannot show code the compiler rejects.
 
-use oxiscript_playground::{apply_fix_json, check_json, format_json};
+use oxiscript_playground::{apply_fix_json, check_json, format_json, FixExpect};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -32,12 +32,18 @@ fn all_site_examples() {
         if MUST_FAIL.contains(&name.as_str()) {
             assert_eq!(v["ok"], false, "{name} must have an error");
             let diags = v["diagnostics"].as_array().unwrap();
-            let (di, _) = diags
+            let (di, d) = diags
                 .iter()
                 .enumerate()
                 .find(|(_, d)| !d["fixes"].as_array().unwrap().is_empty())
                 .unwrap_or_else(|| panic!("{name}: no fix offered"));
-            let fixed = parse(&apply_fix_json(&src, di, 0));
+            let exp = FixExpect {
+                code: d["code"].as_str().unwrap(),
+                start: d["start"].as_f64().unwrap(),
+                end: d["end"].as_f64().unwrap(),
+                title: d["fixes"][0]["title"].as_str().unwrap(),
+            };
+            let fixed = parse(&apply_fix_json(&src, di as f64, 0.0, &exp));
             assert_eq!(fixed["ok"], true, "{name}: {fixed}");
             let again = parse(&check_json(fixed["text"].as_str().unwrap()));
             assert_eq!(again["ok"], true, "{name} after the fix: {again}");
@@ -50,7 +56,11 @@ fn all_site_examples() {
             std::fs::write(&p, f["text"].as_str().unwrap()).unwrap();
             continue;
         }
-        assert_eq!(f["text"].as_str().unwrap(), src, "{name} is not in canonical format (run with OXS_REFORMAT=1)");
+        assert_eq!(
+            f["text"].as_str().unwrap(),
+            src,
+            "{name} is not in canonical format (run with OXS_REFORMAT=1)"
+        );
     }
     assert!(n >= 5, "found only {n} examples");
 }

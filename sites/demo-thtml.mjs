@@ -2,6 +2,12 @@
 // Built-in actions only (inc/dec/clear/toggle/set + bind-state/bind-show): it needs no server.
 export function demoThtml({ site, mobile, t, pal, tx }) {
   const W = mobile ? 36 : 100;
+  // event-htmx splits on ';' and ',' and has no escape syntax (oxiterm-core/src/state.rs), so a label
+  // containing either would silently become two actions: refuse it at build time.
+  const setVal = (s) => {
+    if (/[;,]/.test(s)) throw new Error(`demo: "${s}" contains ';' or ',' and cannot be used in event-htmx set:`);
+    return tx(s);
+  };
   const col = (inner) => (mobile ? inner : `<box style="flex-direction: column; flex: 1; margin-right: 1;">${inner}</box>`);
   const counter = `<box class="card">
     <text class="dim">${tx(t('oxiui.demo.counter'))}</text>
@@ -20,9 +26,9 @@ export function demoThtml({ site, mobile, t, pal, tx }) {
   const mode = `<box class="card">
     <text class="dim">${tx(t('oxiui.demo.mode'))}</text>
     <box style="flex-direction: ${mobile ? 'column' : 'row'};">
-      <box class="btn" event-htmx="set:mode=${tx(t('oxiui.demo.modeA'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeA'))}</text></box>
-      <box class="btn" event-htmx="set:mode=${tx(t('oxiui.demo.modeB'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeB'))}</text></box>
-      <box class="btn" event-htmx="set:mode=${tx(t('oxiui.demo.modeC'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeC'))}</text></box>
+      <box class="btn" event-htmx="set:mode=${setVal(t('oxiui.demo.modeA'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeA'))}</text></box>
+      <box class="btn" event-htmx="set:mode=${setVal(t('oxiui.demo.modeB'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeB'))}</text></box>
+      <box class="btn" event-htmx="set:mode=${setVal(t('oxiui.demo.modeC'))}"><text style="height: 1;">${tx(t('oxiui.demo.modeC'))}</text></box>
     </box>
     <box style="flex-direction: row;"><text class="dim">${tx(t('oxiui.demo.modeIs'))} </text><text bind-state="mode" style="fg: #4ade80; height: 1;">-</text></box>
   </box>`;

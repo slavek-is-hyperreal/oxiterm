@@ -20,7 +20,7 @@
     "supportText": "The work is paid for by one person. If it is useful to you, a coffee helps (goals: a new build machine, ESP32 boards).",
     "supportButton": "Buy me a coffee",
     "repo": "Source code on GitHub",
-    "footerFine": "No trackers, no cookies, no third-party scripts. Code is MIT or Apache-2.0.",
+    "footerFine": "No trackers, no cookies, no third-party scripts, and nothing is stored in your browser. Code is MIT or Apache-2.0.",
     "demoHint": "This runs OxiUI inside your browser, with no server. It downloads about 1.5 MB.",
     "runDemo": "Start the live demo",
     "demoWeight": "Nothing is sent anywhere: the page is rendered by WebAssembly on your device.",
@@ -62,7 +62,7 @@
         "desc": "Home page with the OxiUI and OxiScript projects.",
         "hero": {
           "title": "slavekm.pl",
-          "lead": "[PLACEHOLDER: one or two sentences about who you are and what this page is. The owner writes this.]"
+          "lead": "Two open-source projects: OxiUI, a UI language for terminals, browsers and WebAssembly, and OxiScript, a typed language that compiles to WebAssembly."
         },
         "blocks": [
           {
@@ -75,11 +75,34 @@
           },
           {
             "t": "h2",
-            "x": "About"
+            "x": "Source code and support"
           },
           {
             "t": "p",
-            "x": "[PLACEHOLDER: who, what, why. Written by the owner. Nothing here is a biography yet.]"
+            "x": "The source code is on GitHub. The work is paid for by one person, and a coffee helps."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Source code on GitHub",
+                "href": "https://github.com/slavek-is-hyperreal/oxiterm"
+              },
+              {
+                "label": "Buy me a coffee",
+                "href": "https://buycoffee.to/smajcher"
+              }
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "About",
+            "flag": "home.about"
+          },
+          {
+            "t": "p",
+            "x": "[PLACEHOLDER: who, what, why. Written by the owner. Nothing here is a biography yet.]",
+            "flag": "home.about"
           },
           {
             "t": "widget",
@@ -763,7 +786,7 @@
               },
               {
                 "label": "llms.txt (being added by the DevKit stage)",
-                "href": "repo:llms.txt"
+                "href": "repo:docs/oxiscript/llms.txt"
               }
             ]
           }
@@ -791,7 +814,15 @@
       "warning": "warning",
       "error": "error",
       "fixes": "How to fix:",
-      "thtmlNote": "The playground is an editor and needs the plain web page."
+      "thtmlNote": "The playground is an editor and needs the plain web page.",
+      "staleFix": "The code changed since the last check. Checking again; press the fix button once more.",
+      "fixFailed": "This fix could not be applied.",
+      "tooLargeTitle": "Source too large",
+      "tooLarge": "The playground accepts at most {n} bytes.",
+      "discardAsk": "Replace your edits with {name}? The changes in the editor will be lost.",
+      "discard": "Replace",
+      "keepEditing": "Keep editing",
+      "compilerEnglish": ""
     },
     "course": {
       "levels": [

@@ -1,6 +1,6 @@
 /* OxiUI: terminal-flavoured. Monospace headings, green phosphor accent, prompt-style markers. */
-:root { --heading: var(--mono); --acc: #4ade80; --acc-fg: #03140a; --bg: #0b1220; --card: #101a2e; --line: #1e3a5f; --code-bg: #08101c; }
-@media (prefers-color-scheme: light) { :root { --acc: #15803d; --acc-fg: #ffffff; --bg: #f4f8f4; --card: #ffffff; --line: #b6c9bb; --code-bg: #e9f0ea; } }
+:root { --ctl: #556b88; --heading: var(--mono); --acc: #4ade80; --acc-fg: #03140a; --bg: #0b1220; --card: #101a2e; --line: #1e3a5f; --code-bg: #08101c; }
+@media (prefers-color-scheme: light) { :root { --ctl: #7a8987; --acc: #137536; --acc-fg: #ffffff; --bg: #f4f8f4; --card: #ffffff; --line: #b6c9bb; --code-bg: #e9f0ea; } }
 h1::before { content: "> "; color: var(--acc); }
 h2::before { content: "## "; color: var(--acc); font-weight: 400; }
 .brand::before { content: "$ "; color: var(--acc); }
