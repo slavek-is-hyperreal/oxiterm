@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
-const { parseReport, toPosition, selectFixAll, displayMessage } = require("../out/convert.js");
+const { parseReport, toPosition, selectFixAll, displayMessage, semicolonInsertions } = require("../out/convert.js");
 
 const SNAP = path.join(__dirname, "..", "..", "..", "oxiscript", "oxiscript-cli", "tests", "snapshots");
 const syntax = fs.readFileSync(path.join(SNAP, "check_bad_syntax.json"), "utf8");
@@ -54,4 +54,13 @@ test("advice fixes are shown in the message", () => {
   const d = { code: "OXS-E0300", severity: "error", message: "m", file: "f", range: { start: {}, end: {} },
     fixes: [{ title: "do this", applicability: "advice", edits: [] }] };
   assert.strictEqual(displayMessage(d), "m\nhelp: do this");
+});
+
+test("semicolonInsertions accepts only text that differs by inserted semicolons", () => {
+  assert.deepStrictEqual(semicolonInsertions("a\nb c\n", "a;\nb c;\n"), [{ line: 0, character: 1 }, { line: 1, character: 3 }]);
+  assert.deepStrictEqual(semicolonInsertions("a\r\nb", "a;\r\nb;"), [{ line: 0, character: 1 }, { line: 1, character: 1 }]);
+  assert.deepStrictEqual(semicolonInsertions("x", "x"), []);
+  assert.strictEqual(semicolonInsertions("a", "b"), undefined);
+  assert.strictEqual(semicolonInsertions("ab", "a"), undefined);
+  assert.strictEqual(semicolonInsertions("a\rb", "a;\rb"), undefined); // lone CR: line numbering is the editor's
 });

@@ -31,3 +31,5 @@
 - --fix convergence guard (syntax count must drop, else revert), for-in fix demoted, exception detection scans whole line, run/build type-check first, extension matches `files[0]`.
 - Gate: cargo test -p oxiscript-cli 1+23 green, clippy -D warnings clean, npm test 20/20, vsix builds.
 - Lead items: Cargo.lock (oxiscript-cli deps), editors/vscode-oxiscript/package-lock.json, .claude/skills/README.md row for oxiscript-authoring (not edited), drop HANDOFF-8d.md when merged.
+
+**Gate counts after BAD ACTOR fixes (lead, 2026-11-25):** cargo test 1 + 18 + 23 + 4, npm test 28/28.

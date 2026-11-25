@@ -56,10 +56,11 @@ function fakeVscode(handlers, state) {
     },
     workspace: {
       textDocuments: [],
-      getConfiguration: () => ({ get: (k, d) => (k === "oxiPath" ? state.oxi : k === "check.debounceMs" ? 0 : d) }),
+      getConfiguration: () => ({ get: (k, d) => (state.cfg && k in state.cfg ? state.cfg[k] : k === "oxiPath" ? state.oxi : k === "check.debounceMs" ? 0 : d) }),
       getWorkspaceFolder: () => undefined,
       onDidOpenTextDocument: reg("open"),
       onDidSaveTextDocument: reg("save"),
+      onWillSaveTextDocument: reg("willsave"),
       onDidChangeTextDocument: reg("change"),
       onDidCloseTextDocument: reg("close"),
       onDidChangeConfiguration: reg("config"),
@@ -152,4 +153,57 @@ test("a missing oxi is reported once, not per save", async () => {
   await new Promise((r) => setTimeout(r, 300));
   assert.strictEqual(state.warnings.length, 1);
   assert.match(state.warnings[0], /oxi/);
+});
+
+// ---- semicolon assistant ----------------------------------------------------------------------
+
+function applyInsertions(text, edits) {
+  const lines = text.split("\n");
+  const offs = [];
+  let acc = 0;
+  for (const l of lines) { offs.push(acc); acc += l.length + 1; }
+  const at = (e) => offs[e.range.start.line] + e.range.start.character;
+  let out = text;
+  for (const e of [...edits].sort((a, b) => at(b) - at(a))) out = out.slice(0, at(e)) + e.newText + out.slice(at(e));
+  return out;
+}
+
+async function willSave(handlers, d) {
+  let p;
+  handlers.willsave[0]({ document: d, waitUntil: (x) => { p = x; } });
+  return p;
+}
+
+const TS_STYLE = "import { Log } from \"host:log\"\nconst a: i32 = 1\nlet b = a +\n  2\nfunction f(x: i32): i32 {\n  const y = x * (\n    2 + 3\n  )\n  return y\n}\nexport function main(log: Log): void {\n  log.write(2, \"\u{1F600}\")\n}\n";
+
+test("fix on save inserts only the missing semicolons, not inside multi-line expressions", async (t) => {
+  if (!fs.existsSync(OXI)) return t.skip("no oxi binary");
+  const { handlers, state } = load(OXI);
+  const d = doc(TS_STYLE, file);
+  const edits = await willSave(handlers, d);
+  const out = applyInsertions(TS_STYLE, edits);
+  assert.ok(edits.length >= 6, String(edits.length));
+  assert.ok(out.includes("let b = a +\n  2;\n") && out.includes("x * (\n    2 + 3\n  );\n"), out);
+  assert.ok(out.includes('log.write(2, "\u{1F600}");'), out);
+  assert.strictEqual(out.replace(/;/g, ""), TS_STYLE.replace(/;/g, ""));
+  // valid files and files with other problems: no change
+  assert.deepStrictEqual(await willSave(handlers, doc("export function f(): i32 {\n  return 1;\n}\n", file)), []);
+  assert.deepStrictEqual(await willSave(handlers, doc("const a: i32 = 1;\nconst b: bool = a == 1;\n", file)), []);
+  assert.deepStrictEqual(await willSave(handlers, doc("const c: i32 = 1\n[1]\n", file)), []);
+  // the setting turns it off
+  state.cfg = { "semicolons.fixOnSave": false };
+  assert.deepStrictEqual(await willSave(handlers, d), []);
+});
+
+test("quick fix adds all missing semicolons of the file", async (t) => {
+  if (!fs.existsSync(OXI)) return t.skip("no oxi binary");
+  const { handlers, state } = load(OXI);
+  const d = doc(TS_STYLE, file);
+  handlers.open[0](d);
+  const diags = await until(() => state.diags.get(d.uri.toString()));
+  const acts = state.actions.provideCodeActions(d, diags[0].range);
+  const a = acts.find((x) => /^Add missing semicolons/.test(x.title));
+  assert.ok(a, acts.map((x) => x.title).join("|"));
+  const out = applyInsertions(TS_STYLE, a.edit.edits.map((e) => ({ range: e.range, newText: e.text })));
+  assert.ok(out.includes("let b = a +\n  2;\n"), out);
 });

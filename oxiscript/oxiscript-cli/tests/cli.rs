@@ -217,8 +217,8 @@ fn project_idl_is_resolved_and_errors_are_reported() {
     let o = oxi(&["check", "main.oxs"], &d, None);
     assert_eq!(o.status.code(), Some(2));
     assert!(text(&o).contains("host:nothing@1"), "{}", text(&o));
-    // a project IDL replaces the built-in interface of the same module
-    std::fs::write(d.join("oxi.toml"), "[package]\nname = \"p\"\nversion = \"0.1.0\"\n").unwrap();
+    // a project IDL replaces the built-in interface of the same module (F2: `needs` must now list what `main` takes)
+    std::fs::write(d.join("oxi.toml"), "[package]\nname = \"p\"\nversion = \"0.1.0\"\nneeds = [\"host:log@1\"]\n").unwrap();
     std::fs::write(d.join("idl/log.idl"), "interface Log \"host:log\" @1 { fn write(level: u8, msg: str); fn flush(); }\n").unwrap();
     std::fs::write(d.join("main.oxs"), "import { Log } from \"host:log\";\nexport function main(log: Log): void { log.flush(); }\n").unwrap();
     assert_eq!(oxi(&["check", "main.oxs"], &d, None).status.code(), Some(0));

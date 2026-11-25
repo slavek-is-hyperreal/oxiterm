@@ -14,7 +14,8 @@
 //! `build` then writes the bytes to `<package name>.wasm`; `run` instantiates them with
 //! `oxiscript-runtime`, handing it the capabilities named by `oxi.toml` `needs` in order.
 
-use crate::check::{hosts_for, HostCache, EXIT_FATAL, EXIT_FINDINGS};
+use crate::check::{project_for, HostCache, EXIT_FATAL, EXIT_FINDINGS};
+use crate::needs;
 use crate::project::{self, Entry};
 use crate::report;
 use std::collections::HashMap;
@@ -25,23 +26,26 @@ pub const EXIT_NOT_AVAILABLE: i32 = 3;
 
 pub fn run(cmd: &str, paths: &[PathBuf]) -> i32 {
     let entry = paths.first().cloned().unwrap_or_else(|| PathBuf::from("main.oxs"));
-    let src = match std::fs::read_to_string(&entry) {
+    let src = match project::read_regular(&entry, project::MAX_SOURCE_BYTES) {
         Ok(s) => s,
-        Err(e) => {
+        Err(project::ReadError::Skipped(e) | project::ReadError::Failed(e) | project::ReadError::TooLarge(e) | project::ReadError::NotUtf8(e)) => {
             eprintln!("error: {}: {e}", entry.display());
             return EXIT_FATAL;
         }
     };
     let mut cache: HostCache = HashMap::new();
-    let hosts = match hosts_for(&mut cache, &entry) {
-        Ok(h) => h.clone(),
+    let prj = match project_for(&mut cache, &entry) {
+        Ok(h) => h,
         Err(e) => {
             eprintln!("error: {e}");
             return EXIT_FATAL;
         }
     };
-    let checked = project::check_entry(&Entry { path: &entry, src }, &hosts);
-    let diags = report::collect(&checked);
+    let checked = project::check_entry(&Entry { path: &entry, src }, &prj.opts);
+    let mut diags = report::collect(&checked);
+    if let Some(m) = &prj.manifest {
+        diags.extend(needs::check(&checked, m, &prj.opts.hosts));
+    }
     if !diags.is_empty() {
         let sources: HashMap<String, String> = checked.files.iter().map(|f| (f.display.clone(), f.src.clone())).collect();
         for d in &diags {

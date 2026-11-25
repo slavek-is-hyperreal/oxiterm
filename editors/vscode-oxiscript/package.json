@@ -11,6 +11,13 @@
   "keywords": ["oxiscript", "oxs", "oxi"],
   "main": "./out/extension.js",
   "activationEvents": ["onLanguage:oxiscript"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "oxiscript.oxiPath (the program the extension runs) is only read from user or machine settings, never from the workspace; `oxi` itself is looked up on PATH.",
+      "restrictedConfigurations": ["oxiscript.oxiPath"]
+    }
+  },
   "contributes": {
     "languages": [
       {
@@ -43,8 +50,14 @@
         "oxiscript.oxiPath": {
           "type": "string",
           "default": "oxi",
-          "scope": "machine-overridable",
-          "description": "Path to the `oxi` executable. The default finds `oxi` on PATH."
+          "scope": "machine",
+          "description": "Absolute path to the `oxi` executable, or a bare command name looked up on PATH (never in the workspace). Machine-scoped: a workspace cannot set it."
+        },
+        "oxiscript.semicolons.fixOnSave": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "On save, insert the missing `;` (only that, through `oxi check --fix-only semicolons`; never where a `;` would change the meaning, e.g. before a line starting with `(` or `[`)."
         },
         "oxiscript.check.on": {
           "type": "string",

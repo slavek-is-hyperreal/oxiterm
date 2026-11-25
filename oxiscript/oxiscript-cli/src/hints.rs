@@ -35,6 +35,22 @@ fn line_before<'a>(f: &'a SourceFile, d: &Diag) -> &'a str {
     line[..end].trim_start()
 }
 
+/// Would a `;` at the end of `before` (the trimmed text of its line up to the insertion point) change
+/// the meaning of the program? True when the line starts with a token that continues an expression from
+/// the previous line, or ends with an operator or opening bracket.
+fn continuation_hazard(before: &str) -> bool {
+    const STARTS: &[char] = &['(', '[', '`', '+', '-', '*', '/', '.', ',', '?', ':', '=', '<', '>', '&', '|', '%', '^'];
+    const ENDS: &[char] = &['+', '-', '*', '/', '%', '&', '|', '^', '=', '!', '?', ':', '.', ',', '(', '[', '{', '<'];
+    if before.starts_with(STARTS) {
+        return true;
+    }
+    let t = before.trim_end();
+    if t.ends_with("++") || t.ends_with("--") {
+        return false;
+    }
+    t.ends_with(ENDS) || t.ends_with("=>")
+}
+
 pub fn apply(d: &mut Diag, f: &SourceFile) {
     let lo = d.range.start.byte as usize;
     let hi = (d.range.end.byte as usize).min(f.src.len());
@@ -65,6 +81,14 @@ pub fn apply(d: &mut Diag, f: &SourceFile) {
             let exceptions = before
                 .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
                 .any(|w| matches!(w, "throw" | "try" | "catch" | "finally"));
+            if !exceptions && continuation_hazard(before) {
+                // `a\n[1]` reads as `a[1]`: the missing `;` belongs at the end of the previous line, and
+                // adding it here would change the meaning of the program.
+                for fx in &mut d.fixes {
+                    fx.applicability = MAYBE_INCORRECT;
+                }
+                d.fixes.push(advice("This line starts like the continuation of the previous statement (`(`, `[`, a backtick, an operator): the previous line probably needs its `;` instead. A `;` here would change the meaning."));
+            }
             if exceptions {
                 for fx in &mut d.fixes {
                     fx.applicability = MAYBE_INCORRECT;

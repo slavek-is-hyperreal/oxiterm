@@ -1,7 +1,8 @@
 import * as cp from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { Diag, Fix, displayMessage, parseReport, selectFixAll, toPosition } from "./convert";
+import { Diag, Fix, displayMessage, parseReport, selectFixAll, selectSemicolons, semicolonInsertions, toPosition } from "./convert";
 
 const LANG = "oxiscript";
 
@@ -39,12 +40,84 @@ function cwdFor(doc: vscode.TextDocument): string {
   return folder ? folder.uri.fsPath : path.dirname(doc.fileName);
 }
 
+/** Most `oxi` processes alive at once (opening a workspace of N files must not spawn N). */
+const MAX_CONCURRENT = 3;
+let active = 0;
+const waiting: Array<{ key: string; start: () => void; cancel: () => void }> = [];
+
+function pump(): void {
+  while (active < MAX_CONCURRENT && waiting.length > 0) {
+    const job = waiting.shift();
+    if (!job) break;
+    active++;
+    job.start();
+  }
+}
+
+/**
+ * Resolve the configured `oxi` to an absolute executable. An absolute setting is used as is; a bare
+ * name is looked up in the absolute entries of PATH only (never the working directory, which on
+ * Windows `spawn` would otherwise search first); a relative path with a separator is refused.
+ */
+export function resolveExe(exe: string): string {
+  const enoent = (m: string): NodeJS.ErrnoException => Object.assign(new Error(m), { code: "ENOENT" }) as NodeJS.ErrnoException;
+  if (path.isAbsolute(exe)) return exe;
+  if (/[\\/]/.test(exe)) throw enoent(`oxiscript.oxiPath "${exe}" is a relative path; use an absolute path or a bare command name`);
+  const names = process.platform === "win32" ? [`${exe}.exe`, exe] : [exe];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir || !path.isAbsolute(dir)) continue;
+    for (const n of names) {
+      const full = path.join(dir, n);
+      try {
+        if (fs.statSync(full).isFile()) {
+          fs.accessSync(full, fs.constants.X_OK);
+          return full;
+        }
+      } catch {
+        // not here
+      }
+    }
+  }
+  throw enoent(`spawn ${exe} ENOENT (not found in PATH)`);
+}
+
 function runOxi(args: string[], input: string, cwd: string, key: string): Promise<RunResult> {
   return new Promise((resolve) => {
-    const exe = config().get<string>("oxiPath", "oxi") || "oxi";
+    // a newer request for the same document replaces a queued one and stops a running one
+    const queued = waiting.findIndex((w) => w.key === key);
+    if (queued >= 0) {
+      waiting[queued].cancel();
+      waiting.splice(queued, 1);
+    }
+    running.get(key)?.kill();
+    waiting.push({
+      key,
+      cancel: () => resolve({ code: null, stdout: "", stderr: "" }),
+      start: () => {
+        spawnOxi(args, input, cwd, key).then(
+          (r) => {
+            active--;
+            pump();
+            resolve(r);
+          },
+          (e: unknown) => {
+            active--;
+            pump();
+            resolve({ code: null, stdout: "", stderr: "", error: e as NodeJS.ErrnoException });
+          },
+        );
+      },
+    });
+    pump();
+  });
+}
+
+function spawnOxi(args: string[], input: string, cwd: string, key: string): Promise<RunResult> {
+  return new Promise((resolve) => {
     const timeout = config().get<number>("check.timeoutMs", 10000);
     let child: cp.ChildProcess;
     try {
+      const exe = resolveExe(config().get<string>("oxiPath", "oxi") || "oxi");
       child = cp.spawn(exe, args, { cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, NO_COLOR: "1" } });
     } catch (e) {
       resolve({ code: null, stdout: "", stderr: "", error: e as NodeJS.ErrnoException });
@@ -90,6 +163,17 @@ function warnMissing(e: NodeJS.ErrnoException): void {
 }
 
 async function check(doc: vscode.TextDocument): Promise<void> {
+  try {
+    await checkInner(doc);
+  } catch (e) {
+    // never an unhandled rejection; drop results that might be stale
+    output.appendLine(`oxi check failed for ${doc.fileName}: ${(e as Error).message}`);
+    collection.delete(doc.uri);
+    checked.delete(doc.uri.toString());
+  }
+}
+
+async function checkInner(doc: vscode.TextDocument): Promise<void> {
   if (doc.languageId !== LANG || doc.uri.scheme !== "file") return;
   const key = doc.uri.toString();
   const version = doc.version;
@@ -110,6 +194,8 @@ async function check(doc: vscode.TextDocument): Promise<void> {
     report = parseReport(r.stdout);
   } catch (e) {
     output.appendLine(`oxi check failed (exit ${r.code}): ${(e as Error).message}\n${r.stderr}`);
+    collection.delete(doc.uri);
+    checked.delete(key);
     return;
   }
   // `oxi` prints the entry path as given via --stdin-path with `\\` rewritten to `/`, so compare with
@@ -188,6 +274,18 @@ class Fixes implements vscode.CodeActionProvider {
         actions.push(a);
       }
     }
+    const semis = selectSemicolons(st.items.map((i) => i.src), st.entry);
+    if (semis.length > 0) {
+      const we = new vscode.WorkspaceEdit();
+      for (const e of semis) {
+        const a = toPosition(e.range.start);
+        we.replace(doc.uri, new vscode.Range(a.line, a.character, a.line, a.character), ";");
+      }
+      const sa = new vscode.CodeAction(`Add missing semicolons in this file (${semis.length})`, vscode.CodeActionKind.QuickFix);
+      sa.edit = we;
+      sa.diagnostics = st.items.filter((i) => i.src.code === "OXS-E0004").map((i) => i.diag);
+      actions.push(sa);
+    }
     const all = selectFixAll(st.items.map((i) => i.src), st.entry);
     // `selectFixAll` compares `file` strings as printed by oxi; the entry file is printed as given via --stdin-path.
     if (all.length > 0) {
@@ -225,6 +323,30 @@ class Formatter implements vscode.DocumentFormattingEditProvider {
   }
 }
 
+/**
+ * On save: insert the missing `;` (and nothing else) through `oxi check --fix-only semicolons`.
+ * The CLI refuses lines where a `;` would change the meaning and never touches other problems.
+ */
+async function semicolonEdits(doc: vscode.TextDocument): Promise<vscode.TextEdit[]> {
+  if (doc.languageId !== LANG || doc.uri.scheme !== "file") return [];
+  if (!config().get<boolean>("semicolons.fixOnSave", true)) return [];
+  try {
+    const text = doc.getText();
+    const r = await runOxi(["check", "--stdin", "--stdin-path", doc.fileName, "--fix-only", "semicolons"], text, cwdFor(doc), `semi:${doc.uri.toString()}`);
+    if (r.error) {
+      warnMissing(r.error);
+      return [];
+    }
+    if (r.code !== 0 || r.stdout === text || r.stdout.length < text.length) return [];
+    const ins = semicolonInsertions(text, r.stdout);
+    if (!ins) return [];
+    return ins.map((p) => vscode.TextEdit.replace(new vscode.Range(p.line, p.character, p.line, p.character), ";"));
+  } catch (e) {
+    output.appendLine(`semicolon fix failed for ${doc.fileName}: ${(e as Error).message}`);
+    return [];
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel("OxiScript");
   collection = vscode.languages.createDiagnosticCollection("oxiscript");
@@ -236,6 +358,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerDocumentFormattingEditProvider(sel, new Formatter()),
     vscode.workspace.onDidOpenTextDocument((d) => schedule(d, 0)),
     vscode.workspace.onDidSaveTextDocument((d) => schedule(d, 0)),
+    ...(typeof vscode.workspace.onWillSaveTextDocument === "function"
+      ? [vscode.workspace.onWillSaveTextDocument((e) => e.waitUntil(semicolonEdits(e.document)))]
+      : []),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (config().get<string>("check.on", "type") === "type") {
         schedule(e.document, config().get<number>("check.debounceMs", 300));
@@ -266,5 +391,6 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+  waiting.splice(0).forEach((w) => w.cancel());
   running.forEach((c) => c.kill());
 }

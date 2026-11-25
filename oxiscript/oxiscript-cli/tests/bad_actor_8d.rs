@@ -108,12 +108,19 @@ fn needs_vs_main_signature_unchecked() {
     assert_ne!(o.code, Some(0), "`needs` lists host:state@1 but main takes only Log; nothing reported:\n{}", o.stdout);
 }
 
-/// F4: AGENTS.md says "`oxi fmt` ... insert[s] [the `;`]" but fmt refuses files with syntax errors.
+/// F4 (docs route, test corrected): `fmt` refuses files with syntax errors; the docs must say that `oxi check --fix`
+/// (not `fmt`) inserts the `;`. The original assertion (fmt exits 0 on a missing `;`) pinned the false docs claim.
 #[test]
 fn fmt_inserts_semicolon_as_docs_claim() {
     let d = tmp("fmt");
     let o = oxi(&["fmt", "--stdin"], &d, Some(b"const x: i32 = 1\n"), 20);
-    assert_eq!(o.code, Some(0), "fmt did not insert `;` (docs claim it does): {}", o.stderr);
+    assert_eq!(o.code, Some(1), "fmt must refuse a file with a syntax error: {}", o.stderr);
+    assert!(o.stderr.contains("check --fix"), "fmt's refusal does not point at `oxi check --fix`: {}", o.stderr);
+    std::fs::write(d.join("a.oxs"), "const x: i32 = 1\n").unwrap();
+    let _ = oxi(&["check", "a.oxs", "--fix"], &d, None, 20);
+    assert_eq!(std::fs::read_to_string(d.join("a.oxs")).unwrap(), "const x: i32 = 1;\n");
+    let docs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/common/AGENTS.md")).unwrap();
+    assert!(!docs.contains("`oxi fmt` and `oxi check --fix` insert"), "AGENTS.md still claims fmt inserts the `;`");
 }
 
 /// F10: fmt rewrites the text of a comment (`///` becomes `//`) when a plain comment sits between it and the item.

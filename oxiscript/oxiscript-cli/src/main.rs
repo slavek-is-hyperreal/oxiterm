@@ -19,6 +19,7 @@ mod examples;
 mod explain;
 mod fmtcmd;
 mod hints;
+mod needs;
 mod newcmd;
 mod project;
 mod report;
@@ -48,9 +49,13 @@ enum Cmd {
         /// Path used for stdin input (project lookup, messages).
         #[arg(long, value_name = "PATH")]
         stdin_path: Option<PathBuf>,
-        /// Apply machine-applicable fixes to the files, then check again.
-        #[arg(long)]
+        /// Apply machine-applicable fixes to the files, then check again (not with --stdin).
+        #[arg(long, conflicts_with = "stdin")]
         fix: bool,
+        /// Apply only one kind of fix: `semicolons` inserts the missing `;` and nothing else. With
+        /// --stdin the fixed source is written to stdout.
+        #[arg(long, value_name = "KIND", value_parser = ["semicolons"], conflicts_with_all = ["fix", "json"])]
+        fix_only: Option<String>,
     },
     /// Format files in the canonical style (no options).
     Fmt {
@@ -80,7 +85,7 @@ enum Cmd {
 fn main() {
     let cli = Cli::parse();
     let code = match cli.cmd {
-        Cmd::Check { paths, json, stdin, stdin_path, fix } => check::run(&check::Args { paths, json, stdin, stdin_path, fix }),
+        Cmd::Check { paths, json, stdin, stdin_path, fix, fix_only } => check::run(&check::Args { paths, json, stdin, stdin_path, fix, fix_only }),
         Cmd::Fmt { paths, check, stdin } => fmtcmd::run(&fmtcmd::Args { paths, check, stdin }),
         Cmd::Explain { code } => explain::run(&code),
         Cmd::New { name, template } => newcmd::run(&name, &template),

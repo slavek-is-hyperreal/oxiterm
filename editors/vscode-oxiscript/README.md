@@ -5,7 +5,8 @@ Support for OxiScript (`.oxs`), the TypeScript-shaped language that compiles to 
 * Syntax highlighting (TextMate grammar): keywords, numeric literals with type suffixes (`200u8`, `1.5f32`), strings and template literals, attributes (`@expect`, `@@profile`), `law`, and the whitespace rule of `?` (try `f()?`, conditional ` ? : `, optional chaining `?.`). Reserved and removed words (`any`, `var`, `typeof`, ...) and `==` are highlighted as errors.
 * Diagnostics from `oxi check --json` while you type (unsaved buffer, 300 ms debounce) or on save, with the stable `OXS-` codes.
 * Quick fixes from the diagnostics' fixes: safe ones (`;`, `===`, parentheses) are preferred; proposals say "check the result". "Fix all" applies every safe fix at once.
-* Format on save through `oxi fmt` (no options).
+* Semicolon assistant: the missing-`;` diagnostic (`OXS-E0004`) sits at the end of the statement, a quick fix "Add missing semicolons in this file" inserts all of them, and on save the extension inserts them for you (`oxiscript.semicolons.fixOnSave`, through `oxi check --fix-only semicolons`; only `;`, never where it would change the meaning: lines starting with `(`, `[`, a backtick or an operator, `throw`/`try`/`catch` lines; other problems are left alone).
+* Format on save through `oxi fmt` (no options). Format needs a file without syntax errors, so the `;` fix runs on save too.
 * Snippets: `main`, `mainstate`, `law`, `struct`, `class`, `union`, `result`, `state`, `fn`, `forof`.
 
 ## Requirements
@@ -17,6 +18,7 @@ The `oxi` command on `PATH` (or `oxiscript.oxiPath`). Build it from the reposito
 | Setting | Default | |
 |---|---|---|
 | `oxiscript.oxiPath` | `oxi` | path to the executable |
+| `oxiscript.semicolons.fixOnSave` | `true` | insert missing `;` on save |
 | `oxiscript.check.on` | `type` | `type` (unsaved buffer, debounced) or `save` |
 | `oxiscript.check.debounceMs` | `300` | delay after the last keystroke |
 | `oxiscript.check.timeoutMs` | `10000` | kill `oxi` after this long |

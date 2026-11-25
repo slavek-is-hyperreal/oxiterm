@@ -142,6 +142,19 @@ pub fn collect(run: &Run) -> Vec<Diag> {
     out
 }
 
+/// A diagnostic made by the CLI itself (not the checker) at `span` of `files[span.file]`.
+pub fn diag_at(srcs: &[SourceFile], span: Span, code: &str, message: String, fixes: Vec<FixOut>) -> Option<Diag> {
+    let (fi, r) = range(srcs, span)?;
+    Some(Diag {
+        code: code.to_string(),
+        severity: severity_of(code),
+        message,
+        file: srcs[fi].display.clone(),
+        range: r,
+        fixes,
+    })
+}
+
 fn fixes_of(run: &Run, d: &Diagnostic) -> Vec<FixOut> {
     let alts = d.fixes.iter().filter(|f| !f.edits.is_empty()).count();
     d.fixes
@@ -193,10 +206,10 @@ pub fn diag_json(d: &Diag) -> Value {
 }
 
 /// The whole `oxi check --json` document.
-pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>) -> Value {
+pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>, notes: &[String], fix: Option<Value>) -> Value {
     let errors = diags.iter().filter(|d| d.severity == "error" || d.severity == "internal").count();
     let warnings = diags.iter().filter(|d| d.severity == "warning").count();
-    json!({
+    let mut doc = json!({
         "schema": SCHEMA_VERSION,
         "tool": "oxi",
         "version": env!("CARGO_PKG_VERSION"),
@@ -205,7 +218,17 @@ pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>) -> Value 
         "files": files,
         "summary": {"errors": errors, "warnings": warnings},
         "diagnostics": diags.iter().map(diag_json).collect::<Vec<_>>(),
-    })
+    });
+    // additive fields, present only when there is something to say (schema stays 1)
+    if let Some(o) = doc.as_object_mut() {
+        if !notes.is_empty() {
+            o.insert("notes".to_string(), json!(notes));
+        }
+        if let Some(f) = fix {
+            o.insert("fix".to_string(), f);
+        }
+    }
+    doc
 }
 
 /// rustc-style text. `sources` maps display path to source text.
