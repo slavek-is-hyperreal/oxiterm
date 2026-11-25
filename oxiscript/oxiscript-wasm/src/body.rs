@@ -84,7 +84,8 @@ impl Body {
         MemArg {
             offset: u64::from(offset),
             align: m.align_log2(),
-            memory_index: 0,
+            target: wasm_encoder::MemArgTarget::Memory(0),
+            ordering: None,
         }
     }
 

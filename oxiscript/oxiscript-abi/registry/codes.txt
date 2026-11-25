@@ -288,6 +288,41 @@ title Construct forbidden by profile
 message {construct} is not allowed under the `{profile}` profile
 fix Restructure the code or relax the profile on this function.
 
+code OXS-E0600
+severity error
+phase codegen
+title Irreducible control flow
+message irreducible control flow: {detail}
+fix Restructure the loop so every cycle has a single entry block.
+
+code OXS-E0601
+severity error
+phase codegen
+title Unsupported IR construct
+message the code generator does not support {detail}
+fix Lower the construct to supported instructions or report a missing feature.
+
+code OXS-E0602
+severity error
+phase codegen
+title IR failed verification
+message the IR module failed verification before code generation: {detail}
+fix Fix the producer of the IR; verified IR is the code generator's input contract.
+
+code OXS-E0603
+severity error
+phase codegen
+title Codegen limit exceeded
+message a code generation limit was exceeded: {detail}
+fix Split the function or reduce nesting and static data.
+
+code OXS-E0604
+severity error
+phase codegen
+title Bad module configuration
+message module configuration is inconsistent: {detail}
+fix Make main's parameters match the manifest needs and grant every imported interface.
+
 code OXS-E0900
 severity error
 phase parse
@@ -301,6 +336,13 @@ phase runtime
 title Internal compiler error
 message internal error in {phase}: {detail}
 fix Report this as a bug with the input that triggered it.
+
+code OXS-I0002
+severity internal
+phase codegen
+title Internal code generator error
+message the code generator produced an invalid module: {detail}
+fix Report this as a bug with the IR input that triggered it.
 
 code OXS-L0001
 severity error

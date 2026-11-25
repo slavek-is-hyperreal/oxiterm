@@ -12,8 +12,16 @@ Status: STARTED (design done, writing code). Update after every milestone.
 - needs: `CompileOptions.needs` (ordered), default derived from imports; `main` params must equal needs count.
 - new registry codes appended to abi codes.txt (E0600.. codegen) -- see report.
 
+## Lead note from 8.M (applied to design)
+- compiler materialises globals `oxi_trap_kind`, `oxi_scratch_cap` (4096); compiler-raised traps are inline `global.set $oxi_trap_kind; unreachable`.
+- generated `oxi_init` calls runtime `oxi_rt_init(typedesc_base, typedesc_count)` FIRST. Import mode: imported from rt module; Stub mode: internal no-op (not exported: oxiscript-runtime rejects reserved names outside the ABI table).
+- extension exports (oxi_gc_*, oxi_rt_*) are runtime-side; codegen only needs oxi_rt_init. oxi_alloc_bytes(0) may return 0: codegen never dereferences array data before bounds checks.
+- Possible conflict: oxi_scratch_ptr is a runtime-exported static; Import mode does not define it.
+
 ## Done
-(nothing yet)
+- src/: body, cfg, cx, func, helpers, modlayout, stubrt, wrap, lib -- COMPILES; corpus (all 7 oxir programs) compiles+validates (tests/corpus.rs).
+- registry codes E0600-E0604, I0002 appended to oxiscript-abi/registry/codes.txt (abi tests green).
+- Next: tests/diff.rs (reference interpreter + random IR generator vs oxiscript-runtime), tests/programs_abi.rs (40 programs, runtime loading with host/callbacks), golden dumps, measure example, clippy, wasm32 build, cleanup warnings.
 
 ## Remaining / current step
 - skeleton -> stub runtime -> lowering -> differential tests -> corpus -> measure.
