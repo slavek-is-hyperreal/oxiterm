@@ -652,6 +652,11 @@ Later stages keep the research's order and estimates: 8.2 AOT release path and p
 
 **Critical path:** 8.C → 8.P → 8.T → 8.L → 8.S1. It, not the number of agents, sets the date of the first visible result; 8.R, 8.M, 8.G and 7.x run beside it.
 
+#### Versioning (owner decision 2026-11-25)
+- The first public version of the language and toolchain is **0.0.1**. **Nothing is guaranteed before 1.0.0**: syntax, semantics, ABI, IR, CLI and JSON schema may change in any release (stated on the sites, in `oxi --version` output and in AGENTS.md).
+- Version `x.y.c`: **c grows by 1 for every X changed lines of code** in the OxiScript crates (added + deleted, measured with `git diff --shortstat` from the previous release tag; X set by the owner). A script computes the next version; all `oxiscript-*` crates, the VS Code extension and the playground share one version.
+- Applied after the 8.L / 8.D merges (they edit the same manifests).
+
 #### Parallel schedule (machine: 4 cores, ~12 GB free RAM → at most 3 concurrent agents, BAD ACTOR runs included)
 - **Wave 1:** 7.1, 7.2, 8.C.
 - **Wave 2:** 8.P, 8.R, 7.3 (as slots free).
