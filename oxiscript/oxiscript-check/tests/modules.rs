@@ -70,7 +70,7 @@ fn inferred_return_types_do_not_see_the_callers_locals() {
 #[test]
 fn return_types_are_inferred_across_modules() {
     let c = check(
-        "import { make } from \"./lib\";\nexport function f(): string {\n  return make().name;\n}\n",
+        "import { make } from \"./lib\";\nfunction f(): string {\n  return make().name;\n}\n",
         &[("lib", "export struct U { name: string; }\nexport function make(): U { return { name: \"a\" }; }\n")],
     );
     assert!(c.ok(), "{:?}", errs(&c));
