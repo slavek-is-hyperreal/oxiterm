@@ -161,7 +161,7 @@ impl<'a> Interp<'a> {
             }
             self.steps += 1;
             let get = |v: &ValueId, vals: &Vec<Option<V>>| vals[v.0 as usize].expect("defined");
-            let mut go = |t: &Target, vals: &mut Vec<Option<V>>| -> usize {
+            let go = |t: &Target, vals: &mut Vec<Option<V>>| -> usize {
                 let vs: Vec<V> = t.args.iter().map(|a| get(a, vals)).collect();
                 let dest = &f.blocks[t.block.0 as usize];
                 for (p, v) in dest.params.iter().zip(vs) {
@@ -341,7 +341,7 @@ impl<'a> Interp<'a> {
                     }
                     y
                 } else {
-                    (y & (i128::from(bits) - 1)) as i128
+                    y & (i128::from(bits) - 1)
                 };
                 Ok(V::I(if op == BinOp::Shl {
                     wrap(t, x << amt)

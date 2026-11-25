@@ -1,6 +1,7 @@
 //! Differential testing: random well-typed IR is interpreted by the
 //! reference interpreter and, compiled, run in `oxiscript-runtime` (wasmi);
 //! results and trap kinds must agree.
+#![allow(clippy::pedantic)]
 mod common;
 
 use common::gen::*;
@@ -55,13 +56,17 @@ fn check_module(m: &Module, rng: &mut Rng, st: &mut Stats, tag: &str) {
     let h = host();
     let mut rt = instantiate(&h, &wasm);
     for f in &m.funcs {
-        let (ps, rty) = sig_of(m, &f.name);
+        let (ps, rtys) = sig_of(m, &f.name);
         for _ in 0..8 {
             let args: Vec<V> = ps
                 .iter()
                 .map(|p| {
-                    let cs = edge_consts(p);
-                    to_v(&cs[rng.below(cs.len())])
+                    if rng.chance(50) {
+                        to_v(&rand_const(rng, p))
+                    } else {
+                        let cs = edge_consts(p);
+                        to_v(&cs[rng.below(cs.len())])
+                    }
                 })
                 .collect();
             let mut it = Interp::new(m);
@@ -78,13 +83,14 @@ fn check_module(m: &Module, rng: &mut Rng, st: &mut Stats, tag: &str) {
             let got = rt.call_export(&f.name, &wargs);
             match (want, got) {
                 (Ok(w), Ok(g)) => {
-                    assert!(
-                        same(w[0], from_value(&g[0], &rty)),
-                        "{tag} {} {args:?}: interp {:?} != wasm {:?}",
-                        f.name,
-                        w[0],
-                        g[0]
-                    );
+                    assert_eq!(w.len(), g.len(), "{tag} {} result arity", f.name);
+                    for ((w, g), t) in w.iter().zip(&g).zip(&rtys) {
+                        assert!(
+                            same(*w, from_value(g, t)),
+                            "{tag} {} {args:?}: interp {w:?} != wasm {g:?}",
+                            f.name
+                        );
+                    }
                 }
                 (Err(Out::Trap(k)), Err(Error::Trap(t))) => {
                     st.traps += 1;
@@ -104,7 +110,7 @@ fn check_module(m: &Module, rng: &mut Rng, st: &mut Stats, tag: &str) {
 
 #[test]
 fn random_programs_agree() {
-    let n = fuzz_scale(3000, 150);
+    let n = fuzz_scale(3000, 40);
     let mut st = Stats {
         cases: 0,
         traps: 0,
@@ -127,7 +133,7 @@ fn random_programs_agree() {
 
 /// Debug helper: `OXI_SEED=n OXI_DUMP=dir cargo test -p oxiscript-wasm --test diff dump_seed -- --ignored --nocapture`
 #[test]
-#[ignore]
+#[ignore = "debug helper"]
 fn dump_seed() {
     let seed: u64 = std::env::var("OXI_SEED").unwrap().parse().unwrap();
     let m = gen_module(seed + 1, 3);

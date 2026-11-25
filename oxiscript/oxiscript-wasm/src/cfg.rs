@@ -11,6 +11,7 @@ pub(crate) struct Cfg {
     pub rpo: Vec<usize>,
     /// RPO number per block (`NONE` = unreachable).
     pub num: Vec<usize>,
+    #[allow(dead_code)]
     pub idom: Vec<usize>,
     /// Dominator-tree children (reachable only).
     pub children: Vec<Vec<usize>>,

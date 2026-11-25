@@ -33,14 +33,6 @@ impl Mem {
             _ => 3,
         }
     }
-    pub(crate) fn val(self) -> ValType {
-        match self {
-            Mem::I64 => ValType::I64,
-            Mem::F32 => ValType::F32,
-            Mem::F64 => ValType::F64,
-            _ => ValType::I32,
-        }
-    }
 }
 
 pub(crate) struct Body {
@@ -68,8 +60,13 @@ impl Body {
         self.nparams + self.locals.len() as u32 - 1
     }
 
-    pub(crate) fn n_locals(&self) -> u32 {
-        self.nparams + self.locals.len() as u32
+    /// Locals declared so far (excluding parameters).
+    pub(crate) fn declared_locals(&self) -> usize {
+        self.locals.len()
+    }
+
+    pub(crate) fn code_len(&self) -> usize {
+        self.code.len()
     }
 
     pub(crate) fn finish(mut self) -> Function {

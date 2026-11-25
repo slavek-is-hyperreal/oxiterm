@@ -1,5 +1,6 @@
 //! Every `.oxir` program of `oxiscript-ir` compiles, validates with exactly
 //! the ABI feature set and (where it uses the ABI) loads in `oxiscript-runtime`.
+#![allow(clippy::pedantic)]
 
 use oxiscript_abi::idl;
 use oxiscript_ir::{parse_module, VerifyOptions};
@@ -33,6 +34,32 @@ fn opts(name: &str) -> CompileOptions {
             RuntimeMode::Stub
         },
         ..CompileOptions::default()
+    }
+}
+
+/// Every ABI-conforming program of the corpus loads in `oxiscript-runtime`
+/// (all export rows, manifest, imports and callbacks are checked there).
+#[test]
+fn corpus_loads_in_the_runtime() {
+    use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
+    use oxiscript_runtime::caps::state::{StateLimits, StateProvider, StateStore};
+    use oxiscript_runtime::{Grants, Host, Limits};
+    use std::sync::Arc;
+    let host = Host::new(Limits::default());
+    host.register(Arc::new(LogProvider::new(LogSink::new(16), LogLimits::default())))
+        .unwrap();
+    host.register(Arc::new(StateProvider::new(StateStore::new(StateLimits::default()))))
+        .unwrap();
+    for (name, text) in PROGRAMS {
+        if *name == "raw" {
+            continue;
+        }
+        let m = parse_module(text).unwrap();
+        let wasm = compile(&m, &opts(name)).unwrap();
+        let mut rt = host
+            .instantiate(&wasm, Grants::all())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(rt.deinit().unwrap(), 0, "{name}: leak");
     }
 }
 

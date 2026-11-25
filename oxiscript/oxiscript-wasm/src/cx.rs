@@ -1,6 +1,5 @@
 //! Module-wide compilation context and final module assembly.
 
-use crate::body::Body;
 use crate::helpers::{self, HKey};
 use crate::modlayout::Layout;
 use crate::stubrt;
@@ -11,7 +10,7 @@ use oxiscript_abi::exports::{self, ExportKind as AbiKind, Provider};
 use oxiscript_abi::idl::Interface;
 use oxiscript_abi::manifest::{Manifest, Need, MANIFEST_SECTION};
 use oxiscript_abi::WasmTy;
-use oxiscript_ir::{Const, Module, Sig, Ty};
+use oxiscript_ir::{Const, Module, Ty};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use wasm_encoder::{
@@ -114,13 +113,6 @@ impl<'a> Cx<'a> {
         self.closure_targets.push(func.to_string());
         self.closure_ix.insert(func.to_string(), i);
         i
-    }
-
-    pub(crate) fn ir_sig_wasm(&self, s: &Sig) -> (Vec<ValType>, Vec<ValType>) {
-        (
-            s.params.iter().map(crate::func::vt).collect(),
-            s.rets.iter().map(crate::func::vt).collect(),
-        )
     }
 
     pub(crate) fn interface_for(&self, module_at_version: &str) -> Option<&'a Interface> {
@@ -281,6 +273,31 @@ impl<'a> Cx<'a> {
 
     pub(crate) fn assemble(self, static_end: u32) -> Result<Vec<u8>, Diagnostic> {
         let stub = self.opts.runtime == RuntimeMode::Stub;
+        if let Some((p, r)) = self
+            .types
+            .iter()
+            .find(|(p, r)| p.len() > crate::LIMIT_PARAMS || r.len() > crate::LIMIT_PARAMS)
+        {
+            return Err(Diagnostic::new(
+                E_LIMIT,
+                format!(
+                    "a function has {} parameters and {} results; the host allows at most {} of each",
+                    p.len(),
+                    r.len(),
+                    crate::LIMIT_PARAMS
+                ),
+                None,
+            ));
+        }
+        if self.defs.len() + self.imports.len() > crate::LIMIT_FUNCS
+            || self.m.globals.len() + USER_GLOBAL_BASE as usize > crate::LIMIT_GLOBALS
+        {
+            return Err(Diagnostic::new(
+                E_LIMIT,
+                "too many functions or globals for the host limits",
+                None,
+            ));
+        }
         let mut module = wasm_encoder::Module::new();
         let mut ts = TypeSection::new();
         for (p, r) in &self.types {
@@ -438,6 +455,3 @@ pub(crate) fn profile(m: &Module) -> &str {
         .map_or("default", String::as_str)
 }
 
-/// Unused import silencer for `Body` in this module's docs.
-#[allow(dead_code)]
-fn _body(_: Body) {}

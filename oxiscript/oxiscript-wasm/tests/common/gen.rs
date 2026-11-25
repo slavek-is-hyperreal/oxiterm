@@ -51,6 +51,21 @@ fn int_range(t: &Ty) -> (i128, i128) {
 }
 
 /// Interesting values of a type, as IR constants.
+/// An arbitrary (non-edge-biased) value of the type.
+pub fn rand_const(r: &mut Rng, t: &Ty) -> Const {
+    match t {
+        Ty::Bool => Const::Bool(r.chance(50)),
+        Ty::F32 => Const::F32((r.next() as u32) & 0x7f7f_ffff | ((r.next() as u32) & 0x8000_0000)),
+        Ty::F64 => Const::F64((r.next() & 0x7fef_ffff_ffff_ffff) | (r.next() & 0x8000_0000_0000_0000)),
+        _ => {
+            let (lo, hi) = int_range(t);
+            let span = (hi - lo + 1) as u128;
+            let raw = (u128::from(r.next()) << 64 | u128::from(r.next())) % span;
+            Const::Int(lo + raw as i128)
+        }
+    }
+}
+
 pub fn edge_consts(t: &Ty) -> Vec<Const> {
     match t {
         Ty::Bool => vec![Const::Bool(false), Const::Bool(true)],
@@ -75,7 +90,7 @@ struct G<'a> {
     r: &'a mut Rng,
     b: FuncBuilder,
     n: usize,
-    callees: &'a [(Vec<Ty>, Ty)],
+    callees: &'a [(Vec<Ty>, Vec<Ty>)],
 }
 
 type Env = Vec<(ValueId, Ty)>;
@@ -88,7 +103,7 @@ impl<'a> G<'a> {
 
     fn konst(&mut self, blk: BlockId, env: &mut Env, t: &Ty) -> ValueId {
         let cs = edge_consts(t);
-        let c = if self.r.chance(30) {
+        let c = if self.r.chance(50) {
             // arbitrary value
             match t {
                 Ty::F32 => Const::F32((self.r.next() as u32) & 0x7f7f_ffff | ((self.r.next() as u32) & 0x8000_0000)),
@@ -97,7 +112,7 @@ impl<'a> G<'a> {
                 _ => {
                     let (lo, hi) = int_range(t);
                     let span = (hi - lo + 1) as u128;
-                    Const::Int(lo + ((u128::from(self.r.next()) * 0x1_0000_0001 ^ u128::from(self.r.next())) % span) as i128)
+                    Const::Int(lo + (((u128::from(self.r.next()) * 0x1_0000_0001) ^ u128::from(self.r.next())) % span) as i128)
                 }
             }
         } else {
@@ -204,13 +219,16 @@ impl<'a> G<'a> {
         }
         if k < 36 && !self.callees.is_empty() {
             let ci = self.r.below(self.callees.len());
-            let (ps, rt) = self.callees[ci].clone();
+            let (ps, rts) = self.callees[ci].clone();
             let args: Vec<ValueId> = ps.iter().map(|p| self.pick(blk, env, p)).collect();
-            let nm = self.name();
-            let v = self.b.inst1(blk, Op::Call { callee: format!("f{ci}"), args }, &nm, rt.clone());
-            env.push((v, rt.clone()));
-            if rt == *t {
-                return v;
+            let names: Vec<String> = rts.iter().map(|_| self.name()).collect();
+            let res: Vec<(&str, Ty)> = names.iter().map(String::as_str).zip(rts.iter().cloned()).collect();
+            let vs = self.b.inst(blk, Op::Call { callee: format!("f{ci}"), args }, &res);
+            for (v, t2) in vs.iter().zip(&rts) {
+                env.push((*v, t2.clone()));
+            }
+            if let Some(i) = rts.iter().position(|x| x == t) {
+                return vs[i];
             }
         }
         if t.is_float() {
@@ -260,9 +278,9 @@ impl<'a> G<'a> {
                 cur = self.diamond(cur, env, depth);
             } else if k < 92 {
                 cur = self.counted_loop(cur, env, depth);
-            } else if k < 97 {
+            } else if k < 98 {
                 cur = self.switch(cur, env, depth);
-            } else {
+            } else if k < 99 {
                 cur = self.guard(cur, env);
             }
         }
@@ -281,20 +299,28 @@ impl<'a> G<'a> {
 
     fn diamond(&mut self, cur: BlockId, env: &mut Env, depth: u32) -> BlockId {
         let c = self.pick(cur, env, &Ty::Bool);
-        let (t1, e1, m) = (self.b.block("then"), self.b.block("else"), self.b.block("merge"));
-        self.b.terminate(cur, Terminator::BrIf { cond: c, then: target(t1, &[]), els: target(e1, &[]) });
+        let m = self.b.block("merge");
         let nres = self.r.below(3);
         let tys: Vec<Ty> = (0..nres).map(|_| rand_ty(self.r)).collect();
-        let mut ends = Vec::new();
-        for blk in [t1, e1] {
-            let mut env2 = env.clone();
-            let n = self.r.below(4);
-            let end = self.seq(blk, &mut env2, depth + 1, n);
-            let args: Vec<ValueId> = tys.iter().map(|t| self.pick(end, &mut env2, t)).collect();
-            ends.push((end, args));
-        }
-        for (end, args) in ends {
-            self.b.terminate(end, Terminator::Br(target(m, &args)));
+        if self.r.chance(35) {
+            // both edges go straight to the join, carrying arguments
+            let a1: Vec<ValueId> = tys.iter().map(|t| self.pick(cur, env, t)).collect();
+            let a2: Vec<ValueId> = tys.iter().map(|t| self.pick(cur, env, t)).collect();
+            self.b.terminate(cur, Terminator::BrIf { cond: c, then: target(m, &a1), els: target(m, &a2) });
+        } else {
+            let (t1, e1) = (self.b.block("then"), self.b.block("else"));
+            self.b.terminate(cur, Terminator::BrIf { cond: c, then: target(t1, &[]), els: target(e1, &[]) });
+            let mut ends = Vec::new();
+            for blk in [t1, e1] {
+                let mut env2 = env.clone();
+                let n = self.r.below(4);
+                let end = self.seq(blk, &mut env2, depth + 1, n);
+                let args: Vec<ValueId> = tys.iter().map(|t| self.pick(end, &mut env2, t)).collect();
+                ends.push((end, args));
+            }
+            for (end, args) in ends {
+                self.b.terminate(end, Terminator::Br(target(m, &args)));
+            }
         }
         for t in &tys {
             let nm = self.name();
@@ -342,6 +368,22 @@ impl<'a> G<'a> {
         let three = self.b.inst1(cur, Op::Const(Const::Int(3)), "m3", Ty::I32);
         let key = self.b.inst1(cur, Op::Bin { op: BinOp::And, ovf: Ovf::Trap, a: v, b: three }, "key", Ty::I32);
         let nb = 3 + self.r.below(2);
+        if self.r.chance(40) {
+            // every case goes straight to the join with its own arguments (chain with moves)
+            let m = self.b.block("smerge");
+            let t = rand_ty(self.r);
+            let mut cases: Vec<(i64, Target)> = Vec::new();
+            for k in 0..nb - 1 {
+                let a = self.pick(cur, env, &t);
+                cases.push((k as i64, target(m, &[a])));
+            }
+            let a = self.pick(cur, env, &t);
+            self.b.terminate(cur, Terminator::Switch { value: key, cases, default: target(m, &[a]) });
+            let nm = self.name();
+            let p = self.b.block_param(m, &nm, t.clone());
+            env.push((p, t));
+            return m;
+        }
         let blocks: Vec<BlockId> = (0..nb).map(|_| self.b.block("case")).collect();
         let m = self.b.block("smerge");
         let cases: Vec<(i64, Target)> = (0..nb - 1).map(|k| (k as i64, target(blocks[k], &[]))).collect();
@@ -369,15 +411,16 @@ impl<'a> G<'a> {
 pub fn gen_module(seed: u64, nfuncs: usize) -> Module {
     let mut r = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
     let mut funcs = Vec::new();
-    let mut sigs: Vec<(Vec<Ty>, Ty)> = Vec::new();
+    let mut sigs: Vec<(Vec<Ty>, Vec<Ty>)> = Vec::new();
     for fi in 0..nfuncs {
         let nparams = r.below(4);
         let params: Vec<Ty> = (0..nparams).map(|_| rand_ty(&mut r)).collect();
-        let ret = rand_ty(&mut r);
+        let nrets = if r.chance(25) { 2 } else { 1 };
+        let rets: Vec<Ty> = (0..nrets).map(|_| rand_ty(&mut r)).collect();
         let callees = sigs.clone();
         let mut g = G {
             r: &mut r,
-            b: FuncBuilder::new(&format!("f{fi}")).export().rets(vec![ret.clone()]),
+            b: FuncBuilder::new(&format!("f{fi}")).export().rets(rets.clone()),
             n: 0,
             callees: &callees,
         };
@@ -389,8 +432,8 @@ pub fn gen_module(seed: u64, nfuncs: usize) -> Module {
         let entry = g.b.block("entry");
         let n = 3 + g.r.below(10);
         let end = g.seq(entry, &mut env, 0, n);
-        let v = g.pick(end, &mut env, &ret);
-        g.b.terminate(end, Terminator::Ret(vec![v]));
+        let vs: Vec<ValueId> = rets.iter().map(|t| g.pick(end, &mut env, t)).collect();
+        g.b.terminate(end, Terminator::Ret(vs));
         let mut f = g.b.finish();
         renumber(&mut f);
         for (i, v) in f.values.iter_mut().enumerate() {
@@ -400,7 +443,7 @@ pub fn gen_module(seed: u64, nfuncs: usize) -> Module {
             b.label = format!("b{i}");
         }
         funcs.push(f);
-        sigs.push((params, ret));
+        sigs.push((params, rets));
     }
     Module {
         name: format!("gen{seed}"),
@@ -409,10 +452,10 @@ pub fn gen_module(seed: u64, nfuncs: usize) -> Module {
     }
 }
 
-pub fn sig_of(m: &Module, name: &str) -> (Vec<Ty>, Ty) {
+pub fn sig_of(m: &Module, name: &str) -> (Vec<Ty>, Vec<Ty>) {
     let f = m.func(name).unwrap();
     (
         f.params.iter().map(|p| f.ty(p.value).clone()).collect(),
-        f.rets[0].clone(),
+        f.rets.clone(),
     )
 }

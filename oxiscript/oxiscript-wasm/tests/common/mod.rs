@@ -33,8 +33,34 @@ pub fn instantiate(host: &Host, wasm: &[u8]) -> Runtime {
         .unwrap_or_else(|e| panic!("load failed: {e}"))
 }
 
+pub struct Env {
+    pub host: Host,
+    pub sink: std::sync::Arc<oxiscript_runtime::caps::log::LogSink>,
+    pub store: oxiscript_runtime::caps::state::StateStore,
+}
+
+pub fn env() -> Env {
+    use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
+    use oxiscript_runtime::caps::state::{StateLimits, StateProvider, StateStore};
+    use std::sync::Arc;
+    let host = Host::new(Limits::default());
+    let sink = LogSink::new(256);
+    let store = StateStore::new(StateLimits::default());
+    host.register(Arc::new(LogProvider::new(
+        Arc::clone(&sink),
+        LogLimits::default(),
+    )))
+    .unwrap();
+    host.register(Arc::new(StateProvider::new(store.clone())))
+        .unwrap();
+    Env { host, sink, store }
+}
+
 /// Full-size fuzz runs in release or with OXI_FULL_FUZZ=1.
 pub fn fuzz_scale(full: usize, debug: usize) -> usize {
+    if let Some(n) = std::env::var("OXI_FUZZ_N").ok().and_then(|v| v.parse().ok()) {
+        return n;
+    }
     if cfg!(debug_assertions) && std::env::var("OXI_FULL_FUZZ").is_err() {
         debug
     } else {

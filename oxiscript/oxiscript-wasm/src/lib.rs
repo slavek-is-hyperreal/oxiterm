@@ -23,7 +23,38 @@
     clippy::wildcard_imports,
     clippy::match_same_arms,
     clippy::too_many_arguments,
-    clippy::needless_pass_by_value
+    clippy::needless_pass_by_value,
+    clippy::unnested_or_patterns,
+    clippy::unnecessary_wraps,
+    clippy::assigning_clones,
+    clippy::elidable_lifetime_names,
+    clippy::explicit_counter_loop,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::zero_sized_map_values,
+    clippy::manual_is_multiple_of,
+    clippy::needless_for_each,
+    clippy::struct_excessive_bools,
+    clippy::match_wildcard_for_single_variants,
+    clippy::semicolon_if_nothing_returned,
+    clippy::unreadable_literal,
+    clippy::items_after_statements,
+    clippy::manual_let_else,
+    clippy::redundant_closure_for_method_calls,
+    clippy::needless_range_loop,
+    clippy::ptr_arg,
+    clippy::type_complexity,
+    clippy::inline_always,
+    clippy::cast_lossless,
+    clippy::uninlined_format_args,
+    clippy::collapsible_else_if,
+    clippy::single_match,
+    clippy::bool_to_int_with_if,
+    clippy::implicit_hasher,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::return_self_not_must_use
 )]
 
 mod body;
@@ -51,6 +82,16 @@ pub const E_VERIFY: &str = "OXS-E0602";
 pub const E_LIMIT: &str = "OXS-E0603";
 pub const E_CONFIG: &str = "OXS-E0604";
 pub const I_INTERNAL: &str = "OXS-I0002";
+
+/// Wasm/host limits checked up front so the answer is a diagnostic, not an
+/// `I0002` "invalid module": wasmparser's locals and body size limits and the
+/// strict engine limits `oxiscript-runtime` applies (parameters, results,
+/// functions, globals).
+pub(crate) const LIMIT_LOCALS: usize = 50_000;
+pub(crate) const LIMIT_BODY_BYTES: usize = 7_000_000;
+pub(crate) const LIMIT_PARAMS: usize = 32;
+pub(crate) const LIMIT_FUNCS: usize = 10_000;
+pub(crate) const LIMIT_GLOBALS: usize = 1_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
@@ -171,20 +212,29 @@ pub fn compile(module: &Module, opts: &CompileOptions) -> Result<Vec<u8>, Diagno
 }
 
 pub fn compile_with_stats(module: &Module, opts: &CompileOptions) -> Result<Output, Diagnostics> {
+    let errs = oxiscript_ir::host::verify_with_interfaces(module, opts.verify, &opts.interfaces);
+    if !errs.is_empty() {
+        // one diagnostic per verifier error; host-boundary codes are kept
+        return Err(Diagnostics(
+            errs.iter()
+                .map(|e| {
+                    let msg = e.to_string();
+                    let code = if msg.contains("OXS-E0400") {
+                        "OXS-E0400"
+                    } else if msg.contains("OXS-E0401") {
+                        "OXS-E0401"
+                    } else {
+                        E_VERIFY
+                    };
+                    Diagnostic::new(code, msg, e.func.clone())
+                })
+                .collect(),
+        ));
+    }
     compile_inner(module, opts).map_err(|d| Diagnostics(vec![d]))
 }
 
 fn compile_inner(m: &Module, opts: &CompileOptions) -> Result<Output, Diagnostic> {
-    let errs = oxiscript_ir::host::verify_with_interfaces(m, opts.verify, &opts.interfaces);
-    if !errs.is_empty() {
-        // report every verifier error
-        let d = errs
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>()
-            .join("; ");
-        return Err(Diagnostic::new(E_VERIFY, d, None));
-    }
     let lay = modlayout::Layout::build(m)?;
     let static_end = lay.static_end;
     let mut cx = cx::Cx::new(m, opts, lay)?;

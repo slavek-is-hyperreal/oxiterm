@@ -179,9 +179,10 @@ fn sat_addsub(b: &mut Body, op: u8, signed: bool) {
             b.s().i64_lt_u().select();
         }
         _ => {
-            b.i64c(0);
+            // unsigned sub: a >= b ? a - b : 0
             b.get(a).get(bb);
             b.s().i64_sub();
+            b.i64c(0);
             b.get(a).get(bb);
             b.s().i64_ge_u().select();
         }

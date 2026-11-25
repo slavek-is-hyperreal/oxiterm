@@ -15,8 +15,6 @@ use wasm_encoder::{BlockType, Function, ValType};
 pub(crate) const G_TRAP: u32 = 0;
 pub(crate) const G_TDBASE: u32 = 2;
 pub(crate) const G_TDCOUNT: u32 = 3;
-pub(crate) const G_SCR_PTR: u32 = 4;
-pub(crate) const G_SCR_CAP: u32 = 5;
 pub(crate) const G_HEAP: u32 = 6;
 pub(crate) const G_LIVE_OBJS: u32 = 7;
 pub(crate) const G_LIVE_BYTES: u32 = 8;
@@ -173,6 +171,9 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
         }
         "oxi_alloc_bytes" => {
             let n = 0;
+            // like the real runtime: a zero-sized block is the null pointer
+            b.get(n);
+            b.s().i32_eqz().if_(BlockType::Empty).i32_const(0).return_().end();
             b.s().global_get(G_LIVE_BYTES);
             b.get(n).i32c(7);
             b.s().i32_add();

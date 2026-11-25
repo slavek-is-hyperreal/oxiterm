@@ -27,6 +27,15 @@ Status: STARTED (design done, writing code). Update after every milestone.
 - src/target.rs holds PTR_VT/PTR_BYTES; vt() uses PTR_VT. Many `Mem::I32`/`i32c` address sites (elem_addr, ArrayPush, wrappers, stubrt) are still wasm32-specific; a memory64 port must parametrise them. Reported as partial.
 - tests/common/interp.rs (reference interpreter) written; next tests/diff.rs generator.
 
+## Progress 2
+- tests/diff.rs: differential random IR (reference interp tests/common/interp.rs, generator tests/common/gen.rs): release 3000 modules / 72000 cases agree incl. trap kinds (debug 150 modules; OXI_FULL_FUZZ=1 full).
+- tests/programs.rs p01-p15 scalar programs pass. Bugs found+fixed: u32 mul trap extra local.get; sat sub u64 select order.
+- Next: managed programs p16+ (struct/cow/union/array/string/closure/opt/globals/wrappers/host/callbacks/irreducible/chain/tick/safety/import-mode/determinism), goldens, measure example, clippy, wasm32, warning cleanup, final advisor.
+
+## Progress 3 (near final)
+- tests: corpus (7 programs compile+validate+load), programs.rs p01-p15, programs2.rs p16-p42 (managed, host/callback/outbuffer, irreducible, config errors, import mode, determinism, features), golden (4), diff (random). clippy -D warnings clean, wasm32 build OK, example `measure` done.
+- Remaining: final advisor review, report. Not done: tag-proof elision of variant bad_cast checks, local reuse, memory64 parametrisation (see lead note 2).
+
 ## Remaining / current step
 - skeleton -> stub runtime -> lowering -> differential tests -> corpus -> measure.
 

@@ -15,7 +15,10 @@ use oxiscript_ir::{
 use std::collections::HashMap;
 use wasm_encoder::{BlockType, Function, Ieee32, Ieee64, ValType};
 
-pub(crate) const MAX_DEPTH: u32 = 1000;
+/// Structuring recursion limit. A debug-build level costs ~2.4 KiB of Rust
+/// stack (measured), so 300 levels fit a 2 MiB test thread; release/wasm32
+/// frames are several times smaller.
+pub(crate) const MAX_DEPTH: u32 = 300;
 
 pub(crate) fn vt(t: &Ty) -> ValType {
     match t {
@@ -147,6 +150,24 @@ pub(crate) fn gen_func<'a>(cx: &mut Cx<'a>, f: &'a Func) -> R<Function> {
         d
     })?;
     g.b.s().unreachable();
+    if g.b.declared_locals() + f.params.len() > crate::LIMIT_LOCALS {
+        return Err(Diagnostic::new(
+            E_LIMIT,
+            format!(
+                "function needs {} Wasm locals; the limit is {}",
+                g.b.declared_locals() + f.params.len(),
+                crate::LIMIT_LOCALS
+            ),
+            Some(f.name.clone()),
+        ));
+    }
+    if g.b.code_len() > crate::LIMIT_BODY_BYTES {
+        return Err(Diagnostic::new(
+            E_LIMIT,
+            "function body exceeds the Wasm function size limit",
+            Some(f.name.clone()),
+        ));
+    }
     Ok(g.b.finish())
 }
 
@@ -272,22 +293,24 @@ impl<'c, 'a> FnGen<'c, 'a> {
 
     // ---------------------------------------------------------------- CFG
 
-    fn label_depth(&self, want: Frame) -> u32 {
-        let mut d = 0;
-        for fr in self.ctx.iter().rev() {
+    fn label_depth(&self, want: Frame) -> R<u32> {
+        for (d, fr) in self.ctx.iter().rev().enumerate() {
             if *fr == want {
-                return d;
+                return Ok(d as u32);
             }
-            d += 1;
         }
-        0
+        Err(Diagnostic::new(
+            crate::I_INTERNAL,
+            format!("structuring bug: no enclosing frame for {want:?}"),
+            Some(self.f.name.clone()),
+        ))
     }
 
     fn is_label(&self, from: usize, t: usize) -> bool {
         self.cfg.num[t] <= self.cfg.num[from] || self.cfg.is_merge(t)
     }
 
-    fn label_of(&self, from: usize, t: usize) -> u32 {
+    fn label_of(&self, from: usize, t: usize) -> R<u32> {
         if self.cfg.num[t] <= self.cfg.num[from] {
             self.label_depth(Frame::Loop(t))
         } else {
@@ -391,22 +414,22 @@ impl<'c, 'a> FnGen<'c, 'a> {
 
     /// Emit the edge `from -> t`. Returns the block to emit inline when it is
     /// neither a loop back edge nor a merge point.
-    fn branch(&mut self, from: usize, t: &Target) -> Option<usize> {
+    fn branch(&mut self, from: usize, t: &Target) -> R<Option<usize>> {
         self.moves(t);
         let tb = t.block.0 as usize;
         if self.cfg.num[tb] <= self.cfg.num[from] {
-            let d = self.label_depth(Frame::Loop(tb));
+            let d = self.label_depth(Frame::Loop(tb))?;
             self.b.s().br(d);
-            None
+            Ok(None)
         } else if self.cfg.is_merge(tb) {
             if self.no_tail == 0 && self.ctx.last() == Some(&Frame::Block(tb)) {
-                return None;
+                return Ok(None);
             }
-            let d = self.label_depth(Frame::Block(tb));
+            let d = self.label_depth(Frame::Block(tb))?;
             self.b.s().br(d);
-            None
+            Ok(None)
         } else {
-            Some(tb)
+            Ok(Some(tb))
         }
     }
 
@@ -414,7 +437,7 @@ impl<'c, 'a> FnGen<'c, 'a> {
     fn arm(&mut self, from: usize, t: &Target) -> R {
         self.ctx.push(Frame::If);
         self.no_tail += 1;
-        let r = self.branch(from, t);
+        let r = self.branch(from, t)?;
         let res = match r {
             Some(z) => self.do_tree(z),
             None => Ok(()),
@@ -428,7 +451,7 @@ impl<'c, 'a> FnGen<'c, 'a> {
         let f: &'a Func = self.f;
         let term = &f.blocks[x].term;
         match term {
-            Terminator::Br(t) => Ok(self.branch(x, t)),
+            Terminator::Br(t) => self.branch(x, t),
             Terminator::Ret(vs) => {
                 for v in vs {
                     self.get(*v);
@@ -440,22 +463,35 @@ impl<'c, 'a> FnGen<'c, 'a> {
                 self.trap(*k);
                 Ok(None)
             }
-            Terminator::BrIf { cond, then, els } => {
+            Terminator::BrIf { cond, then, els } => self.term_brif(x, *cond, then, els),
+            Terminator::Switch {
+                value,
+                cases,
+                default,
+            } => self.term_switch(x, *value, cases, default),
+            _ => self.err("unsupported terminator"),
+        }
+    }
+
+    #[inline(never)]
+    fn term_brif(&mut self, x: usize, cond: ValueId, then: &Target, els: &Target) -> R<Option<usize>> {
+        let cond = &cond;
+
                 let (tb, eb) = (then.block.0 as usize, els.block.0 as usize);
                 let tl = self.is_label(x, tb) && then.args.is_empty();
                 let el = self.is_label(x, eb) && els.args.is_empty();
                 if tl {
                     self.get(*cond);
-                    let d = self.label_of(x, tb);
+                    let d = self.label_of(x, tb)?;
                     self.b.s().br_if(d);
-                    return Ok(self.branch(x, els));
+                    return self.branch(x, els);
                 }
                 if el {
                     self.get(*cond);
                     self.b.s().i32_eqz();
-                    let d = self.label_of(x, eb);
+                    let d = self.label_of(x, eb)?;
                     self.b.s().br_if(d);
-                    return Ok(self.branch(x, then));
+                    return self.branch(x, then);
                 }
                 let size = |g: &Self, b: usize| {
                     if g.is_label(x, b) {
@@ -469,20 +505,21 @@ impl<'c, 'a> FnGen<'c, 'a> {
                     self.b.s().if_(BlockType::Empty);
                     self.arm(x, then)?;
                     self.b.s().end();
-                    Ok(self.branch(x, els))
+                    self.branch(x, els)
                 } else {
                     self.get(*cond);
                     self.b.s().i32_eqz().if_(BlockType::Empty);
                     self.arm(x, els)?;
                     self.b.s().end();
-                    Ok(self.branch(x, then))
+                    self.branch(x, then)
                 }
-            }
-            Terminator::Switch {
-                value,
-                cases,
-                default,
-            } => {
+            
+    }
+
+    #[inline(never)]
+    fn term_switch(&mut self, x: usize, value: ValueId, cases: &[(i64, Target)], default: &Target) -> R<Option<usize>> {
+        let value = &value;
+
                 let wide = ibits(self.ty(*value)) == 64;
                 match self.plans.get(&x) {
                     Some(Plan::Table { min, max }) => {
@@ -492,14 +529,14 @@ impl<'c, 'a> FnGen<'c, 'a> {
                             self.b.i32c(min as i32);
                             self.b.s().i32_sub();
                         }
-                        let dl = self.label_of(x, default.block.0 as usize);
+                        let dl = self.label_of(x, default.block.0 as usize)?;
                         let mut labels = Vec::new();
                         for k in min..=max {
                             let t = cases
                                 .iter()
                                 .find(|c| c.0 == k)
                                 .map_or(default, |c| &c.1);
-                            labels.push(self.label_of(x, t.block.0 as usize));
+                            labels.push(self.label_of(x, t.block.0 as usize)?);
                         }
                         self.b.s().br_table(labels, dl);
                         Ok(None)
@@ -516,7 +553,7 @@ impl<'c, 'a> FnGen<'c, 'a> {
                             }
                             let tb = t.block.0 as usize;
                             if self.is_label(x, tb) && t.args.is_empty() {
-                                let d = self.label_of(x, tb);
+                                let d = self.label_of(x, tb)?;
                                 self.b.s().br_if(d);
                             } else {
                                 self.b.s().if_(BlockType::Empty);
@@ -524,12 +561,10 @@ impl<'c, 'a> FnGen<'c, 'a> {
                                 self.b.s().end();
                             }
                         }
-                        Ok(self.branch(x, default))
+                        self.branch(x, default)
                     }
                 }
-            }
-            _ => self.err("unsupported terminator"),
-        }
+            
     }
 
     // --------------------------------------------------------- instructions
@@ -722,6 +757,11 @@ impl<'c, 'a> FnGen<'c, 'a> {
                     return self.err("array.new result is not an array");
                 };
                 let id = *self.cx.lay.array_ids.get(&ty_key(e)).expect("array type registered");
+                // n < 0 traps `bounds` here, not in the runtime (whose trap cell is separate)
+                self.get(*len);
+                self.b.i32c(0);
+                self.b.s().i32_lt_s();
+                self.trap_if(TrapKind::Bounds);
                 self.b.i32c(id as i32);
                 self.get(*len);
                 self.call_rt("oxi_array_new");
