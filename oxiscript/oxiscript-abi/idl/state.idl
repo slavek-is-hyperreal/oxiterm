@@ -1,0 +1,16 @@
+// The `state` capability: host-managed, schema-versioned persistent state that
+// survives hot reload (OxiUI's StateManager is the first host). Keys are opened
+// once into handles; reads and writes go through the handle.
+interface State "host:state" @1 {
+    handle Slot;
+    callback OnChange(slot: Slot, key: str);
+
+    fn open(key: str) -> result<Slot>;
+    fn get_i64(slot: Slot) -> result<i64>;
+    fn set_i64(slot: Slot, value: i64) -> result<void>;
+    fn get_f64(slot: Slot) -> result<f64>;
+    fn set_f64(slot: Slot, value: f64) -> result<void>;
+    fn read_str(slot: Slot) -> result<str>;
+    fn write_str(slot: Slot, value: str) -> result<void>;
+    fn watch(slot: Slot, cb: OnChange);
+}

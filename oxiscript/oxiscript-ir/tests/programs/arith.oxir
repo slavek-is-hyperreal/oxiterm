@@ -1,0 +1,57 @@
+oxiir 1
+module "arith" #edition(2026) #profile(default)
+
+export func @add_wrap(%a: i32, %b: i32) -> i32 #pure {
+entry:
+  %c: i32 = add.wrap %a, %b
+  ret %c
+}
+
+export func @checked(%a: i32, %b: i32) -> (i32, i32) {
+entry:
+  %s: i32 = add %a, %b
+  %p: i32 = mul %s, %b
+  %z: i32 = const 0
+  %isz: bool = eq %b, %z
+  br_if %isz, fail(), ok(%p)
+fail:
+  trap div_by_zero
+ok(%r: i32):
+  %q: i32 = div %r, %b
+  %m: i32 = rem.wrap %q, %b
+  ret %q, %m
+}
+
+export func @saturate(%x: i64) -> u8 {
+entry:
+  %y: u8 = conv.sat %x
+  ret %y
+}
+
+export func @bits(%x: u32, %f: f32) -> u32 {
+entry:
+  %c: u32 = popcnt %x
+  %k: u32 = const 3
+  %s: u32 = shl.wrap %x, %k
+  %o: u32 = or %c, %s
+  %fb: u32 = bitcast %f
+  %r: u32 = xor %o, %fb
+  ret %r
+}
+
+export func @floats() -> f64 {
+entry:
+  %a: f64 = const -0.0
+  %b: f64 = const nan:0x7ff8000000000001
+  %c: f64 = const inf
+  %d: f64 = const -inf
+  %e: f64 = const 5e-324
+  %f: f64 = const 1.7976931348623157e308
+  %g: f32 = const 1e-45
+  %h: f32 = const nan:0xffc00001
+  %i: f64 = const 0.1
+  %s: f64 = add %a, %e
+  %t: f64 = min %s, %i
+  %u: f64 = sqrt %t
+  ret %u
+}
