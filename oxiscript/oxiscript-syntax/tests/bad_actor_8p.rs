@@ -375,7 +375,17 @@ fn k4_no_thread_fallback_100_nested_parens_on_256kb_stack() {
             assert!(q.diagnostics.iter().any(|d| d.code == "OXS-E0011"));
             let r = parse(&nest_paren(5000), FileId(0));
             assert!(r.diagnostics.iter().any(|d| d.code == "OXS-E0011"));
-            std::mem::forget((p, q, r));
+            // and the formatter (parse included) fits as well
+            let o = FormatOptions {
+                parse: ParseOptions {
+                    use_thread: false,
+                    ..ParseOptions::default()
+                },
+                ..FormatOptions::default()
+            };
+            let f = format_with(&nest_paren(DEFAULT_MAX_DEPTH - 3), &o);
+            assert!(f.is_ok());
+            std::mem::forget((p, q, r, f));
         });
         return;
     }

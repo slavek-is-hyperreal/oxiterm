@@ -1144,59 +1144,73 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// `a.b(c)[d]?.e as T x++ ...`: the chain is walked with a loop (never
-    /// recursion per link) and printed flat.
+    /// The left spine of `a + b as T + c.d()? ...`: binary operators, casts and
+    /// postfix operators of any precedence are walked with ONE loop (never
+    /// recursion per link, even when the kinds alternate) and printed bottom-up;
+    /// each run of equal-precedence binary operators is one flat group.
+    /// Parentheses come from `Paren` nodes, so no precedence logic is needed.
     #[inline(never)]
-    fn postfix_chain(&mut self, e: &Expr) -> Doc {
-        let mut ops: Vec<&Expr> = Vec::new();
+    fn spine(&mut self, e: &Expr) -> Doc {
+        let mut nodes: Vec<&Expr> = Vec::new();
         let mut cur = e;
         loop {
             match &cur.kind {
-                ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => {
-                    ops.push(cur);
-                    cur = obj;
-                }
-                ExprKind::Call { callee, .. } => {
-                    ops.push(cur);
-                    cur = callee;
-                }
-                ExprKind::Try(x) => {
-                    ops.push(cur);
-                    cur = x;
-                }
-                ExprKind::Cast { expr, .. } => {
-                    ops.push(cur);
-                    cur = expr;
-                }
-                ExprKind::Update {
+                ExprKind::Binary { lhs: next, .. }
+                | ExprKind::Member { obj: next, .. }
+                | ExprKind::Index { obj: next, .. }
+                | ExprKind::Call { callee: next, .. }
+                | ExprKind::Try(next)
+                | ExprKind::Cast { expr: next, .. }
+                | ExprKind::Update {
                     prefix: false,
-                    target,
+                    target: next,
                     ..
                 } => {
-                    ops.push(cur);
-                    cur = target;
+                    nodes.push(cur);
+                    cur = next;
                 }
                 _ => break,
             }
         }
-        ops.reverse();
-        let mut parts = vec![self.expr(cur)];
+        nodes.reverse();
+        let mut first: Vec<Doc> = vec![self.expr(cur)];
+        let mut run: Option<(u8, Vec<Doc>)> = None;
         let mut prev_try = false;
-        for op in ops {
+        for node in nodes {
+            if let ExprKind::Binary { op, rhs, .. } = &node.kind {
+                let r = self.expr(rhs);
+                let piece = concat(vec![t(" "), t(op_text(*op)), Doc::Line, r]);
+                let p = prec(*op);
+                match &mut run {
+                    Some((rp, rest)) if *rp == p => rest.push(piece),
+                    _ => {
+                        let lhs = finish_run(&mut first, run.take());
+                        first = vec![lhs];
+                        run = Some((p, vec![piece]));
+                    }
+                }
+                prev_try = false;
+                continue;
+            }
+            // postfix operator or cast: closes any binary run
+            if run.is_some() {
+                let lhs = finish_run(&mut first, run.take());
+                first = vec![lhs];
+            }
             let is_access = matches!(
-                op.kind,
+                node.kind,
                 ExprKind::Member { .. } | ExprKind::Index { .. } | ExprKind::Call { .. }
             );
             if prev_try && is_access {
                 // `f()?.y` would read as optional chaining: spell `(f()?).y`
-                let inner = std::mem::take(&mut parts);
-                parts.push(concat(vec![t("("), concat(inner), t(")")]));
+                let inner = std::mem::take(&mut first);
+                first.push(concat(vec![t("("), concat(inner), t(")")]));
             }
-            prev_try = matches!(op.kind, ExprKind::Try(_));
-            let d = self.postfix_op(op);
-            parts.push(d);
+            prev_try = matches!(node.kind, ExprKind::Try(_));
+            let d = self.postfix_op(node);
+            first.push(d);
         }
-        concat(parts)
+        finish_run(&mut first, run.take())
     }
 
     fn postfix_op(&mut self, op: &Expr) -> Doc {
@@ -1265,32 +1279,6 @@ impl<'a> Builder<'a> {
         v.push(last);
         let head = v.remove(0);
         group(concat(vec![head, indent(concat(v))]))
-    }
-
-    fn binary(&mut self, e: &Expr) -> Doc {
-        let ExprKind::Binary { op, .. } = &e.kind else {
-            return Doc::Nil;
-        };
-        let p = prec(*op);
-        let mut spine: Vec<(&Expr, BinOp)> = Vec::new();
-        let mut cur = e;
-        let leftmost = loop {
-            match &cur.kind {
-                ExprKind::Binary { op, lhs, rhs } if prec(*op) == p => {
-                    spine.push((rhs, *op));
-                    cur = lhs;
-                }
-                _ => break cur,
-            }
-        };
-        spine.reverse();
-        let first = self.expr(leftmost);
-        let mut rest = Vec::with_capacity(spine.len());
-        for (rhs, op) in spine {
-            let r = self.expr(rhs);
-            rest.push(concat(vec![t(" "), t(op_text(op)), Doc::Line, r]));
-        }
-        group(concat(vec![first, concat(rest)]))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1375,7 +1363,6 @@ impl<'a> Builder<'a> {
                     self.expr(expr),
                 ])
             }
-            ExprKind::Binary { .. } => self.binary(e),
             ExprKind::Assign { op, target, value } => {
                 let l = self.expr(target);
                 self.assign_like(l, &assign_text(*op), value)
@@ -1393,7 +1380,8 @@ impl<'a> Builder<'a> {
             | ExprKind::Member { .. }
             | ExprKind::Index { .. }
             | ExprKind::Try(_)
-            | ExprKind::Cast { .. } => self.postfix_chain(e),
+            | ExprKind::Cast { .. }
+            | ExprKind::Binary { .. } => self.spine(e),
             ExprKind::New { ty, args } => {
                 let ty = self.ty(ty);
                 concat(vec![t("new "), ty, self.args(args)])
@@ -1460,6 +1448,15 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+    }
+}
+
+/// Close a run of equal-precedence binary operators into one flat group.
+fn finish_run(first: &mut Vec<Doc>, run: Option<(u8, Vec<Doc>)>) -> Doc {
+    let head = concat(std::mem::take(first));
+    match run {
+        Some((_, rest)) => group(concat(vec![head, concat(rest)])),
+        None => head,
     }
 }
 

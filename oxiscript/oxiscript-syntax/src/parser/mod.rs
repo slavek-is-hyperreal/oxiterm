@@ -240,6 +240,8 @@ pub fn parse_with(src: &str, file: FileId, opts: &ParseOptions) -> Parsed {
         max_nest,
     } = lex(src, file);
     let max_depth = u32::try_from(opts.max_depth.min(10_000)).unwrap_or(10_000);
+    // wasm targets cannot create threads: never try (and never restart)
+    let threads = opts.use_thread && cfg!(not(target_family = "wasm"));
     let inputs = Inputs {
         src,
         file,
@@ -249,9 +251,9 @@ pub fn parse_with(src: &str, file: FileId, opts: &ParseOptions) -> Parsed {
         comments: &comments,
         max_depth,
         diag_budget: MAX_DIAGS.saturating_sub(lex_diags.len()),
-        allow_restart: opts.use_thread,
+        allow_restart: threads,
     };
-    let mut a = if opts.use_thread && (max_nest > SOFT_NEST || tokens.len() > 512) {
+    let mut a = if threads && (max_nest > SOFT_NEST || tokens.len() > 512) {
         on_big_stack(&inputs).unwrap_or_else(|| attempt(&inputs, true))
     } else {
         attempt(&inputs, false)
@@ -564,14 +566,20 @@ impl<'a> Parser<'a> {
     }
 
     fn set_height(&mut self, id: NodeId, h: u32) {
+        self.set_height_cap(id, h, MAX_HEIGHT);
+    }
+
+    /// Record a node height; `cap` is the limit (types may only be as tall as
+    /// the nesting limit allows, since `T[][][]...` has no recursion to count).
+    fn set_height_cap(&mut self, id: NodeId, h: u32, cap: u32) {
         self.ht[id.0 as usize] = h;
-        if h > MAX_HEIGHT {
+        if h > cap {
             let s = self.cur_span();
             self.fatal_diag(Diagnostic::new(
                 "OXS-E0011",
                 s,
                 format!(
-                    "this construct is nested or chained more than {MAX_HEIGHT} levels deep; \
+                    "this construct is nested or chained more than {cap} levels deep; \
                      split it into several statements or helper functions"
                 ),
             ));

@@ -19,8 +19,11 @@
 //! release stack of the inline parser (`examples/stack_probe`): about 3.2 KB per
 //! parenthesis/call/bracket level, 3.5 KB per arrow, 3.6 KB per switch-expression
 //! level, 1.6 KB per depth unit of blocks, 0.9 KB per generic type level, so the
-//! default limit needs at most about 235 KB and fits a 256 KB stack and the
-//! default wasm32 stack. Debug builds use about six times more. Long chains
+//! default limit needs at most about 200 KB (formatting, which includes the
+//! parse, measured at 53 levels: about 3.3 KB per parenthesis/call level, 3.6 KB
+//! per arrow/switch level, 3.3 KB per two depth units of blocks, 1 KB per type
+//! level, so at most about 195 KB) and fits a 256 KB stack and the default
+//! wasm32 stack. Debug builds use about six times more. Long chains
 //! (`a + b + c`, `a.b().c`, `x ? y : z ? ...`, `else if` ladders, up to
 //! [`MAX_HEIGHT`] links) are parsed, formatted and dropped iteratively and
 //! cost constant stack. When a thread with a large stack can be created

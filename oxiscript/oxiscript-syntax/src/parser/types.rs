@@ -28,7 +28,7 @@ impl Parser<'_> {
             span,
             kind,
         };
-        self.set_height(t.id, hh);
+        self.set_height_cap(t.id, hh, self.max_depth);
         t
     }
 

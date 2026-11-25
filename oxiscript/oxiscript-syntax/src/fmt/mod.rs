@@ -90,7 +90,10 @@ pub fn format_with(src: &str, opts: &FormatOptions) -> Result<String, FormatErro
     // Optional headroom: deeply nested input is formatted on a helper thread
     // with a large stack when one can be created. The result never depends on
     // it: the nesting limit applies to the parse, and chains are iterative.
-    if opts.parse.use_thread && (parsed.max_nest > 6 || parsed.max_height > 120) {
+    if opts.parse.use_thread
+        && cfg!(not(target_family = "wasm"))
+        && (parsed.max_nest > 6 || parsed.max_height > 120)
+    {
         let spawned = std::thread::scope(|s| {
             std::thread::Builder::new()
                 .stack_size(128 << 20)
