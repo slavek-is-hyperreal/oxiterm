@@ -19,6 +19,7 @@ impl Parser<'_> {
         self.parse_block_impl(true)
     }
 
+    #[inline(never)]
     fn parse_block_impl(&mut self, law: bool) -> Block {
         let lo = self.cur_lo();
         if !self.at(Tk::LBrace) {
@@ -77,6 +78,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_stmt_or_tail(&mut self, law: bool) -> Option<Out> {
         if !self.enter() {
             self.leave();
@@ -114,6 +116,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_stmt_inner(&mut self, law: bool) -> Option<Out> {
         let lo = self.cur_lo();
         let doc = self.docs_before(lo);
@@ -278,6 +281,7 @@ impl Parser<'_> {
         e
     }
 
+    #[inline(never)]
     fn parse_if(&mut self) -> StmtKind {
         self.bump();
         self.expect(Tk::LParen, "`(`");
@@ -292,6 +296,7 @@ impl Parser<'_> {
         StmtKind::If { cond, then, els }
     }
 
+    #[inline(never)]
     fn parse_for(&mut self, parallel: bool, allowed: &mut Vec<NodeId>) -> StmtKind {
         self.bump(); // for
         self.expect(Tk::LParen, "`(`");
@@ -381,6 +386,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_switch_stmt(&mut self) -> StmtKind {
         self.bump(); // switch
         self.expect(Tk::LParen, "`(`");
@@ -466,6 +472,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     pub(super) fn parse_pattern(&mut self) -> Pattern {
         let lo = self.cur_lo();
         if !self.enter() {

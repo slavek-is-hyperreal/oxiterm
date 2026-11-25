@@ -59,8 +59,11 @@ pub mod visit;
 mod fmt;
 
 pub use ast::*;
-pub use diag::{apply_edits, Diagnostic, Fix, LineIndex, TextEdit};
+pub use diag::{apply_edits, Diagnostic, Fix, LineIndex, TextEdit, MAX_DIAGS};
 pub use fmt::{format, format_with, FormatError, FormatOptions};
 pub use lexer::{lex, Comment, CommentKind};
-pub use parser::{is_error_ident, parse, parse_module, Parsed, MAX_DEPTH, MAX_HEIGHT};
+pub use parser::{
+    is_error_ident, parse, parse_module, parse_with, ParseOptions, Parsed, DEFAULT_MAX_DEPTH,
+    MAX_HEIGHT,
+};
 pub use visit::*;

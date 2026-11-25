@@ -13,7 +13,7 @@
 //! is needed.
 
 use crate::ast::{FileId, NumTy, Span};
-use crate::diag::{mk_span, Diagnostic, Fix};
+use crate::diag::{mk_span, Diagnostic, Fix, MAX_DIAGS};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kw {
@@ -185,6 +185,8 @@ pub struct Lexed {
     pub diags: Vec<Diagnostic>,
     /// For each `(` token index the index of its matching `)`; `u32::MAX` if none.
     pub paren_match: Vec<u32>,
+    /// Deepest `(`/`[`/`{`/`${` nesting seen (a lower bound on parser recursion).
+    pub max_nest: u32,
 }
 
 pub fn keyword(w: &str) -> Option<Kw> {
@@ -284,6 +286,17 @@ struct Lexer<'a> {
     comments: Vec<Comment>,
     diags: Vec<Diagnostic>,
     braces: Vec<Brace>,
+    capped: bool,
+}
+
+/// Characters that render as nothing or reorder text (Trojan Source): they must
+/// be written as `\u{...}` inside string and template literals.
+pub fn is_invisible(c: char) -> bool {
+    (c.is_control() && c != '\t')
+        || matches!(c,
+            '\u{ad}' | '\u{61c}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e007f}')
 }
 
 const fn is_id_start(c: u8) -> bool {
@@ -308,6 +321,7 @@ pub fn lex(src: &str, file: FileId) -> Lexed {
         comments: Vec::new(),
         diags: Vec::new(),
         braces: Vec::new(),
+        capped: false,
     };
     if src.len() >= u32::MAX as usize - 1 {
         lx.diags.push(Diagnostic::new(
@@ -329,7 +343,18 @@ impl Lexer<'_> {
     fn finish(self) -> Lexed {
         let mut paren_match = vec![u32::MAX; self.toks.len()];
         let mut stack: Vec<u32> = Vec::new();
+        let (mut nest, mut max_nest) = (0u32, 0u32);
         for (i, t) in self.toks.iter().enumerate() {
+            match t.kind {
+                Tk::LParen | Tk::LBracket | Tk::LBrace | Tk::TemplateHead => {
+                    nest += 1;
+                    max_nest = max_nest.max(nest);
+                }
+                Tk::RParen | Tk::RBracket | Tk::RBrace | Tk::TemplateTail => {
+                    nest = nest.saturating_sub(1);
+                }
+                _ => {}
+            }
             match t.kind {
                 Tk::LParen => stack.push(i as u32),
                 Tk::RParen => {
@@ -346,6 +371,7 @@ impl Lexer<'_> {
             comments: self.comments,
             diags: self.diags,
             paren_match,
+            max_nest,
         }
     }
 
@@ -355,7 +381,22 @@ impl Lexer<'_> {
 
     fn err(&mut self, code: &'static str, lo: usize, hi: usize, msg: String) {
         let s = self.span(lo, hi);
-        self.diags.push(Diagnostic::new(code, s, msg));
+        self.push_diag(Diagnostic::new(code, s, msg));
+    }
+
+    /// Record a diagnostic; past [`MAX_DIAGS`] only one `OXS-E0017` is kept.
+    fn push_diag(&mut self, d: Diagnostic) {
+        if self.diags.len() < MAX_DIAGS {
+            self.diags.push(d);
+        } else if !self.capped {
+            self.capped = true;
+            let sp = d.span;
+            self.diags.push(Diagnostic::new(
+                "OXS-E0017",
+                sp,
+                format!("more than {MAX_DIAGS} errors; giving up on this file"),
+            ));
+        }
     }
 
     fn push_eof(&mut self, ws: bool, nl: bool) {
@@ -409,13 +450,10 @@ impl Lexer<'_> {
                 b'/' if self.pos + 1 < n && b[self.pos + 1] == b'/' => {
                     let lo = self.pos;
                     let mut e = lo + 2;
-                    while e < n && b[e] != b'\n' {
+                    while e < n && b[e] != b'\n' && b[e] != b'\r' {
                         e += 1;
                     }
-                    let mut hi = e;
-                    if hi > lo && b[hi - 1] == b'\r' {
-                        hi -= 1;
-                    }
+                    let hi = e;
                     let is_doc = b.get(lo + 2) == Some(&b'/') && b.get(lo + 3) != Some(&b'/');
                     self.comments.push(Comment {
                         kind: if is_doc {
@@ -434,7 +472,7 @@ impl Lexer<'_> {
                     let mut e = lo + 2;
                     let mut closed = false;
                     while e < n {
-                        if b[e] == b'\n' {
+                        if b[e] == b'\n' || b[e] == b'\r' {
                             nl = true;
                         }
                         if b[e] == b'*' && e + 1 < n && b[e + 1] == b'/' {
@@ -689,6 +727,7 @@ impl Lexer<'_> {
         let mut radix = 10u32;
         let mut is_float = false;
         let mut dot_fix: Option<String> = None;
+        let mut float_hint = false;
 
         if b[i] == b'.' {
             is_float = true;
@@ -731,6 +770,7 @@ impl Lexer<'_> {
                         let mut t = text.clone();
                         t.push('.');
                         dot_fix = Some(format!("{t}0"));
+                        float_hint = true;
                         i += 1;
                         bad = true;
                         reason = "a digit must follow the decimal point".into();
@@ -776,7 +816,12 @@ impl Lexer<'_> {
                 }
                 None => {
                     bad = true;
-                    reason = format!("`{w}` is not a numeric type suffix");
+                    if w.starts_with(['e', 'E']) && !is_float {
+                        float_hint = true;
+                        reason = "an exponent needs at least one digit".into();
+                    } else {
+                        reason = format!("`{w}` is not a numeric type suffix");
+                    }
                 }
             }
         }
@@ -807,7 +852,7 @@ impl Lexer<'_> {
             LitData::Int { value: v, suffix }
         };
         if bad {
-            let kind = if is_float { "float" } else { "integer" };
+            let kind = if is_float || float_hint { "float" } else { "integer" };
             let msg = if reason.is_empty() {
                 format!(
                     "`{}` is not a valid {kind} literal (digit separators `_` go between digits)",
@@ -824,7 +869,7 @@ impl Lexer<'_> {
             if let Some(f) = dot_fix {
                 d = d.with_fix(Fix::replace(format!("write `{f}`"), sp, f));
             }
-            self.diags.push(d);
+            self.push_diag(d);
         }
         let idx = self.add_lit(lit);
         self.push(
@@ -839,6 +884,32 @@ impl Lexer<'_> {
     }
 
     // ---- strings and templates ---------------------------------------------
+
+    /// Append source text `lo..hi` of a literal, warning about invisible characters.
+    fn copy_run(&mut self, out: &mut String, lo: usize, hi: usize) {
+        let text = &self.src[lo..hi];
+        out.push_str(text);
+        if text.is_ascii() && !text.bytes().any(|b| b < 0x20 && b != b'\t' || b == 0x7f) {
+            return;
+        }
+        for (k, c) in text.char_indices() {
+            if is_invisible(c) {
+                let at = lo + k;
+                let sp = self.span(at, at + c.len_utf8());
+                let esc = format!("\\u{{{:x}}}", c as u32);
+                let d = Diagnostic::new(
+                    "OXS-W0003",
+                    sp,
+                    format!(
+                        "invisible or direction-changing character U+{:04X} in a literal; write it as `{esc}`",
+                        c as u32
+                    ),
+                )
+                .with_fix(Fix::replace(format!("write `{esc}`"), sp, esc));
+                self.push_diag(d);
+            }
+        }
+    }
 
     /// Decode one escape starting at the backslash at `i`; returns the index
     /// after it. `out` receives the decoded character (nothing on error).
@@ -963,7 +1034,7 @@ impl Lexer<'_> {
         let mut run = i;
         loop {
             if i >= n || b[i] == b'\n' || b[i] == b'\r' {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 self.err(
                     "OXS-E0002",
                     start,
@@ -974,12 +1045,12 @@ impl Lexer<'_> {
             }
             let c = b[i];
             if c == q {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 i += 1;
                 break;
             }
             if c == b'\\' {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 i = self.escape(i, &mut out);
                 run = i;
                 continue;
@@ -1009,7 +1080,7 @@ impl Lexer<'_> {
         let (kind, closed);
         loop {
             if i >= n {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 self.err(
                     "OXS-E0002",
                     tok_lo,
@@ -1026,7 +1097,7 @@ impl Lexer<'_> {
             }
             let c = b[i];
             if c == b'`' {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 i += 1;
                 closed = true;
                 kind = if opening {
@@ -1037,7 +1108,7 @@ impl Lexer<'_> {
                 break;
             }
             if c == b'$' && b.get(i + 1) == Some(&b'{') {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 i += 2;
                 self.braces.push(Brace::Template);
                 closed = true;
@@ -1049,14 +1120,14 @@ impl Lexer<'_> {
                 break;
             }
             if c == b'\\' {
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 i = self.escape(i, &mut out);
                 run = i;
                 continue;
             }
             if c == b'\r' {
                 // CRLF and lone CR are normalised to LF in the cooked value
-                out.push_str(&self.src[run..i]);
+                self.copy_run(&mut out, run, i);
                 out.push('\n');
                 i += 1;
                 if b.get(i) == Some(&b'\n') {

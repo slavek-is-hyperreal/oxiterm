@@ -45,6 +45,7 @@ impl Parser<'_> {
     }
 
     /// `Type = FnType | UnionType`
+    #[inline(never)]
     pub(super) fn parse_type(&mut self) -> TypeExpr {
         if !self.enter() {
             self.leave();
@@ -55,6 +56,7 @@ impl Parser<'_> {
         t
     }
 
+    #[inline(never)]
     fn parse_type_body(&mut self) -> TypeExpr {
         if self.at(Tk::LParen) && self.is_fn_type_start() {
             self.parse_fn_type()
@@ -102,6 +104,7 @@ impl Parser<'_> {
         self.mk_type(TypeExprKind::Fn { params, ret }, lo)
     }
 
+    #[inline(never)]
     fn parse_union_type(&mut self) -> TypeExpr {
         let lo = self.cur_lo();
         self.eat(Tk::Pipe);
@@ -121,6 +124,7 @@ impl Parser<'_> {
     }
 
     /// `ArrayType = PrimaryType { "[" "]" }`
+    #[inline(never)]
     pub(super) fn parse_array_type(&mut self) -> TypeExpr {
         let lo = self.cur_lo();
         let mut t = self.parse_primary_type();
@@ -132,6 +136,7 @@ impl Parser<'_> {
         t
     }
 
+    #[inline(never)]
     fn parse_type_path(&mut self, with_args: bool) -> TypeExpr {
         let lo = self.cur_lo();
         let mut segments = vec![self.parse_ident("a type name")];
@@ -177,6 +182,7 @@ impl Parser<'_> {
         t
     }
 
+    #[inline(never)]
     fn parse_primary_type(&mut self) -> TypeExpr {
         let lo = self.cur_lo();
         match self.kind() {

@@ -23,7 +23,7 @@
 //!   source position.
 
 use crate::ast::*;
-use crate::diag::{mk_span, Diagnostic, Fix};
+use crate::diag::{mk_span, Diagnostic, Fix, MAX_DIAGS};
 use crate::lexer::{lex, Comment, CommentKind, Kw, Lexed, LitData, Tk, Token};
 use crate::visit::*;
 
@@ -33,16 +33,41 @@ mod item;
 mod stmt;
 mod types;
 
-/// Maximum nesting of parser recursion (parentheses, blocks, types, ...).
-pub const MAX_DEPTH: u32 = 128;
-/// Maximum height of the expression/statement tree (counts chain length).
+/// Default for [`ParseOptions::max_depth`]: maximum nesting of parser recursion
+/// (parentheses, blocks, types, ...). Chosen so that the inline parser fits in
+/// 256 KB of release stack on native targets and in the default wasm32 stack:
+/// see the crate docs for the measured bytes per level.
+pub const DEFAULT_MAX_DEPTH: usize = 100;
+/// Maximum height of the expression/statement tree (counts chain length). Chains
+/// are parsed, formatted and dropped iteratively, so this costs no stack.
 pub const MAX_HEIGHT: u32 = 1000;
-/// Maximum number of diagnostics before parsing gives up.
-const MAX_DIAGS: usize = 200;
-/// Nesting level at which parsing restarts on a thread with a large stack
-/// (so deeply nested input cannot overflow a small caller stack).
-const SOFT_DEPTH: u32 = 40;
+/// Nesting depth at which an inline attempt is abandoned for a big-stack thread.
+const SOFT_DEPTH: u32 = 12;
+/// Bracket nesting (from the lexer) above which the thread is used right away.
+const SOFT_NEST: u32 = 6;
 const BIG_STACK: usize = 128 << 20;
+
+/// Options for [`parse_with`].
+#[derive(Clone, Debug)]
+pub struct ParseOptions {
+    /// Maximum nesting depth (`OXS-E0011` beyond it). Whether a program is
+    /// accepted depends only on this number, never on the platform or on
+    /// whether a helper thread was available.
+    pub max_depth: usize,
+    /// Allow a helper thread with a large stack for deeply nested input
+    /// (native targets; ignored where threads cannot be created). It adds
+    /// headroom for the caller's stack and never changes the result.
+    pub use_thread: bool,
+}
+
+impl Default for ParseOptions {
+    fn default() -> Self {
+        ParseOptions {
+            max_depth: DEFAULT_MAX_DEPTH,
+            use_thread: true,
+        }
+    }
+}
 
 /// An identifier standing in for a missing or malformed name after a syntax
 /// error has been reported. Consumers must not look at a tree whose parse
@@ -60,6 +85,8 @@ pub struct Parsed {
     pub comments: Vec<Comment>,
     /// Height of the tallest expression/statement/block/type subtree.
     pub max_height: u32,
+    /// Deepest bracket nesting in the token stream.
+    pub max_nest: u32,
 }
 
 #[derive(Clone)]
@@ -77,10 +104,13 @@ struct Snapshot {
 pub(crate) struct Parser<'a> {
     src: &'a str,
     file: FileId,
-    toks: Vec<Token>,
-    lits: Vec<LitData>,
-    pm: Vec<u32>,
+    toks: &'a [Token],
+    lits: &'a [LitData],
+    pm: &'a [u32],
     comments: &'a [Comment],
+    max_depth: u32,
+    diag_budget: usize,
+    allow_restart: bool,
     pos: usize,
     /// Bytes already consumed from the current token (`>>` split into `>` `>`).
     part: u32,
@@ -115,28 +145,32 @@ struct Attempt {
     diags: Vec<Diagnostic>,
     max_height: u32,
     restart: bool,
-    toks: Vec<Token>,
-    lits: Vec<LitData>,
-    pm: Vec<u32>,
 }
 
-fn attempt(
-    src: &str,
+struct Inputs<'a> {
+    src: &'a str,
     file: FileId,
-    toks: Vec<Token>,
-    lits: Vec<LitData>,
-    pm: Vec<u32>,
-    comments: &[Comment],
-    big: bool,
-) -> Attempt {
-    let n = toks.len() as u64;
+    toks: &'a [Token],
+    lits: &'a [LitData],
+    pm: &'a [u32],
+    comments: &'a [Comment],
+    max_depth: u32,
+    diag_budget: usize,
+    allow_restart: bool,
+}
+
+fn attempt(i: &Inputs<'_>, big: bool) -> Attempt {
+    let n = i.toks.len() as u64;
     let mut p = Parser {
-        src,
-        file,
-        toks,
-        lits,
-        pm,
-        comments,
+        src: i.src,
+        file: i.file,
+        toks: i.toks,
+        lits: i.lits,
+        pm: i.pm,
+        comments: i.comments,
+        max_depth: i.max_depth,
+        diag_budget: i.diag_budget,
+        allow_restart: i.allow_restart,
         pos: 0,
         part: 0,
         ids: NodeIdGen::new(),
@@ -166,49 +200,69 @@ fn attempt(
         diags,
         max_height,
         restart: p.restart,
-        toks: p.toks,
-        lits: p.lits,
-        pm: p.pm,
     }
 }
 
-/// Parse a module. `file` is recorded in every span.
-///
-/// Parsing runs on the caller's stack. Input nested deeper than `SOFT_DEPTH`
-/// makes that attempt stop and the whole parse run once more on a single
-/// thread with a large stack (so at most one thread is ever spawned per call,
-/// and ordinary programs never pay for it).
+/// Run one attempt on a helper thread with a large stack; `None` if no thread
+/// can be created (wasm, tiny RTOS, resource limits).
+fn on_big_stack(i: &Inputs<'_>) -> Option<Attempt> {
+    let spawned = std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(BIG_STACK)
+            .spawn_scoped(s, || attempt(i, true))
+            .map(std::thread::ScopedJoinHandle::join)
+    });
+    match spawned {
+        Ok(Ok(r)) => Some(r),
+        Ok(Err(payload)) => std::panic::resume_unwind(payload),
+        Err(_) => None,
+    }
+}
+
+/// Parse a module with default options. `file` is recorded in every span.
 pub fn parse(src: &str, file: FileId) -> Parsed {
+    parse_with(src, file, &ParseOptions::default())
+}
+
+/// Parse a module. Parsing runs on the caller's stack unless the input nests
+/// deeply, in which case (and only if [`ParseOptions::use_thread`]) it runs once
+/// on one helper thread with a large stack; without a thread the same parse runs
+/// inline, bounded by `max_depth`. At most one thread is spawned per call.
+pub fn parse_with(src: &str, file: FileId, opts: &ParseOptions) -> Parsed {
     let Lexed {
         tokens,
         lits,
         comments,
         diags: lex_diags,
         paren_match,
+        max_nest,
     } = lex(src, file);
-    let mut a = attempt(src, file, tokens, lits, paren_match, &comments, false);
+    let max_depth = u32::try_from(opts.max_depth.min(10_000)).unwrap_or(10_000);
+    let inputs = Inputs {
+        src,
+        file,
+        toks: &tokens,
+        lits: &lits,
+        pm: &paren_match,
+        comments: &comments,
+        max_depth,
+        diag_budget: MAX_DIAGS.saturating_sub(lex_diags.len()),
+        allow_restart: opts.use_thread,
+    };
+    let mut a = if opts.use_thread && max_nest > SOFT_NEST {
+        on_big_stack(&inputs).unwrap_or_else(|| attempt(&inputs, true))
+    } else {
+        attempt(&inputs, false)
+    };
     if a.restart {
-        let (t, l, pm) = (a.toks, a.lits, a.pm);
-        let (t2, l2, pm2) = (t.clone(), l.clone(), pm.clone());
-        let cm: &[Comment] = &comments;
-        let spawned = std::thread::scope(|s| {
-            std::thread::Builder::new()
-                .stack_size(BIG_STACK)
-                .spawn_scoped(s, move || attempt(src, file, t2, l2, pm2, cm, true))
-                .map(std::thread::ScopedJoinHandle::join)
-        });
-        a = match spawned {
-            Ok(Ok(r)) => r,
-            Ok(Err(payload)) => std::panic::resume_unwind(payload),
-            // no thread available: parse inline; MAX_DEPTH still bounds the recursion
-            Err(_) => attempt(src, file, t, l, pm, &comments, true),
-        };
+        a = on_big_stack(&inputs).unwrap_or_else(|| attempt(&inputs, true));
     }
     let mut all = lex_diags;
     all.append(&mut a.diags);
     all.sort_by_key(|d| (d.span.lo, d.span.hi));
     Parsed {
         max_height: a.max_height,
+        max_nest,
         module: a.module,
         diagnostics: all,
         comments,
@@ -572,7 +626,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        if self.diags.len() >= MAX_DIAGS {
+        if self.diags.len() >= self.diag_budget {
+            if self.diag_budget == 0 {
+                self.bail = true;
+                self.stop = true;
+                return;
+            }
             let s = mk_span(self.file, self.last_end as usize, self.last_end as usize);
             self.fatal_diag(Diagnostic::new(
                 "OXS-E0017",
@@ -624,19 +683,20 @@ impl<'a> Parser<'a> {
 
     fn enter(&mut self) -> bool {
         self.depth += 1;
-        if self.depth > SOFT_DEPTH && !self.big && !self.restart {
+        if self.depth > SOFT_DEPTH && self.allow_restart && !self.big && !self.restart {
             self.restart = true;
             self.bail = true;
             self.stop = true;
             return false;
         }
-        if self.depth > MAX_DEPTH {
+        if self.depth > self.max_depth {
             let s = self.cur_span();
             self.fatal_diag(Diagnostic::new(
                 "OXS-E0011",
                 s,
                 format!(
-                    "nesting deeper than {MAX_DEPTH} levels; split the code into smaller pieces"
+                    "nesting deeper than {} levels; split the code into smaller pieces",
+                    self.max_depth
                 ),
             ));
             return false;

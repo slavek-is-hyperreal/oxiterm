@@ -60,7 +60,11 @@ impl Fix {
     }
 }
 
-/// A syntax error (the lexer and parser only produce errors).
+/// Most diagnostics kept per file (lexer and parser share this limit); the
+/// last one is `OXS-E0017`.
+pub const MAX_DIAGS: usize = 200;
+
+/// A syntax diagnostic (an error, or a warning such as `OXS-W0003`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     /// Stable reason code, e.g. `OXS-E0004`.
@@ -71,6 +75,10 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// `true` for error codes (`OXS-E....`), `false` for warnings.
+    pub fn is_error(&self) -> bool {
+        self.code.as_bytes().get(4) == Some(&b'E')
+    }
     pub fn new(code: &'static str, span: Span, message: impl Into<String>) -> Diagnostic {
         Diagnostic {
             code,
@@ -131,8 +139,10 @@ pub struct LineIndex {
 impl LineIndex {
     pub fn new(src: &str) -> LineIndex {
         let mut starts = vec![0u32];
-        for (i, b) in src.bytes().enumerate() {
-            if b == b'\n' {
+        let bytes = src.as_bytes();
+        for (i, &b) in bytes.iter().enumerate() {
+            let lone_cr = b == b'\r' && bytes.get(i + 1) != Some(&b'\n');
+            if b == b'\n' || lone_cr {
                 starts.push(u32::try_from(i + 1).unwrap_or(u32::MAX));
             }
         }

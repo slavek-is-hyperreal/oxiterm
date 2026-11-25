@@ -124,6 +124,7 @@ impl Parser<'_> {
         })
     }
 
+    #[inline(never)]
     fn parse_assign(&mut self) -> Expr {
         if !self.enter() {
             self.leave();
@@ -134,6 +135,7 @@ impl Parser<'_> {
         r
     }
 
+    #[inline(never)]
     fn parse_assign_body(&mut self) -> Expr {
         let lo = self.cur_lo();
         let lhs = self.parse_cond();
@@ -160,29 +162,28 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_cond(&mut self) -> Expr {
         let lo = self.cur_lo();
         let cond = self.parse_binary(1);
         if self.at(Tk::Question) && self.cur_ws() {
-            return self.parse_ternary_rest(cond, lo);
+            return self.parse_ternary_rest(cond, lo, false);
         }
         cond
     }
 
     /// At a `?` that starts a conditional: `cond ? a : b`.
-    fn parse_ternary_rest(&mut self, cond: Expr, lo: u32) -> Expr {
+    fn parse_ternary_rest(&mut self, cond: Expr, lo: u32, quiet: bool) -> Expr {
         let q = self.cur_span();
+        let prev_end = self.last_end.min(q.lo);
         self.bump();
         if matches!(
             self.kind(),
             Tk::Semi | Tk::RParen | Tk::RBracket | Tk::RBrace | Tk::Comma | Tk::Colon | Tk::Eof
         ) {
-            self.error(
-                "OXS-E0006",
-                q,
-                "`?` after whitespace is the conditional operator and needs `a ? b : c`; \
-                 the try operator is written directly after its operand, as in `f()?`",
-            );
+            if !quiet {
+                self.report_bare_question(q, prev_end, "needs `a ? b : c`");
+            }
             return cond;
         }
         let saved = self.then_ctx;
@@ -190,19 +191,9 @@ impl Parser<'_> {
         let then = self.parse_assign();
         self.then_ctx = saved;
         if !self.eat(Tk::Colon) {
-            self.diag(
-                Diagnostic::new(
-                    "OXS-E0006",
-                    q,
-                    "`?` after whitespace is the conditional operator and needs a matching `:`; \
-                     the try operator is written directly after its operand, as in `f()?`",
-                )
-                .with_fix(Fix::replace(
-                    "remove the space before `?` (try operator)",
-                    q,
-                    "?",
-                )),
-            );
+            if !quiet {
+                self.report_bare_question(q, prev_end, "needs a matching `:`");
+            }
             let els = self.error_expr();
             return self.mk_expr(
                 ExprKind::Cond {
@@ -229,6 +220,28 @@ impl Parser<'_> {
             },
             lo,
         )
+    }
+
+    /// `OXS-E0006` for a `?` after whitespace that is not a complete conditional.
+    /// The fix removes the whitespace before `?` (making it the try operator).
+    #[inline(never)]
+    fn report_bare_question(&mut self, q: Span, prev_end: u32, what: &str) {
+        let ws = Span::new(q.file, prev_end, q.hi);
+        self.diag(
+            Diagnostic::new(
+                "OXS-E0006",
+                q,
+                format!(
+                    "`?` after whitespace is the conditional operator and {what}; \
+                     the try operator is written directly after its operand, as in `f()?`"
+                ),
+            )
+            .with_fix(Fix::replace(
+                "remove the space before `?` (try operator)",
+                ws,
+                "?",
+            )),
+        );
     }
 
     fn binop_info(&self) -> Option<(BinKind, u8)> {
@@ -267,6 +280,7 @@ impl Parser<'_> {
         })
     }
 
+    #[inline(never)]
     pub(super) fn parse_binary(&mut self, min: u8) -> Expr {
         let lo = self.cur_lo();
         let mut lhs = self.parse_unary();
@@ -453,6 +467,7 @@ impl Parser<'_> {
         )
     }
 
+    #[inline(never)]
     fn parse_unary(&mut self) -> Expr {
         let lo = self.cur_lo();
         match self.kind() {
@@ -537,187 +552,210 @@ impl Parser<'_> {
         e
     }
 
+    /// Postfix operators. The loop is deliberately tiny: every operator is
+    /// handled by an out-of-line helper so the recursive path (this function is
+    /// on it for every nesting level) keeps a small stack frame.
+    #[inline(never)]
     fn parse_postfix(&mut self) -> Expr {
         let lo = self.cur_lo();
         let mut e = self.parse_primary();
         loop {
-            match self.kind() {
-                Tk::Dot => {
-                    self.bump();
-                    let name = self.parse_ident("a member name");
-                    e = self.mk_expr(
-                        ExprKind::Member {
-                            obj: Box::new(e),
-                            name,
-                            optional: false,
-                        },
-                        lo,
-                    );
-                }
-                Tk::QDot => {
-                    self.bump();
-                    match self.kind() {
-                        Tk::LBracket => {
-                            self.bump();
-                            let idx = self.bracketed(Self::parse_expr);
-                            self.expect(Tk::RBracket, "`]`");
-                            e = self.mk_expr(
-                                ExprKind::Index {
-                                    obj: Box::new(e),
-                                    index: Box::new(idx),
-                                    optional: true,
-                                },
-                                lo,
-                            );
-                        }
-                        Tk::LParen => {
-                            let args = self.parse_call_args();
-                            e = self.mk_expr(
-                                ExprKind::Call {
-                                    callee: Box::new(e),
-                                    type_args: Vec::new(),
-                                    args,
-                                    optional: true,
-                                },
-                                lo,
-                            );
-                        }
-                        _ => {
-                            let name = self.parse_ident("a member name");
-                            e = self.mk_expr(
-                                ExprKind::Member {
-                                    obj: Box::new(e),
-                                    name,
-                                    optional: true,
-                                },
-                                lo,
-                            );
-                        }
-                    }
-                }
-                Tk::LBracket => {
-                    self.bump();
-                    let idx = self.bracketed(Self::parse_expr);
-                    self.expect(Tk::RBracket, "`]`");
-                    e = self.mk_expr(
-                        ExprKind::Index {
-                            obj: Box::new(e),
-                            index: Box::new(idx),
-                            optional: false,
-                        },
-                        lo,
-                    );
-                }
-                Tk::LParen => {
-                    let args = self.parse_call_args();
-                    e = self.mk_expr(
-                        ExprKind::Call {
-                            callee: Box::new(e),
-                            type_args: Vec::new(),
-                            args,
-                            optional: false,
-                        },
-                        lo,
-                    );
-                }
-                Tk::Lt => {
-                    let Some(type_args) = self.try_generic_args() else {
-                        break;
-                    };
-                    let args = self.parse_call_args();
-                    e = self.mk_expr(
-                        ExprKind::Call {
-                            callee: Box::new(e),
-                            type_args,
-                            args,
-                            optional: false,
-                        },
-                        lo,
-                    );
-                }
-                Tk::Question if !self.cur_ws() => {
-                    // try operator, unless it is plainly a conditional written without spaces
-                    let q = self.cur_span();
-                    let next = self.nth(1);
-                    let t1 = self.nth_tok(1);
-                    let operand_follows = !t1.nl
-                        && matches!(
-                            next,
-                            Tk::Ident
-                                | Tk::Int
-                                | Tk::Float
-                                | Tk::Str
-                                | Tk::TemplateFull
-                                | Tk::TemplateHead
-                                | Tk::Kw(Kw::True | Kw::False | Kw::Null | Kw::This | Kw::New)
-                        );
-                    if operand_follows {
-                        self.diag(
-                            Diagnostic::new(
-                                "OXS-E0006",
-                                q,
-                                "`?` directly after an operand is the try operator; \
-                                 write the conditional operator as `a ? b : c` with a space before `?`",
-                            )
-                            .with_fix(Fix::insert("insert a space before `?`", q, " ")),
-                        );
-                        e = self.parse_ternary_rest(e, lo);
-                        break;
-                    }
-                    self.bump();
-                    e = self.mk_expr(ExprKind::Try(Box::new(e)), lo);
-                }
-                Tk::PlusPlus | Tk::MinusMinus => {
-                    let op = if self.at(Tk::PlusPlus) {
-                        IncDec::Inc
-                    } else {
-                        IncDec::Dec
-                    };
-                    self.bump();
-                    e = self.make_update(op, false, e, lo);
-                }
-                Tk::Float
-                    if !self.cur_ws()
-                        && self.cur_text().len() > 1
-                        && self.cur_text().starts_with('.')
-                        && self.cur_text()[1..].bytes().all(|b| b.is_ascii_digit()) =>
-                {
-                    // `t.0`: lexed as `t` and the literal `.0`
-                    let sp = self.cur_span();
-                    let digits = self.cur_text()[1..].to_string();
-                    self.diag(
-                        Diagnostic::new(
-                            "OXS-E0001",
-                            sp,
-                            "field access by number does not exist (tuples are reserved); index with `t[0]`",
-                        )
-                        .with_fix(Fix::replace(format!("write `[{digits}]`"), sp, format!("[{digits}]"))),
-                    );
-                    let t = self.bump();
-                    let lit_span = mk_span(self.file, t.lo as usize + 1, t.hi as usize);
-                    let value = digits.parse::<u128>().unwrap_or(0);
-                    let l = Lit {
-                        id: self.nid(),
-                        span: lit_span,
-                        kind: LitKind::Int {
-                            value,
-                            suffix: None,
-                        },
-                    };
-                    let idx = self.mk_expr_span(ExprKind::Lit(l), lit_span);
-                    e = self.mk_expr(
-                        ExprKind::Index {
-                            obj: Box::new(e),
-                            index: Box::new(idx),
-                            optional: false,
-                        },
-                        lo,
-                    );
-                }
+            let next = match self.kind() {
+                Tk::Dot => self.pf_member(e, lo, false),
+                Tk::QDot => self.pf_qdot(e, lo),
+                Tk::LBracket => self.pf_index(e, lo, false),
+                Tk::LParen => self.pf_call(e, lo, Vec::new(), false),
+                Tk::Lt => self.pf_generic(e, lo),
+                Tk::Question if !self.cur_ws() => self.pf_try(e, lo),
+                Tk::PlusPlus | Tk::MinusMinus => self.pf_update(e, lo),
+                Tk::Float if self.at_dot_number() => Ok(self.pf_dot_number(e, lo)),
                 _ => break,
+            };
+            match next {
+                Ok(n) => e = n,
+                Err(done) => return done,
             }
         }
         e
+    }
+
+    #[inline(never)]
+    fn pf_member(&mut self, e: Expr, lo: u32, optional: bool) -> Result<Expr, Expr> {
+        if !optional {
+            self.bump();
+        }
+        let name = self.parse_ident("a member name");
+        Ok(self.mk_expr(
+            ExprKind::Member {
+                obj: Box::new(e),
+                name,
+                optional,
+            },
+            lo,
+        ))
+    }
+
+    #[inline(never)]
+    fn pf_qdot(&mut self, e: Expr, lo: u32) -> Result<Expr, Expr> {
+        self.bump();
+        match self.kind() {
+            Tk::LBracket => self.pf_index(e, lo, true),
+            Tk::LParen => self.pf_call(e, lo, Vec::new(), true),
+            _ => self.pf_member(e, lo, true),
+        }
+    }
+
+    #[inline(never)]
+    fn pf_index(&mut self, e: Expr, lo: u32, optional: bool) -> Result<Expr, Expr> {
+        self.bump();
+        let idx = self.bracketed(Self::parse_expr);
+        self.expect(Tk::RBracket, "`]`");
+        Ok(self.mk_expr(
+            ExprKind::Index {
+                obj: Box::new(e),
+                index: Box::new(idx),
+                optional,
+            },
+            lo,
+        ))
+    }
+
+    #[inline(never)]
+    fn pf_call(
+        &mut self,
+        e: Expr,
+        lo: u32,
+        type_args: Vec<TypeExpr>,
+        optional: bool,
+    ) -> Result<Expr, Expr> {
+        let args = self.parse_call_args();
+        Ok(self.mk_expr(
+            ExprKind::Call {
+                callee: Box::new(e),
+                type_args,
+                args,
+                optional,
+            },
+            lo,
+        ))
+    }
+
+    #[inline(never)]
+    fn pf_generic(&mut self, e: Expr, lo: u32) -> Result<Expr, Expr> {
+        match self.try_generic_args() {
+            Some(type_args) => self.pf_call(e, lo, type_args, false),
+            None => Err(e),
+        }
+    }
+
+    /// `?` glued to its operand: the try operator, unless it is plainly a
+    /// conditional written without spaces (`a?b:c`).
+    #[inline(never)]
+    fn pf_try(&mut self, e: Expr, lo: u32) -> Result<Expr, Expr> {
+        let q = self.cur_span();
+        let next = self.nth(1);
+        let operand_follows = !self.nth_tok(1).nl
+            && matches!(
+                next,
+                Tk::Ident
+                    | Tk::Int
+                    | Tk::Float
+                    | Tk::Str
+                    | Tk::TemplateFull
+                    | Tk::TemplateHead
+                    | Tk::Kw(Kw::True | Kw::False | Kw::Null | Kw::This | Kw::New)
+            );
+        if operand_follows && self.colon_ahead() {
+            self.diag(
+                Diagnostic::new(
+                    "OXS-E0006",
+                    q,
+                    "`?` directly after an operand is the try operator; \
+                     write the conditional operator as `a ? b : c` with a space before `?`",
+                )
+                .with_fix(Fix::insert("insert a space before `?`", q, " ")),
+            );
+            return Err(self.parse_ternary_rest(e, lo, true));
+        }
+        self.bump();
+        Ok(self.mk_expr(ExprKind::Try(Box::new(e)), lo))
+    }
+
+    /// After a glued `?`: is there a `:` before the end of the expression?
+    fn colon_ahead(&self) -> bool {
+        let mut depth = 0i32;
+        for k in 1..64 {
+            match self.nth(k) {
+                Tk::LParen | Tk::LBracket | Tk::LBrace => depth += 1,
+                Tk::RParen | Tk::RBracket | Tk::RBrace => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                Tk::Semi | Tk::Eof if depth == 0 => return false,
+                Tk::Colon if depth == 0 => return true,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    #[inline(never)]
+    fn pf_update(&mut self, e: Expr, lo: u32) -> Result<Expr, Expr> {
+        let op = if self.at(Tk::PlusPlus) {
+            IncDec::Inc
+        } else {
+            IncDec::Dec
+        };
+        self.bump();
+        Ok(self.make_update(op, false, e, lo))
+    }
+
+    fn at_dot_number(&self) -> bool {
+        !self.cur_ws()
+            && self.cur_text().len() > 1
+            && self.cur_text().starts_with('.')
+            && self.cur_text()[1..].bytes().all(|b| b.is_ascii_digit())
+    }
+
+    /// `t.0`: lexed as `t` and the literal `.0`.
+    #[inline(never)]
+    fn pf_dot_number(&mut self, e: Expr, lo: u32) -> Expr {
+        let sp = self.cur_span();
+        let digits = self.cur_text()[1..].to_string();
+        self.diag(
+            Diagnostic::new(
+                "OXS-E0001",
+                sp,
+                "field access by number does not exist (tuples are reserved); index with `t[0]`",
+            )
+            .with_fix(Fix::replace(
+                format!("write `[{digits}]`"),
+                sp,
+                format!("[{digits}]"),
+            )),
+        );
+        let t = self.bump();
+        let lit_span = mk_span(self.file, t.lo as usize + 1, t.hi as usize);
+        let value = digits.parse::<u128>().unwrap_or(0);
+        let l = Lit {
+            id: self.nid(),
+            span: lit_span,
+            kind: LitKind::Int {
+                value,
+                suffix: None,
+            },
+        };
+        let idx = self.mk_expr_span(ExprKind::Lit(l), lit_span);
+        self.mk_expr(
+            ExprKind::Index {
+                obj: Box::new(e),
+                index: Box::new(idx),
+                optional: false,
+            },
+            lo,
+        )
     }
 
     /// At `<` after an expression: a speculative parse of `"<" TypeList ">"`
@@ -752,6 +790,7 @@ impl Parser<'_> {
     }
 
     /// `( [Args] )`
+    #[inline(never)]
     pub(super) fn parse_call_args(&mut self) -> Vec<Expr> {
         self.bump(); // (
         let args = self.bracketed(|p| {
@@ -772,7 +811,22 @@ impl Parser<'_> {
         args
     }
 
+    #[inline(never)]
     fn parse_primary(&mut self) -> Expr {
+        match self.kind() {
+            Tk::TemplateFull | Tk::TemplateHead => self.parse_template(),
+            Tk::Kw(Kw::New) => self.parse_new_expr(),
+            Tk::Kw(Kw::Switch) => self.parse_switch_expr(),
+            Tk::LParen => self.parse_paren_or_arrow(),
+            Tk::LBracket => self.parse_array_lit(),
+            Tk::LBrace => self.parse_object_lit(),
+            _ => self.prim_atom(),
+        }
+    }
+
+    /// Literals, identifiers, `this` and primary-expression errors.
+    #[inline(never)]
+    fn prim_atom(&mut self) -> Expr {
         let lo = self.cur_lo();
         match self.kind() {
             Tk::Int | Tk::Float | Tk::Str | Tk::Kw(Kw::True | Kw::False | Kw::Null) => {
@@ -780,15 +834,7 @@ impl Parser<'_> {
                 let l = self.lit_from(&t);
                 self.mk_expr(ExprKind::Lit(l), lo)
             }
-            Tk::TemplateFull | Tk::TemplateHead => self.parse_template(),
-            Tk::Ident => {
-                if self.nth(1) == Tk::FatArrow && !self.no_arrow {
-                    return self.parse_ident_arrow(lo);
-                }
-                let id = self.parse_ident("an identifier");
-                self.mk_expr(ExprKind::Ident(id), lo)
-            }
-            Tk::Reserved => {
+            Tk::Ident | Tk::Reserved => {
                 if self.nth(1) == Tk::FatArrow && !self.no_arrow {
                     return self.parse_ident_arrow(lo);
                 }
@@ -799,21 +845,6 @@ impl Parser<'_> {
                 self.bump();
                 self.mk_expr(ExprKind::This, lo)
             }
-            Tk::Kw(Kw::New) => {
-                self.bump();
-                let ty = self.parse_new_type();
-                let args = if self.at(Tk::LParen) {
-                    self.parse_call_args()
-                } else {
-                    self.expected("`(`");
-                    Vec::new()
-                };
-                self.mk_expr(ExprKind::New { ty, args }, lo)
-            }
-            Tk::Kw(Kw::Switch) => self.parse_switch_expr(),
-            Tk::LParen => self.parse_paren_or_arrow(),
-            Tk::LBracket => self.parse_array_lit(),
-            Tk::LBrace => self.parse_object_lit(),
             Tk::Kw(Kw::Function) => {
                 let sp = self.cur_span();
                 self.error(
@@ -830,6 +861,21 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
+    fn parse_new_expr(&mut self) -> Expr {
+        let lo = self.cur_lo();
+        self.bump();
+        let ty = self.parse_new_type();
+        let args = if self.at(Tk::LParen) {
+            self.parse_call_args()
+        } else {
+            self.expected("`(`");
+            Vec::new()
+        };
+        self.mk_expr(ExprKind::New { ty, args }, lo)
+    }
+
+    #[inline(never)]
     fn parse_array_lit(&mut self) -> Expr {
         let lo = self.cur_lo();
         self.bump();
@@ -851,6 +897,7 @@ impl Parser<'_> {
         self.mk_expr(ExprKind::Array(elems), lo)
     }
 
+    #[inline(never)]
     fn parse_object_lit(&mut self) -> Expr {
         let lo = self.cur_lo();
         self.bump();
@@ -885,6 +932,7 @@ impl Parser<'_> {
         self.mk_expr(ExprKind::Object(fields), lo)
     }
 
+    #[inline(never)]
     fn parse_template(&mut self) -> Expr {
         let lo = self.cur_lo();
         let mut parts = Vec::new();
@@ -916,6 +964,7 @@ impl Parser<'_> {
 
     // ---- arrow functions ---------------------------------------------------
 
+    #[inline(never)]
     fn parse_ident_arrow(&mut self, lo: u32) -> Expr {
         let plo = self.cur_lo();
         let name = self.parse_ident("a parameter name");
@@ -940,6 +989,7 @@ impl Parser<'_> {
         )
     }
 
+    #[inline(never)]
     fn parse_arrow_body(&mut self) -> ArrowBody {
         if self.at(Tk::LBrace) {
             let b = self.bracketed(Self::parse_block);
@@ -954,6 +1004,7 @@ impl Parser<'_> {
     }
 
     /// At `(` known to start an arrow function: `( params ) [: Type] => body`.
+    #[inline(never)]
     fn parse_arrow_from_paren(&mut self, lo: u32) -> Expr {
         self.bump(); // (
         let params = self.bracketed(|p| p.parse_params(false));
@@ -970,6 +1021,7 @@ impl Parser<'_> {
         self.mk_expr(ExprKind::Arrow(ArrowFn { params, ret, body }), lo)
     }
 
+    #[inline(never)]
     fn parse_paren_or_arrow(&mut self) -> Expr {
         let lo = self.cur_lo();
         let m = if self.part == 0 {
@@ -1125,6 +1177,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_switch_expr(&mut self) -> Expr {
         let lo = self.cur_lo();
         self.bump(); // switch

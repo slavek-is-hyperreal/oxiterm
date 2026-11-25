@@ -10,7 +10,7 @@
 use crate::ast::*;
 use crate::diag::Diagnostic;
 use crate::lexer::CommentKind;
-use crate::parser::parse;
+use crate::parser::{parse_with, ParseOptions};
 use std::fmt;
 
 mod build;
@@ -26,6 +26,8 @@ pub struct FormatOptions {
     /// the input is kept exactly, so `parse(format(x))` equals `parse(x)`
     /// modulo spans; used by the round-trip tests.
     pub braces: bool,
+    /// Options for the parse step (nesting limit, helper thread).
+    pub parse: ParseOptions,
 }
 
 impl Default for FormatOptions {
@@ -33,6 +35,7 @@ impl Default for FormatOptions {
         FormatOptions {
             width: 100,
             braces: true,
+            parse: ParseOptions::default(),
         }
     }
 }
@@ -63,10 +66,11 @@ pub fn format(src: &str) -> Result<String, FormatError> {
     format_with(src, &FormatOptions::default())
 }
 
-/// Format with explicit options.
+/// Format with explicit options. Fails only if the source has syntax *errors*
+/// (warnings, such as invisible characters in literals, do not block formatting).
 pub fn format_with(src: &str, opts: &FormatOptions) -> Result<String, FormatError> {
-    let parsed = parse(src, FileId(0));
-    if !parsed.diagnostics.is_empty() {
+    let parsed = parse_with(src, FileId(0), &opts.parse);
+    if parsed.diagnostics.iter().any(Diagnostic::is_error) {
         return Err(FormatError {
             diagnostics: parsed.diagnostics,
         });
@@ -83,19 +87,19 @@ pub fn format_with(src: &str, opts: &FormatOptions) -> Result<String, FormatErro
         }
         out
     };
-    // Documents mirror the AST, so deep trees need deep recursion; the parser
-    // caps the height, and a large stack covers the cap in unoptimised builds.
-    if parsed.max_height > 120 {
+    // Optional headroom: deeply nested input is formatted on a helper thread
+    // with a large stack when one can be created. The result never depends on
+    // it: the nesting limit applies to the parse, and chains are iterative.
+    if opts.parse.use_thread && parsed.max_nest > 6 {
         let spawned = std::thread::scope(|s| {
             std::thread::Builder::new()
-                .stack_size(256 << 20)
+                .stack_size(128 << 20)
                 .spawn_scoped(s, run)
                 .map(std::thread::ScopedJoinHandle::join)
         });
         match spawned {
             Ok(Ok(out)) => return Ok(out),
             Ok(Err(payload)) => std::panic::resume_unwind(payload),
-            // no thread available: format inline (the parser bounded the height)
             Err(_) => {}
         }
     }

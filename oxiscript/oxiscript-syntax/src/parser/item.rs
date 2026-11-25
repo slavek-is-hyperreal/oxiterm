@@ -87,6 +87,7 @@ impl Parser<'_> {
         self.parse_item_after_attrs(lo, doc, attrs)
     }
 
+    #[inline(never)]
     pub(super) fn parse_item_after_attrs(
         &mut self,
         lo: u32,
@@ -104,6 +105,7 @@ impl Parser<'_> {
         r
     }
 
+    #[inline(never)]
     fn parse_item_inner(
         &mut self,
         lo: u32,
@@ -347,6 +349,7 @@ impl Parser<'_> {
         }
     }
 
+    #[inline(never)]
     fn parse_member(&mut self) -> Option<Member> {
         if !self.enter() {
             self.leave();
@@ -357,6 +360,7 @@ impl Parser<'_> {
         r
     }
 
+    #[inline(never)]
     fn parse_member_inner(&mut self) -> Option<Member> {
         let lo = self.cur_lo();
         let doc = self.docs_before(lo);

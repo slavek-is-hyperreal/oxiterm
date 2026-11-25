@@ -277,3 +277,10 @@ phase check
 title Suppression needs a reason
 message `@allow({code})` has no reason string
 fix Write `@allow("{code}", "why")`.
+
+code OXS-W0003
+severity warning
+phase lex
+title Invisible or direction-changing character in a literal
+message invisible or direction-changing character U+{code} in a literal
+fix Write it as an escape such as the backslash-u form with braces.
