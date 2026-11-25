@@ -2545,6 +2545,10 @@ version = "0.1.0"
 [[package]]
 name = "oxiscript-check"
 version = "0.1.0"
+dependencies = [
+ "oxiscript-abi",
+ "oxiscript-syntax",
+]
 
 [[package]]
 name = "oxiscript-ir"

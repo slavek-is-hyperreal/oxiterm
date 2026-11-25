@@ -6,3 +6,6 @@ license = "MIT OR Apache-2.0"
 description = "OxiScript type checker (Phase 8)."
 
 [dependencies]
+oxiscript-syntax = { path = "../oxiscript-syntax" }
+oxiscript-abi = { path = "../oxiscript-abi" }
+

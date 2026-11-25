@@ -1,7 +1,11 @@
+struct R { field: i32; }
+function compute(): Result<i32, string> { return Ok(1); }
+function compute2(): Result<R, string> { return Ok({ field: 2 }); }
+
 function f(a: bool, b: i32, c: i32): Result<i32, string> {
   const x = a ? b : c;
   const y = compute()?;
-  const z = (compute()?).field;
+  const z = (compute2()?).field;
   const w = a ?.5 : 1.5;
   return Ok(x + y);
 }

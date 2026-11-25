@@ -1,0 +1,8 @@
+interface Ui "host:ui" @1 {
+    callback PointerCb(x: f64, y: f64);
+    callback UpCb();
+    fn moveTo(id: str, x: f64, y: f64);
+    fn onPointerDown(cb: PointerCb);
+    fn onPointerMove(cb: PointerCb);
+    fn onPointerUp(cb: UpCb);
+}

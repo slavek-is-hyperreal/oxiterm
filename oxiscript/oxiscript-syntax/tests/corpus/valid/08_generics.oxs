@@ -15,7 +15,7 @@ struct Box<T> {
 }
 
 const x = identity<i32>(5);
-const y = first<i32, Circle>(1, new Circle(1.0));
+const y = first<i32, Circle>(1, { r: 1.0 });
 const z: Array<Array<i32>> = [[1, 2], [3]];
 const w: Array<i32>= [1];
 const nested: Box<Array<Box<i32>>> = { value: [] };

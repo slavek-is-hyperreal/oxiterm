@@ -1,3 +1,5 @@
+import * as ns from "./util";
+
 function f(): void {
   ;
   {
@@ -13,4 +15,4 @@ const fnType: (a: i32, b: string) => void = (a, b) => {};
 const arrFn: ((x: i32) => i32)[] = [];
 let u: (i32 | null)[] = [];
 let v: i32 | null = null;
-let ns: ns.Type<i32> = x;
+let ns2: ns.Box<i32> = { v: 1 };

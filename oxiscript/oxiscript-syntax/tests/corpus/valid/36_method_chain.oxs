@@ -1,6 +1,12 @@
 function f(xs: i32[]): i32 {
   return xs.filter((x) => x > 0).map((x) => x * 2).reduce((acc, x) => acc + x, 0);
 }
+struct Item { done: bool; }
+struct Event { x: i32; }
+function process(i: Item): void {}
+function register(name: string, cb: (e: Event) => void, once: bool): void {}
+function handle(e: Event): void {}
+
 function g(items: Item[]): void {
   items.forEach((item) => {
     if (item.done) {

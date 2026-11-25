@@ -1,3 +1,6 @@
+struct Inner { y: i32; }
+struct S { x: i32; inner: Inner; }
+
 function f(o: S, a: i32[]): void {
   o.x = 1;
   a[0] = 2;

@@ -12,4 +12,5 @@ const k = 0xffu8;
 const l = 7i64;
 const m = 0x1f32;
 const n = .5f32;
-const o: f64 = a ? .5 : 1.5;
+const t = true;
+const o: f64 = t ? .5 : 1.5;

@@ -1,3 +1,4 @@
+struct Empty {}
 struct P { x: i32; y: i32; }
 
 function mk(x: i32): P {
@@ -6,6 +7,6 @@ function mk(x: i32): P {
     x: 1,
     y: 2,
   };
-  const empty = {};
+  const empty: Empty = {};
   return { x: p.x, y: q.y };
 }

@@ -1,0 +1,182 @@
+#![allow(clippy::duplicate_mod)]
+#![allow(clippy::type_complexity)]
+mod common;
+use common::*;
+use oxiscript_check::*;
+
+fn prog(entry: &str, mods: &[(&str, &str)]) -> Checked {
+    let mut l = MapLoader::default();
+    for (n, s) in mods { l.0.insert((*n).into(), (*s).into()); }
+    check_program("main", entry, &mut l, &hosts())
+}
+
+pub const C: &[(&str, &str)] = &[
+("local_struct_captures_local", "function f(a: i32): i32 { struct S { x: i32; m(): i32 { return a; } } const s: S = { x: 1 }; return s.m(); }"),
+("local_fn_captures_local_read", "function f(a: i32): i32 { function g(): i32 { return a; } return g(); }"),
+("local_fn_captures_param_mut", "function f(a: i32): i32 { function g(): void { a = 2; } g(); return a; }"),
+("local_fn_uses_later_local", "function f(): i32 { function g(): i32 { return b; } const b = 1; return g(); }"),
+("local_import", "function f(): void { import { x } from \"./a\"; }"),
+("local_export", "function f(): void { export const x: i32 = 1; }"),
+("local_main", "import { Log } from \"host:log\";\nfunction f(): void { export function main(l: Log): void {} }"),
+("local_law", "function f(): void { law q(a: i32) { true } }"),
+("local_enum_member", "function f(): i32 { enum E { A, B } const e: E = E.B; return e as i32; }"),
+("local_type_alias_capture_tparam", "function f<T>(a: T): T { type A = T[]; const b: A = [a]; return b[0]; }"),
+("local_struct_generic_capture_tparam", "function f<T>(a: T): T { struct S { v: T; } const s: S = { v: a }; return s.v; }\nfunction g(): i32 { return f(1); }"),
+("local_class_static_state", "function f(): i32 { class C { static n: i32 = 0; constructor() {} } C.n = C.n + 1; return C.n; }"),
+("local_struct_shadow_global", "struct S { x: i32; }\nfunction f(): i32 { struct S { y: i32; } const s: S = { y: 1 }; return s.y; }"),
+("shadow_prelude_Result_local", "function f(): Result<i32, string> { type Result<T, E> = { kind: \"ok\"; value: T } | { kind: \"err\"; error: E }; return Ok(1); }"),
+("shadow_builtin_type_name", "struct i32 { x: i32; }\nfunction f(a: i32): void {}"),
+("shadow_builtin_string", "type string = i32;\nfunction f(a: string): i32 { return a; }"),
+("shadow_builtin_bool_fn", "function bool(): i32 { return 1; }\nfunction f(a: bool): void {}"),
+("shadow_Array", "struct Array<T> { x: T; }\nfunction f(a: i32[]): i32 { return a[0]; }"),
+("shadow_Array_use", "struct Array<T> { x: T; }\nfunction f(a: Array<i32>): i32 { return a[0]; }"),
+("shadow_null_name", "const null_: i32 = 1;\nfunction f(): void {}"),
+("shadow_range", "function range(a: i32, b: i32): i32 { return a; }\nfunction f(): void { for (const x of range(0, 3)) {} }"),
+("shadow_range_local", "function f(range: i32[]): void { for (const x of range(0, 3)) {} }"),
+("shadow_this", "struct S { x: i32; f(this: i32): void {} }"),
+("param_named_this", "function f(this: i32): void {}"),
+("var_named_Ok", "function f(): Result<i32, string> { const Ok = 1; return Ok(1); }"),
+("param_shadows_global_fn_call", "function g(): i32 { return 1; }\nfunction f(g: i32): i32 { return g(); }"),
+("local_shadows_type", "struct S { x: i32; }\nfunction f(): void { const S = 1; const t: S = { x: 1 }; }"),
+("type_and_value_same_name", "struct S { x: i32; }\nfunction S(): i32 { return 1; }"),
+("enum_member_shadow_value", "enum E { A }\nconst E: i32 = 1;"),
+("method_named_like_field", "class C { n: i32 = 0; constructor() {} n(): i32 { return 1; } }"),
+("static_instance_same_name", "class C { static n: i32 = 0; n: i32 = 0; constructor() {} }"),
+("ctor_twice", "class C { constructor() {} constructor(a: i32) {} }"),
+("ctor_in_struct", "struct S { x: i32; constructor() {} }"),
+("ctor_ret", "class C { constructor() { return 1; } }"),
+("ctor_ret_void", "class C { n: i32 = 0; constructor() { return; } }"),
+("ctor_generic", "class C { constructor<T>() {} }"),
+("ctor_static", "class C { static constructor() {} }"),
+("method_named_constructor", "struct S { x: i32; constructor(): void {} }"),
+("class_no_ctor_fields_uninit", "class C { n: i32; }"),
+("class_no_ctor_ok_inits", "class C { n: i32 = 0; }\nfunction f(): C { return new C(); }"),
+("class_field_init_refs_this", "class C { a: i32 = 1; b: i32 = this.a; constructor() {} }"),
+("class_field_init_refs_later", "class C { b: i32 = 1; constructor() {} }\nclass D { a: i32 = d(); constructor() {} }\nfunction d(): i32 { return 1; }"),
+("class_static_init_refs_instance", "class C { n: i32 = 1; static s: i32 = 2; static t: i32 = C.s; constructor() {} }"),
+("class_static_init_cycle", "class C { static a: i32 = C.b; static b: i32 = C.a; constructor() {} }"),
+("class_static_nonnull_managed_uninit", "class D { constructor() {} }\nclass C { static d: D; constructor() {} }"),
+("class_static_nullable_noinit_read", "class D { constructor() {} }\nclass C { static d: D | null; constructor() {} }\nfunction f(): D { return C.d; }"),
+("class_static_mut_via_ctor", "class C { static n: i32 = 0; constructor() { C.n = 1; } }"),
+("struct_static_field", "struct S { static n: i32 = 0; x: i32; }\nfunction f(): void { S.n = 1; }"),
+("struct_field_init", "struct S { x: i32 = 1; }\nfunction f(): S { return {}; }"),
+("struct_field_init_override", "struct S { x: i32 = 1; y: i32; }\nfunction f(): S { return { y: 2 }; }"),
+("struct_field_init_wrong_type", "struct S { x: i32 = \"a\"; }"),
+("struct_field_init_calls_fn_w_global", "let g: i32 = 0;\nfunction r(): i32 { return g; }\nstruct S { x: i32 = r(); }"),
+("struct_field_init_this", "struct S { x: i32 = 1; y: i32 = this.x; }"),
+("struct_assign_in_loop_aliasing", "struct S { a: i32[]; }\nfunction f(): void { const x: S = { a: [1] }; let y = x; y.a[0] = 2; }"),
+("struct_value_semantics_param", "struct S { n: i32; }\nfunction g(s: S): void { s.n = 5; }\nfunction f(): void { }"),
+("struct_value_semantics_closure_capture", "struct S { n: i32; }\nfunction f(): i32 { let s: S = { n: 1 }; const g = () => s.n; s.n = 2; return g(); }"),
+("struct_value_semantics_ret", "struct S { n: i32; }\nstruct W { s: S; }\nfunction f(w: W): void { let t = w.s; t.n = 1; }"),
+("struct_field_assign_through_const_nested", "struct S { n: i32; }\nstruct W { s: S; }\nfunction f(): void { const w: W = { s: { n: 1 } }; w.s.n = 2; }"),
+("struct_field_assign_through_array_const", "struct S { n: i32; }\nfunction f(): void { const a: S[] = [{ n: 1 }]; a[0].n = 2; }"),
+("struct_field_assign_through_class_field", "struct S { n: i32; }\nclass C { s: S = { n: 1 }; constructor() {} }\nfunction f(c: C): void { c.s.n = 2; }"),
+("struct_field_assign_through_const_class", "class C { n: i32 = 1; constructor() {} }\nfunction f(): void { const c = new C(); c.n = 2; }"),
+("struct_in_const_array_push", "struct S { n: i32; }\nfunction f(): void { const a: S[] = []; a.push({ n: 1 }); }"),
+("struct_inc_const", "struct S { n: i32; }\nfunction f(): void { const s: S = { n: 1 }; s.n++; }"),
+("struct_pluseq_const", "struct S { n: i32; }\nfunction f(): void { const s: S = { n: 1 }; s.n += 2; }"),
+("struct_pluseq_param", "struct S { n: i32; }\nfunction f(s: S): void { s.n += 2; }"),
+("array_assign_const_elem", "function f(): void { const a: i32[] = [1]; a[0] = 2; }"),
+("array_reassign_const", "function f(): void { const a: i32[] = [1]; a = [2]; }"),
+("arrays_alias_param_elem", "function f(a: i32[]): void { let b = a; b[0] = 1; }"),
+("closure_captures_loop_var", "function f(): void { for (let i = 0; i < 3; i++) { const g = () => i; } }"),
+("closure_captures_forof_var_assign", "function f(a: i32[]): void { for (let x of a) { const g = () => { x = 1; }; } }"),
+("closure_capture_param_assign_ret", "function f(n: i32): () => i32 { return () => { n = n + 1; return n; }; }"),
+("closure_returns_closure_capturing_this", "struct S { n: i32; mutating mk(): () => i32 { return () => this.n; } }"),
+("closure_captures_this_nonmutating", "struct S { n: i32; mk(): () => i32 { return () => this.n; } }"),
+("closure_self_ref_via_let", "function f(): i32 { let g: (a: i32) => i32 = (a: i32) => a; g = (a: i32) => g(a); return g(1); }"),
+("closure_recursion_ret_infer", "function f(): void { let g = (a: i32) => a; }"),
+("closure_ret_never_branch", "function f(): i32 { const g = (a: bool): i32 => { if (a) { return 1; } else { return 2; } }; return g(true); }"),
+("closure_ret_missing_branch", "function f(): i32 { const g = (a: bool): i32 => { if (a) { return 1; } }; return g(true); }"),
+("closure_expr_body_void_mismatch", "function f(): void { const g: () => void = () => 1; }"),
+("closure_expr_body_void_ok_call", "function h(): i32 { return 1; }\nfunction f(): void { const g: () => void = () => h(); }"),
+("closure_assign_void_to_i32", "function f(): void { const g: () => i32 = () => {}; }"),
+("closure_arg_count_fewer", "function f(): void { const g: (a: i32, b: i32) => void = (a: i32) => {}; }"),
+("closure_arg_count_more", "function f(): void { const g: (a: i32) => void = (a: i32, b: i32) => {}; }"),
+("closure_param_type_infer_from_ctx_wrong", "function f(): void { const g: (a: i32) => i32 = (a) => a + \"x\"; }"),
+("closure_param_default", "function f(): void { const g = (a: i32 = 1) => a; g(); const h: (a: i32) => i32 = g; }"),
+("closure_param_default_to_fn_type", "function f(): void { const g = (a: i32 = 1): i32 => a; const h: () => i32 = g; }"),
+("fn_default_to_fn_type", "function g(a: i32 = 1): i32 { return a; }\nfunction f(): void { const h: () => i32 = g; h(); }"),
+("fn_to_fn_type_extra_default", "function g(a: i32, b: i32 = 1): i32 { return a; }\nfunction f(): void { const h: (a: i32) => i32 = g; }"),
+("method_value_extract_class", "class C { n: i32 = 0; constructor() {} m(): i32 { return this.n; } }\nfunction f(c: C): i32 { const g = c.m; return g(); }"),
+("generic_method_extract", "struct S { x: i32; m<T>(a: T): T { return a; } }\nfunction f(s: S): void { const g = s.m; }"),
+("static_method_via_instance", "class C { static s(): i32 { return 1; } constructor() {} }\nfunction f(c: C): i32 { return c.s(); }"),
+("instance_method_via_class", "class C { constructor() {} m(): i32 { return 1; } }\nfunction f(): i32 { return C.m(); }"),
+("call_class_as_fn", "class C { constructor() {} }\nfunction f(): C { return C(); }"),
+("call_enum_as_fn", "enum E { A }\nfunction f(): E { return E(); }"),
+("call_struct_as_fn", "struct S { x: i32; }\nfunction f(): S { return S({ x: 1 }); }"),
+("new_class_wrong_args", "class C { constructor(a: i32) {} }\nfunction f(): C { return new C(\"x\"); }"),
+("new_class_default", "class C { constructor(a: i32 = 1) {} }\nfunction f(): C { return new C(); }"),
+("new_class_private_ctor", "class C { private constructor() {} }\nfunction f(): C { return new C(); }"),
+("new_generic_infer", "class B<T> { v: T; constructor(v: T) { this.v = v; } }\nfunction f(): B<i32> { return new B(1); }"),
+("new_generic_infer_null", "class B<T> { v: T; constructor(v: T) { this.v = v; } }\nfunction f(): void { const b = new B(null); }"),
+("new_generic_wrong_ctx", "class B<T> { v: T; constructor(v: T) { this.v = v; } }\nfunction f(): B<string> { return new B(1); }"),
+("new_host", "import { Log } from \"host:log\";\nfunction f(): void { const l = new Log(); }"),
+("new_enum", "enum E { A }\nfunction f(): void { const l = new E(); }"),
+("new_fn_type", "function f(): void { const l = new (() => void)(); }"),
+("new_array", "function f(): i32[] { return new Array<i32>(); }"),
+("new_result", "function f(): void { const r = new Result<i32, string>(); }"),
+("new_alias", "class C { constructor() {} }\ntype A = C;\nfunction f(): A { return new A(); }"),
+("downcast_on_struct", "struct A { x: i32; }\nfunction f(a: A): A | null { return a.downcast<A>(); }"),
+("downcast_on_nullable", "class A { constructor() {} }\nfunction f(a: A | null): A | null { return a.downcast<A>(); }"),
+("downcast_to_iface", "class A { constructor() {} }\ninterface I { m(): i32; }\nfunction f(a: A): I | null { return a.downcast<I>(); }"),
+("is_instance_leak", "class A { constructor() {} }\nfunction f(a: A): bool { return a instanceof A; }"),
+]
+;
+
+#[test]
+fn probe3() {
+    let o = hosts();
+    let mut acc = Vec::new();
+    for (n, s) in C {
+        let c = oxiscript_check::check_source(s, &o);
+        if c.ok() { acc.push(*n); } else { let d: Vec<String> = c.errors().map(|d| d.code.to_string()).collect(); println!("REJ {n}: {}", d.join(" ")); }
+    }
+    println!("TOTAL {} ACCEPTED {}", C.len(), acc.len());
+    for n in &acc { println!("ACCEPTED: {n}"); }
+    // multi-module
+    let mods: &[(&str, &str, &[(&str, &str)])] = &[
+        ("import_assign_exported_let", "import { counter } from \"./a\";\nexport function f(): void { counter = 1; }", &[("a", "export let counter: i32 = 0;")]),
+        ("import_mut_struct_field_exported_const", "import { P } from \"./a\";\nexport function f(): void { P.x = 1; }", &[("a", "struct S { x: i32; }\nexport const P: S = { x: 0 };")]),
+        ("import_exported_let_narrow", "import { n } from \"./a\";\nexport function f(): i32 { if (n !== null) { return n + 1; } return 0; }", &[("a", "export let n: i32 | null = 1;")]),
+        ("ns_priv", "import * as a from \"./a\";\nexport function f(): i32 { return a.hidden(); }", &[("a", "function hidden(): i32 { return 1; }")]),
+        ("ns_assign", "import * as a from \"./a\";\nexport function f(): void { a.x = 1; }", &[("a", "export let x: i32 = 0;")]),
+        ("ns_as_value", "import * as a from \"./a\";\nexport function f(): void { const b = a; }", &[("a", "export let x: i32 = 0;")]),
+        ("ns_shadow_local", "import * as a from \"./a\";\nexport function f(): i32 { const a = 1; return a; }", &[("a", "export let x: i32 = 0;")]),
+        ("private_field_cross_module", "import { C } from \"./a\";\nexport function f(c: C): i32 { return c.x; }", &[("a", "export class C { private x: i32 = 0; constructor() {} }")]),
+        ("private_method_cross_module", "import { C } from \"./a\";\nexport function f(c: C): void { c.m(); }", &[("a", "export class C { constructor() {} private m(): void {} }")]),
+        ("private_field_objlit_cross_module", "import { S } from \"./a\";\nexport function f(): S { return { x: 1, y: 2 }; }", &[("a", "export struct S { private x: i32; y: i32; }")]),
+        ("private_field_read_struct_cross_module", "import { S, mk } from \"./a\";\nexport function f(): i32 { const s = mk(); return s.x; }", &[("a", "export struct S { private x: i32; y: i32; }\nexport function mk(): S { return { x: 1, y: 2 }; }")]),
+        ("private_field_destructure_cross_module", "import { S, mk } from \"./a\";\nexport function f(): i32 { const { x } = mk(); return x; }", &[("a", "export struct S { private x: i32; y: i32; }\nexport function mk(): S { return { x: 1, y: 2 }; }")]),
+        ("private_struct_copy_assign_cross_module", "import { S, mk } from \"./a\";\nexport function f(): void { let s = mk(); s.x = 2; }", &[("a", "export struct S { private x: i32; y: i32; }\nexport function mk(): S { return { x: 1, y: 2 }; }")]),
+        ("nonexported_type_via_export_fn_objlit", "import { mk } from \"./a\";\nexport function f(): i32 { const s = mk(); return s.x; }", &[("a", "struct S { x: i32; }\nexport function mk(): S { return { x: 1 }; }")]),
+        ("same_name_types_distinct", "import { P as P1 } from \"./a\";\nimport { P as P2 } from \"./b\";\nexport function f(a: P1): P2 { return a; }", &[("a", "export struct P { x: i32; }"), ("b", "export struct P { x: i32; }")]),
+        ("same_name_union_distinct", "import { U as U1 } from \"./a\";\nimport { U as U2 } from \"./b\";\nexport function f(a: U1): U2 { return a; }", &[("a", "export type U = { kind: \"a\" } | { kind: \"b\" };"), ("b", "export type U = { kind: \"a\" } | { kind: \"b\" };")]),
+        ("export_generic_fn_instance_cross", "import { id } from \"./a\";\nexport function f(): string { return id<i32>(1); }", &[("a", "export function id<T>(a: T): T { return a; }")]),
+        ("export_generic_bound_cross", "import { g } from \"./a\";\nexport function f(): i32 { return g(1); }", &[("a", "export interface I { m(): i32; }\nexport function g<T extends I>(a: T): i32 { return a.m(); }")]),
+        ("import_main_from_other", "import { main } from \"./a\";\nexport function f(): void { }", &[("a", "import { Log } from \"host:log\";\nexport function main(l: Log): void {}")]),
+        ("import_law", "import { l } from \"./a\";\nexport function f(): bool { return l(1); }", &[("a", "export law l(a: i32) { true }")]),
+        ("import_enum_member_switch_nonexhaustive", "import { E } from \"./a\";\nexport function f(e: E): i32 { switch (e) { case E.A: return 1; } }", &[("a", "export enum E { A, B }")]),
+        ("import_union_switch_exh", "import { U } from \"./a\";\nexport function f(e: U): i32 { switch (e.kind) { case \"a\": return 1; } }", &[("a", "export type U = { kind: \"a\" } | { kind: \"b\" };")]),
+        ("import_cycle_via_types", "import { A } from \"./a\";\nexport function f(a: A): void {}", &[("a", "import { B } from \"./b\";\nexport struct A { b: B | null; }"), ("b", "import { A } from \"./a\";\nexport struct B { a: A | null; }")]),
+        ("import_self_main", "import { f } from \"./main\";\nexport function g(): void {}", &[]),
+        ("import_dotdot_escape", "import { x } from \"../../etc\";\nexport function g(): void {}", &[]),
+        ("import_empty_spec", "import { x } from \"\";\nexport function g(): void {}", &[]),
+        ("import_ext_spec", "import { x } from \"./a.oxs\";\nexport function g(): void {}", &[("a", "export const x: i32 = 1;")]),
+        ("import_name_clash_across", "import { x } from \"./a\";\nimport { x as y } from \"./a\";\nexport function g(): i32 { return x + y; }", &[("a", "export const x: i32 = 1;")]),
+        ("import_host_same_in_two_modules", "import { Log } from \"host:log\";\nimport { mk } from \"./a\";\nexport function g(l: Log): void { mk(l); }", &[("a", "import { Log } from \"host:log\";\nexport function mk(l: Log): void { l.write(1, \"x\"); }")]),
+        ("import_export_let_mutated_by_fn_narrow", "import { n, clr } from \"./a\";\nexport function f(): i32 { if (n !== null) { clr(); return n + 1; } return 0; }", &[("a", "export let n: i32 | null = 1;\nexport function clr(): void { n = null; }")]),
+        ("import_prelude_Result_redefine", "import { Result } from \"./a\";\nexport function f(r: Result): i32 { return 1; }", &[("a", "export struct Result { x: i32; }")]),
+        ("import_user_result_in_other_module_try", "import { R, mk } from \"./a\";\nexport function f(): Result<i32, string> { const v = mk()?; return Ok(v); }", &[("a", "export type R = { kind: \"ok\"; value: i32 } | { kind: \"err\"; error: string };\nexport function mk(): R { return { kind: \"ok\", value: 1 }; }")]),
+        ("export_dup", "export function a(): void {}\nexport function a(): void {}", &[]),
+        ("module_effects_cross_law", "import { g } from \"./a\";\nlaw l(x: i32) { g() }", &[("a", "let n: i32 = 0;\nexport function g(): bool { n = 1; return true; }")]),
+        ("module_effects_cross_law2", "import { g } from \"./a\";\nlaw l(x: i32) { g() }", &[("a", "import { Log } from \"host:log\";\nexport function g(l: Log): bool { l.write(1, \"x\"); return true; }")]),
+    ];
+    let mut macc = Vec::new();
+    for (n, e, m) in mods {
+        let c = prog(e, m);
+        if c.ok() { macc.push(*n); } else { let d: Vec<String> = c.errors().map(|d| d.code.to_string()).collect(); println!("MREJ {n}: {}", d.join(" ")); }
+    }
+    println!("MODULES {} ACCEPTED {}", mods.len(), macc.len());
+    for n in &macc { println!("MACCEPTED: {n}"); }
+}

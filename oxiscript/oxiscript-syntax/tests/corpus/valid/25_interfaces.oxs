@@ -1,6 +1,9 @@
 interface Shape {
   area(): f64;
-  scale(k: f64): Shape;
+  scale(k: f64): f64;
+}
+interface Other {
+  id(): i32;
 }
 interface Named<T> extends Shape, Other {
   name(): string;
