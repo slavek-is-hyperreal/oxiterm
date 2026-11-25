@@ -1,0 +1,15 @@
+[package]
+name = "oxiscript-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "`oxi`: the OxiScript command-line tool (check, fmt, explain, run, new, mcp)."
+
+[[bin]]
+name = "oxi"
+path = "src/main.rs"
+
+[dependencies]
+oxiscript-syntax = { path = "../oxiscript-syntax" }
+oxiscript-check = { path = "../oxiscript-check" }
+oxiscript-abi = { path = "../oxiscript-abi" }
