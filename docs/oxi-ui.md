@@ -735,6 +735,7 @@ Phase 5's GPU work is no longer only "a faster painter". Three consumers now nee
 - **Dependency:** 5.2 (headless GpuSink on wgpu) becomes the foundation of 8.3b and 9.3. When OxiScript reaches 8.3b, pull 5.2 (and the shared-context design) forward; 5.3–5.7 (window, input, AccessKit, Pi) can stay last.
 - **wgpu also runs in the browser** (WebGPU/WebGL2), so GPU acceleration of local mode in the browser does not need the native window at all; it can arrive with 5.2 + 7.1.
 - **OxiScript v1 needs no GPU** (CPU SIMD + multi-core first), so nothing here changes the current order.
+- **AI acceleration falls out of the same design (owner, 2026-11-25):** inference is mostly data-parallel kernels (matrix multiply, convolution, attention) over tensors, i.e. exactly the `kernel` profile + device buffers + shared GPU context + SIMD layers. AI stays out of the language core: a tensor library written in OxiScript on those layers, plus an optional `host:ml@N` capability that delegates whole models to optimised backends (e.g. `tract`, `burn`/`candle` — MIT/Apache; on ESP32-S3 the vendor's int8 kernels; NPUs where present), with the placement report saying where each model/layer ran. Prior art to study for 8.3b: CubeCL (Rust kernels compiled to WGSL/SPIR-V/CUDA, the backend of Burn — the closest existing analogue of our kernel design).
 
 ## 6. Risks
 
