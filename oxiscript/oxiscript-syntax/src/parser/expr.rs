@@ -64,6 +64,34 @@ fn binop_of(e: &Expr) -> Option<BinOp> {
     }
 }
 
+/// Does the expression end in an unparenthesised `as T` (so a following `?` cannot attach)?
+fn ends_with_cast(e: &Expr) -> bool {
+    let mut cur = e;
+    loop {
+        match &cur.kind {
+            ExprKind::Cast { .. } => return true,
+            ExprKind::Binary { rhs, .. } => cur = rhs,
+            ExprKind::Assign { value, .. } => cur = value,
+            ExprKind::Cond { els, .. } => cur = els,
+            ExprKind::Unary { expr, .. } => cur = expr,
+            _ => return false,
+        }
+    }
+}
+
+/// Could this expression also be read as a (member path or literal) type?
+fn type_like(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Ident(_) | ExprKind::Lit(_) => true,
+        ExprKind::Member {
+            obj,
+            optional: false,
+            ..
+        } => type_like(obj),
+        _ => false,
+    }
+}
+
 fn is_place(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Ident(_)
@@ -173,60 +201,105 @@ impl Parser<'_> {
     }
 
     /// At a `?` that starts a conditional: `cond ? a : b`.
+    #[inline(never)]
     fn parse_ternary_rest(&mut self, cond: Expr, lo: u32, quiet: bool) -> Expr {
-        let q = self.cur_span();
-        let prev_end = self.last_end.min(q.lo);
-        self.bump();
-        if matches!(
-            self.kind(),
-            Tk::Semi | Tk::RParen | Tk::RBracket | Tk::RBrace | Tk::Comma | Tk::Colon | Tk::Eof
-        ) {
-            if !quiet {
-                self.report_bare_question(q, prev_end, "needs `a ? b : c`");
+        // `a ? b : c ? d : e ...` is parsed iteratively (no recursion per
+        // branch) and folded to the right afterwards.
+        let mut parts: Vec<(Expr, u32, Expr)> = Vec::new();
+        let (mut cond, mut lo, mut quiet) = (cond, lo, quiet);
+        let els = loop {
+            let q = self.cur_span();
+            let prev_end = self.last_end.min(q.lo);
+            self.bump();
+            if matches!(
+                self.kind(),
+                Tk::Semi | Tk::RParen | Tk::RBracket | Tk::RBrace | Tk::Comma | Tk::Colon | Tk::Eof
+            ) {
+                if !quiet {
+                    // `f() ?;`: removing the space makes it the try operator
+                    let ws = Span::new(q.file, prev_end, q.hi);
+                    if ends_with_cast(&cond) {
+                        // `x as T?` is not valid either: no mechanical fix
+                        self.error(
+                            "OXS-E0006",
+                            q,
+                            "`?` after whitespace is the conditional operator and needs `a ? b : c`",
+                        );
+                    } else {
+                        self.report_bare_question(
+                            q,
+                            "needs `a ? b : c`",
+                            ws,
+                            "remove the space before `?` (try operator)",
+                            "?",
+                        );
+                    }
+                }
+                break cond;
             }
-            return cond;
-        }
-        let saved = self.then_ctx;
-        self.then_ctx = true;
-        let then = self.parse_assign();
-        self.then_ctx = saved;
-        if !self.eat(Tk::Colon) {
-            if !quiet {
-                self.report_bare_question(q, prev_end, "needs a matching `:`");
+            let saved = self.then_ctx;
+            self.then_ctx = true;
+            let then = self.parse_assign();
+            self.then_ctx = saved;
+            if !self.eat(Tk::Colon) {
+                if !quiet {
+                    // `a ? b` without `:`: the conditional is incomplete; the fix
+                    // removes the dangling `? b` (removing only the space would
+                    // turn `b` into stray code)
+                    let dangling = Span::new(q.file, prev_end, then.span.hi.max(q.hi));
+                    self.report_bare_question(
+                        q,
+                        "needs a matching `:`",
+                        dangling,
+                        "remove the incomplete `? ...` part",
+                        "",
+                    );
+                }
+                let els = self.error_expr();
+                break self.mk_expr(
+                    ExprKind::Cond {
+                        cond: Box::new(cond),
+                        then: Box::new(then),
+                        els: Box::new(els),
+                    },
+                    lo,
+                );
             }
-            let els = self.error_expr();
-            return self.mk_expr(
+            let lo2 = self.cur_lo();
+            let next = self.parse_binary(1);
+            parts.push((cond, lo, then));
+            cond = next;
+            lo = lo2;
+            quiet = false;
+            if !(self.at(Tk::Question) && self.cur_ws()) {
+                break cond;
+            }
+        };
+        let mut els = els;
+        while let Some((c, l, t)) = parts.pop() {
+            els = self.mk_expr(
                 ExprKind::Cond {
-                    cond: Box::new(cond),
-                    then: Box::new(then),
+                    cond: Box::new(c),
+                    then: Box::new(t),
                     els: Box::new(els),
                 },
-                lo,
+                l,
             );
         }
-        let els = if self.enter() {
-            let e = self.parse_cond();
-            self.leave();
-            e
-        } else {
-            self.leave();
-            self.error_expr()
-        };
-        self.mk_expr(
-            ExprKind::Cond {
-                cond: Box::new(cond),
-                then: Box::new(then),
-                els: Box::new(els),
-            },
-            lo,
-        )
+        els
     }
 
     /// `OXS-E0006` for a `?` after whitespace that is not a complete conditional.
     /// The fix removes the whitespace before `?` (making it the try operator).
     #[inline(never)]
-    fn report_bare_question(&mut self, q: Span, prev_end: u32, what: &str) {
-        let ws = Span::new(q.file, prev_end, q.hi);
+    fn report_bare_question(
+        &mut self,
+        q: Span,
+        what: &str,
+        fix_span: Span,
+        fix_title: &str,
+        replacement: &str,
+    ) {
         self.diag(
             Diagnostic::new(
                 "OXS-E0006",
@@ -236,11 +309,7 @@ impl Parser<'_> {
                      the try operator is written directly after its operand, as in `f()?`"
                 ),
             )
-            .with_fix(Fix::replace(
-                "remove the space before `?` (try operator)",
-                ws,
-                "?",
-            )),
+            .with_fix(Fix::replace(fix_title, fix_span, replacement)),
         );
     }
 
@@ -371,20 +440,20 @@ impl Parser<'_> {
         self.bump();
         let rhs = self.parse_binary(5);
         let rhs_span = rhs.span;
-        let mut union_fix = Fix::parenthesise(
-            "write `x as (T | ...)`",
-            Span::new(self.file, ty_span.lo, rhs_span.hi),
-        );
-        union_fix.title = "write `x as (T | ...)`".into();
-        self.diag(
-            Diagnostic::new(
-                "OXS-E0010",
-                pipe,
-                "`as T | ...` could be a cast to a union or a cast followed by bitwise or; add parentheses",
-            )
-            .with_fix(Fix::parenthesise("write `(x as T) | ...`", cast_span))
-            .with_fix(union_fix),
-        );
+        let mut d = Diagnostic::new(
+            "OXS-E0010",
+            pipe,
+            "`as T | ...` could be a cast to a union or a cast followed by bitwise or; add parentheses",
+        )
+        .with_fix(Fix::parenthesise("write `(x as T) | ...`", cast_span));
+        if type_like(&rhs) {
+            // the second reading is only offered when the right side can be a type
+            d = d.with_fix(Fix::parenthesise(
+                "write `x as (T | ...)`",
+                Span::new(self.file, ty_span.lo, rhs_span.hi),
+            ));
+        }
+        self.diag(d);
         self.build_binary(BinOp::BitOr, cast, rhs, lo, pipe)
     }
 
@@ -449,12 +518,16 @@ impl Parser<'_> {
                     op_text(offenders[0].1)
                 ),
             );
+            // one fix that parenthesises every offending operand (applying only
+            // one of two would leave the other mix in place)
+            let mut edits = Vec::new();
             for (sp, _) in &offenders {
-                d = d.with_fix(Fix::parenthesise(
-                    "add parentheses around this operand",
-                    *sp,
-                ));
+                edits.extend(Fix::parenthesise("", *sp).edits);
             }
+            d = d.with_fix(Fix {
+                title: "add parentheses around the mixed operands".into(),
+                edits,
+            });
             self.diag(d);
         }
         self.mk_expr(
@@ -654,7 +727,7 @@ impl Parser<'_> {
     fn pf_try(&mut self, e: Expr, lo: u32) -> Result<Expr, Expr> {
         let q = self.cur_span();
         let next = self.nth(1);
-        let operand_follows = !self.nth_tok(1).nl
+        let operand_follows = !self.nth_tok(1).ws
             && matches!(
                 next,
                 Tk::Ident
@@ -665,7 +738,7 @@ impl Parser<'_> {
                     | Tk::TemplateHead
                     | Tk::Kw(Kw::True | Kw::False | Kw::Null | Kw::This | Kw::New)
             );
-        if operand_follows && self.colon_ahead() {
+        if operand_follows {
             self.diag(
                 Diagnostic::new(
                     "OXS-E0006",
@@ -679,26 +752,6 @@ impl Parser<'_> {
         }
         self.bump();
         Ok(self.mk_expr(ExprKind::Try(Box::new(e)), lo))
-    }
-
-    /// After a glued `?`: is there a `:` before the end of the expression?
-    fn colon_ahead(&self) -> bool {
-        let mut depth = 0i32;
-        for k in 1..64 {
-            match self.nth(k) {
-                Tk::LParen | Tk::LBracket | Tk::LBrace => depth += 1,
-                Tk::RParen | Tk::RBracket | Tk::RBrace => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return false;
-                    }
-                }
-                Tk::Semi | Tk::Eof if depth == 0 => return false,
-                Tk::Colon if depth == 0 => return true,
-                _ => {}
-            }
-        }
-        false
     }
 
     #[inline(never)]
@@ -775,6 +828,9 @@ impl Parser<'_> {
         ) {
             return None;
         }
+        if !self.generic_scan() {
+            return None;
+        }
         let snap = self.snapshot();
         self.spec += 1;
         self.bump(); // <
@@ -787,6 +843,48 @@ impl Parser<'_> {
             self.restore(&snap);
             None
         }
+    }
+
+    /// Cheap pre-check before speculating on `<` as type arguments: scan at most
+    /// `GENERIC_SCAN` type-like tokens for the matching `>` followed by `(`. This
+    /// bounds the cost of every `<` (so long comparison lists stay linear) and
+    /// is the documented limit on the length of a generic call's type-argument
+    /// list: longer lists are read as comparisons.
+    fn generic_scan(&self) -> bool {
+        const GENERIC_SCAN: usize = 128;
+        let mut angle = 1i32;
+        let mut nest = 0i32;
+        for k in 1..=GENERIC_SCAN {
+            match self.nth(k) {
+                Tk::Lt => angle += 1,
+                Tk::Gt | Tk::Shr => {
+                    angle -= if self.nth(k) == Tk::Gt { 1 } else { 2 };
+                    if angle <= 0 {
+                        return angle == 0 && self.nth(k + 1) == Tk::LParen;
+                    }
+                }
+                Tk::LParen | Tk::LBracket | Tk::LBrace => nest += 1,
+                Tk::RParen | Tk::RBracket | Tk::RBrace => {
+                    nest -= 1;
+                    if nest < 0 {
+                        return false;
+                    }
+                }
+                Tk::Ident
+                | Tk::Reserved
+                | Tk::Dot
+                | Tk::Comma
+                | Tk::Pipe
+                | Tk::Colon
+                | Tk::Semi
+                | Tk::FatArrow
+                | Tk::Str
+                | Tk::Int
+                | Tk::Kw(Kw::Null | Kw::True | Kw::False | Kw::Readonly) => {}
+                _ => return false,
+            }
+        }
+        false
     }
 
     /// `( [Args] )`

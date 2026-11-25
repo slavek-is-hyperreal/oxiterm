@@ -80,12 +80,12 @@ impl Parser<'_> {
 
     #[inline(never)]
     fn parse_stmt_or_tail(&mut self, law: bool) -> Option<Out> {
-        if !self.enter() {
-            self.leave();
+        if !self.enter_w(STMT_WEIGHT) {
+            self.leave_w(STMT_WEIGHT);
             return None;
         }
         let r = self.parse_stmt_inner(law);
-        self.leave();
+        self.leave_w(STMT_WEIGHT);
         r
     }
 
@@ -281,19 +281,38 @@ impl Parser<'_> {
         e
     }
 
+    /// `if` with its `else if` ladder, parsed iteratively (a ladder costs no
+    /// nesting depth) and folded to the right.
     #[inline(never)]
     fn parse_if(&mut self) -> StmtKind {
-        self.bump();
-        self.expect(Tk::LParen, "`(`");
-        let cond = self.bracketed_expr();
-        self.expect(Tk::RParen, "`)`");
-        let then = Box::new(self.parse_stmt());
-        let els = if self.eat_kw(Kw::Else) {
-            Some(Box::new(self.parse_stmt()))
-        } else {
-            None
-        };
-        StmtKind::If { cond, then, els }
+        let mut chain: Vec<(u32, Expr, Box<Stmt>)> = Vec::new();
+        let mut last_else: Option<Box<Stmt>> = None;
+        loop {
+            let lo = self.cur_lo();
+            self.bump(); // if
+            self.expect(Tk::LParen, "`(`");
+            let cond = self.bracketed_expr();
+            self.expect(Tk::RParen, "`)`");
+            let then = Box::new(self.parse_stmt());
+            chain.push((lo, cond, then));
+            if self.eat_kw(Kw::Else) {
+                if self.at_kw(Kw::If) {
+                    continue;
+                }
+                last_else = Some(Box::new(self.parse_stmt()));
+            }
+            break;
+        }
+        let mut els = last_else;
+        while chain.len() > 1 {
+            let (lo, cond, then) = chain.pop().unwrap_or_else(|| unreachable!());
+            let st = self.mk_stmt(StmtKind::If { cond, then, els }, Vec::new(), lo);
+            els = Some(Box::new(st));
+        }
+        match chain.pop() {
+            Some((_, cond, then)) => StmtKind::If { cond, then, els },
+            None => StmtKind::Empty,
+        }
     }
 
     #[inline(never)]

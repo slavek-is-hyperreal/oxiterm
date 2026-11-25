@@ -65,7 +65,7 @@ fn run_case(src: &str, limit: Duration) {
     CASES.fetch_add(1, Ordering::Relaxed);
     let t = Instant::now();
     let (m, d) = parse_module(src);
-    if d.is_empty() {
+    if !d.iter().any(Diagnostic::is_error) {
         let once = format(src).expect("clean input must format");
         let twice = format(&once).expect("formatted output must parse");
         assert_eq!(once, twice, "not idempotent for {src:?}");
@@ -90,7 +90,7 @@ fn run_case(src: &str, limit: Duration) {
     } else {
         for x in &d {
             assert!(x.span.lo <= x.span.hi, "{x:?}");
-            assert!(x.code.starts_with("OXS-E"), "{x:?}");
+            assert!(x.code.starts_with("OXS-"), "{x:?}");
             assert!(
                 x.span.hi as usize <= src.len() + 1,
                 "{x:?} in {} bytes",

@@ -64,11 +64,17 @@ fn f2_fmt_not_idempotent_multiline_block_comments() {
 fn f3_fmt_try_then_member_becomes_optional_chain() {
     let src = "let x = f()?\n  .y;";
     assert!(clean(src));
-    let o = FormatOptions { braces: false, ..FormatOptions::default() };
+    let o = FormatOptions {
+        braces: false,
+        ..FormatOptions::default()
+    };
     let out = format_with(src, &o).unwrap();
     let before = format!("{:?}", parse_module(src).0.items[0].kind).contains("optional: true");
     let after = format!("{:?}", parse_module(&out).0.items[0].kind).contains("optional: true");
-    assert_eq!(before, after, "meaning changed: {out:?} (optional chaining appeared)");
+    assert_eq!(
+        before, after,
+        "meaning changed: {out:?} (optional chaining appeared)"
+    );
 }
 
 /// F3b: `f()?` newline `?.y` (try, then optional chaining) prints `f()??.y`: `??` + `.y`,
@@ -88,14 +94,25 @@ fn f4_fmt_attribute_comment_moves_into_body() {
     let out = format(src).unwrap();
     let c = out.find("/* c */").unwrap();
     let body = out.find("function").unwrap();
-    assert!(c < body, "comment relocated into the function body: {out:?}");
+    assert!(
+        c < body,
+        "comment relocated into the function body: {out:?}"
+    );
 }
 
 /// F5 (MEDIUM, Trojan-Source class): escapes for bidi controls / zero-width characters are
 /// turned into the raw invisible characters in the output.
 #[test]
 fn f5_fmt_expands_escapes_to_raw_invisible_characters() {
-    for esc in ["\\u{202E}", "\\u{2066}", "\\u{200B}", "\\u{FEFF}", "\\u{2028}", "\\u{61C}", "\\u{85}"] {
+    for esc in [
+        "\\u{202E}",
+        "\\u{2066}",
+        "\\u{200B}",
+        "\\u{FEFF}",
+        "\\u{2028}",
+        "\\u{61C}",
+        "\\u{85}",
+    ] {
         for q in ["\"", "`"] {
             let src = format!("let x = {q}a{esc}b{q};");
             assert!(clean(&src), "{src}");
@@ -104,7 +121,10 @@ fn f5_fmt_expands_escapes_to_raw_invisible_characters() {
                 matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200B}'..='\u{200F}'
                     | '\u{FEFF}' | '\u{2028}' | '\u{2029}' | '\u{61C}' | '\u{85}')
             });
-            assert!(!invisible, "raw invisible character emitted for {esc}: {out:?}");
+            assert!(
+                !invisible,
+                "raw invisible character emitted for {esc}: {out:?}"
+            );
         }
     }
 }
@@ -183,7 +203,11 @@ fn s1_speculation_budget_false_e0012_on_valid_comparison_list() {
         format!("let x = [{}];", args.join(", "))
     };
     for n in [150usize, 300, 1000] {
-        assert!(clean(&call(n)), "f(a0 < b0, ... {n} comparisons) rejected (threshold {})", find_threshold(call));
+        assert!(
+            clean(&call(n)),
+            "f(a0 < b0, ... {n} comparisons) rejected (threshold {})",
+            find_threshold(call)
+        );
         assert!(clean(&arr(n)), "[a0 < b0, ... {n} comparisons] rejected");
     }
 }
@@ -194,17 +218,37 @@ fn s1_speculation_budget_false_e0012_on_valid_comparison_list() {
 #[test]
 fn s2_long_else_if_ladder_rejected() {
     let n = 200;
-    let src = format!("function f() {{ if (a0) {{}} {} }}", (1..n).map(|i| format!("else if (a{i}) {{}}")).collect::<Vec<_>>().join(" "));
+    let src = format!(
+        "function f() {{ if (a0) {{}} {} }}",
+        (1..n)
+            .map(|i| format!("else if (a{i}) {{}}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     let (_, d) = parse_module(&src);
-    assert!(d.is_empty(), "{n}-branch else-if ladder rejected: {:?}", d.first());
+    assert!(
+        d.is_empty(),
+        "{n}-branch else-if ladder rejected: {:?}",
+        d.first()
+    );
 }
 
 #[test]
 fn s2b_long_ternary_chain_rejected() {
     let n = 200;
-    let src = format!("let x = {} z;", (0..n).map(|i| format!("a{i} ? b{i} :")).collect::<Vec<_>>().join(" "));
+    let src = format!(
+        "let x = {} z;",
+        (0..n)
+            .map(|i| format!("a{i} ? b{i} :"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     let (_, d) = parse_module(&src);
-    assert!(d.is_empty(), "{n}-way ternary chain rejected: {:?}", d.first());
+    assert!(
+        d.is_empty(),
+        "{n}-way ternary chain rejected: {:?}",
+        d.first()
+    );
 }
 
 /// L1 (MEDIUM): lexer diagnostics are not capped (`MAX_DIAGS` only applies to the parser):
@@ -212,7 +256,11 @@ fn s2b_long_ternary_chain_rejected() {
 #[test]
 fn l1_lexer_diagnostic_flood_is_unbounded() {
     let (_, d) = parse_module(&"#".repeat(100_000));
-    assert!(d.len() <= 1000, "{} diagnostics for 100000 bytes of junk", d.len());
+    assert!(
+        d.len() <= 1000,
+        "{} diagnostics for 100000 bytes of junk",
+        d.len()
+    );
 }
 
 #[test]
@@ -225,9 +273,17 @@ fn l1b_unterminated_string_flood_is_unbounded() {
 #[test]
 fn l2_misleading_literal_messages() {
     let (_, d) = parse_module("let x = 1.;");
-    assert!(!d[0].message.contains("integer literal"), "{}", d[0].message);
+    assert!(
+        !d[0].message.contains("integer literal"),
+        "{}",
+        d[0].message
+    );
     let (_, d) = parse_module("let x = 1e;");
-    assert!(!d[0].message.contains("integer literal"), "{}", d[0].message);
+    assert!(
+        !d[0].message.contains("integer literal"),
+        "{}",
+        d[0].message
+    );
 }
 
 /// L3 (LOW): a CR-only line ending is whitespace, but a `//` comment runs on to the next `\n`,
@@ -250,7 +306,12 @@ fn nest_paren(n: usize) -> String {
 
 #[cfg(not(target_os = "wasi"))]
 fn on_stack<R: Send + 'static>(kb: usize, f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new().stack_size(kb * 1024).spawn(f).unwrap().join().unwrap()
+    std::thread::Builder::new()
+        .stack_size(kb * 1024)
+        .spawn(f)
+        .unwrap()
+        .join()
+        .unwrap()
 }
 
 /// K1 (HIGH for ESP32): parser frames cost ~3 KB per nesting level (release; ~18 KB debug).
@@ -258,7 +319,6 @@ fn on_stack<R: Send + 'static>(kb: usize, f: impl FnOnce() -> R + Send + 'static
 /// do not fit in 64 KB.
 #[cfg(all(unix, not(target_os = "wasi")))]
 #[test]
-#[ignore = "aborts (stack overflow): release needs ~103 KB for 30 nested parens, debug ~570 KB"]
 fn k1_parse_30_nested_parens_on_64kb_stack() {
     on_stack(64, || {
         let p = parse(&nest_paren(30), FileId(0));
@@ -271,7 +331,6 @@ fn k1_parse_30_nested_parens_on_64kb_stack() {
 /// costs ~100 bytes/level of the CALLER's stack: ~91 KB. Same for `a.b.b.b...` and `f()()()...`.
 #[cfg(all(unix, not(target_os = "wasi")))]
 #[test]
-#[ignore = "aborts (stack overflow): needs ~91 KB in release, ~600 KB in debug"]
 fn k2_drop_of_900_term_chain_on_32kb_stack() {
     let src = format!("let x = a{};", " + a".repeat(900));
     let p = parse(&src, FileId(0));
@@ -284,7 +343,6 @@ fn k2_drop_of_900_term_chain_on_32kb_stack() {
 /// available; inline otherwise.
 #[cfg(all(unix, not(target_os = "wasi")))]
 #[test]
-#[ignore = "aborts (stack overflow) when run on a 64 KB stack"]
 fn k3_format_of_900_member_chain_on_32kb_stack() {
     let src = format!("let x = a{};", ".b".repeat(900));
     on_stack(32, move || {
@@ -301,11 +359,23 @@ fn k3_format_of_900_member_chain_on_32kb_stack() {
 #[cfg(all(unix, not(target_os = "wasi")))]
 #[test]
 fn k4_no_thread_fallback_100_nested_parens_on_256kb_stack() {
+    // CORRECTED TEST (see HANDOFF-8p-fixes.md): the no-thread fallback must never abort. The
+    // default `max_depth` is chosen so that the inline parser fits 256 KB of RELEASE stack:
+    // nesting up to the limit parses and deeper input is rejected with OXS-E0011. The original
+    // nested 100 parentheses, i.e. asserted the limit is >= 100; the lead's decision is a
+    // conservative default. Debug frames are ~6x larger, so the child only runs in release.
+    if cfg!(debug_assertions) {
+        return;
+    }
     if std::env::var("BA_STACK_CHILD").is_ok() {
         on_stack(256, || {
-            let p = parse(&nest_paren(100), FileId(0));
-            assert!(p.diagnostics.is_empty());
-            std::mem::forget(p);
+            let p = parse(&nest_paren(DEFAULT_MAX_DEPTH - 3), FileId(0));
+            assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics.first());
+            let q = parse(&nest_paren(DEFAULT_MAX_DEPTH + 40), FileId(0));
+            assert!(q.diagnostics.iter().any(|d| d.code == "OXS-E0011"));
+            let r = parse(&nest_paren(5000), FileId(0));
+            assert!(r.diagnostics.iter().any(|d| d.code == "OXS-E0011"));
+            std::mem::forget((p, q, r));
         });
         return;
     }
@@ -320,7 +390,7 @@ fn k4_no_thread_fallback_100_nested_parens_on_256kb_stack() {
         .unwrap();
     assert!(
         st.status.success(),
-        "child died ({:?}): inline fallback at depth <=128 needs more than 256 KB; stderr: {}",
+        "child died ({:?}): inline fallback within the default depth needs more than 256 KB; stderr: {}",
         st.status,
         String::from_utf8_lossy(&st.stderr).lines().take(3).collect::<Vec<_>>().join(" | ")
     );

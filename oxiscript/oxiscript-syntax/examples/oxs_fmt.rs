@@ -6,17 +6,19 @@
 //! cargo run -p oxiscript-syntax --example oxs_fmt -- --check file.oxs  # exit 1 if not formatted
 //! cargo run -p oxiscript-syntax --example oxs_fmt -- --diag file.oxs   # list diagnostics only
 //! ```
-use oxiscript_syntax::{format, parse_module, LineIndex};
+use oxiscript_syntax::{format_with, parse_module, FormatOptions, LineIndex};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let mut check = false;
     let mut diag_only = false;
+    let mut opts = FormatOptions::default();
     let mut files = Vec::new();
     for a in std::env::args().skip(1) {
         match a.as_str() {
             "--check" => check = true,
             "--diag" => diag_only = true,
+            "--no-braces" => opts.braces = false,
             _ => files.push(a),
         }
     }
@@ -49,7 +51,7 @@ fn main() -> ExitCode {
             }
             continue;
         }
-        match format(&src) {
+        match format_with(&src, &opts) {
             Ok(out) => {
                 if check {
                     if out != src {

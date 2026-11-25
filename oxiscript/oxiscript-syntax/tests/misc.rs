@@ -272,16 +272,27 @@ fn formatter_errors_on_invalid_input() {
 
 #[test]
 fn deep_but_legal_input_formats_on_a_small_stack() {
-    // 60 levels of nesting formats (on a thread with the default small stack)
-    let n = 60;
+    // nesting within the default limit formats on a 2 MB stack (threads are only an
+    // optimisation; if the platform cannot create one the test has nothing to check)
+    let n = 40;
     let src = format!("const a = {}1{};", "f(".repeat(n), ")".repeat(n));
-    let out = std::thread::Builder::new()
+    let o = FormatOptions {
+        parse: ParseOptions {
+            use_thread: false,
+            ..ParseOptions::default()
+        },
+        ..FormatOptions::default()
+    };
+    let src2 = src.clone();
+    let r = std::thread::Builder::new()
         .stack_size(2 << 20)
-        .spawn(move || format(&src).unwrap())
-        .unwrap()
-        .join()
-        .unwrap();
-    assert!(out.starts_with("const a = f("));
+        .spawn(move || (format(&src2).unwrap(), format_with(&src2, &o).unwrap()))
+        .map(|h| h.join());
+    if let Ok(joined) = r {
+        let (a, b) = joined.unwrap();
+        assert!(a.starts_with("const a = f("));
+        assert_eq!(a, b, "the helper thread must not change the result");
+    }
 }
 
 /// Every fenced `ts` block of grammar.md is a program and parses.

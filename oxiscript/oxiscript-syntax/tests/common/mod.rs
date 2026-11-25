@@ -3,7 +3,51 @@ use oxiscript_syntax::*;
 
 /// Debug rendering of a module without spans and node ids.
 pub fn shape(m: &Module) -> String {
-    strip(&format!("{:?}", m.items)) + &strip(&format!("{:?}", m.attrs))
+    unwrap_paren_try(&(strip(&format!("{:?}", m.items)) + &strip(&format!("{:?}", m.attrs))))
+}
+
+/// The formatter spells `f()?.y` as `(f()?).y` (grammar 1.5: without the
+/// parentheses it would lex as optional chaining), which adds a `Paren` node.
+/// Shapes are compared with `Paren(Try(..))` replaced by `Try(..)`.
+pub fn unwrap_paren_try(s: &str) -> String {
+    const PAT: &str = "Paren(Expr { id: , span: , kind: Try(";
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(p) = rest.find(PAT) {
+        out.push_str(&rest[..p]);
+        let inner = &rest[p + "Paren(".len()..];
+        // find the `)` closing `Paren(`, skipping string literals
+        let (mut depth, mut in_str, mut esc) = (1usize, false, false);
+        let mut end = inner.len();
+        for (i, c) in inner.char_indices() {
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    in_str = false;
+                }
+                continue;
+            }
+            match c {
+                '"' => in_str = true,
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push_str(&inner[..end]);
+        rest = inner.get(end + 1..).unwrap_or("");
+    }
+    out.push_str(rest);
+    out
 }
 
 pub fn strip(s: &str) -> String {

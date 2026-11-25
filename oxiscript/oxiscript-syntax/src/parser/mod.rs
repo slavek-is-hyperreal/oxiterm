@@ -37,7 +37,7 @@ mod types;
 /// (parentheses, blocks, types, ...). Chosen so that the inline parser fits in
 /// 256 KB of release stack on native targets and in the default wasm32 stack:
 /// see the crate docs for the measured bytes per level.
-pub const DEFAULT_MAX_DEPTH: usize = 100;
+pub const DEFAULT_MAX_DEPTH: usize = 56;
 /// Maximum height of the expression/statement tree (counts chain length). Chains
 /// are parsed, formatted and dropped iteratively, so this costs no stack.
 pub const MAX_HEIGHT: u32 = 1000;
@@ -46,6 +46,8 @@ const SOFT_DEPTH: u32 = 12;
 /// Bracket nesting (from the lexer) above which the thread is used right away.
 const SOFT_NEST: u32 = 6;
 const BIG_STACK: usize = 128 << 20;
+/// Depth units charged per statement/declaration nesting level.
+pub(crate) const STMT_WEIGHT: u32 = 2;
 
 /// Options for [`parse_with`].
 #[derive(Clone, Debug)]
@@ -249,7 +251,7 @@ pub fn parse_with(src: &str, file: FileId, opts: &ParseOptions) -> Parsed {
         diag_budget: MAX_DIAGS.saturating_sub(lex_diags.len()),
         allow_restart: opts.use_thread,
     };
-    let mut a = if opts.use_thread && max_nest > SOFT_NEST {
+    let mut a = if opts.use_thread && (max_nest > SOFT_NEST || tokens.len() > 512) {
         on_big_stack(&inputs).unwrap_or_else(|| attempt(&inputs, true))
     } else {
         attempt(&inputs, false)
@@ -682,7 +684,13 @@ impl<'a> Parser<'a> {
     }
 
     fn enter(&mut self) -> bool {
-        self.depth += 1;
+        self.enter_w(1)
+    }
+
+    /// Enter a nesting level that costs `w` depth units (statements and
+    /// declarations use more native stack per level than expressions).
+    fn enter_w(&mut self, w: u32) -> bool {
+        self.depth += w;
         if self.depth > SOFT_DEPTH && self.allow_restart && !self.big && !self.restart {
             self.restart = true;
             self.bail = true;
@@ -705,7 +713,11 @@ impl<'a> Parser<'a> {
     }
 
     fn leave(&mut self) {
-        self.depth = self.depth.saturating_sub(1);
+        self.leave_w(1);
+    }
+
+    fn leave_w(&mut self, w: u32) {
+        self.depth = self.depth.saturating_sub(w);
     }
 
     // ---- speculation -------------------------------------------------------

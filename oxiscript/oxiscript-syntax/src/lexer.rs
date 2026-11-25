@@ -852,7 +852,11 @@ impl Lexer<'_> {
             LitData::Int { value: v, suffix }
         };
         if bad {
-            let kind = if is_float || float_hint { "float" } else { "integer" };
+            let kind = if is_float || float_hint {
+                "float"
+            } else {
+                "integer"
+            };
             let msg = if reason.is_empty() {
                 format!(
                     "`{}` is not a valid {kind} literal (digit separators `_` go between digits)",
@@ -886,14 +890,14 @@ impl Lexer<'_> {
     // ---- strings and templates ---------------------------------------------
 
     /// Append source text `lo..hi` of a literal, warning about invisible characters.
-    fn copy_run(&mut self, out: &mut String, lo: usize, hi: usize) {
+    fn copy_run(&mut self, out: &mut String, lo: usize, hi: usize, template: bool) {
         let text = &self.src[lo..hi];
         out.push_str(text);
         if text.is_ascii() && !text.bytes().any(|b| b < 0x20 && b != b'\t' || b == 0x7f) {
             return;
         }
         for (k, c) in text.char_indices() {
-            if is_invisible(c) {
+            if is_invisible(c) && !(template && matches!(c, '\n' | '\r')) {
                 let at = lo + k;
                 let sp = self.span(at, at + c.len_utf8());
                 let esc = format!("\\u{{{:x}}}", c as u32);
@@ -1034,7 +1038,7 @@ impl Lexer<'_> {
         let mut run = i;
         loop {
             if i >= n || b[i] == b'\n' || b[i] == b'\r' {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, false);
                 self.err(
                     "OXS-E0002",
                     start,
@@ -1045,12 +1049,12 @@ impl Lexer<'_> {
             }
             let c = b[i];
             if c == q {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, false);
                 i += 1;
                 break;
             }
             if c == b'\\' {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, false);
                 i = self.escape(i, &mut out);
                 run = i;
                 continue;
@@ -1080,7 +1084,7 @@ impl Lexer<'_> {
         let (kind, closed);
         loop {
             if i >= n {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, true);
                 self.err(
                     "OXS-E0002",
                     tok_lo,
@@ -1097,7 +1101,7 @@ impl Lexer<'_> {
             }
             let c = b[i];
             if c == b'`' {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, true);
                 i += 1;
                 closed = true;
                 kind = if opening {
@@ -1108,7 +1112,7 @@ impl Lexer<'_> {
                 break;
             }
             if c == b'$' && b.get(i + 1) == Some(&b'{') {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, true);
                 i += 2;
                 self.braces.push(Brace::Template);
                 closed = true;
@@ -1120,14 +1124,14 @@ impl Lexer<'_> {
                 break;
             }
             if c == b'\\' {
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, true);
                 i = self.escape(i, &mut out);
                 run = i;
                 continue;
             }
             if c == b'\r' {
                 // CRLF and lone CR are normalised to LF in the cooked value
-                self.copy_run(&mut out, run, i);
+                self.copy_run(&mut out, run, i, true);
                 out.push('\n');
                 i += 1;
                 if b.get(i) == Some(&b'\n') {

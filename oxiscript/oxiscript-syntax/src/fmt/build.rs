@@ -3,6 +3,7 @@
 use super::doc::{concat, group, if_break, indent, join, render_flat, text, Doc};
 use super::{comment_kind_is_line, FormatOptions};
 use crate::ast::*;
+use crate::lexer::is_invisible;
 use crate::lexer::{Comment, CommentKind};
 
 pub(crate) struct Builder<'a> {
@@ -10,6 +11,14 @@ pub(crate) struct Builder<'a> {
     cm: &'a [Comment],
     ci: usize,
     o: &'a FormatOptions,
+    /// Comments starting before this offset were found inside a printed element
+    /// and are printed as plain `//` comments even if they are `///`.
+    plain_upto: u32,
+    /// Set by the caller of `seq`: per element, the number of `///` lines that
+    /// the parser attached to it as documentation (`usize::MAX` = not an item).
+    pending_docs: Vec<usize>,
+    /// The last thing printed was a `//` comment (nothing may follow on its line).
+    ended_line: bool,
 }
 
 fn prec(op: BinOp) -> u8 {
@@ -62,9 +71,10 @@ pub(crate) fn quote_str(s: &str) -> String {
             '\r' => o.push_str("\\r"),
             '\t' => o.push_str("\\t"),
             '\0' => o.push_str("\\0"),
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+            c if c.is_ascii_control() => {
                 o.push_str(&format!("\\x{:02x}", c as u32));
             }
+            c if is_invisible(c) => o.push_str(&format!("\\u{{{:x}}}", c as u32)),
             c => o.push(c),
         }
     }
@@ -82,8 +92,11 @@ fn template_chunk(s: &str) -> String {
             '$' if it.peek() == Some(&'{') => o.push_str("\\$"),
             '\r' => o.push_str("\\r"),
             '\0' => o.push_str("\\0"),
-            c if ((c as u32) < 0x20 && c != '\n') || c as u32 == 0x7f => {
+            c if c.is_ascii_control() && c != '\n' && c != '\t' => {
                 o.push_str(&format!("\\x{:02x}", c as u32));
+            }
+            c if c != '\n' && c != '\t' && is_invisible(c) => {
+                o.push_str(&format!("\\u{{{:x}}}", c as u32));
             }
             c => o.push(c),
         }
@@ -93,7 +106,15 @@ fn template_chunk(s: &str) -> String {
 
 impl<'a> Builder<'a> {
     pub(crate) fn new(src: &'a str, cm: &'a [Comment], o: &'a FormatOptions) -> Self {
-        Builder { src, cm, ci: 0, o }
+        Builder {
+            src,
+            cm,
+            ci: 0,
+            o,
+            plain_upto: 0,
+            pending_docs: Vec::new(),
+            ended_line: false,
+        }
     }
 
     // ---- comments ----------------------------------------------------------
@@ -111,10 +132,29 @@ impl<'a> Builder<'a> {
         v
     }
 
+    /// A comment that is not the leading doc comment of an item or member
+    /// (moved inside or after a statement): printed as `//` so that it cannot
+    /// start documenting the next declaration.
+    fn plain_comment_doc(&self, c: &Comment) -> Doc {
+        if c.kind == CommentKind::Doc {
+            let raw = &self.src[c.lo as usize + 3..c.hi as usize];
+            return text(format!("//{}", raw.trim_end()));
+        }
+        self.comment_doc(c)
+    }
+
+    fn cdoc(&self, c: &Comment) -> Doc {
+        if c.lo < self.plain_upto {
+            self.plain_comment_doc(c)
+        } else {
+            self.comment_doc(c)
+        }
+    }
+
     fn comment_doc(&self, c: &Comment) -> Doc {
         let raw = &self.src[c.lo as usize..c.hi as usize];
         if c.kind == CommentKind::Block {
-            text(raw.replace('\r', ""))
+            text(raw.replace("\r\n", "\n").replace('\r', "\n"))
         } else {
             text(raw.trim_end())
         }
@@ -127,7 +167,13 @@ impl<'a> Builder<'a> {
         let bytes = self.src.as_bytes();
         let hi = (b as usize).min(bytes.len());
         let lo = (a as usize).min(hi);
-        bytes[lo..hi].iter().filter(|&&x| x == b'\n').count()
+        let mut n = 0;
+        for (i, &x) in bytes[lo..hi].iter().enumerate() {
+            if x == b'\n' || (x == b'\r' && bytes.get(lo + i + 1) != Some(&b'\n')) {
+                n += 1;
+            }
+        }
+        n
     }
 
     /// Comments before `pos` that sit inside an expression, type or parameter.
@@ -138,7 +184,7 @@ impl<'a> Builder<'a> {
         }
         let mut v = Vec::new();
         for c in &cs {
-            v.push(self.comment_doc(c));
+            v.push(self.plain_comment_doc(c));
             v.push(if comment_kind_is_line(c.kind) {
                 nl()
             } else {
@@ -156,18 +202,39 @@ impl<'a> Builder<'a> {
         build: &mut dyn FnMut(&mut Self, usize) -> Doc,
         close: u32,
     ) -> Doc {
+        let docs = std::mem::take(&mut self.pending_docs);
         let mut parts: Vec<Doc> = Vec::new();
         let mut first = true;
         let mut prev_end = 0u32;
+        let mut last_line = false;
         for (i, &(lo, hi)) in spans.iter().enumerate() {
-            for c in self.take_before(lo) {
+            let lead = self.take_before(lo);
+            // only the `///` lines the parser attached to this item stay `///`
+            let keep = match docs.get(i) {
+                Some(&d) if d != usize::MAX => {
+                    let run = lead
+                        .iter()
+                        .rev()
+                        .take_while(|c| c.kind == CommentKind::Doc)
+                        .count();
+                    d.min(run)
+                }
+                _ => usize::MAX,
+            };
+            for (k, c) in lead.iter().enumerate() {
                 if !first {
                     parts.push(nl());
                     if self.newlines_between(prev_end, c.lo) >= 2 {
                         parts.push(nl());
                     }
                 }
-                parts.push(self.comment_doc(&c));
+                let demote =
+                    keep != usize::MAX && c.kind == CommentKind::Doc && k + keep < lead.len();
+                parts.push(if demote {
+                    self.plain_comment_doc(c)
+                } else {
+                    self.cdoc(c)
+                });
                 first = false;
                 prev_end = c.hi;
             }
@@ -177,20 +244,38 @@ impl<'a> Builder<'a> {
                     parts.push(nl());
                 }
             }
+            self.ended_line = false;
             let d = build(self, i);
             parts.push(d);
             first = false;
             prev_end = hi;
+            last_line = self.ended_line;
+            // trailing comments: on the same line as the end of the last thing
+            // printed there; nothing may follow a `//` comment on that line
+            let mut line_end = hi;
+            let mut open = !self.ended_line;
             while let Some(c) = self.cm.get(self.ci).copied() {
                 let inner = c.lo < hi;
-                if (inner || self.newlines_between(hi, c.lo) == 0) && c.lo < close.max(hi) {
-                    parts.push(t(" "));
-                    parts.push(self.comment_doc(&c));
-                    prev_end = prev_end.max(c.hi);
-                    self.ci += 1;
-                } else {
+                if !inner && (!open || c.lo >= close || !self.same_line_gap(line_end, c.lo)) {
                     break;
                 }
+                if inner && !open {
+                    self.plain_upto = self.plain_upto.max(hi);
+                    break;
+                }
+                parts.push(t(" "));
+                if inner {
+                    parts.push(self.plain_comment_doc(&c));
+                } else {
+                    parts.push(self.cdoc(&c));
+                }
+                prev_end = prev_end.max(c.hi);
+                line_end = c.hi;
+                last_line = c.kind != CommentKind::Block;
+                if c.kind != CommentKind::Block {
+                    open = false;
+                }
+                self.ci += 1;
             }
         }
         for c in self.take_before(close) {
@@ -200,10 +285,12 @@ impl<'a> Builder<'a> {
                     parts.push(nl());
                 }
             }
-            parts.push(self.comment_doc(&c));
+            parts.push(self.cdoc(&c));
             first = false;
             prev_end = c.hi;
+            last_line = c.kind != CommentKind::Block;
         }
+        self.ended_line = last_line;
         concat(parts)
     }
 
@@ -225,6 +312,17 @@ impl<'a> Builder<'a> {
             i += 1;
         }
         i as u32
+    }
+
+    /// Only blanks, `,` and `;` between `a` and `b`, on one line: a comment at `b`
+    /// trails whatever ended at `a` (no code in between).
+    fn same_line_gap(&self, a: u32, b: u32) -> bool {
+        let bytes = self.src.as_bytes();
+        let hi = (b as usize).min(bytes.len());
+        let lo = (a as usize).min(hi);
+        bytes[lo..hi]
+            .iter()
+            .all(|&x| matches!(x, b' ' | b'\t' | b',' | b';' | 0x0b | 0x0c))
     }
 
     fn has_comment_before(&self, pos: u32) -> bool {
@@ -250,6 +348,13 @@ impl<'a> Builder<'a> {
         let end = u32::try_from(self.src.len())
             .unwrap_or(u32::MAX)
             .saturating_add(1);
+        self.pending_docs = els
+            .iter()
+            .map(|e| match e {
+                E::A(_) => usize::MAX,
+                E::I(i) => i.doc.len(),
+            })
+            .collect();
         self.seq(
             &spans,
             &mut |b, i| match &els[i] {
@@ -263,27 +368,29 @@ impl<'a> Builder<'a> {
     fn attr(&mut self, a: &Attribute) -> Doc {
         let mut v = vec![t(if a.inner { "@@" } else { "@" }), t(&a.name.name)];
         if !a.args.is_empty() {
-            let args: Vec<Doc> = a
-                .args
-                .iter()
-                .map(|x| {
-                    let mut p = Vec::new();
-                    if let Some(k) = &x.key {
-                        p.push(t(&k.name));
-                        p.push(t(": "));
+            let mut args: Vec<Doc> = Vec::new();
+            for x in &a.args {
+                let mut p = vec![self.pre(x.span.lo)];
+                if let Some(k) = &x.key {
+                    p.push(t(&k.name));
+                    p.push(t(": "));
+                }
+                match &x.value {
+                    AttrValue::Lit(l) => p.push(t(&self.lit_text(l))),
+                    AttrValue::Path(ps) => {
+                        let s: Vec<&str> = ps.iter().map(|i| i.name.as_str()).collect();
+                        p.push(t(&s.join(".")));
                     }
-                    match &x.value {
-                        AttrValue::Lit(l) => p.push(t(&self.lit_text(l))),
-                        AttrValue::Path(ps) => {
-                            let s: Vec<&str> = ps.iter().map(|i| i.name.as_str()).collect();
-                            p.push(t(&s.join(".")));
-                        }
-                    }
-                    concat(p)
-                })
-                .collect();
+                }
+                args.push(concat(p));
+            }
             v.push(t("("));
             v.push(join(|| t(", "), args));
+            let tail = self.pre(a.span.hi.saturating_sub(1));
+            if !tail.is_nil() {
+                v.push(t(" "));
+                v.push(tail);
+            }
             v.push(t(")"));
         }
         concat(v)
@@ -456,6 +563,7 @@ impl<'a> Builder<'a> {
         }
         v.push(t(" "));
         let spans: Vec<(u32, u32)> = r.members.iter().map(|m| (m.span.lo, m.span.hi)).collect();
+        self.pending_docs = r.members.iter().map(|m| m.doc.len()).collect();
         v.push(self.braced_seq(&spans, close, &mut |b, i| b.member(&r.members[i])));
         concat(v)
     }
@@ -470,6 +578,7 @@ impl<'a> Builder<'a> {
             return t("{}");
         }
         let body = self.seq(spans, build, close);
+        self.ended_line = false;
         concat(vec![t("{"), indent(concat(vec![nl(), body])), nl(), t("}")])
     }
 
@@ -563,16 +672,12 @@ impl<'a> Builder<'a> {
         ]);
         let rhs = match &a.ty.kind {
             TypeExprKind::Union(ms) => {
-                let pre = self.pre(a.ty.span.lo);
                 let docs: Vec<Doc> = ms.iter().map(|m| self.ty(m)).collect();
-                concat(vec![
-                    pre,
-                    indent(concat(vec![
-                        Doc::Line,
-                        if_break(t("| "), Doc::Nil),
-                        join(|| concat(vec![Doc::Line, t("| ")]), docs),
-                    ])),
-                ])
+                concat(vec![indent(concat(vec![
+                    Doc::Line,
+                    if_break(t("| "), Doc::Nil),
+                    join(|| concat(vec![Doc::Line, t("| ")]), docs),
+                ]))])
             }
             _ => concat(vec![t(" "), self.ty(&a.ty)]),
         };
@@ -676,6 +781,7 @@ impl<'a> Builder<'a> {
             spans.push((tail.span.lo, tail.span.hi));
         }
         let n = b.stmts.len();
+        self.pending_docs = b.stmts.iter().map(stmt_doc_len).collect();
         self.braced_seq(&spans, close, &mut |bd, i| {
             if i < n {
                 bd.stmt(&b.stmts[i])
@@ -737,6 +843,7 @@ impl<'a> Builder<'a> {
             return (concat(vec![t(" "), self.stmt(s)]), true);
         }
         let spans = [(s.span.lo, s.span.hi)];
+        self.pending_docs = vec![stmt_doc_len(s)];
         let one = self.seq(&spans, &mut |b, _| b.stmt(s), s.span.hi);
         if self.o.braces {
             let inner = if matches!(s.kind, StmtKind::Empty) && s.attrs.is_empty() {
@@ -772,10 +879,14 @@ impl<'a> Builder<'a> {
     }
 
     fn if_doc(&mut self, cond: &Expr, then: &Stmt, els: &Option<Box<Stmt>>) -> Doc {
-        let mut v = vec![self.paren_head("if", cond)];
-        let (b, closed) = self.body(then);
-        v.push(b);
-        if let Some(e) = els {
+        // an `else if` ladder is printed with a loop, not recursion
+        let mut v = Vec::new();
+        let (mut cond, mut then, mut els) = (cond, then, els);
+        loop {
+            v.push(self.paren_head("if", cond));
+            let (b, closed) = self.body(then);
+            v.push(b);
+            let Some(e) = els else { break };
             if closed {
                 v.push(t(" else"));
             } else {
@@ -783,13 +894,18 @@ impl<'a> Builder<'a> {
                 v.push(t("else"));
             }
             match &e.kind {
-                StmtKind::If { cond, then, els } if e.attrs.is_empty() => {
+                StmtKind::If {
+                    cond: c,
+                    then: th,
+                    els: el,
+                } if e.attrs.is_empty() => {
                     v.push(t(" "));
-                    v.push(self.if_doc(cond, then, els));
+                    (cond, then, els) = (c, th, el);
                 }
                 _ => {
                     let (b, _) = self.body(e);
                     v.push(b);
+                    break;
                 }
             }
         }
@@ -951,7 +1067,8 @@ impl<'a> Builder<'a> {
             v.push(self.stmt(&c.body[0]));
         } else if !c.body.is_empty() {
             let spans: Vec<(u32, u32)> = c.body.iter().map(|s| (s.span.lo, s.span.hi)).collect();
-            let close = c.span.hi;
+            let close = 0; // leftovers belong to the enclosing sequence (stable under re-formatting)
+            self.pending_docs = c.body.iter().map(stmt_doc_len).collect();
             let body = self.seq(&spans, &mut |b, i| b.stmt(&c.body[i]), close);
             v.push(indent(concat(vec![nl(), body])));
         }
@@ -1025,6 +1142,129 @@ impl<'a> Builder<'a> {
         } else {
             concat(vec![pre, d])
         }
+    }
+
+    /// `a.b(c)[d]?.e as T x++ ...`: the chain is walked with a loop (never
+    /// recursion per link) and printed flat.
+    #[inline(never)]
+    fn postfix_chain(&mut self, e: &Expr) -> Doc {
+        let mut ops: Vec<&Expr> = Vec::new();
+        let mut cur = e;
+        loop {
+            match &cur.kind {
+                ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } => {
+                    ops.push(cur);
+                    cur = obj;
+                }
+                ExprKind::Call { callee, .. } => {
+                    ops.push(cur);
+                    cur = callee;
+                }
+                ExprKind::Try(x) => {
+                    ops.push(cur);
+                    cur = x;
+                }
+                ExprKind::Cast { expr, .. } => {
+                    ops.push(cur);
+                    cur = expr;
+                }
+                ExprKind::Update {
+                    prefix: false,
+                    target,
+                    ..
+                } => {
+                    ops.push(cur);
+                    cur = target;
+                }
+                _ => break,
+            }
+        }
+        ops.reverse();
+        let mut parts = vec![self.expr(cur)];
+        let mut prev_try = false;
+        for op in ops {
+            let is_access = matches!(
+                op.kind,
+                ExprKind::Member { .. } | ExprKind::Index { .. } | ExprKind::Call { .. }
+            );
+            if prev_try && is_access {
+                // `f()?.y` would read as optional chaining: spell `(f()?).y`
+                let inner = std::mem::take(&mut parts);
+                parts.push(concat(vec![t("("), concat(inner), t(")")]));
+            }
+            prev_try = matches!(op.kind, ExprKind::Try(_));
+            let d = self.postfix_op(op);
+            parts.push(d);
+        }
+        concat(parts)
+    }
+
+    fn postfix_op(&mut self, op: &Expr) -> Doc {
+        match &op.kind {
+            ExprKind::Member { name, optional, .. } => {
+                concat(vec![t(if *optional { "?." } else { "." }), t(&name.name)])
+            }
+            ExprKind::Index {
+                index, optional, ..
+            } => concat(vec![
+                t(if *optional { "?.[" } else { "[" }),
+                self.expr(index),
+                t("]"),
+            ]),
+            ExprKind::Call {
+                type_args,
+                args,
+                optional,
+                ..
+            } => {
+                let mut v = Vec::new();
+                if *optional {
+                    v.push(t("?."));
+                }
+                if !type_args.is_empty() {
+                    let ds: Vec<Doc> = type_args.iter().map(|a| self.ty(a)).collect();
+                    v.push(t("<"));
+                    v.push(join(|| t(", "), ds));
+                    v.push(t(">"));
+                }
+                v.push(self.args(args));
+                concat(v)
+            }
+            ExprKind::Try(_) => t("?"),
+            ExprKind::Cast { ty, .. } => concat(vec![t(" as "), self.ty(ty)]),
+            ExprKind::Update { op, .. } => t(if *op == IncDec::Inc { "++" } else { "--" }),
+            _ => Doc::Nil,
+        }
+    }
+
+    /// `a ? b : c ? d : e`: one flat group, built with a loop.
+    #[inline(never)]
+    fn cond_chain(&mut self, e: &Expr) -> Doc {
+        let mut v: Vec<Doc> = Vec::new();
+        let mut cur = e;
+        let mut first = true;
+        while let ExprKind::Cond { cond, then, els } = &cur.kind {
+            let c = self.expr(cond);
+            let a = self.expr(then);
+            if first {
+                v.push(c);
+                first = false;
+            } else {
+                v.push(Doc::Line);
+                v.push(t(": "));
+                v.push(c);
+            }
+            v.push(Doc::Line);
+            v.push(t("? "));
+            v.push(a);
+            cur = els;
+        }
+        let last = self.expr(cur);
+        v.push(Doc::Line);
+        v.push(t(": "));
+        v.push(last);
+        let head = v.remove(0);
+        group(concat(vec![head, indent(concat(v))]))
     }
 
     fn binary(&mut self, e: &Expr) -> Doc {
@@ -1140,71 +1380,25 @@ impl<'a> Builder<'a> {
                 let l = self.expr(target);
                 self.assign_like(l, &assign_text(*op), value)
             }
-            ExprKind::Update { op, prefix, target } => {
-                let s = if *op == IncDec::Inc { "++" } else { "--" };
-                if *prefix {
-                    concat(vec![t(s), self.expr(target)])
-                } else {
-                    concat(vec![self.expr(target), t(s)])
-                }
-            }
-            ExprKind::Call {
-                callee,
-                type_args,
-                args,
-                optional,
+            ExprKind::Update {
+                op,
+                prefix: true,
+                target,
             } => {
-                let c = self.expr(callee);
-                let mut v = vec![c];
-                if *optional {
-                    v.push(t("?."));
-                }
-                if !type_args.is_empty() {
-                    let ds: Vec<Doc> = type_args.iter().map(|a| self.ty(a)).collect();
-                    v.push(t("<"));
-                    v.push(join(|| t(", "), ds));
-                    v.push(t(">"));
-                }
-                v.push(self.args(args));
-                concat(v)
+                let s = if *op == IncDec::Inc { "++" } else { "--" };
+                concat(vec![t(s), self.expr(target)])
             }
+            ExprKind::Update { .. }
+            | ExprKind::Call { .. }
+            | ExprKind::Member { .. }
+            | ExprKind::Index { .. }
+            | ExprKind::Try(_)
+            | ExprKind::Cast { .. } => self.postfix_chain(e),
             ExprKind::New { ty, args } => {
                 let ty = self.ty(ty);
                 concat(vec![t("new "), ty, self.args(args)])
             }
-            ExprKind::Member {
-                obj,
-                name,
-                optional,
-            } => concat(vec![
-                self.expr(obj),
-                t(if *optional { "?." } else { "." }),
-                t(&name.name),
-            ]),
-            ExprKind::Index {
-                obj,
-                index,
-                optional,
-            } => concat(vec![
-                self.expr(obj),
-                t(if *optional { "?.[" } else { "[" }),
-                self.expr(index),
-                t("]"),
-            ]),
-            ExprKind::Try(x) => concat(vec![self.expr(x), t("?")]),
-            ExprKind::Cast { expr, ty } => {
-                let x = self.expr(expr);
-                concat(vec![x, t(" as "), self.ty(ty)])
-            }
-            ExprKind::Cond { cond, then, els } => {
-                let c = self.expr(cond);
-                let a = self.expr(then);
-                let b = self.expr(els);
-                group(concat(vec![
-                    c,
-                    indent(concat(vec![Doc::Line, t("? "), a, Doc::Line, t(": "), b])),
-                ]))
-            }
+            ExprKind::Cond { .. } => self.cond_chain(e),
             ExprKind::Arrow(a) => {
                 let ps = self.params(&a.params);
                 let mut v = vec![ps];
@@ -1266,6 +1460,13 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+    }
+}
+
+fn stmt_doc_len(s: &Stmt) -> usize {
+    match &s.kind {
+        StmtKind::Item(it) => it.doc.len(),
+        _ => usize::MAX,
     }
 }
 

@@ -9,6 +9,25 @@
 //! assert_eq!(oxiscript_syntax::format("let   x=1 ;").unwrap(), "let x = 1;\n");
 //! ```
 //!
+//! # Stack use and limits
+//!
+//! Parsing, formatting and dropping never need a thread or a large stack for
+//! correctness. The nesting limit is [`ParseOptions::max_depth`] (default
+//! [`DEFAULT_MAX_DEPTH`] = 56 depth units; a parenthesis, call argument, array or
+//! type level costs 1 unit, a statement or declaration level 2); deeper input
+//! is rejected with `OXS-E0011`, the same on every platform. Measured native
+//! release stack of the inline parser (`examples/stack_probe`): about 3.2 KB per
+//! parenthesis/call/bracket level, 3.5 KB per arrow, 3.6 KB per switch-expression
+//! level, 1.6 KB per depth unit of blocks, 0.9 KB per generic type level, so the
+//! default limit needs at most about 235 KB and fits a 256 KB stack and the
+//! default wasm32 stack. Debug builds use about six times more. Long chains
+//! (`a + b + c`, `a.b().c`, `x ? y : z ? ...`, `else if` ladders, up to
+//! [`MAX_HEIGHT`] links) are parsed, formatted and dropped iteratively and
+//! cost constant stack. When a thread with a large stack can be created
+//! (native targets, `use_thread`), nested or large inputs use it as extra
+//! headroom; this never changes the result. `Expr` and `Stmt` implement `Drop`
+//! (iteratively), so their fields cannot be moved out by destructuring.
+//!
 //! No dependencies; in particular no dependency on `oxiscript-ir` or on any
 //! `oxiterm-*` crate.
 #![allow(
@@ -46,7 +65,8 @@
     clippy::cognitive_complexity,
     clippy::collapsible_else_if,
     clippy::while_let_loop,
-    clippy::naive_bytecount
+    clippy::naive_bytecount,
+    clippy::result_large_err
 )]
 
 pub mod ast;
@@ -56,6 +76,7 @@ pub mod lexer;
 pub mod parser;
 pub mod visit;
 
+mod drop;
 mod fmt;
 
 pub use ast::*;

@@ -94,14 +94,14 @@ impl Parser<'_> {
         doc: Vec<String>,
         attrs: Vec<Attribute>,
     ) -> Option<Item> {
-        if !self.enter() {
-            self.leave();
+        if !self.enter_w(STMT_WEIGHT) {
+            self.leave_w(STMT_WEIGHT);
             return None;
         }
         let mark = self.updates.len();
         let r = self.parse_item_inner(lo, doc, attrs);
         self.updates.truncate(mark.min(self.updates.len()));
-        self.leave();
+        self.leave_w(STMT_WEIGHT);
         r
     }
 
@@ -351,12 +351,12 @@ impl Parser<'_> {
 
     #[inline(never)]
     fn parse_member(&mut self) -> Option<Member> {
-        if !self.enter() {
-            self.leave();
+        if !self.enter_w(STMT_WEIGHT) {
+            self.leave_w(STMT_WEIGHT);
             return None;
         }
         let r = self.parse_member_inner();
-        self.leave();
+        self.leave_w(STMT_WEIGHT);
         r
     }
 

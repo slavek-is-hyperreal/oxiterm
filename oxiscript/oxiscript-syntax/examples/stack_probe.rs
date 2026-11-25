@@ -13,7 +13,7 @@ fn gen(kind: &str, n: usize) -> String {
         "bracket" => format!("let x = {}1{};", "[".repeat(n), "]".repeat(n)),
         "block" => format!("function f(): void {}{}", "{".repeat(n), "}".repeat(n)),
         "call" => format!("let x = {}1{};", "f(".repeat(n), ")".repeat(n)),
-        "unary" => format!("let x = {}1;", "-".repeat(n)),
+        "unary" => format!("let x = {}1;", "- ".repeat(n)),
         "arrow" => format!("let x = {}1;", "(a) => ".repeat(n)),
         "ternary" => format!("let x = {}1{};", "a ? ".repeat(n), " : 2".repeat(n)),
         "type" => format!("let x: {}i32{};", "Array<".repeat(n), ">".repeat(n)),
@@ -33,7 +33,6 @@ fn run(kind: &str, n: usize, fmt: bool, depth: usize) {
     let opts = ParseOptions {
         max_depth: depth,
         use_thread: false,
-        ..ParseOptions::default()
     };
     if fmt {
         let o = FormatOptions {
@@ -41,7 +40,7 @@ fn run(kind: &str, n: usize, fmt: bool, depth: usize) {
             ..FormatOptions::default()
         };
         let out = format_with(&src, &o);
-        std::mem::forget(out.is_ok());
+        std::mem::forget(out);
     } else {
         let p = parse_with(&src, FileId(0), &opts);
         let ok = p.diagnostics.is_empty();
@@ -93,5 +92,9 @@ fn main() {
             lo = mid;
         }
     }
-    println!("{kind} n={n} {}: min stack {hi} KB ({} B/level)", if fmt { "format" } else { "parse" }, hi * 1024 / n.max(1));
+    println!(
+        "{kind} n={n} {}: min stack {hi} KB ({} B/level)",
+        if fmt { "format" } else { "parse" },
+        hi * 1024 / n.max(1)
+    );
 }
