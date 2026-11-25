@@ -245,6 +245,31 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
             let i = b.local(I32);
             let k = b.local(I32);
             let total = b.local(I32);
+            // iterative free (L06): children that reach rc 0 are chained through their (dead) rc word instead of
+            // recursing into `oxi_release`; `head` is the pending list, so the native stack stays flat for any depth.
+            let head = b.local(I32);
+            let q = b.local(I32);
+            let rc = b.local(I32);
+            b.get(p);
+            b.set(head);
+            b.i32c(0).set(rc);
+            b.get(p).i32c(8);
+            b.s().i32_sub();
+            b.i32c(0);
+            b.store(Mem::I32, 0);
+            b.s().block(BlockType::Empty).loop_(BlockType::Empty);
+            b.get(head);
+            b.s().i32_eqz().br_if(1);
+            b.get(head);
+            b.set(p);
+            b.get(p).i32c(8);
+            b.s().i32_sub();
+            b.load(Mem::I32, 0);
+            b.set(head);
+            b.get(p).i32c(8);
+            b.s().i32_sub();
+            b.i32c(0);
+            b.store(Mem::I32, 0);
             desc_of(b, p, desc);
             b.get(desc).load(Mem::I32, 4);
             b.set(w1);
@@ -284,7 +309,8 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
                 b.load(Mem::I32, 0);
                 b.s().i32_add();
                 b.load(Mem::I32, 0);
-                b.s().call(ix("oxi_release"));
+                b.set(q);
+                release_child(b, q, rc, head);
                 b.get(k).i32c(1);
                 b.s().i32_add();
                 b.set(k);
@@ -324,7 +350,8 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
                 b.load(Mem::I32, 0);
                 b.s().i32_add();
                 b.load(Mem::I32, 0);
-                b.s().call(ix("oxi_release"));
+                b.set(q);
+                release_child(b, q, rc, head);
                 b.get(k).i32c(1);
                 b.s().i32_add();
                 b.set(k);
@@ -342,6 +369,7 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
             b.s().global_get(G_LIVE_BYTES);
             b.get(total);
             b.s().i32_sub().global_set(G_LIVE_BYTES);
+            b.s().br(0).end().end();
         }
         "oxi_clone" => {
             let p = 0;
@@ -897,6 +925,46 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
         other => unreachable!("unknown stub function {other}"),
     }
     body.finish()
+}
+
+/// Drop one reference to `q` inside the iterative `free_obj`: a child that dies is pushed on the pending list
+/// `head` (linked through its own dead rc word) instead of being freed recursively.
+fn release_child(b: &mut Body, q: u32, rc: u32, head: u32) {
+    b.get(q);
+    b.s().i32_eqz().if_(BlockType::Empty).else_();
+    {
+        b.get(q).i32c(8);
+        b.s().i32_sub();
+        b.load(Mem::I32, 0);
+        b.set(rc);
+        b.get(rc).i32c(RC_STICKY as i32);
+        b.s().i32_lt_u().if_(BlockType::Empty);
+        {
+            b.get(rc);
+            b.s().i32_eqz();
+            trap_if(b, TrapKind::Unreachable);
+            b.get(rc).i32c(1);
+            b.s().i32_sub();
+            b.set(rc);
+            b.get(q).i32c(8);
+            b.s().i32_sub();
+            b.get(rc);
+            b.s().i32_eqz().if_(BlockType::Result(ValType::I32));
+            // dead: the rc word becomes the link to the previous head
+            b.get(head);
+            b.s().else_();
+            b.get(rc);
+            b.s().end();
+            b.store(Mem::I32, 0);
+            b.get(rc);
+            b.s().i32_eqz().if_(BlockType::Empty);
+            b.get(q);
+            b.set(head);
+            b.s().end();
+        }
+        b.s().end();
+    }
+    b.s().end();
 }
 
 /// `desc = typedesc_base + (meta(p) & 0xffffff) * 16`.

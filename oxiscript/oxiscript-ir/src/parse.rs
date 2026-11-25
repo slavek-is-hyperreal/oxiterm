@@ -1232,6 +1232,38 @@ impl Parser {
                 let (bytes, len) = two(self)?;
                 Op::StrFromUtf8 { bytes, len }
             }
+            "str.concat" => {
+                let (a, b) = two(self)?;
+                Op::StrConcat { a, b }
+            }
+            "str.eq" => {
+                let (a, b) = two(self)?;
+                Op::StrEq { a, b }
+            }
+            "str.cmp" => {
+                let (a, b) = two(self)?;
+                Op::StrCmp { a, b }
+            }
+            "str.slice" => {
+                let (s0, lo) = two(self)?;
+                self.expect_p(",")?;
+                Op::StrSlice {
+                    s: s0,
+                    lo,
+                    hi: self.value(names)?,
+                }
+            }
+            "str.byte" => {
+                let (s0, idx) = two(self)?;
+                Op::StrByte { s: s0, idx }
+            }
+            "str.from_f64" => Op::StrFromF64 {
+                x: self.value(names)?,
+            },
+            "array.empty" => Op::ArrayEmpty,
+            "array.pop" => Op::ArrayPop {
+                arr: self.value(names)?,
+            },
             "is_null" => Op::IsNull {
                 val: self.value(names)?,
             },

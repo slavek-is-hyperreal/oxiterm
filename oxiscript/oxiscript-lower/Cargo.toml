@@ -10,7 +10,7 @@ oxiscript-syntax = { path = "../oxiscript-syntax" }
 oxiscript-check = { path = "../oxiscript-check" }
 oxiscript-ir = { path = "../oxiscript-ir" }
 oxiscript-abi = { path = "../oxiscript-abi" }
+oxiscript-wasm = { path = "../oxiscript-wasm" }
 
 [dev-dependencies]
-oxiscript-wasm = { path = "../oxiscript-wasm" }
 oxiscript-runtime = { path = "../oxiscript-runtime" }

@@ -94,6 +94,14 @@ Floats print with Rust's shortest round-trip decimal (`-0.0`, `1e21`, `5e-324`);
 | `str.const @d` | -> `str` | Immortal object (sticky rc); result **borrowed**. |
 | `str.len s` | -> `i32` | Byte length. |
 | `str.from_utf8 b, n` | `[u8], i32 -> str` | New owned string from the first `n` bytes of `b`; traps `bounds` if `n` is negative or larger than the array, `bad_utf8` if the bytes are invalid. Used after a host wrote into an out-buffer. |
+| `str.concat a, b` | `str, str -> str` | New owned string `a ++ b` (both operands borrowed). Traps `out_of_memory`. |
+| `str.eq a, b` | `str, str -> bool` | Bytewise equality (both borrowed). Cannot trap. |
+| `str.cmp a, b` | `str, str -> i32` | Bytewise order, which for valid UTF-8 equals code point order; result is exactly `-1`, `0` or `1`. Both borrowed. Cannot trap. |
+| `str.slice s, lo, hi` | `str, i32, i32 -> str` | New owned string of the **byte** range `lo..hi`. Traps `bounds` if `lo < 0`, `hi > len` or `lo > hi`, and `bad_utf8` if `lo` or `hi` lies inside a code point (so the result is always valid UTF-8). `s` borrowed. |
+| `str.byte s, i` | `str, i32 -> u8` | Byte `i` of the string; traps `bounds` unless `0 <= i < len`. Pure scalar result, no ownership effect. |
+| `str.from_f64 x` | `f64 -> str` | New owned string with the shortest round-trip decimal text (`NaN`, `Infinity`, `-Infinity`; NaN payload and sign unobservable). Needs a runtime that implements `oxi_str_from_f64`: the 8.G Stub traps `unreachable` (8.M provides it). |
+| `array.empty` | `-> [T]` | New owned array of length 0 for any element type, **including non-null references** (unlike `array.new`, which only exists for scalar and nullable elements and fills with zeros). Cannot trap except `out_of_memory`. |
+| `array.pop a` | `[T] -> T` | Removes and returns the last element; traps `bounds` on an empty array. The result is **owned**: the array's reference moves out to the result (no retain, no release of the element; the array's length drops by one). Unlike `array.get`, the result is not a borrow from `a`. |
 | `is_null x` | `T? -> bool` | |
 | `opt x` / `unopt x` | `T -> T?` / `T? -> T` | `unopt` traps `null_deref` on null. Both are pure re-typings: they **move the owned count** to the result (section 4). |
 | `closure.new E @f(caps...)` | -> `fn(...) -> R` | Allocates the closure object for env type `E` calling `@f`, whose first parameter must be `ref E`, remaining parameters/results define the closure's `fn` type; `@f` has no `own` parameters. **Consumes the captures**, in field order. Owned. |
@@ -119,13 +127,15 @@ Every SSA value of managed type carries a **static owned count** `c`, a non-nega
 | owned function parameter (`own`) | 1 |
 | borrowed function parameter | 0 |
 | block parameter of managed type | 1 (arguments passed to it are consumed) |
-| result of `alloc`, `clone`, `array.new`, `str.from_utf8`, `closure.new`, `call`, `call_closure` | 1 |
+| result of `alloc`, `clone`, `array.new`, `array.empty`, `array.pop`, `str.from_utf8`, `str.concat`, `str.slice`, `str.from_f64`, `closure.new`, `call`, `call_closure` | 1 |
 | result of `getfield`, `array.get`, `global.get`, `str.const` | 0 (borrowed) |
 | result of `opt` / `unopt` | the operand's count, which moves (operand count becomes 0) |
 
 **Effects**
 | Operation | Effect |
 |---|---|
+| `str.concat`, `str.eq`, `str.cmp`, `str.slice`, `str.byte` | operands are borrowed (no effect on `c`); `str.concat`/`str.slice` results are owned (see the initial counts) |
+| `array.pop a` | the array operand is borrowed; the removed element's reference moves out as the owned result |
 | `retain x` | `c(x) += 1` |
 | `release x` | requires `c(x) >= 1`; `c(x) -= 1` |
 | consuming uses: `ret`, branch arguments, `own` call arguments, **`fn` arguments of host imports** (the host keeps the closure), `setfield`/`array.set`/`array.push`/`global.set` value operand, `closure.new` captures | each requires `c >= 1` on the operand and does `c -= 1` (passing the same value twice needs `c >= 2`) |

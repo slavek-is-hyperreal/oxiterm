@@ -21,7 +21,7 @@ fn smoke_union() {
 type Shape =
   | { kind: "circle"; r: f64 }
   | { kind: "rect"; w: f64; h: f64 };
-export function area(s: Shape): f64 {
+function area(s: Shape): f64 {
   switch (s.kind) {
     case "circle": return 3.14 * s.r * s.r;
     case "rect": return s.w * s.h;

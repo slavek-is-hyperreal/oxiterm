@@ -1307,6 +1307,22 @@ impl<'a> Checker<'a> {
         self.defs[d.0 as usize].sig = Sig::Done;
     }
 
+    fn abi_scalar_ok(&self, t: Ty) -> bool {
+        match self.tys.kind(t) {
+            TyKind::Bool | TyKind::Num(_) | TyKind::Error => true,
+            TyKind::Adt(d, _) => matches!(self.kind_of(*d), DefKind::Enum | DefKind::Handle | DefKind::Host),
+            _ => false,
+        }
+    }
+
+    fn abi_param_ok(&self, t: Ty) -> bool {
+        t == STR || *self.tys.kind(t) == TyKind::Array(U8) || self.abi_scalar_ok(t)
+    }
+
+    fn abi_ret_ok(&self, t: Ty) -> bool {
+        t == VOID || self.abi_scalar_ok(t)
+    }
+
     /// Whether the exported function signature rules hold (convention 7 and `main`).
     pub fn check_export_sig(&mut self, d: DefId) {
         let Some(sig) = self.fns.get(&d).cloned() else { return };
@@ -1326,6 +1342,27 @@ impl<'a> Checker<'a> {
         }
         if info.exported && !sig.tparams.is_empty() {
             self.err("OXS-E0121", info.span, &[("detail", &format!("exported function `{name}` cannot be generic"))]);
+        }
+        if info.exported && info.module == 0 && name != "main" && sig.tparams.is_empty() {
+            // ABI 1.0 export boundary: scalar (number, bool, enum) or `string`/`u8[]` parameters, scalar or void result.
+            for p in &sig.params {
+                if !self.abi_param_ok(p.ty) {
+                    let s = self.show(p.ty);
+                    self.err(
+                        "OXS-E0121",
+                        info.span,
+                        &[("detail", &format!("exported function `{name}`: parameter `{}: {s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums, `string` and `u8[]` parameters); make the function non-exported or change the signature", p.name))],
+                    );
+                }
+            }
+            if !self.abi_ret_ok(sig.ret) {
+                let s = self.show(sig.ret);
+                self.err(
+                    "OXS-E0121",
+                    info.span,
+                    &[("detail", &format!("exported function `{name}`: result type `{s}` does not fit the ABI 1.0 export boundary (only numbers, `bool`, enums or `void`); make the function non-exported or change the signature"))],
+                );
+            }
         }
         if name == "main" {
             if !info.exported {

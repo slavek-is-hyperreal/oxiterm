@@ -507,6 +507,44 @@ pub enum Op {
         len: ValueId,
     },
 
+    /// New owned string `a ++ b` (both borrowed). Traps `out_of_memory`.
+    StrConcat {
+        a: ValueId,
+        b: ValueId,
+    },
+    /// Bytewise string equality (both borrowed) -> bool.
+    StrEq {
+        a: ValueId,
+        b: ValueId,
+    },
+    /// Bytewise (= code point) order of two strings (both borrowed) -> i32 in `-1, 0, 1`.
+    StrCmp {
+        a: ValueId,
+        b: ValueId,
+    },
+    /// New owned string of the byte range `lo..hi` of `s` (traps `bounds` when
+    /// out of range or `lo > hi`, `bad_utf8` when a boundary is inside a code point).
+    StrSlice {
+        s: ValueId,
+        lo: ValueId,
+        hi: ValueId,
+    },
+    /// Byte `idx` of a string (bounds-checked) -> u8.
+    StrByte {
+        s: ValueId,
+        idx: ValueId,
+    },
+    /// Shortest round-trip decimal text of a float (`NaN`, `Infinity`, `-Infinity`); f64 operand.
+    StrFromF64 {
+        x: ValueId,
+    },
+    /// New empty array (`len 0`, owned) of any element type, including non-null references.
+    ArrayEmpty,
+    /// Remove and return the last element (traps `bounds` when empty); the result is
+    /// **owned** (the array's reference moves out).
+    ArrayPop {
+        arr: ValueId,
+    },
     IsNull {
         val: ValueId,
     },
@@ -590,7 +628,12 @@ impl Op {
             | Op::ArraySet { .. }
             | Op::ArrayPush { .. }
             | Op::ClosureNew { .. }
-            | Op::StrFromUtf8 { .. } => true,
+            | Op::StrFromUtf8 { .. }
+            | Op::StrConcat { .. }
+            | Op::StrSlice { .. }
+            | Op::StrByte { .. }
+            | Op::ArrayPop { .. }
+            | Op::ArrayEmpty => true,
             Op::Unopt { .. } | Op::Load { .. } | Op::Store { .. } => true,
             Op::Call { .. } | Op::CallClosure { .. } | Op::Intrinsic { .. } | Op::Clone { .. } => {
                 true
@@ -609,6 +652,10 @@ impl Op {
                 | Op::ClosureNew { .. }
                 | Op::Clone { .. }
                 | Op::StrFromUtf8 { .. }
+                | Op::StrConcat { .. }
+                | Op::StrSlice { .. }
+                | Op::StrFromF64 { .. }
+                | Op::ArrayEmpty
         )
     }
 
@@ -616,9 +663,19 @@ impl Op {
     /// for passes and for mutation tests.
     pub fn operands_mut(&mut self) -> Vec<&mut ValueId> {
         match self {
-            Op::Const(_) | Op::Null | Op::Alloc(_) | Op::StrConst { .. } | Op::GlobalGet { .. } => {
+            Op::Const(_)
+            | Op::Null
+            | Op::Alloc(_)
+            | Op::StrConst { .. }
+            | Op::GlobalGet { .. }
+            | Op::ArrayEmpty => {
                 vec![]
             }
+            Op::StrConcat { a, b } | Op::StrEq { a, b } | Op::StrCmp { a, b } => vec![a, b],
+            Op::StrSlice { s, lo, hi } => vec![s, lo, hi],
+            Op::StrByte { s, idx } => vec![s, idx],
+            Op::StrFromF64 { x } => vec![x],
+            Op::ArrayPop { arr } => vec![arr],
             Op::Bin { a, b, .. } | Op::Cmp { a, b, .. } => vec![a, b],
             Op::Un { a, .. } | Op::Conv { a, .. } | Op::Bitcast { a } => vec![a],
             Op::Select { cond, a, b } => vec![cond, a, b],
@@ -653,9 +710,19 @@ impl Op {
     /// All value operands, in textual order.
     pub fn operands(&self) -> Vec<ValueId> {
         match self {
-            Op::Const(_) | Op::Null | Op::Alloc(_) | Op::StrConst { .. } | Op::GlobalGet { .. } => {
+            Op::Const(_)
+            | Op::Null
+            | Op::Alloc(_)
+            | Op::StrConst { .. }
+            | Op::GlobalGet { .. }
+            | Op::ArrayEmpty => {
                 vec![]
             }
+            Op::StrConcat { a, b } | Op::StrEq { a, b } | Op::StrCmp { a, b } => vec![*a, *b],
+            Op::StrSlice { s, lo, hi } => vec![*s, *lo, *hi],
+            Op::StrByte { s, idx } => vec![*s, *idx],
+            Op::StrFromF64 { x } => vec![*x],
+            Op::ArrayPop { arr } => vec![*arr],
             Op::Bin { a, b, .. } | Op::Cmp { a, b, .. } => vec![*a, *b],
             Op::Un { a, .. } | Op::Conv { a, .. } | Op::Bitcast { a } => vec![*a],
             Op::Select { cond, a, b } => vec![*cond, *a, *b],

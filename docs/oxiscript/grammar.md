@@ -265,7 +265,7 @@ SwitchStmt = "switch" "(" Expr ")" "{" { CaseClause } "}" ;
 CaseClause = CaseLabel { CaseLabel } { Stmt } ;
 CaseLabel  = "case" Expr { "," Expr } ":" | "default" ":" ;
 ```
-* `ForOfStmt` iterates arrays and `range(a, b)`; the loop variable is a fresh binding per iteration. `for (const k in obj)` does not exist.
+* `ForOfStmt` iterates arrays and `range(a, b)`; the loop variable is a fresh binding per iteration. A C-style `for (let i = ...; ...; ...)` follows TypeScript/JavaScript (`CreatePerIterationEnvironment`): every iteration has its own binding of each `let` declared in the initialiser; the binding of the next iteration starts from the value of the previous one **before** the update expression runs, so a closure created in iteration *n* sees the value that iteration *n* left behind (`for (let i = 0; i < 3; i++) fs.push(() => i)` yields `0, 1, 2`), and a closure that assigns the variable changes only its own iteration's binding (and what the next iteration starts from, if it runs before the next iteration begins). `for (const k in obj)` does not exist.
 * An expression statement must have an effect: a bare `a + b;` is a warning (`OXS-W0001` family); `i++` and `--i` are valid only as expression statements and `for` updates (they yield no value).
 * **No fall-through.** Control never runs from one case clause into the next; a clause ends at the next `case`/`default`/`}`. `break` exits the switch early and is never required. Several labels stack on one clause (`case "a": case "b": ...` or `case "a", "b":`), which replaces TypeScript's empty-case fall-through idiom. A `default` may share a clause with other labels.
 * **Termination analysis:** an exhaustive `switch` in which every clause ends in `return`/`break`-free terminating control flow (all clauses return, trap or `continue`) terminates the enclosing function body, so `area` below needs no final `return`; a function whose return type is not `void` must return on every path (`OXS-E0100`).
@@ -421,7 +421,7 @@ function area(s: Shape): number {
 ```ts
 // OxiScript: the same text with f64 (and no fall-through, exhaustiveness checked)
 type Shape = { kind: "circle"; r: f64 } | { kind: "rect"; w: f64; h: f64 };
-export function area(s: Shape): f64 {
+function area(s: Shape): f64 {
   switch (s.kind) {
     case "circle": return PI * s.r * s.r;
     case "rect":   return s.w * s.h;
