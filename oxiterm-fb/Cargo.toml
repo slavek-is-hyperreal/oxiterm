@@ -5,4 +5,23 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiDE software sink: rasterizes an OxiUI DisplayList into an RGBA framebuffer (Phase 7.2)."
 
+[features]
+default = []
+# Device backends (`/dev/fb0` via fbdev, DRM dumb buffer). Compiled only with this feature, and
+# even then they run only behind an explicit CLI flag plus the `OXIDE_ALLOW_DEVICE=1`
+# environment variable. Never exercised by tests.
+device = ["dep:libc"]
+
 [dependencies]
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { path = "../oxiterm-renderer", default-features = false, features = ["text-shaping"] }
+# Fills, strokes, anti-aliased paths, clip masks, PNG encode/decode. BSD-3-Clause.
+tiny-skia = "0.12"
+# Glyph outlines to alpha masks (subpixel offset, synthetic bold/italic). MIT OR Apache-2.0.
+swash = "0.2.10"
+libc = { version = "0.2", optional = true }
+
+[dev-dependencies]
+# Only the colour-agreement and border-geometry cross-checks against the browser painter's
+# pure planner (`oxiterm_web::paint::plan`).
+oxiterm-web = { path = "../oxiterm-web" }
