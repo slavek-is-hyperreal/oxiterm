@@ -13,6 +13,7 @@ members = [
     "oxiscript/oxiscript-check",
     "oxiscript/oxiscript-lower",
     "oxiscript/oxiscript-cli",
+    "oxiscript/oxiscript-playground",
     "oxiscript/oxiscript-ir",
     "oxiscript/oxiscript-abi",
     "oxiscript/oxiscript-wasm",

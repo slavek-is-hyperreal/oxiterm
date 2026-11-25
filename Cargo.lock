@@ -2579,6 +2579,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxiscript-playground"
+version = "0.1.0"
+dependencies = [
+ "oxiscript-abi",
+ "oxiscript-check",
+ "oxiscript-syntax",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "oxiscript-rc"
 version = "0.1.0"
 dependencies = [
