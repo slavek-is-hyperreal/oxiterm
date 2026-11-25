@@ -1,0 +1,62 @@
+{
+  "diagnostics": [
+    {
+      "code": "OXS-E0005",
+      "file": "bad.oxs",
+      "fixes": [
+        {
+          "applicability": "machine-applicable",
+          "edits": [
+            {
+              "file": "bad.oxs",
+              "new_text": "===",
+              "range": {
+                "end": {
+                  "byte": 65,
+                  "col": 14,
+                  "line": 3,
+                  "utf16": 14
+                },
+                "start": {
+                  "byte": 63,
+                  "col": 12,
+                  "line": 3,
+                  "utf16": 12
+                }
+              }
+            }
+          ],
+          "title": "use `===`"
+        }
+      ],
+      "message": "`==` does not exist in OxiScript; use `===`",
+      "range": {
+        "end": {
+          "byte": 65,
+          "col": 14,
+          "line": 3,
+          "utf16": 14
+        },
+        "start": {
+          "byte": 63,
+          "col": 12,
+          "line": 3,
+          "utf16": 12
+        }
+      },
+      "severity": "error"
+    }
+  ],
+  "fatal": null,
+  "files": [
+    "bad.oxs"
+  ],
+  "ok": false,
+  "schema": 1,
+  "summary": {
+    "errors": 1,
+    "warnings": 0
+  },
+  "tool": "oxi",
+  "version": "0.1.0"
+}

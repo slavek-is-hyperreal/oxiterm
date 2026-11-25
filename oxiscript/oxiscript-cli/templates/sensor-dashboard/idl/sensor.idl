@@ -1,0 +1,10 @@
+// PLACEHOLDER: real sensor and UI capabilities arrive with slices 8.S3 / 8.S1.
+// They are declared here, in your project, so this example type-checks today.
+interface Sensor "host:sensor" @1 {
+    fn read_celsius() -> result<f64>;
+}
+
+interface Ui "host:ui" @1 {
+    fn label(text: str) -> result<i32>;
+    fn set_label(widget: i32, text: str) -> result<void>;
+}

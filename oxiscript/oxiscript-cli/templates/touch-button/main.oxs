@@ -1,0 +1,33 @@
+// A button that counts taps. The count lives in the host's `state` capability, so
+// it survives a hot reload; the button is drawn by the `ui` capability.
+import { Log } from "host:log";
+import { State } from "host:state";
+import { Ui } from "host:ui";
+
+const KEY: string = "taps";
+
+function tap(state: State, ui: Ui, label: i32): Result<i64, i32> {
+  const slot = state.open(KEY)?;
+  const n = state.get_i64(slot)? + 1;
+  state.set_i64(slot, n)?;
+  ui.set_label(label, `Tapped ${n} times`)?;
+  return Ok(n);
+}
+
+function setup(log: Log, state: State, ui: Ui): Result<i32, i32> {
+  const label = ui.label("Tap the button")?;
+  ui.button("Tap me", () => {
+    const r = tap(state, ui, label);
+    if (r.kind === "err") {
+      log.write(4, `tap failed with status ${r.error}`);
+    }
+  })?;
+  return Ok(label);
+}
+
+export function main(log: Log, state: State, ui: Ui): void {
+  const r = setup(log, state, ui);
+  if (r.kind === "err") {
+    log.write(4, `setup failed with status ${r.error}`);
+  }
+}

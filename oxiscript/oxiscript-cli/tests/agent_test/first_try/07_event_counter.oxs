@@ -1,0 +1,18 @@
+import { Log } from "host:log";
+import { State } from "host:state";
+
+function record(state: State, name: string): Result<i64, i32> {
+  const slot = state.open(name)?;
+  const n = state.get_i64(slot)? + 1;
+  state.set_i64(slot, n)?;
+  return Ok(n);
+}
+
+export function main(log: Log, state: State): void {
+  const r = record(state, "events");
+  if (r.kind === "ok") {
+    log.write(2, `events: ${r.value}`);
+  } else {
+    log.write(4, `failed: ${r.error}`);
+  }
+}

@@ -1,0 +1,49 @@
+// Read a temperature sensor a few times and show min / max / average.
+import { Log } from "host:log";
+import { Sensor } from "host:sensor";
+import { Ui } from "host:ui";
+
+const SAMPLES: i32 = 8;
+
+struct Stats {
+  min: f64;
+  max: f64;
+  avg: f64;
+}
+
+function stats(xs: f64[]): Stats {
+  let lo = xs[0];
+  let hi = xs[0];
+  let sum = 0.0;
+  for (const x of xs) {
+    if (x < lo) {
+      lo = x;
+    }
+    if (x > hi) {
+      hi = x;
+    }
+    sum += x;
+  }
+  return { min: lo, max: hi, avg: sum / (xs.length as f64) };
+}
+
+function sample(sensor: Sensor): Result<Stats, i32> {
+  const readings: f64[] = [];
+  for (let i = 0; i < SAMPLES; i++) {
+    readings.push(sensor.read_celsius()?);
+  }
+  return Ok(stats(readings));
+}
+
+export function main(log: Log, sensor: Sensor, ui: Ui): void {
+  const r = sample(sensor);
+  switch (r.kind) {
+    case "ok":
+      const view = ui.label(`min ${r.value.min} max ${r.value.max} avg ${r.value.avg}`);
+      if (view.kind === "err") {
+        log.write(4, `ui failed with status ${view.error}`);
+      }
+    case "err":
+      log.write(4, `sensor failed with status ${r.error}`);
+  }
+}

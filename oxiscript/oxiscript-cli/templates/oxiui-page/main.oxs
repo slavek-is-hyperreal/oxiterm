@@ -1,0 +1,47 @@
+// An OxiUI page with a counter. `step` is pure, so a `law` can state what must always hold.
+import { Log } from "host:log";
+import { Ui } from "host:ui";
+
+const MAX: i32 = 99;
+
+function step(n: i32, delta: i32): i32 {
+  const next = n + delta;
+  if (next < 0) {
+    return 0;
+  }
+  if (next > MAX) {
+    return MAX;
+  }
+  return next;
+}
+
+law stays_in_range(n: i32, d: i32) when n >= 0 && n <= 99 && d > -99 && d < 99 {
+  step(n, d) >= 0 && step(n, d) <= 99
+}
+
+class Counter {
+  n: i32 = 0;
+  ui: Ui;
+  view: i32;
+  constructor(ui: Ui, view: i32) {
+    this.ui = ui;
+    this.view = view;
+  }
+  change(delta: i32): void {
+    this.n = step(this.n, delta);
+    this.ui.set_text(this.view, `Count: ${this.n}`);
+  }
+}
+
+export function main(log: Log, ui: Ui): void {
+  ui.page("Counter");
+  const view = ui.text("Count: 0");
+  const counter = new Counter(ui, view);
+  ui.button("-", () => {
+    counter.change(-1);
+  });
+  ui.button("+", () => {
+    counter.change(1);
+  });
+  log.write(2, "page ready");
+}

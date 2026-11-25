@@ -1,0 +1,10 @@
+export function parseDigits(s: string): Result<i32, string> {
+  let total: i32 = 0;
+  for (const ch of s.chars()) {
+    if (ch < 48 || ch > 57) {
+      return Err("not a digit");
+    }
+    total = total * 10 + (ch - 48) as i32;
+  }
+  return Ok(total);
+}

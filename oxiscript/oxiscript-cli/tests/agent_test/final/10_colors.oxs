@@ -1,0 +1,28 @@
+enum Color: u8 {
+  Red,
+  Green,
+  Blue,
+}
+
+export function name(c: Color): string {
+  return switch (c) {
+    case Color.Red: "red",
+    case Color.Green: "green",
+    case Color.Blue: "blue",
+  };
+}
+
+export function next(c: Color): Color {
+  switch (c) {
+    case Color.Red:
+      return Color.Green;
+    case Color.Green:
+      return Color.Blue;
+    case Color.Blue:
+      return Color.Red;
+  }
+}
+
+law next_three_times_is_identity(c: Color) {
+  next(next(next(c))) === c
+}

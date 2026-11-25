@@ -1,0 +1,253 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "OxiScript",
+  "scopeName": "source.oxiscript",
+  "fileTypes": ["oxs"],
+  "patterns": [{ "include": "#module" }],
+  "repository": {
+    "module": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#law" },
+        { "include": "#attribute" },
+        { "include": "#reserved" },
+        { "include": "#declarations" },
+        { "include": "#keywords" },
+        { "include": "#strings" },
+        { "include": "#numbers" },
+        { "include": "#constants" },
+        { "include": "#calls" },
+        { "include": "#types" },
+        { "include": "#operators" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.documentation.oxiscript",
+          "begin": "/\\*\\*(?!/)",
+          "end": "\\*/"
+        },
+        { "name": "comment.block.oxiscript", "begin": "/\\*", "end": "\\*/" },
+        {
+          "name": "comment.line.documentation.oxiscript",
+          "match": "///.*$"
+        },
+        { "name": "comment.line.double-slash.oxiscript", "match": "//.*$" }
+      ]
+    },
+    "law": {
+      "comment": "`law` is a contextual keyword: only before `Ident (` or `Ident <`; the header runs to the opening brace and may contain `when`.",
+      "begin": "\\b(law)\\b(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*[(<])\\s*([A-Za-z_][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.law.oxiscript" },
+        "2": { "name": "entity.name.function.law.oxiscript" }
+      },
+      "end": "(?=\\{)",
+      "name": "meta.law.header.oxiscript",
+      "patterns": [
+        { "match": "\\bwhen\\b", "name": "keyword.control.when.oxiscript" },
+        { "include": "#module" }
+      ]
+    },
+    "attribute": {
+      "match": "(@@?)([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.attribute.oxiscript" },
+        "2": { "name": "entity.name.function.attribute.oxiscript" }
+      },
+      "name": "meta.attribute.oxiscript"
+    },
+    "reserved": {
+      "comment": "Words that are errors in this edition: reserved for future features or removed TypeScript features (OXS-E0900).",
+      "match": "\\b(arena|async|await|dyn|ensures|impl|inout|invariant|isolate|kernel|match|move|parallel|region|requires|spawn|trait|trusted|unsafe|weak|where|yield|any|debugger|declare|delete|instanceof|namespace|protected|public|super|typeof|undefined|unknown|var|with)\\b",
+      "name": "invalid.illegal.reserved.oxiscript"
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(function)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.oxiscript" },
+            "2": { "name": "entity.name.function.oxiscript" }
+          }
+        },
+        {
+          "match": "\\b(struct|class|interface|enum|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.class.oxiscript" },
+            "2": { "name": "entity.name.type.oxiscript" }
+          }
+        },
+        {
+          "match": "\\b(const|let)\\b",
+          "name": "storage.type.oxiscript"
+        },
+        {
+          "match": "\\b(private|readonly|static|mutating|extends|implements|constructor)\\b",
+          "name": "storage.modifier.oxiscript"
+        },
+        {
+          "match": "\\b(new)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.new.oxiscript" },
+            "2": { "name": "entity.name.type.oxiscript" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "match": "\\b(import|export|from)\\b",
+          "name": "keyword.control.import.oxiscript"
+        },
+        {
+          "match": "\\b(if|else|switch|case|default|for|while|do|break|continue|return|of)\\b",
+          "name": "keyword.control.oxiscript"
+        },
+        { "match": "\\bas\\b", "name": "keyword.operator.cast.oxiscript" },
+        { "match": "\\bthis\\b", "name": "variable.language.this.oxiscript" }
+      ]
+    },
+    "constants": {
+      "match": "\\b(true|false|null)\\b",
+      "name": "constant.language.oxiscript"
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.oxiscript",
+          "begin": "\"",
+          "end": "\"|$",
+          "patterns": [{ "include": "#escape" }]
+        },
+        {
+          "name": "string.quoted.single.oxiscript",
+          "begin": "'",
+          "end": "'|$",
+          "patterns": [{ "include": "#escape" }]
+        },
+        {
+          "name": "string.template.oxiscript",
+          "begin": "`",
+          "end": "`",
+          "patterns": [{ "include": "#escape" }, { "include": "#template-expression" }]
+        }
+      ]
+    },
+    "escape": {
+      "match": "\\\\(?:[nrt0\\\\\"'`$]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]{1,6}\\})",
+      "name": "constant.character.escape.oxiscript"
+    },
+    "template-expression": {
+      "name": "meta.template.expression.oxiscript",
+      "begin": "\\$\\{",
+      "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.oxiscript" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.oxiscript" } },
+      "contentName": "meta.embedded.expression.oxiscript",
+      "patterns": [{ "include": "#module" }]
+    },
+    "numbers": {
+      "comment": "Integer suffixes i8..u64 attach to INT tokens, f32/f64 only to FLOAT tokens (grammar 1.1). A hex literal never takes a float suffix.",
+      "patterns": [
+        {
+          "match": "\\b(0[xX][0-9A-Fa-f][0-9A-Fa-f_]*)([iu](?:8|16|32|64))?\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.hex.oxiscript" },
+            "2": { "name": "constant.numeric.suffix.oxiscript" }
+          }
+        },
+        {
+          "match": "\\b(0[bB][01][01_]*)([iu](?:8|16|32|64))?\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.binary.oxiscript" },
+            "2": { "name": "constant.numeric.suffix.oxiscript" }
+          }
+        },
+        {
+          "match": "\\b(0[oO][0-7][0-7_]*)([iu](?:8|16|32|64))?\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.octal.oxiscript" },
+            "2": { "name": "constant.numeric.suffix.oxiscript" }
+          }
+        },
+        {
+          "match": "(?<![\\w.])(\\d[\\d_]*\\.\\d[\\d_]*(?:[eE][+-]?\\d[\\d_]*)?|\\.\\d[\\d_]*(?:[eE][+-]?\\d[\\d_]*)?|\\d[\\d_]*[eE][+-]?\\d[\\d_]*)(f32|f64)?\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.float.oxiscript" },
+            "2": { "name": "constant.numeric.suffix.oxiscript" }
+          }
+        },
+        {
+          "comment": "`1f32` is an error (OXS-E0003): a float suffix needs a float literal, write `1.0f32`.",
+          "match": "\\b\\d[\\d_]*(?:f32|f64)\\b",
+          "name": "invalid.illegal.numeric.oxiscript"
+        },
+        {
+          "match": "\\b(\\d[\\d_]*)([iu](?:8|16|32|64))?\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.integer.oxiscript" },
+            "2": { "name": "constant.numeric.suffix.oxiscript" }
+          }
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": "\\b(bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|string|void|never)\\b",
+          "name": "support.type.primitive.oxiscript"
+        },
+        { "match": "\\b(Array|Result)\\b", "name": "support.type.builtin.oxiscript" },
+        { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "name": "entity.name.type.oxiscript" }
+      ]
+    },
+    "calls": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=(?:<[^<>()]*>)?\\()",
+      "captures": { "1": { "name": "entity.name.function.call.oxiscript" } }
+    },
+    "operators": {
+      "comment": "The one whitespace-sensitive rule (grammar 1.5): `?.` before an identifier, `[` or `(` is optional chaining; a `?` glued to the operand is the try operator; a `?` after whitespace is the conditional.",
+      "patterns": [
+        {
+          "match": "\\?\\.(?=[A-Za-z_\\[(])",
+          "name": "keyword.operator.optional-chain.oxiscript"
+        },
+        { "match": "\\?\\?", "name": "keyword.operator.nullish-coalescing.oxiscript" },
+        {
+          "match": "(?<=\\S)\\?(?!\\.[A-Za-z_\\[(])",
+          "name": "keyword.operator.try.oxiscript"
+        },
+        { "match": "\\?", "name": "keyword.operator.ternary.oxiscript" },
+        { "match": "=>", "name": "storage.type.function.arrow.oxiscript" },
+        { "match": "===|!==|<=|>=", "name": "keyword.operator.comparison.oxiscript" },
+        { "match": "==|!=", "name": "invalid.illegal.loose-equality.oxiscript" },
+        {
+          "match": "(?:\\+%|-%|\\*%|\\+\\||-\\||\\*\\|)=?",
+          "name": "keyword.operator.arithmetic.wrapping.oxiscript"
+        },
+        { "match": "&&|\\|\\||!", "name": "keyword.operator.logical.oxiscript" },
+        {
+          "match": "<<=|>>=|[-+*/%&|^]=|=",
+          "name": "keyword.operator.assignment.oxiscript"
+        },
+        { "match": "\\+\\+|--", "name": "keyword.operator.increment.oxiscript" },
+        { "match": "<<|>>|[&|^~]", "name": "keyword.operator.bitwise.oxiscript" },
+        { "match": "[-+*/%]", "name": "keyword.operator.arithmetic.oxiscript" },
+        { "match": "<|>", "name": "keyword.operator.comparison.oxiscript" }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": ";", "name": "punctuation.terminator.statement.oxiscript" },
+        { "match": ",", "name": "punctuation.separator.comma.oxiscript" },
+        { "match": "\\.", "name": "punctuation.accessor.oxiscript" },
+        { "match": ":", "name": "punctuation.separator.key-value.oxiscript" },
+        { "match": "[{}()\\[\\]]", "name": "punctuation.bracket.oxiscript" }
+      ]
+    }
+  }
+}

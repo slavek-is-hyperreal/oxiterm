@@ -1,0 +1,7 @@
+export function squaresOfEvens(xs: i32[]): i32[] {
+  return xs.filter((x) => x % 2 === 0).map((x) => x * x);
+}
+
+export function total(xs: i32[]): i32 {
+  return xs.reduce((a, b) => a + b, 0);
+}

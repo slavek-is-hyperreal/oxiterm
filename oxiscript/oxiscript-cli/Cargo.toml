@@ -3,7 +3,7 @@ name = "oxiscript-cli"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "`oxi`: the OxiScript command-line tool (check, fmt, explain, run, new, mcp)."
+description = "`oxi`: the OxiScript command-line tool (check, fmt, explain, new, run, build)."
 
 [[bin]]
 name = "oxi"
@@ -13,3 +13,6 @@ path = "src/main.rs"
 oxiscript-syntax = { path = "../oxiscript-syntax" }
 oxiscript-check = { path = "../oxiscript-check" }
 oxiscript-abi = { path = "../oxiscript-abi" }
+clap = { version = "4.4", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"

@@ -1,0 +1,11 @@
+// PLACEHOLDER: the real GPIO and clock capabilities arrive with slice 8.S3 (device work).
+// They are declared here, in your project, so this example type-checks today.
+interface Gpio "host:gpio" @1 {
+    handle Pin;
+    fn open(pin: u8) -> result<Pin>;
+    fn write(pin: Pin, high: bool) -> result<void>;
+}
+
+interface Clock "host:clock" @1 {
+    fn sleep_ms(ms: u32);
+}

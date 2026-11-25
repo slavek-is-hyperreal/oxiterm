@@ -1,0 +1,19 @@
+interface Named {
+  name(): string;
+}
+
+struct Dog {
+  label: string;
+  name(): string {
+    return this.label;
+  }
+}
+
+function greet<T extends Named>(x: T): string {
+  return `hello ${x.name()}`;
+}
+
+export function demo(): string {
+  const d: Dog = { label: "rex" };
+  return greet(d);
+}

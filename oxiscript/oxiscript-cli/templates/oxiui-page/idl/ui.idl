@@ -1,0 +1,11 @@
+// PLACEHOLDER: the real OxiUI capability arrives with slices 8.S1 / 8.G.
+// It is declared here, in your project, so this example type-checks today.
+// A widget is a plain `i32` id on the script side. These calls cannot fail in the placeholder.
+interface Ui "host:ui" @1 {
+    callback OnTap();
+
+    fn page(title: str);
+    fn text(content: str) -> i32;
+    fn set_text(widget: i32, content: str);
+    fn button(label: str, on_tap: OnTap);
+}
