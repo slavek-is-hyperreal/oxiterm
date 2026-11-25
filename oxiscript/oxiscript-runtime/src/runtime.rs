@@ -332,13 +332,15 @@ impl Instance {
         }
         let guard = Guard::acquire(host)?;
         let engine = Engine::new(&host.config);
+        // Own policy pre-scan first (re-exports, memory64/shared memory), so the
+        // ABI rules do not depend on which wasmi features are compiled in.
+        load::reject_reexports(wasm)?;
         // wasmi can still panic on some inputs it does not model (e.g. a tag
         // import that validation should have refused); a panic is a rejection.
         let module = catch_unwind(AssertUnwindSafe(|| Module::new(&engine, wasm)))
             .map_err(|_| Error::reject("OXS-E0408", "the engine panicked on this module"))?
             .map_err(|e| Error::reject("OXS-E0408", e.to_string()))?;
         let providers = host.providers.lock().unwrap().clone();
-        load::reject_reexports(wasm)?;
         let plan = load::check(&module, limits, &providers, grants)?;
 
         // Capability objects, one per `needs` line; handles seeded per

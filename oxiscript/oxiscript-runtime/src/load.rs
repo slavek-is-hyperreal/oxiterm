@@ -75,6 +75,19 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
                     }
                 }
             }
+            // ABI 1.0 allows one 32-bit, unshared memory. Enforced here, independently of
+            // which wasmi features Cargo feature unification happened to enable.
+            Payload::MemorySection(r) => {
+                for m in r {
+                    let m = m.map_err(bad)?;
+                    if m.memory64 || m.shared {
+                        return Err(Error::reject(
+                            "OXS-E0408",
+                            "memory64 and shared memories are not allowed (ABI 1.0)",
+                        ));
+                    }
+                }
+            }
             Payload::ExportSection(r) => {
                 for e in r {
                     let e = e.map_err(bad)?;
