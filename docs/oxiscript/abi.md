@@ -2,7 +2,7 @@
 
 Status: contract of slice 8.C (2026-11-25), ABI version **1.0**. Rust constants and parsers: `oxiscript/oxiscript-abi` (`layout.rs`, `exports.rs`, `idl.rs`, `manifest.rs`, `trap.rs`, `codes.rs`, `registry/codes.txt`, `idl/*.idl`). This document is the human spec; where the two disagree the Rust constants win and this file is a bug.
 
-Scope: how OxiScript values sit in Wasm linear memory, what a conforming `.wasm` module exports and imports, how a host declares capabilities (IDL), and how diagnostics are identified. Everything is **Core WebAssembly** (MVP + multi-value + bulk-memory + sign-extension; SIMD128 and tail calls reserved): no GC, threads, exception-handling or reference-types proposals.
+Scope: how OxiScript values sit in Wasm linear memory, what a conforming `.wasm` module exports and imports, how a host declares capabilities (IDL), and how diagnostics are identified. Everything is **Core WebAssembly** (MVP + multi-value + bulk-memory + sign-extension + exported mutable globals, needed for `oxi_trap_kind`; SIMD128 and tail calls reserved; non-trapping float-to-int `trunc_sat` is **not** allowed, so codegen must emit trapping or explicit-saturating sequences): no GC, threads, exception-handling or reference-types proposals. The host enforces exactly this set and also refuses a start section, imported memories/tables/globals and a second memory (8.R, `OXS-E0405`/`E0408`).
 
 One module = compiler output **statically linked** with the runtime-support code (slice 8.M). "Runtime exports" below are functions of that one module.
 

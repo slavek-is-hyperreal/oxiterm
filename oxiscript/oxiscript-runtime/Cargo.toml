@@ -5,4 +5,25 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript execution runtime: wasmi host, capabilities, fuel, hot reload (Phase 8)."
 
+[features]
+default = ["std"]
+# Forwarded to wasmi. This crate itself still uses `std` (oxiscript-abi does);
+# the flag exists so a `--no-default-features` check shows what wasmi needs.
+std = ["wasmi/std"]
+
 [dependencies]
+oxiscript-abi = { path = "../oxiscript-abi" }
+# `validate` = wasmparser validation (never run without it); `deterministic` =
+# canonical NaNs from float operations; default `wat`/`memory64` are not wanted.
+wasmi = { version = "2.0.3", default-features = false, features = ["validate", "deterministic", "stable", "auto-dispatch"] }
+
+# Export-section scan (re-exports of imports); the same version wasmi pulls in.
+wasmparser = { version = "0.228", default-features = false, features = ["std", "validate", "features"] }
+
+[dev-dependencies]
+# Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.
+wat = "1"
+# Bytecode Alliance, Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.
+wasm-smith = "0.263"
+# MIT OR Apache-2.0; tests only.
+arbitrary = "1.4"
