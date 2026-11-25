@@ -33,6 +33,7 @@ mod func;
 mod helpers;
 mod modlayout;
 mod stubrt;
+mod target;
 mod wrap;
 
 use oxiscript_abi::idl::Interface;

@@ -23,6 +23,10 @@ Status: STARTED (design done, writing code). Update after every milestone.
 - registry codes E0600-E0604, I0002 appended to oxiscript-abi/registry/codes.txt (abi tests green).
 - Next: tests/diff.rs (reference interpreter + random IR generator vs oxiscript-runtime), tests/programs_abi.rs (40 programs, runtime loading with host/callbacks), golden dumps, measure example, clippy, wasm32 build, cleanup warnings.
 
+## Lead note 2 (pointer width)
+- src/target.rs holds PTR_VT/PTR_BYTES; vt() uses PTR_VT. Many `Mem::I32`/`i32c` address sites (elem_addr, ArrayPush, wrappers, stubrt) are still wasm32-specific; a memory64 port must parametrise them. Reported as partial.
+- tests/common/interp.rs (reference interpreter) written; next tests/diff.rs generator.
+
 ## Remaining / current step
 - skeleton -> stub runtime -> lowering -> differential tests -> corpus -> measure.
 

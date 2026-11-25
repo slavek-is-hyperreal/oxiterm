@@ -22,7 +22,7 @@ pub(crate) fn vt(t: &Ty) -> ValType {
         Ty::I64 | Ty::U64 => ValType::I64,
         Ty::F32 => ValType::F32,
         Ty::F64 => ValType::F64,
-        _ => ValType::I32,
+        _ => crate::target::PTR_VT,
     }
 }
 
@@ -1177,8 +1177,8 @@ impl<'c, 'a> FnGen<'c, 'a> {
                     self.b.tee(t64);
                     self.b.s().i32_wrap_i64();
                     self.b.set(d);
-                    self.b.get(d);
                     if signed {
+                        self.b.get(d);
                         self.b.s().i64_extend_i32_s();
                         self.b.get(t64);
                         self.b.s().i64_ne();

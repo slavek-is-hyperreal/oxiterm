@@ -311,7 +311,7 @@ impl<'a> Interp<'a> {
         match op {
             BinOp::Add => fit(x + y),
             BinOp::Sub => fit(x - y),
-            BinOp::Mul => fit(x * y),
+            BinOp::Mul => fit(if ovf == Ovf::Wrap { x.wrapping_mul(y) } else { x.saturating_mul(y) }),
             BinOp::Div | BinOp::Rem => {
                 if y == 0 {
                     return Err(Out::Trap(TrapKind::DivByZero));
