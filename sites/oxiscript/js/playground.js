@@ -97,7 +97,7 @@ function format() {
   const r = call(wasm.format, src.value);
   if (!r) return;
   if (r.ok) { src.value = r.text; check(); statusEl.textContent = L.formatted; }
-  else { statusEl.textContent = L.formatFailed; current = r.diagnostics; render(); statusEl.textContent = L.formatFailed; }
+  else { check(); statusEl.textContent = L.formatFailed; }
 }
 
 src.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(check, 250); paintGutter(); paintMirror(); });

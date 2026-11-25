@@ -1,5 +1,10 @@
 {
-  "meta": { "name": "Latina", "short": "LA", "htmlLang": "la", "status": "draft" },
+  "meta": {
+    "name": "Latina",
+    "short": "LA",
+    "htmlLang": "la",
+    "status": "draft"
+  },
   "common": {
     "skip": "Ad contenta transi",
     "projects": "Opera",
@@ -31,11 +36,26 @@
     "colWhat": "Quid",
     "waveLog": "Annales undarum",
     "waveLogIntro": "Tempora cuiusque partis mensurata, numerus errorum quos agens BAD ACTOR invenit, et commissum quod receptum est.",
-    "state": { "done": "perfectum", "active": "in opere", "planned": "destinatum" },
-    "sites": { "home": "slavekm.pl", "oxiui": "OxiUI", "oxiscript": "OxiScript" }
+    "state": {
+      "done": "perfectum",
+      "active": "in opere",
+      "planned": "destinatum"
+    },
+    "sites": {
+      "home": "slavekm.pl",
+      "oxiui": "OxiUI",
+      "oxiscript": "OxiScript"
+    },
+    "notFound": {
+      "title": "Non inventum",
+      "lead": "Haec pagina non exstat.",
+      "home": "Domus"
+    }
   },
   "home": {
-    "nav": { "index": "Domus" },
+    "nav": {
+      "index": "Domus"
+    },
     "pages": {
       "index": {
         "title": "Opera",
@@ -45,19 +65,46 @@
           "lead": "[LOCUS VACUUS: una duaeve sententiae de te et de hac pagina. Dominus scribet.]"
         },
         "blocks": [
-          { "t": "h2", "x": "Opera" },
-          { "t": "widget", "id": "projectcards" },
-          { "t": "h2", "x": "De me" },
-          { "t": "p", "x": "[LOCUS VACUUS: quis, quid, cur. Dominus scribet. Nulla adhuc vita hic narratur.]" },
-          { "t": "widget", "id": "latinnote" },
-          { "t": "widget", "id": "dedication" }
+          {
+            "t": "h2",
+            "x": "Opera"
+          },
+          {
+            "t": "widget",
+            "id": "projectcards"
+          },
+          {
+            "t": "h2",
+            "x": "De me"
+          },
+          {
+            "t": "p",
+            "x": "[LOCUS VACUUS: quis, quid, cur. Dominus scribet. Nulla adhuc vita hic narratur.]"
+          },
+          {
+            "t": "widget",
+            "id": "latinnote"
+          },
+          {
+            "t": "widget",
+            "id": "dedication"
+          }
         ]
       }
     },
     "cards": {
-      "oxiui": { "text": "Una pagina THTML et TCSS, in terminali per SSH, in perlustratore, et in WebAssembly in instrumento tuo depicta.", "cta": "OxiUI aperi" },
-      "oxiscript": { "text": "Lingua programmandi TypeScript similis, severe typis disposita, in WebAssembly compilata. Examinator in perlustratore tuo agit.", "cta": "OxiScript aperi" },
-      "next": { "title": "Plura venient", "text": "Locus pro operibus futuris." }
+      "oxiui": {
+        "text": "Una pagina THTML et TCSS, in terminali per SSH, in perlustratore, et in WebAssembly in instrumento tuo depicta.",
+        "cta": "OxiUI aperi"
+      },
+      "oxiscript": {
+        "text": "Lingua programmandi TypeScript similis, severe typis disposita, in WebAssembly compilata. Examinator in perlustratore tuo agit.",
+        "cta": "OxiScript aperi"
+      },
+      "next": {
+        "title": "Plura venient",
+        "text": "Locus pro operibus futuris."
+      }
     },
     "latinNote": "[LOCUS VACUUS: brevis nota neutra, a domino scribenda, cur haec pagina etiam Latine loquatur.]",
     "dedication": {
@@ -68,7 +115,13 @@
     }
   },
   "oxiui": {
-    "nav": { "index": "Demonstratio viva", "gallery": "Exempla", "how": "Quo modo agat", "docs": "Documenta", "roadmap": "Iter" },
+    "nav": {
+      "index": "Demonstratio viva",
+      "gallery": "Exempla",
+      "how": "Quo modo agat",
+      "docs": "Documenta",
+      "roadmap": "Iter"
+    },
     "pages": {
       "index": {
         "title": "Una pagina, omnes tabulae",
@@ -78,21 +131,46 @@
           "lead": "OxiUI THTML (notas HTML similes) et TCSS (stilos CSS similes) in terminalia SSH, in tabulam perlustratoris, et in WebAssembly in machina tua reddit. Tabulae ESP32 proximae sunt."
         },
         "blocks": [
-          { "t": "widget", "id": "demo" },
-          { "t": "h2", "x": "Quid spectas" },
-          { "t": "p", "x": "Demonstratio supra posita pagina OxiUI communis est. Non cinematographema est neque imago: nucleus OxiUI in WebAssembly compilatus est, perlustrator tuus eum deposuit, et ipse paginam disponit, pingit, et clicationes tractat. Eadem pagina etiam per SSH ad verum terminale mitti potest." },
-          { "t": "ul", "items": [
-            "**Terminale per SSH:** hodie agit, primus finis.",
-            "**Perlustrator, a servo ductus:** hodie agit (cliens in tabula, textus proportionalis).",
-            "**Perlustrator, modus localis:** hodie agit, et hoc vides; servus non requiritur.",
-            "**Testa Android, framebuffer Linux (OxiDE), fenestra nativa:** destinata vel in opere, vide [iter](@oxiui:roadmap).",
-            "**Tabulae tactiles ESP32:** destinatae, cum compilator OxiScript programmata currere poterit."
-          ] },
-          { "t": "links", "items": [
-            { "label": "Exempla inspice", "href": "@oxiui:gallery", "primary": true },
-            { "label": "Quo modo agat", "href": "@oxiui:how" },
-            { "label": "Documenta lege", "href": "@oxiui:docs" }
-          ] }
+          {
+            "t": "widget",
+            "id": "demo"
+          },
+          {
+            "t": "h2",
+            "x": "Quid spectas"
+          },
+          {
+            "t": "p",
+            "x": "Demonstratio supra posita pagina OxiUI communis est. Non cinematographema est neque imago: nucleus OxiUI in WebAssembly compilatus est, perlustrator tuus eum deposuit, et ipse paginam disponit, pingit, et clicationes tractat. Eadem pagina etiam per SSH ad verum terminale mitti potest."
+          },
+          {
+            "t": "ul",
+            "items": [
+              "**Terminale per SSH:** hodie agit, primus finis.",
+              "**Perlustrator, a servo ductus:** hodie agit (cliens in tabula, textus proportionalis).",
+              "**Perlustrator, modus localis:** hodie agit, et hoc vides; servus non requiritur.",
+              "**Testa Android, framebuffer Linux (OxiDE), fenestra nativa:** destinata vel in opere, vide [iter](@oxiui:roadmap).",
+              "**Tabulae tactiles ESP32:** destinatae, cum compilator OxiScript programmata currere poterit."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Exempla inspice",
+                "href": "@oxiui:gallery",
+                "primary": true
+              },
+              {
+                "label": "Quo modo agat",
+                "href": "@oxiui:how"
+              },
+              {
+                "label": "Documenta lege",
+                "href": "@oxiui:docs"
+              }
+            ]
+          }
         ]
       },
       "gallery": {
@@ -100,7 +178,12 @@
         "h1": "Exempla",
         "desc": "Exempla THTML cum fonte et eventu vivo in quem clicari potest.",
         "lead": "Quodque exemplum vera pagina THTML ex repositorio est. Incipe ut temptes, vel fontem aperi ut videas quam pauca notae requirantur.",
-        "blocks": [ { "t": "widget", "id": "gallery" } ]
+        "blocks": [
+          {
+            "t": "widget",
+            "id": "gallery"
+          }
+        ]
       },
       "how": {
         "title": "Quo modo agat",
@@ -108,23 +191,70 @@
         "desc": "Ex una pagina THTML ad terminale, perlustratorem vel instrumentum.",
         "lead": "Pagina est fasciculus textus. Nucleus eum in indicem pingendi vertit, et parvus cliens pro quoque fine indicem pingit.",
         "blocks": [
-          { "t": "h2", "x": "Ex textu ad pixela" },
-          { "t": "ol", "items": [
-            "Paginam in THTML scribis (arcae, textus, bullae, campi) et in TCSS ornas (colores, margines, dispositio flex, in cellulis integris).",
-            "Nucleus eam resolvit, disponit, et indicem pingendi gignit: areas coloratas, margines, vias, et series glyphorum locatas.",
-            "Cliens indicem pingit. Cliens terminalis eum in cellulas et notas regentes vertit, cliens perlustratoris in tabula pingit, cliens instrumenti in velo pinget.",
-            "Clicationes et claves ut eventa redeunt. Actiones insitae (`inc:count`, `toggle:open`, `set:tab=a`) a nucleo peraguntur; cetera ad servum applicationis tuum eunt."
-          ] },
-          { "t": "h2", "x": "Tria loca ubi nucleus agit" },
-          { "t": "table", "head": ["Modus", "Ubi nucleus agit", "Status"], "rows": [
-            ["Terminale", "In servo; usor per `ssh` coniungitur", "agit"],
-            ["Perlustrator, a servo ductus", "In servo; perlustrator est cliens tenuis in tabula", "agit"],
-            ["Perlustrator, localis", "In perlustratore tuo, ut WebAssembly (haec pagina)", "agit"],
-            ["Instrumentum (ESP32, consola Linux, Android)", "In ipso instrumento", "destinatum"]
-          ] },
-          { "t": "h2", "x": "Cur fasciculus textus" },
-          { "t": "p", "x": "Paginae textuales facile leguntur, recensentur, comparantur et gignuntur. Statim renovantur, parvae sunt, et agens intellegentiae artificialis eas scribere et corrigere potest. Forma dispositionis consulto parva est: aut aperte deficit aut facit quod dicit." },
-          { "t": "links", "items": [ { "label": "Notae de structura in repositorio", "href": "repo:docs/oxi-ui.md" } ] }
+          {
+            "t": "h2",
+            "x": "Ex textu ad pixela"
+          },
+          {
+            "t": "ol",
+            "items": [
+              "Paginam in THTML scribis (arcae, textus, bullae, campi) et in TCSS ornas (colores, margines, dispositio flex, in cellulis integris).",
+              "Nucleus eam resolvit, disponit, et indicem pingendi gignit: areas coloratas, margines, vias, et series glyphorum locatas.",
+              "Cliens indicem pingit. Cliens terminalis eum in cellulas et notas regentes vertit, cliens perlustratoris in tabula pingit, cliens instrumenti in velo pinget.",
+              "Clicationes et claves ut eventa redeunt. Actiones insitae (`inc:count`, `toggle:open`, `set:tab=a`) a nucleo peraguntur; cetera ad servum applicationis tuum eunt."
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Tria loca ubi nucleus agit"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Modus",
+              "Ubi nucleus agit",
+              "Status"
+            ],
+            "rows": [
+              [
+                "Terminale",
+                "In servo; usor per `ssh` coniungitur",
+                "agit"
+              ],
+              [
+                "Perlustrator, a servo ductus",
+                "In servo; perlustrator est cliens tenuis in tabula",
+                "agit"
+              ],
+              [
+                "Perlustrator, localis",
+                "In perlustratore tuo, ut WebAssembly (haec pagina)",
+                "agit"
+              ],
+              [
+                "Instrumentum (ESP32, consola Linux, Android)",
+                "In ipso instrumento",
+                "destinatum"
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Cur fasciculus textus"
+          },
+          {
+            "t": "p",
+            "x": "Paginae textuales facile leguntur, recensentur, comparantur et gignuntur. Statim renovantur, parvae sunt, et agens intellegentiae artificialis eas scribere et corrigere potest. Forma dispositionis consulto parva est: aut aperte deficit aut facit quod dicit."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Notae de structura in repositorio",
+                "href": "repo:docs/oxi-ui.md"
+              }
+            ]
+          }
         ]
       },
       "docs": {
@@ -133,44 +263,159 @@
         "desc": "Praecipua de lingua notarum et lingua stilorum.",
         "lead": "THTML HTML similis est et TCSS CSS similis, sed utraque multo minor. Proprietates TCSS ignotae sine errore neglegentur, itaque eas tantum adhibe quae hic enumerantur.",
         "blocks": [
-          { "t": "h2", "x": "Prima pagina" },
-          { "t": "code", "lang": "thtml", "src": "<box style=\"bg: #1e293b; padding: 2; flex-direction: column;\">\n  <text style=\"fg: #38bdf8;\">Counter: </text>\n  <text bind-state=\"count\" style=\"fg: #38bdf8;\">0</text>\n  <button event-htmx=\"inc:count\" style=\"fg: #4ade80;\">[ + ] Increment</button>\n</box>" },
-          { "t": "h2", "x": "Notae" },
-          { "t": "table", "head": ["Nota", "Usus"], "rows": [
-            ["`<box>`", "Receptaculum cum dispositione flex, ut `div`."],
-            ["`<text>`", "Textus solus. Non contrahitur nisi `wrap: word` ponitur."],
-            ["`<button>`", "Bulla quae focum accipit, textus tantum."],
-            ["`<input>`", "Campus textus; `bind-value` requirit."],
-            ["`<img>`, `<video>`", "`src`, `width` et `height` requirunt."],
-            ["`<for>`", "Unum exemplar per indicem in statu repetit."],
-            ["`<diagram>`", "Diagramma Mermaid in cellulis depictum."]
-          ] },
-          { "t": "h2", "x": "Status et actiones" },
-          { "t": "table", "head": ["Nota / actio", "Effectus"], "rows": [
-            ["`bind-state=\"key\"`", "Valorem status ostendit; mutato renovatur."],
-            ["`bind-show=\"key=value\"`", "Nodum ostendit tantum cum status congruit."],
-            ["`event-htmx=\"inc:key\"`", "Unum addit; sunt etiam `dec:`, `toggle:`, `set:key=value`, `append:`, `clear:`."],
-            ["`event-htmx=\"page.thtml\"`", "Ad aliam paginam transit, statu servato."],
-            ["`event-htmx=\"open:https://...\"`", "Nexum aperit (in perlustratore tantum)."],
-            ["quodlibet aliud verbum", "Ad servum applicationis tuum mittitur."]
-          ] },
-          { "t": "h2", "x": "Proprietates TCSS" },
-          { "t": "table", "head": ["Proprietas", "Valores"], "rows": [
-            ["`width`, `height`", "Numeri integri cellularum. Numquam `auto`."],
-            ["`fg`, `bg`, `border-color`", "Color: `#rrggbb`, nomen, vel 0-255."],
-            ["`padding`, `margin` (et `-top` cet.)", "Numeri integri."],
-            ["`flex-direction`, `align-items`, `justify-content`, `flex`", "Dispositio flex in una dimensione."],
-            ["`border`, `border-style`", "`single`, `double` vel `rounded`. Margo duas lineas et duas columnas constat."],
-            ["`position`, `top`, `left`, `z-index`", "Positio absoluta et fixa."],
-            ["`opacity`, `transition`", "Evanescentia et transitus leves."],
-            ["`wrap`", "`word` ad spatia frangit."]
-          ] },
-          { "t": "note", "x": "Regulae pollicis: arca margine cincta tres lineas saltem alta est; in titulis clicabilibus ASCII adhibe; quae proprietas in hoc indice non est, ea non exstat." },
-          { "t": "links", "items": [
-            { "label": "Documenta THTML plena", "href": "repo:docs/thtml-reference.md" },
-            { "label": "Documenta TCSS plena", "href": "repo:docs/tcss-reference.md" },
-            { "label": "Exempla", "href": "repotree:examples" }
-          ] }
+          {
+            "t": "h2",
+            "x": "Prima pagina"
+          },
+          {
+            "t": "code",
+            "lang": "thtml",
+            "src": "<box style=\"bg: #1e293b; padding: 2; flex-direction: column;\">\n  <text style=\"fg: #38bdf8;\">Counter: </text>\n  <text bind-state=\"count\" style=\"fg: #38bdf8;\">0</text>\n  <button event-htmx=\"inc:count\" style=\"fg: #4ade80;\">[ + ] Increment</button>\n</box>"
+          },
+          {
+            "t": "h2",
+            "x": "Notae"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Nota",
+              "Usus"
+            ],
+            "rows": [
+              [
+                "`<box>`",
+                "Receptaculum cum dispositione flex, ut `div`."
+              ],
+              [
+                "`<text>`",
+                "Textus solus. Non contrahitur nisi `wrap: word` ponitur."
+              ],
+              [
+                "`<button>`",
+                "Bulla quae focum accipit, textus tantum."
+              ],
+              [
+                "`<input>`",
+                "Campus textus; `bind-value` requirit."
+              ],
+              [
+                "`<img>`, `<video>`",
+                "`src`, `width` et `height` requirunt."
+              ],
+              [
+                "`<for>`",
+                "Unum exemplar per indicem in statu repetit."
+              ],
+              [
+                "`<diagram>`",
+                "Diagramma Mermaid in cellulis depictum."
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Status et actiones"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Nota / actio",
+              "Effectus"
+            ],
+            "rows": [
+              [
+                "`bind-state=\"key\"`",
+                "Valorem status ostendit; mutato renovatur."
+              ],
+              [
+                "`bind-show=\"key=value\"`",
+                "Nodum ostendit tantum cum status congruit."
+              ],
+              [
+                "`event-htmx=\"inc:key\"`",
+                "Unum addit; sunt etiam `dec:`, `toggle:`, `set:key=value`, `append:`, `clear:`."
+              ],
+              [
+                "`event-htmx=\"page.thtml\"`",
+                "Ad aliam paginam transit, statu servato."
+              ],
+              [
+                "`event-htmx=\"open:https://...\"`",
+                "Nexum aperit (in perlustratore tantum)."
+              ],
+              [
+                "quodlibet aliud verbum",
+                "Ad servum applicationis tuum mittitur."
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Proprietates TCSS"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Proprietas",
+              "Valores"
+            ],
+            "rows": [
+              [
+                "`width`, `height`",
+                "Numeri integri cellularum. Numquam `auto`."
+              ],
+              [
+                "`fg`, `bg`, `border-color`",
+                "Color: `#rrggbb`, nomen, vel 0-255."
+              ],
+              [
+                "`padding`, `margin` (et `-top` cet.)",
+                "Numeri integri."
+              ],
+              [
+                "`flex-direction`, `align-items`, `justify-content`, `flex`",
+                "Dispositio flex in una dimensione."
+              ],
+              [
+                "`border`, `border-style`",
+                "`single`, `double` vel `rounded`. Margo duas lineas et duas columnas constat."
+              ],
+              [
+                "`position`, `top`, `left`, `z-index`",
+                "Positio absoluta et fixa."
+              ],
+              [
+                "`opacity`, `transition`",
+                "Evanescentia et transitus leves."
+              ],
+              [
+                "`wrap`",
+                "`word` ad spatia frangit."
+              ]
+            ]
+          },
+          {
+            "t": "note",
+            "x": "Regulae pollicis: arca margine cincta tres lineas saltem alta est; in titulis clicabilibus ASCII adhibe; quae proprietas in hoc indice non est, ea non exstat."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Documenta THTML plena",
+                "href": "repo:docs/thtml-reference.md"
+              },
+              {
+                "label": "Documenta TCSS plena",
+                "href": "repo:docs/tcss-reference.md"
+              },
+              {
+                "label": "Exempla",
+                "href": "repotree:examples"
+              }
+            ]
+          }
         ]
       },
       "roadmap": {
@@ -178,16 +423,39 @@
         "h1": "Iter et annales undarum",
         "desc": "Quid perfectum sit, quid sequatur, et quid recognitiones adversariae invenerint.",
         "lead": "Consilium publicum est et numeri quoque. Quemque gradum agens exstruit, deinde alius agens BAD ACTOR eum frangere conatur antequam recipitur.",
-        "blocks": [ { "t": "widget", "id": "roadmap" } ]
+        "blocks": [
+          {
+            "t": "widget",
+            "id": "roadmap"
+          }
+        ]
       }
     },
     "gallery": {
-      "counter": { "title": "Numerator", "desc": "Status, bullae et actiones `inc`, `dec`, `clear`." },
-      "state": { "title": "Genera status", "desc": "Numeri, valores logici, series litterarum et indices cum pagina coniuncti." },
-      "input": { "title": "Campi inscriptionis", "desc": "Campus textus cum statu coniunctus, vivus ostensus." },
-      "todo": { "title": "Index agendorum", "desc": "Index in statu, per `for` pictus." },
-      "styles": { "title": "Stili", "desc": "Margines, colores et dispositio flex." },
-      "showcase": { "title": "Spectaculum", "desc": "Plura quae fieri possunt in una pagina." }
+      "counter": {
+        "title": "Numerator",
+        "desc": "Status, bullae et actiones `inc`, `dec`, `clear`."
+      },
+      "state": {
+        "title": "Genera status",
+        "desc": "Numeri, valores logici, series litterarum et indices cum pagina coniuncti."
+      },
+      "input": {
+        "title": "Campi inscriptionis",
+        "desc": "Campus textus cum statu coniunctus, vivus ostensus."
+      },
+      "todo": {
+        "title": "Index agendorum",
+        "desc": "Index in statu, per `for` pictus."
+      },
+      "styles": {
+        "title": "Stili",
+        "desc": "Margines, colores et dispositio flex."
+      },
+      "showcase": {
+        "title": "Spectaculum",
+        "desc": "Plura quae fieri possunt in una pagina."
+      }
     },
     "demo": {
       "heading": "demonstratio viva",
@@ -205,7 +473,13 @@
     }
   },
   "oxiscript": {
-    "nav": { "index": "Palaestra", "ts": "Pro programmatoribus TypeScript", "tour": "Itinerarium", "course": "Cursus", "roadmap": "Iter" },
+    "nav": {
+      "index": "Palaestra",
+      "ts": "Pro programmatoribus TypeScript",
+      "tour": "Itinerarium",
+      "course": "Cursus",
+      "roadmap": "Iter"
+    },
     "pages": {
       "index": {
         "title": "TypeScript similis, severe typis disposita, in WebAssembly compilata",
@@ -215,23 +489,51 @@
           "lead": "OxiScript statice et firmiter typis disponitur; errores sunt valores, et communes errores remedia mechanica habent. In WebAssembly compilatur. Infra verus examinator et formator in perlustratore tuo agunt."
         },
         "blocks": [
-          { "t": "widget", "id": "playground" },
-          { "t": "h2", "x": "Quid hodie agat" },
-          { "t": "ul", "items": [
-            "Analysator, formator et examinator typorum (idem codex quem supra adhibes, in WebAssembly compilatus).",
-            "Index stabilis codicum errorum, quisque cum explicatione et saepe cum remedio mechanico.",
-            "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important."
-          ] },
-          { "t": "h2", "x": "Quid nondum agat" },
-          { "t": "ul", "items": [
-            "**Programmata currere.** Generator codicis exstat, sed gradus inferendi, qui examinatorem cum eo coniungit, adhuc exstruitur. Bulla Curre interim inhabilis est.",
-            "Bibliotheca communis, fasciculi, servus linguae, instrumenta. Omnia destinata, nihil paratum."
-          ] },
-          { "t": "links", "items": [
-            { "label": "Pro programmatoribus TypeScript", "href": "@oxiscript:ts", "primary": true },
-            { "label": "Itinerarium linguae", "href": "@oxiscript:tour" },
-            { "label": "Grammatica et specificatio", "href": "repo:docs/oxiscript/grammar.md" }
-          ] }
+          {
+            "t": "widget",
+            "id": "playground"
+          },
+          {
+            "t": "h2",
+            "x": "Quid hodie agat"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "Analysator, formator et examinator typorum (idem codex quem supra adhibes, in WebAssembly compilatus).",
+              "Index stabilis codicum errorum, quisque cum explicatione et saepe cum remedio mechanico.",
+              "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important."
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Quid nondum agat"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "**Programmata currere.** Generator codicis exstat, sed gradus inferendi, qui examinatorem cum eo coniungit, adhuc exstruitur. Bulla Curre interim inhabilis est.",
+              "Bibliotheca communis, fasciculi, servus linguae, instrumenta. Omnia destinata, nihil paratum."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Pro programmatoribus TypeScript",
+                "href": "@oxiscript:ts",
+                "primary": true
+              },
+              {
+                "label": "Itinerarium linguae",
+                "href": "@oxiscript:tour"
+              },
+              {
+                "label": "Grammatica et specificatio",
+                "href": "repo:docs/oxiscript/grammar.md"
+              }
+            ]
+          }
         ]
       },
       "ts": {
@@ -240,33 +542,104 @@
         "desc": "Quae eadem maneant, quae mutentur, et ubi OxiScript TypeScript deterior sit.",
         "lead": "OxiScript legere nullam doctrinam requirere debet. Scribere interdum remedium requirit. Haec pagina de utroque sincera est.",
         "blocks": [
-          { "t": "h2", "x": "Idem programma, paene idem textus" },
-          { "t": "compare", "cmp": "shapes" },
-          { "t": "p", "x": "`number` tantum in `f64` mutatum est. Uniones discriminatae, restrictio per `switch`, `const`, functiones sagittatae et series litterarum formatae TypeScript sunt quod nosti." },
-          { "t": "h2", "x": "Ubi differat" },
-          { "t": "table", "head": ["TypeScript", "OxiScript", "Cur"], "rows": [
-            ["`number`", "`i32`, `i64`, `f64` et similia", "Integri et fluitantes diversi sunt; redundantia definita est et in laqueum cadit."],
-            ["`a == b`", "`a === b` tantum (`==` error est cum remedio)", "Una aequalitas, sine coactione."],
-            ["`throw` / `try`", "`Result<T, E>` et postfixum `?`", "Errores sunt valores. Vitia in laqueum cadunt."],
-            ["`x as T`", "`x.downcast<T>()` et `as` numericum examinatum", "Nulla conversio de typo mentiri potest."],
-            ["`undefined`", "`null` solum", "Unus valor absentiae."],
-            ["Puncta et virgulae optativa", "Puncta et virgulae necessaria", "Grammatica sine ambiguitate, instrumentis amicior."],
-            ["`arr[i]` extra fines `undefined` dat", "Laqueus", "Comportatio cuiusque operationis definita."],
-            ["`class B extends A`", "Interfaciae et compositio", "Nullae classes basales fragiles."]
-          ] },
-          { "t": "compare", "cmp": "errors" },
-          { "t": "h2", "x": "Ubi OxiScript hodie deterior sit" },
-          { "t": "ul", "items": [
-            "Programmata nondum currere potest. TypeScript potest.",
-            "Npm non est. Nullum ecosystema, bibliotheca communis minima, nulla `async` (reservata, non exstructa).",
-            "Nullum `any`, nullum `eval`, nullae res dynamicae. Hoc consilium est, sed etiam sumptus cum JavaScript transfertur.",
-            "Identificatores ASCII tantum in praesentia.",
-            "Recens est. Asperitates et mutationes compatibilitatem frangentes exspecta."
-          ] },
-          { "t": "links", "items": [
-            { "label": "Examinatorem tempta", "href": "@oxiscript:index", "primary": true },
-            { "label": "Index plenus differentiarum", "href": "repo:docs/oxiscript/grammar.md" }
-          ] }
+          {
+            "t": "h2",
+            "x": "Idem programma, paene idem textus"
+          },
+          {
+            "t": "compare",
+            "cmp": "shapes"
+          },
+          {
+            "t": "p",
+            "x": "`number` tantum in `f64` mutatum est. Uniones discriminatae, restrictio per `switch`, `const`, functiones sagittatae et series litterarum formatae TypeScript sunt quod nosti."
+          },
+          {
+            "t": "h2",
+            "x": "Ubi differat"
+          },
+          {
+            "t": "table",
+            "head": [
+              "TypeScript",
+              "OxiScript",
+              "Cur"
+            ],
+            "rows": [
+              [
+                "`number`",
+                "`i32`, `i64`, `f64` et similia",
+                "Integri et fluitantes diversi sunt; redundantia definita est et in laqueum cadit."
+              ],
+              [
+                "`a == b`",
+                "`a === b` tantum (`==` error est cum remedio)",
+                "Una aequalitas, sine coactione."
+              ],
+              [
+                "`throw` / `try`",
+                "`Result<T, E>` et postfixum `?`",
+                "Errores sunt valores. Vitia in laqueum cadunt."
+              ],
+              [
+                "`x as T`",
+                "`x.downcast<T>()` et `as` numericum examinatum",
+                "Nulla conversio de typo mentiri potest."
+              ],
+              [
+                "`undefined`",
+                "`null` solum",
+                "Unus valor absentiae."
+              ],
+              [
+                "Puncta et virgulae optativa",
+                "Puncta et virgulae necessaria",
+                "Grammatica sine ambiguitate, instrumentis amicior."
+              ],
+              [
+                "`arr[i]` extra fines `undefined` dat",
+                "Laqueus",
+                "Comportatio cuiusque operationis definita."
+              ],
+              [
+                "`class B extends A`",
+                "Interfaciae et compositio",
+                "Nullae classes basales fragiles."
+              ]
+            ]
+          },
+          {
+            "t": "compare",
+            "cmp": "errors"
+          },
+          {
+            "t": "h2",
+            "x": "Ubi OxiScript hodie deterior sit"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "Programmata nondum currere potest. TypeScript potest.",
+              "Npm non est. Nullum ecosystema, bibliotheca communis minima, nulla `async` (reservata, non exstructa).",
+              "Nullum `any`, nullum `eval`, nullae res dynamicae. Hoc consilium est, sed etiam sumptus cum JavaScript transfertur.",
+              "Identificatores ASCII tantum in praesentia.",
+              "Recens est. Asperitates et mutationes compatibilitatem frangentes exspecta."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Examinatorem tempta",
+                "href": "@oxiscript:index",
+                "primary": true
+              },
+              {
+                "label": "Index plenus differentiarum",
+                "href": "repo:docs/oxiscript/grammar.md"
+              }
+            ]
+          }
         ]
       },
       "tour": {
@@ -275,21 +648,72 @@
         "desc": "Brevis itinerarium per OxiScript cum exemplis examinatis.",
         "lead": "Quodque fragmentum hic a compilatore examinatur cum haec pagina aedificatur, itaque itinerarium codicem qui non agit ostendere non potest.",
         "blocks": [
-          { "t": "h2", "x": "Salve, cum facultate" },
-          { "t": "p", "x": "Programma ab hospite petit quod requirit per parametros functionis `main`. Hic logging petit." },
-          { "t": "code", "oxs": "hello" },
-          { "t": "h2", "x": "Structurae sunt valores" },
-          { "t": "code", "oxs": "structs" },
-          { "t": "h2", "x": "Genera summae sunt uniones discriminatae" },
-          { "t": "code", "oxs": "shapes" },
-          { "t": "h2", "x": "Errores sunt valores" },
-          { "t": "code", "oxs": "errors" },
-          { "t": "h2", "x": "Status qui renovationem superat" },
-          { "t": "code", "oxs": "counter" },
-          { "t": "h2", "x": "Leges" },
-          { "t": "p", "x": "Lex est proprietas quam programma servare debet. Leges temptabuntur et postea demonstrabuntur." },
-          { "t": "code", "oxs": "laws" },
-          { "t": "links", "items": [ { "label": "Haec in palaestra aperi", "href": "@oxiscript:index", "primary": true } ] }
+          {
+            "t": "h2",
+            "x": "Salve, cum facultate"
+          },
+          {
+            "t": "p",
+            "x": "Programma ab hospite petit quod requirit per parametros functionis `main`. Hic logging petit."
+          },
+          {
+            "t": "code",
+            "oxs": "hello"
+          },
+          {
+            "t": "h2",
+            "x": "Structurae sunt valores"
+          },
+          {
+            "t": "code",
+            "oxs": "structs"
+          },
+          {
+            "t": "h2",
+            "x": "Genera summae sunt uniones discriminatae"
+          },
+          {
+            "t": "code",
+            "oxs": "shapes"
+          },
+          {
+            "t": "h2",
+            "x": "Errores sunt valores"
+          },
+          {
+            "t": "code",
+            "oxs": "errors"
+          },
+          {
+            "t": "h2",
+            "x": "Status qui renovationem superat"
+          },
+          {
+            "t": "code",
+            "oxs": "counter"
+          },
+          {
+            "t": "h2",
+            "x": "Leges"
+          },
+          {
+            "t": "p",
+            "x": "Lex est proprietas quam programma servare debet. Leges temptabuntur et postea demonstrabuntur."
+          },
+          {
+            "t": "code",
+            "oxs": "laws"
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Haec in palaestra aperi",
+                "href": "@oxiscript:index",
+                "primary": true
+              }
+            ]
+          }
         ]
       },
       "course": {
@@ -298,10 +722,22 @@
         "desc": "Cursus destinatus a prima variabili ad parvam intellegentiam artificialem, Polonice, Anglice et Latine, cum via pro parente et puero.",
         "lead": "Mox. Quaeque lectio brevis textus erit, cum editore, bulla Curre et aestimatione automatica, remediis compilatoris pro indiciis. Haec est designatio.",
         "blocks": [
-          { "t": "widget", "id": "course" },
-          { "t": "h2", "x": "Via pro parente et puero" },
-          { "t": "p", "x": "Primi gradus duas voces habebunt: unam pro puero, alteram pro adulto qui adest. Quodque exemplum et solutio in CI examinabitur, itaque cursus non veterascet." },
-          { "t": "note", "x": "Nondum exstructum. Lectiones bulla Curre egent, quae gradum inferendi exspectat." }
+          {
+            "t": "widget",
+            "id": "course"
+          },
+          {
+            "t": "h2",
+            "x": "Via pro parente et puero"
+          },
+          {
+            "t": "p",
+            "x": "Primi gradus duas voces habebunt: unam pro puero, alteram pro adulto qui adest. Quodque exemplum et solutio in CI examinabitur, itaque cursus non veterascet."
+          },
+          {
+            "t": "note",
+            "x": "Nondum exstructum. Lectiones bulla Curre egent, quae gradum inferendi exspectat."
+          }
         ]
       },
       "roadmap": {
@@ -310,12 +746,27 @@
         "desc": "Quid perfectum sit, quid sequatur, et quid recognitiones adversariae invenerint.",
         "lead": "Consilium publicum est et numeri quoque.",
         "blocks": [
-          { "t": "widget", "id": "roadmap" },
-          { "t": "links", "items": [
-            { "label": "Grammatica et specificatio", "href": "repo:docs/oxiscript/grammar.md" },
-            { "label": "AGENTS.md (a gradu DevKit additur)", "href": "repo:AGENTS.md" },
-            { "label": "llms.txt (a gradu DevKit additur)", "href": "repo:llms.txt" }
-          ] }
+          {
+            "t": "widget",
+            "id": "roadmap"
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Grammatica et specificatio",
+                "href": "repo:docs/oxiscript/grammar.md"
+              },
+              {
+                "label": "AGENTS.md (a gradu DevKit additur)",
+                "href": "repo:AGENTS.md"
+              },
+              {
+                "label": "llms.txt (a gradu DevKit additur)",
+                "href": "repo:llms.txt"
+              }
+            ]
+          }
         ]
       }
     },
@@ -344,12 +795,30 @@
     },
     "course": {
       "levels": [
-        { "name": "Gradus 0, Nihil:", "text": "quid sit variabilis; pictura cum testudine." },
-        { "name": "Gradus 1, Discipulus:", "text": "elementa linguae, parva programmata." },
-        { "name": "Gradus 2, Artifex:", "text": "opus maius: Serpens." },
-        { "name": "Gradus 3, Machinator:", "text": "applicatio OxiUI, Result, leges." },
-        { "name": "Gradus 4, Fabricator:", "text": "facultates, capsae Rust, simulator ESP32, deinde tabella." },
-        { "name": "Gradus 5, Heros:", "text": "celeritas et prima intellegentia artificialis: perceptron, cognitor numerorum vivus doctus, parvum exemplar linguae." }
+        {
+          "name": "Gradus 0, Nihil:",
+          "text": "quid sit variabilis; pictura cum testudine."
+        },
+        {
+          "name": "Gradus 1, Discipulus:",
+          "text": "elementa linguae, parva programmata."
+        },
+        {
+          "name": "Gradus 2, Artifex:",
+          "text": "opus maius: Serpens."
+        },
+        {
+          "name": "Gradus 3, Machinator:",
+          "text": "applicatio OxiUI, Result, leges."
+        },
+        {
+          "name": "Gradus 4, Fabricator:",
+          "text": "facultates, capsae Rust, simulator ESP32, deinde tabella."
+        },
+        {
+          "name": "Gradus 5, Heros:",
+          "text": "celeritas et prima intellegentia artificialis: perceptron, cognitor numerorum vivus doctus, parvum exemplar linguae."
+        }
       ]
     }
   }

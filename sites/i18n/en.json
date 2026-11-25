@@ -1,5 +1,10 @@
 {
-  "meta": { "name": "English", "short": "EN", "htmlLang": "en", "status": "source" },
+  "meta": {
+    "name": "English",
+    "short": "EN",
+    "htmlLang": "en",
+    "status": "source"
+  },
   "common": {
     "skip": "Skip to content",
     "projects": "Projects",
@@ -31,11 +36,26 @@
     "colWhat": "What",
     "waveLog": "Wave log",
     "waveLogIntro": "Measured times for each slice, the number of problems the BAD ACTOR agent found, and the commit that was merged.",
-    "state": { "done": "done", "active": "in progress", "planned": "planned" },
-    "sites": { "home": "slavekm.pl", "oxiui": "OxiUI", "oxiscript": "OxiScript" }
+    "state": {
+      "done": "done",
+      "active": "in progress",
+      "planned": "planned"
+    },
+    "sites": {
+      "home": "slavekm.pl",
+      "oxiui": "OxiUI",
+      "oxiscript": "OxiScript"
+    },
+    "notFound": {
+      "title": "Not found",
+      "lead": "This page does not exist.",
+      "home": "Home"
+    }
   },
   "home": {
-    "nav": { "index": "Home" },
+    "nav": {
+      "index": "Home"
+    },
     "pages": {
       "index": {
         "title": "Projects",
@@ -45,19 +65,46 @@
           "lead": "[PLACEHOLDER: one or two sentences about who you are and what this page is. The owner writes this.]"
         },
         "blocks": [
-          { "t": "h2", "x": "Projects" },
-          { "t": "widget", "id": "projectcards" },
-          { "t": "h2", "x": "About" },
-          { "t": "p", "x": "[PLACEHOLDER: who, what, why. Written by the owner. Nothing here is a biography yet.]" },
-          { "t": "widget", "id": "latinnote" },
-          { "t": "widget", "id": "dedication" }
+          {
+            "t": "h2",
+            "x": "Projects"
+          },
+          {
+            "t": "widget",
+            "id": "projectcards"
+          },
+          {
+            "t": "h2",
+            "x": "About"
+          },
+          {
+            "t": "p",
+            "x": "[PLACEHOLDER: who, what, why. Written by the owner. Nothing here is a biography yet.]"
+          },
+          {
+            "t": "widget",
+            "id": "latinnote"
+          },
+          {
+            "t": "widget",
+            "id": "dedication"
+          }
         ]
       }
     },
     "cards": {
-      "oxiui": { "text": "One page of THTML and TCSS, drawn in a terminal over SSH, in a browser, and in WebAssembly on your own device.", "cta": "Open OxiUI" },
-      "oxiscript": { "text": "A TypeScript-looking, strictly typed language that compiles to WebAssembly. The checker runs in your browser.", "cta": "Open OxiScript" },
-      "next": { "title": "More to come", "text": "Room for future projects." }
+      "oxiui": {
+        "text": "One page of THTML and TCSS, drawn in a terminal over SSH, in a browser, and in WebAssembly on your own device.",
+        "cta": "Open OxiUI"
+      },
+      "oxiscript": {
+        "text": "A TypeScript-looking, strictly typed language that compiles to WebAssembly. The checker runs in your browser.",
+        "cta": "Open OxiScript"
+      },
+      "next": {
+        "title": "More to come",
+        "text": "Room for future projects."
+      }
     },
     "latinNote": "[PLACEHOLDER: a short neutral note, written by the owner, explaining why this site also speaks Latin.]",
     "dedication": {
@@ -68,7 +115,13 @@
     }
   },
   "oxiui": {
-    "nav": { "index": "Live demo", "gallery": "Gallery", "how": "How it works", "docs": "Docs", "roadmap": "Roadmap" },
+    "nav": {
+      "index": "Live demo",
+      "gallery": "Gallery",
+      "how": "How it works",
+      "docs": "Docs",
+      "roadmap": "Roadmap"
+    },
     "pages": {
       "index": {
         "title": "One page, every screen",
@@ -78,21 +131,46 @@
           "lead": "OxiUI renders THTML (HTML-like markup) and TCSS (CSS-like styles) to SSH terminals, a browser canvas and WebAssembly running on your own machine. ESP32 screens are next."
         },
         "blocks": [
-          { "t": "widget", "id": "demo" },
-          { "t": "h2", "x": "What you are looking at" },
-          { "t": "p", "x": "The demo above is an ordinary OxiUI page. It is not a video and not a screenshot: the OxiUI core was compiled to WebAssembly, your browser downloaded it, and it lays out, paints and handles clicks locally. The same page can also be served over SSH to a real terminal." },
-          { "t": "ul", "items": [
-            "**Terminal over SSH:** works today, the original target.",
-            "**Browser, server-driven:** works today (canvas client, proportional text).",
-            "**Browser, local mode:** works today and is what you see here; no server needed.",
-            "**Android shell, Linux framebuffer (OxiDE), native window:** planned or in progress, see the [roadmap](@oxiui:roadmap).",
-            "**ESP32 touch screens:** planned, after the OxiScript compiler can run programs."
-          ] },
-          { "t": "links", "items": [
-            { "label": "Example gallery", "href": "@oxiui:gallery", "primary": true },
-            { "label": "How it works", "href": "@oxiui:how" },
-            { "label": "Read the docs", "href": "@oxiui:docs" }
-          ] }
+          {
+            "t": "widget",
+            "id": "demo"
+          },
+          {
+            "t": "h2",
+            "x": "What you are looking at"
+          },
+          {
+            "t": "p",
+            "x": "The demo above is an ordinary OxiUI page. It is not a video and not a screenshot: the OxiUI core was compiled to WebAssembly, your browser downloaded it, and it lays out, paints and handles clicks locally. The same page can also be served over SSH to a real terminal."
+          },
+          {
+            "t": "ul",
+            "items": [
+              "**Terminal over SSH:** works today, the original target.",
+              "**Browser, server-driven:** works today (canvas client, proportional text).",
+              "**Browser, local mode:** works today and is what you see here; no server needed.",
+              "**Android shell, Linux framebuffer (OxiDE), native window:** planned or in progress, see the [roadmap](@oxiui:roadmap).",
+              "**ESP32 touch screens:** planned, after the OxiScript compiler can run programs."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Example gallery",
+                "href": "@oxiui:gallery",
+                "primary": true
+              },
+              {
+                "label": "How it works",
+                "href": "@oxiui:how"
+              },
+              {
+                "label": "Read the docs",
+                "href": "@oxiui:docs"
+              }
+            ]
+          }
         ]
       },
       "gallery": {
@@ -100,7 +178,12 @@
         "h1": "Example gallery",
         "desc": "THTML examples with their source and a live result you can click.",
         "lead": "Each example is a real THTML page from the repository. Start it to try it, or open the source to see how little markup it takes.",
-        "blocks": [ { "t": "widget", "id": "gallery" } ]
+        "blocks": [
+          {
+            "t": "widget",
+            "id": "gallery"
+          }
+        ]
       },
       "how": {
         "title": "How it works",
@@ -108,23 +191,70 @@
         "desc": "From one THTML page to a terminal, a browser or a device.",
         "lead": "A page is a text file. The core turns it into a display list, and a small client for each target draws that list.",
         "blocks": [
-          { "t": "h2", "x": "From text to pixels" },
-          { "t": "ol", "items": [
-            "You write a page in THTML (boxes, text, buttons, inputs) and style it with TCSS (colours, borders, flex layout, in whole character cells).",
-            "The core parses it, lays it out and produces a display list: fills, borders, paths and positioned glyph runs.",
-            "A client draws the list. A terminal client turns it into cells and escape codes, a browser client paints it on a canvas, and a device client will draw it to a screen.",
-            "Clicks and keys come back as events. Built-in actions (`inc:count`, `toggle:open`, `set:tab=a`) run in the core; anything else goes to your own App Server."
-          ] },
-          { "t": "h2", "x": "Three places to run the core" },
-          { "t": "table", "head": ["Mode", "Where the core runs", "Status"], "rows": [
-            ["Terminal", "On a server; the user connects with `ssh`", "works"],
-            ["Browser, server-driven", "On a server; the browser is a thin canvas client", "works"],
-            ["Browser, local", "In your browser, as WebAssembly (this site)", "works"],
-            ["Device (ESP32, Linux console, Android)", "On the device", "planned"]
-          ] },
-          { "t": "h2", "x": "Why a text file" },
-          { "t": "p", "x": "Text pages are easy to read, review, diff and generate. They hot-reload, they are small, and an AI agent can write and fix them. The layout model is deliberately small: it fails loudly or does what it says." },
-          { "t": "links", "items": [ { "label": "Architecture notes in the repository", "href": "repo:docs/oxi-ui.md" } ] }
+          {
+            "t": "h2",
+            "x": "From text to pixels"
+          },
+          {
+            "t": "ol",
+            "items": [
+              "You write a page in THTML (boxes, text, buttons, inputs) and style it with TCSS (colours, borders, flex layout, in whole character cells).",
+              "The core parses it, lays it out and produces a display list: fills, borders, paths and positioned glyph runs.",
+              "A client draws the list. A terminal client turns it into cells and escape codes, a browser client paints it on a canvas, and a device client will draw it to a screen.",
+              "Clicks and keys come back as events. Built-in actions (`inc:count`, `toggle:open`, `set:tab=a`) run in the core; anything else goes to your own App Server."
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Three places to run the core"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Mode",
+              "Where the core runs",
+              "Status"
+            ],
+            "rows": [
+              [
+                "Terminal",
+                "On a server; the user connects with `ssh`",
+                "works"
+              ],
+              [
+                "Browser, server-driven",
+                "On a server; the browser is a thin canvas client",
+                "works"
+              ],
+              [
+                "Browser, local",
+                "In your browser, as WebAssembly (this site)",
+                "works"
+              ],
+              [
+                "Device (ESP32, Linux console, Android)",
+                "On the device",
+                "planned"
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "Why a text file"
+          },
+          {
+            "t": "p",
+            "x": "Text pages are easy to read, review, diff and generate. They hot-reload, they are small, and an AI agent can write and fix them. The layout model is deliberately small: it fails loudly or does what it says."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Architecture notes in the repository",
+                "href": "repo:docs/oxi-ui.md"
+              }
+            ]
+          }
         ]
       },
       "docs": {
@@ -133,44 +263,159 @@
         "desc": "The essentials of the markup and style languages.",
         "lead": "THTML looks like HTML and TCSS like CSS, but both are much smaller. Unknown TCSS properties are ignored without an error, so use only the ones listed here.",
         "blocks": [
-          { "t": "h2", "x": "A first page" },
-          { "t": "code", "lang": "thtml", "src": "<box style=\"bg: #1e293b; padding: 2; flex-direction: column;\">\n  <text style=\"fg: #38bdf8;\">Counter: </text>\n  <text bind-state=\"count\" style=\"fg: #38bdf8;\">0</text>\n  <button event-htmx=\"inc:count\" style=\"fg: #4ade80;\">[ + ] Increment</button>\n</box>" },
-          { "t": "h2", "x": "Tags" },
-          { "t": "table", "head": ["Tag", "Purpose"], "rows": [
-            ["`<box>`", "Container with flex layout, like a `div`."],
-            ["`<text>`", "Text only. Never shrinks unless `wrap: word` is set."],
-            ["`<button>`", "Focusable button, text only."],
-            ["`<input>`", "Text field; needs `bind-value`."],
-            ["`<img>`, `<video>`", "Need `src`, `width` and `height`."],
-            ["`<for>`", "Repeats one template child over a list in the state."],
-            ["`<diagram>`", "A Mermaid flowchart drawn in cells."]
-          ] },
-          { "t": "h2", "x": "State and actions" },
-          { "t": "table", "head": ["Attribute / action", "Effect"], "rows": [
-            ["`bind-state=\"key\"`", "Show a state value; updates when it changes."],
-            ["`bind-show=\"key=value\"`", "Show the node only when the state matches."],
-            ["`event-htmx=\"inc:key\"`", "Add one; also `dec:`, `toggle:`, `set:key=value`, `append:`, `clear:`."],
-            ["`event-htmx=\"page.thtml\"`", "Navigate to another page, keeping the state."],
-            ["`event-htmx=\"open:https://...\"`", "Open a link (web only)."],
-            ["any other string", "Sent to your App Server."]
-          ] },
-          { "t": "h2", "x": "The TCSS properties" },
-          { "t": "table", "head": ["Property", "Values"], "rows": [
-            ["`width`, `height`", "Whole numbers of cells. Never `auto`."],
-            ["`fg`, `bg`, `border-color`", "A colour: `#rrggbb`, a name, or 0-255."],
-            ["`padding`, `margin` (and `-top` etc.)", "Whole numbers."],
-            ["`flex-direction`, `align-items`, `justify-content`, `flex`", "Flex layout in one dimension."],
-            ["`border`, `border-style`", "`single`, `double` or `rounded`. A border costs 2 rows and 2 columns."],
-            ["`position`, `top`, `left`, `z-index`", "Absolute and fixed placement."],
-            ["`opacity`, `transition`", "Fades and easing."],
-            ["`wrap`", "`word` wraps at spaces."]
-          ] },
-          { "t": "note", "x": "Rules of thumb: a bordered box is at least 3 rows tall; use ASCII in clickable labels; when a property is not in this list, it does not exist." },
-          { "t": "links", "items": [
-            { "label": "Full THTML reference", "href": "repo:docs/thtml-reference.md" },
-            { "label": "Full TCSS reference", "href": "repo:docs/tcss-reference.md" },
-            { "label": "Examples", "href": "repotree:examples" }
-          ] }
+          {
+            "t": "h2",
+            "x": "A first page"
+          },
+          {
+            "t": "code",
+            "lang": "thtml",
+            "src": "<box style=\"bg: #1e293b; padding: 2; flex-direction: column;\">\n  <text style=\"fg: #38bdf8;\">Counter: </text>\n  <text bind-state=\"count\" style=\"fg: #38bdf8;\">0</text>\n  <button event-htmx=\"inc:count\" style=\"fg: #4ade80;\">[ + ] Increment</button>\n</box>"
+          },
+          {
+            "t": "h2",
+            "x": "Tags"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Tag",
+              "Purpose"
+            ],
+            "rows": [
+              [
+                "`<box>`",
+                "Container with flex layout, like a `div`."
+              ],
+              [
+                "`<text>`",
+                "Text only. Never shrinks unless `wrap: word` is set."
+              ],
+              [
+                "`<button>`",
+                "Focusable button, text only."
+              ],
+              [
+                "`<input>`",
+                "Text field; needs `bind-value`."
+              ],
+              [
+                "`<img>`, `<video>`",
+                "Need `src`, `width` and `height`."
+              ],
+              [
+                "`<for>`",
+                "Repeats one template child over a list in the state."
+              ],
+              [
+                "`<diagram>`",
+                "A Mermaid flowchart drawn in cells."
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "State and actions"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Attribute / action",
+              "Effect"
+            ],
+            "rows": [
+              [
+                "`bind-state=\"key\"`",
+                "Show a state value; updates when it changes."
+              ],
+              [
+                "`bind-show=\"key=value\"`",
+                "Show the node only when the state matches."
+              ],
+              [
+                "`event-htmx=\"inc:key\"`",
+                "Add one; also `dec:`, `toggle:`, `set:key=value`, `append:`, `clear:`."
+              ],
+              [
+                "`event-htmx=\"page.thtml\"`",
+                "Navigate to another page, keeping the state."
+              ],
+              [
+                "`event-htmx=\"open:https://...\"`",
+                "Open a link (web only)."
+              ],
+              [
+                "any other string",
+                "Sent to your App Server."
+              ]
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "The TCSS properties"
+          },
+          {
+            "t": "table",
+            "head": [
+              "Property",
+              "Values"
+            ],
+            "rows": [
+              [
+                "`width`, `height`",
+                "Whole numbers of cells. Never `auto`."
+              ],
+              [
+                "`fg`, `bg`, `border-color`",
+                "A colour: `#rrggbb`, a name, or 0-255."
+              ],
+              [
+                "`padding`, `margin` (and `-top` etc.)",
+                "Whole numbers."
+              ],
+              [
+                "`flex-direction`, `align-items`, `justify-content`, `flex`",
+                "Flex layout in one dimension."
+              ],
+              [
+                "`border`, `border-style`",
+                "`single`, `double` or `rounded`. A border costs 2 rows and 2 columns."
+              ],
+              [
+                "`position`, `top`, `left`, `z-index`",
+                "Absolute and fixed placement."
+              ],
+              [
+                "`opacity`, `transition`",
+                "Fades and easing."
+              ],
+              [
+                "`wrap`",
+                "`word` wraps at spaces."
+              ]
+            ]
+          },
+          {
+            "t": "note",
+            "x": "Rules of thumb: a bordered box is at least 3 rows tall; use ASCII in clickable labels; when a property is not in this list, it does not exist."
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Full THTML reference",
+                "href": "repo:docs/thtml-reference.md"
+              },
+              {
+                "label": "Full TCSS reference",
+                "href": "repo:docs/tcss-reference.md"
+              },
+              {
+                "label": "Examples",
+                "href": "repotree:examples"
+              }
+            ]
+          }
         ]
       },
       "roadmap": {
@@ -178,16 +423,39 @@
         "h1": "Roadmap and wave log",
         "desc": "What is done, what is next, and what the adversarial reviews found.",
         "lead": "The plan is public and so are the numbers. Each stage is built by an agent, then a separate BAD ACTOR agent tries to break it before it is merged.",
-        "blocks": [ { "t": "widget", "id": "roadmap" } ]
+        "blocks": [
+          {
+            "t": "widget",
+            "id": "roadmap"
+          }
+        ]
       }
     },
     "gallery": {
-      "counter": { "title": "Counter", "desc": "State, buttons and `inc`, `dec`, `clear` actions." },
-      "state": { "title": "State types", "desc": "Numbers, booleans, strings and lists bound to the page." },
-      "input": { "title": "Input fields", "desc": "Text input bound to state, shown live." },
-      "todo": { "title": "To-do list", "desc": "A list in the state, rendered with `for`." },
-      "styles": { "title": "Styles", "desc": "Borders, colours and flex layout." },
-      "showcase": { "title": "Showcase", "desc": "Several features on one page." }
+      "counter": {
+        "title": "Counter",
+        "desc": "State, buttons and `inc`, `dec`, `clear` actions."
+      },
+      "state": {
+        "title": "State types",
+        "desc": "Numbers, booleans, strings and lists bound to the page."
+      },
+      "input": {
+        "title": "Input fields",
+        "desc": "Text input bound to state, shown live."
+      },
+      "todo": {
+        "title": "To-do list",
+        "desc": "A list in the state, rendered with `for`."
+      },
+      "styles": {
+        "title": "Styles",
+        "desc": "Borders, colours and flex layout."
+      },
+      "showcase": {
+        "title": "Showcase",
+        "desc": "Several features on one page."
+      }
     },
     "demo": {
       "heading": "live demo",
@@ -205,7 +473,13 @@
     }
   },
   "oxiscript": {
-    "nav": { "index": "Playground", "ts": "For TypeScript developers", "tour": "Tour", "course": "Course", "roadmap": "Roadmap" },
+    "nav": {
+      "index": "Playground",
+      "ts": "For TypeScript developers",
+      "tour": "Tour",
+      "course": "Course",
+      "roadmap": "Roadmap"
+    },
     "pages": {
       "index": {
         "title": "TypeScript-looking, strictly typed, compiled to WebAssembly",
@@ -215,23 +489,51 @@
           "lead": "OxiScript is statically and soundly typed, with errors as values and mechanical fixes for common mistakes. It compiles to WebAssembly. Below, the real checker and formatter run in your browser."
         },
         "blocks": [
-          { "t": "widget", "id": "playground" },
-          { "t": "h2", "x": "What works today" },
-          { "t": "ul", "items": [
-            "Parser, formatter and type checker (the same code you are using above, compiled to WebAssembly).",
-            "A registry of stable error codes, each with an explanation and, often, a mechanical fix.",
-            "Host capability interfaces (`log`, `state`) that programs import with `host:` modules."
-          ] },
-          { "t": "h2", "x": "What does not work yet" },
-          { "t": "ul", "items": [
-            "**Running programs.** Code generation exists, but the lowering step that connects the checker to it is still being built. The Run button is disabled until then.",
-            "A standard library, packages, the language server, devices. All planned, none ready."
-          ] },
-          { "t": "links", "items": [
-            { "label": "For TypeScript developers", "href": "@oxiscript:ts", "primary": true },
-            { "label": "Language tour", "href": "@oxiscript:tour" },
-            { "label": "Grammar and spec", "href": "repo:docs/oxiscript/grammar.md" }
-          ] }
+          {
+            "t": "widget",
+            "id": "playground"
+          },
+          {
+            "t": "h2",
+            "x": "What works today"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "Parser, formatter and type checker (the same code you are using above, compiled to WebAssembly).",
+              "A registry of stable error codes, each with an explanation and, often, a mechanical fix.",
+              "Host capability interfaces (`log`, `state`) that programs import with `host:` modules."
+            ]
+          },
+          {
+            "t": "h2",
+            "x": "What does not work yet"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "**Running programs.** Code generation exists, but the lowering step that connects the checker to it is still being built. The Run button is disabled until then.",
+              "A standard library, packages, the language server, devices. All planned, none ready."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "For TypeScript developers",
+                "href": "@oxiscript:ts",
+                "primary": true
+              },
+              {
+                "label": "Language tour",
+                "href": "@oxiscript:tour"
+              },
+              {
+                "label": "Grammar and spec",
+                "href": "repo:docs/oxiscript/grammar.md"
+              }
+            ]
+          }
         ]
       },
       "ts": {
@@ -240,33 +542,104 @@
         "desc": "What stays the same, what changes, and where OxiScript is worse than TypeScript.",
         "lead": "Reading OxiScript should need no learning. Writing it sometimes needs a fix. This page is honest about both.",
         "blocks": [
-          { "t": "h2", "x": "The same program, nearly the same text" },
-          { "t": "compare", "cmp": "shapes" },
-          { "t": "p", "x": "Only `number` became `f64`. Discriminated unions, `switch` narrowing, `const`, arrow functions and template strings are the TypeScript you know." },
-          { "t": "h2", "x": "Where it differs" },
-          { "t": "table", "head": ["TypeScript", "OxiScript", "Why"], "rows": [
-            ["`number`", "`i32`, `i64`, `f64` and friends", "Integers and floats are different; overflow is defined and traps."],
-            ["`a == b`", "`a === b` only (`==` is an error with a fix)", "One equality, no coercion."],
-            ["`throw` / `try`", "`Result<T, E>` and the postfix `?`", "Errors are values. Bugs trap."],
-            ["`x as T`", "`x.downcast<T>()` and checked numeric `as`", "No cast may lie about a type."],
-            ["`undefined`", "`null` only", "One absence value."],
-            ["Optional semicolons", "Semicolons required", "Unambiguous grammar, friendlier to tools."],
-            ["`arr[i]` past the end gives `undefined`", "Traps", "Defined behaviour for every operation."],
-            ["`class B extends A`", "Interfaces and composition", "No fragile base classes."]
-          ] },
-          { "t": "compare", "cmp": "errors" },
-          { "t": "h2", "x": "Where OxiScript is worse today" },
-          { "t": "ul", "items": [
-            "It cannot run programs yet. TypeScript can.",
-            "There is no npm. No ecosystem, a tiny standard library, no `async` (reserved, not built).",
-            "No `any`, no `eval`, no dynamic features. That is the point, and also a cost when porting JavaScript.",
-            "ASCII identifiers only for now.",
-            "It is young. Expect rough edges and breaking changes."
-          ] },
-          { "t": "links", "items": [
-            { "label": "Try the checker", "href": "@oxiscript:index", "primary": true },
-            { "label": "Full list of deviations", "href": "repo:docs/oxiscript/grammar.md" }
-          ] }
+          {
+            "t": "h2",
+            "x": "The same program, nearly the same text"
+          },
+          {
+            "t": "compare",
+            "cmp": "shapes"
+          },
+          {
+            "t": "p",
+            "x": "Only `number` became `f64`. Discriminated unions, `switch` narrowing, `const`, arrow functions and template strings are the TypeScript you know."
+          },
+          {
+            "t": "h2",
+            "x": "Where it differs"
+          },
+          {
+            "t": "table",
+            "head": [
+              "TypeScript",
+              "OxiScript",
+              "Why"
+            ],
+            "rows": [
+              [
+                "`number`",
+                "`i32`, `i64`, `f64` and friends",
+                "Integers and floats are different; overflow is defined and traps."
+              ],
+              [
+                "`a == b`",
+                "`a === b` only (`==` is an error with a fix)",
+                "One equality, no coercion."
+              ],
+              [
+                "`throw` / `try`",
+                "`Result<T, E>` and the postfix `?`",
+                "Errors are values. Bugs trap."
+              ],
+              [
+                "`x as T`",
+                "`x.downcast<T>()` and checked numeric `as`",
+                "No cast may lie about a type."
+              ],
+              [
+                "`undefined`",
+                "`null` only",
+                "One absence value."
+              ],
+              [
+                "Optional semicolons",
+                "Semicolons required",
+                "Unambiguous grammar, friendlier to tools."
+              ],
+              [
+                "`arr[i]` past the end gives `undefined`",
+                "Traps",
+                "Defined behaviour for every operation."
+              ],
+              [
+                "`class B extends A`",
+                "Interfaces and composition",
+                "No fragile base classes."
+              ]
+            ]
+          },
+          {
+            "t": "compare",
+            "cmp": "errors"
+          },
+          {
+            "t": "h2",
+            "x": "Where OxiScript is worse today"
+          },
+          {
+            "t": "ul",
+            "items": [
+              "It cannot run programs yet. TypeScript can.",
+              "There is no npm. No ecosystem, a tiny standard library, no `async` (reserved, not built).",
+              "No `any`, no `eval`, no dynamic features. That is the point, and also a cost when porting JavaScript.",
+              "ASCII identifiers only for now.",
+              "It is young. Expect rough edges and breaking changes."
+            ]
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Try the checker",
+                "href": "@oxiscript:index",
+                "primary": true
+              },
+              {
+                "label": "Full list of deviations",
+                "href": "repo:docs/oxiscript/grammar.md"
+              }
+            ]
+          }
         ]
       },
       "tour": {
@@ -275,21 +648,72 @@
         "desc": "A quick tour of OxiScript with checked examples.",
         "lead": "Every snippet here is checked by the compiler when this site is built, so the tour cannot show code that does not work.",
         "blocks": [
-          { "t": "h2", "x": "Hello, with a capability" },
-          { "t": "p", "x": "A program asks the host for what it needs through the parameters of `main`. Here it asks for logging." },
-          { "t": "code", "oxs": "hello" },
-          { "t": "h2", "x": "Structs are values" },
-          { "t": "code", "oxs": "structs" },
-          { "t": "h2", "x": "Sum types are discriminated unions" },
-          { "t": "code", "oxs": "shapes" },
-          { "t": "h2", "x": "Errors are values" },
-          { "t": "code", "oxs": "errors" },
-          { "t": "h2", "x": "State that survives reload" },
-          { "t": "code", "oxs": "counter" },
-          { "t": "h2", "x": "Laws" },
-          { "t": "p", "x": "A law is a property the program must keep. Laws will be tested and, later, proven." },
-          { "t": "code", "oxs": "laws" },
-          { "t": "links", "items": [ { "label": "Open these in the playground", "href": "@oxiscript:index", "primary": true } ] }
+          {
+            "t": "h2",
+            "x": "Hello, with a capability"
+          },
+          {
+            "t": "p",
+            "x": "A program asks the host for what it needs through the parameters of `main`. Here it asks for logging."
+          },
+          {
+            "t": "code",
+            "oxs": "hello"
+          },
+          {
+            "t": "h2",
+            "x": "Structs are values"
+          },
+          {
+            "t": "code",
+            "oxs": "structs"
+          },
+          {
+            "t": "h2",
+            "x": "Sum types are discriminated unions"
+          },
+          {
+            "t": "code",
+            "oxs": "shapes"
+          },
+          {
+            "t": "h2",
+            "x": "Errors are values"
+          },
+          {
+            "t": "code",
+            "oxs": "errors"
+          },
+          {
+            "t": "h2",
+            "x": "State that survives reload"
+          },
+          {
+            "t": "code",
+            "oxs": "counter"
+          },
+          {
+            "t": "h2",
+            "x": "Laws"
+          },
+          {
+            "t": "p",
+            "x": "A law is a property the program must keep. Laws will be tested and, later, proven."
+          },
+          {
+            "t": "code",
+            "oxs": "laws"
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Open these in the playground",
+                "href": "@oxiscript:index",
+                "primary": true
+              }
+            ]
+          }
         ]
       },
       "course": {
@@ -298,10 +722,22 @@
         "desc": "A planned course from the first variable to a small AI, in English and Polish, with a parent and child track.",
         "lead": "Coming. Every lesson will be a short text, an editor, a Run button and automatic grading, with the compiler's fixes as hints. This is the outline.",
         "blocks": [
-          { "t": "widget", "id": "course" },
-          { "t": "h2", "x": "Parent and child track" },
-          { "t": "p", "x": "The first levels will have two voices: one for a child, one for the adult beside them. Every example and solution will be checked in CI, so the course cannot rot." },
-          { "t": "note", "x": "Not built yet. Lessons need the Run button, which waits for the lowering stage." }
+          {
+            "t": "widget",
+            "id": "course"
+          },
+          {
+            "t": "h2",
+            "x": "Parent and child track"
+          },
+          {
+            "t": "p",
+            "x": "The first levels will have two voices: one for a child, one for the adult beside them. Every example and solution will be checked in CI, so the course cannot rot."
+          },
+          {
+            "t": "note",
+            "x": "Not built yet. Lessons need the Run button, which waits for the lowering stage."
+          }
         ]
       },
       "roadmap": {
@@ -310,12 +746,27 @@
         "desc": "What is done, what is next, and what the adversarial reviews found.",
         "lead": "The plan is public and so are the numbers.",
         "blocks": [
-          { "t": "widget", "id": "roadmap" },
-          { "t": "links", "items": [
-            { "label": "Grammar and spec", "href": "repo:docs/oxiscript/grammar.md" },
-            { "label": "AGENTS.md (being added by the DevKit stage)", "href": "repo:AGENTS.md" },
-            { "label": "llms.txt (being added by the DevKit stage)", "href": "repo:llms.txt" }
-          ] }
+          {
+            "t": "widget",
+            "id": "roadmap"
+          },
+          {
+            "t": "links",
+            "items": [
+              {
+                "label": "Grammar and spec",
+                "href": "repo:docs/oxiscript/grammar.md"
+              },
+              {
+                "label": "AGENTS.md (being added by the DevKit stage)",
+                "href": "repo:AGENTS.md"
+              },
+              {
+                "label": "llms.txt (being added by the DevKit stage)",
+                "href": "repo:llms.txt"
+              }
+            ]
+          }
         ]
       }
     },
@@ -344,12 +795,30 @@
     },
     "course": {
       "levels": [
-        { "name": "Level 0, Zero:", "text": "what a variable is; drawing with a turtle." },
-        { "name": "Level 1, Apprentice:", "text": "the basics of the language, small programs." },
-        { "name": "Level 2, Craftsman:", "text": "a bigger project: Snake." },
-        { "name": "Level 3, Engineer:", "text": "an OxiUI app, Result, laws." },
-        { "name": "Level 4, Maker:", "text": "capabilities, Rust crates, an ESP32 simulator and then a board." },
-        { "name": "Level 5, Hero:", "text": "performance and a first AI: a perceptron, a digit recogniser trained live, a tiny language model." }
+        {
+          "name": "Level 0, Zero:",
+          "text": "what a variable is; drawing with a turtle."
+        },
+        {
+          "name": "Level 1, Apprentice:",
+          "text": "the basics of the language, small programs."
+        },
+        {
+          "name": "Level 2, Craftsman:",
+          "text": "a bigger project: Snake."
+        },
+        {
+          "name": "Level 3, Engineer:",
+          "text": "an OxiUI app, Result, laws."
+        },
+        {
+          "name": "Level 4, Maker:",
+          "text": "capabilities, Rust crates, an ESP32 simulator and then a board."
+        },
+        {
+          "name": "Level 5, Hero:",
+          "text": "performance and a first AI: a perceptron, a digit recogniser trained live, a tiny language model."
+        }
       ]
     }
   }

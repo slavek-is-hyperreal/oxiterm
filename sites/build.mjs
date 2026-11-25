@@ -142,6 +142,14 @@ function roadmapData() {
     return 'active';
   };
   const slice = (r) => ({ id: r[0].split(' ')[0], name: plain(r[0].replace(/^\S+\s*/, '')), what: shorten(r[2] || '', 230), state: stateOf(r[0].split(' ')[0]) });
+  // A phase whose heading says "planned" but whose stages/slices have started is in progress.
+  const started = (list) => list.some((x) => x.state !== 'planned');
+  const slicesList = slices.rows.map(slice);
+  const stages7List = p7 ? p7.rows.map((r) => ({ state: stateOf(r[0]) })) : [];
+  for (const ph of phases) {
+    if (ph.id === 'Phase 8' && ph.state === 'planned' && started(slicesList)) ph.state = 'active';
+    if (ph.id === 'Phase 7' && ph.state !== 'done' && started(stages7List)) ph.state = 'active';
+  }
   return {
     phases,
     stages7: p7 ? p7.rows.map((r) => ({ id: r[0], name: shorten(r[1].replace(/\*\*([^*]+)\*\*/, '$1'), 150), state: stateOf(r[0]) })) : [],
@@ -340,7 +348,7 @@ text { fg: #e2e8f0; }
 .mono { font-family: monospace; }
 </style>
 <box class="page-sans" style="flex-direction: column; width: ${W}; bg: ${pal.bg}; padding: 1;">`);
-  out.push(`  <box style="flex-direction: ${mobile ? 'column' : 'row'}; height: ${mobile ? 2 : 1};"><text class="brand">${tx(t(`common.sites.${site}`))}  </text>${navRow}</box>`);
+  out.push(`  <box style="flex-direction: ${mobile ? 'column' : 'row'};${mobile ? '' : ' height: 1;'}"><text class="brand">${tx(t(`common.sites.${site}`))}  </text>${navRow}</box>`);
   const hero = page.hero;
   textL('h1', hero ? hero.title : page.h1 || page.title);
   if (hero) textL('p', plain(hero.lead));
@@ -411,6 +419,9 @@ function patchClient() {
   must("'/oxiui/local/asset/'", "'./asset/'");
   must('/*__OXITERM_WEB_TEST_HOOK__*/', '');
   h = h.replace('<title>OxiTerm Console</title>', '<title>OxiUI</title>').replace(/OxiTerm Console/g, 'OxiUI');
+  // No third-party requests: the Lottie CDN script is only needed for Lottie media, which no site page uses.
+  h = h.replace(/\s*<script src="https:\/\/cdnjs[^>]*><\/script>/g, '');
+  if (/https?:\/\/(?!localhost)[^"' )]*\.(js|css)/.test(h.replace(/<script type="module">[\s\S]*$/, ''))) throw new Error('app client: external resource remains');
   // Fonts come from the embedded faces in local mode; drop the third-party font request (no trackers).
   h = h.replace(/\s*<link rel="preconnect"[^>]*>/g, '').replace(/\s*<link href="https:\/\/fonts\.googleapis\.com[^>]*>/g, '');
   return h;
@@ -499,7 +510,7 @@ function buildSite(site) {
       urls.push(ORIGIN[site] + pagePath(lang, id));
     }
   }
-  write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: 'Not found', h1: 'Not found', lead: 'This page does not exist. / Tej strony nie ma. / Haec pagina non exstat.', blocks: [{ t: 'links', items: [{ label: 'Home', href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '' }));
+  write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: T('en', 'common.notFound.title'), h1: T('en', 'common.notFound.title'), lead: LANGS.map((l) => T(l, 'common.notFound.lead')).join(' / '), blocks: [{ t: 'links', items: [{ label: LANGS.map((l) => T(l, 'common.notFound.home')).join(' / '), href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '' }));
   write(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${ORIGIN[site]}/sitemap.xml\n`);
   write(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
   write(path.join(out, '_headers'), headers());
@@ -512,7 +523,6 @@ function headers() {
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
-  Cache-Control: public, max-age=0, must-revalidate
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
