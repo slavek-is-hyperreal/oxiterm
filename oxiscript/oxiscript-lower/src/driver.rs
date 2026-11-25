@@ -97,7 +97,7 @@ impl<'c, 'a> Lw<'c, 'a> {
             .copied()
             .filter(|d| {
                 let i = &self.ck.defs[d.0 as usize];
-                i.kind == DefKind::Fn && i.exported && !i.local && i.tparams.is_empty() && Some(*d) != entry
+                i.kind == DefKind::Fn && i.exported && !i.local && i.tparams.is_empty() && Some(*d) != entry && self.ck.is_host_fn(*d)
             })
             .collect();
         for d in exports {
@@ -309,7 +309,7 @@ impl<'c, 'a> Lw<'c, 'a> {
         };
         let ret = self.subst(sig.ret, &map);
         let m = info.module as usize;
-        let mut is_export = info.exported && m == 0 && info.kind == DefKind::Fn && !info.local && Some(def) != self.ck.entry;
+        let mut is_export = info.exported && m == 0 && info.kind == DefKind::Fn && !info.local && Some(def) != self.ck.entry && self.ck.is_host_fn(def);
         let name = info.name.clone();
         if is_export && !self.abi_exportable(&sig, &map) {
             // 8.T rejects such exports (`OXS-E0121`), so this cannot fire for a checked program.
@@ -357,7 +357,8 @@ impl<'c, 'a> Lw<'c, 'a> {
         }
         if is_export {
             fx.fb.f.export = true;
-            fx.fb.attr("export_name", &[&name]);
+            let wasm_name = fx.lw.ck.modules[m].attrs.get(&info.node).and_then(|v| v.iter().find(|(n, _)| n == "export_name")).and_then(|(_, a)| a.first().cloned()).unwrap_or_else(|| name.clone());
+            fx.fb.attr("export_name", &[&wasm_name]);
         }
         fx.block_stmts(body);
         Some(fx.finish())

@@ -99,7 +99,7 @@ ImportSpec   = Ident [ "as" Ident ] ;
 
 The source string is one of: a relative path (`"./geometry"`, resolved against the importing file, extension `.oxs` implied), a package name (`"std/math"`, resolved through the manifest), or a **host module** `"host:name"` (a capability interface declared by the host IDL, see `abi.md`; for example `import { Log } from "host:log";` brings the *type* `Log`, never an ambient value). A fourth form, `"rust:<crate>"`, is reserved for **Rust libraries linked into the program** (section 2.7). Cyclic imports are an error in the MVP.
 
-**Entry point and capabilities.** A program receives its capabilities as parameters of an exported function named **`main`**: every parameter of `main` has a host-interface type (an imported `host:` type such as `Log`), no other parameter kinds are allowed, and the return type is `void`. The compiler writes one `needs` line per `main` parameter into the manifest, in parameter order; the host passes the matching capability handles, in that order, to `oxi_init` (see `abi.md` 3.1), and `oxi_init` runs the module-level initialisers and then calls `main`. A module without `main` simply needs no capabilities and exports plain functions. Capability values cannot be created inside the program, can be stored in variables, struct fields and closures, and can be passed to functions; code that is not handed one cannot use it (no ambient authority).
+**Entry point and capabilities.** A program receives its capabilities as parameters of an exported function named **`main`**: every parameter of `main` has a host-interface type (an imported `host:` type such as `Log`), no other parameter kinds are allowed, and the return type is `void`. The compiler writes one `needs` line per `main` parameter into the manifest, in parameter order; the host passes the matching capability handles, in that order, to `oxi_init` (see `abi.md` 3.1), and `oxi_init` runs the module-level initialisers and then calls `main`. A module without `main` simply needs no capabilities. `main` is host-called through `oxi_init` and needs no `@host`. Capability values cannot be created inside the program, can be stored in variables, struct fields and closures, and can be passed to functions; code that is not handed one cannot use it (no ambient authority).
 ```ts
 import { Log } from "host:log";
 import { State } from "host:state";
@@ -107,6 +107,8 @@ export function main(log: Log, state: State): void {
   log.write(2, "started");
 }
 ```
+
+**Module export versus host export.** `export` means module visibility only, exactly as in TypeScript, in every module including the entry module; it has no ABI restriction (any parameter and result types, generics included). A function the *host* calls is marked `@host` and must be exported from the entry module: `@host export function step(dt: f64): void`. Only `main`, the `@host` functions and the compiler-generated exports (`abi.md` 3.1) become Wasm exports; every other function is an ordinary internal function that is compiled only if reachable. A `@host` signature must fit ABI 1.0 (`OXS-E0121`): parameters are numbers, `bool`, enums, `string` or `u8[]` (at most one `string`/`u8[]`), the result is a number, `bool`, enum or `void`. `@host` on a function that is not exported, nested, generic, a method, in a module other than the entry module, or on `main` is `OXS-E0121`.
 
 ### 2.2 Variables
 
@@ -130,6 +132,7 @@ TypeParam  = Ident [ "extends" Type ] ;
 Contract   = ( "requires" | "ensures" ) Expr ;                  (* reserved *)
 ```
 
+* `export` carries no ABI limit; only `@host` functions must fit ABI 1.0 (2.1).
 * Exported function signatures need explicit parameter and return types (local inference stops at module boundaries); a missing return type on a non-exported function is inferred from the body (the `void` default when no `return` carries a value).
 * Default parameter values are evaluated at each call that omits the argument and must not reference other parameters.
 * No rest parameters, no overloads, no `arguments`, no `this` rebinding.
@@ -358,7 +361,8 @@ Attributes attach to the following item, member or statement; `@@name(...)` at t
 | `@profile(realtime)` / `@@profile(safety)` | restriction set checked by the compiler (kernel is reserved) |
 | `@allow("OXS-P0102", "reason")` | suppress one report/warning; the reason string is mandatory (`OXS-W0002`) |
 | `@inline`, `@noinline` | optimisation hints |
-| `@export_name("init")` | name of the Wasm export (default: the function name) |
+| `@host` | on an exported function of the entry module: the host can call it; it becomes a Wasm export (2.1) |
+| `@export_name("init")` | with `@host`: name of the Wasm export (non-empty ASCII letters, digits, `_`; default: the function name); without `@host` it is `OXS-E0123` |
 
 ---
 
@@ -411,7 +415,7 @@ Side-by-side sample:
 ```ts
 // TypeScript
 type Shape = { kind: "circle"; r: number } | { kind: "rect"; w: number; h: number };
-function area(s: Shape): number {
+export function area(s: Shape): number {
   switch (s.kind) {
     case "circle": return Math.PI * s.r * s.r;
     case "rect":   return s.w * s.h;
@@ -421,7 +425,7 @@ function area(s: Shape): number {
 ```ts
 // OxiScript: the same text with f64 (and no fall-through, exhaustiveness checked)
 type Shape = { kind: "circle"; r: f64 } | { kind: "rect"; w: f64; h: f64 };
-function area(s: Shape): f64 {
+export function area(s: Shape): f64 {
   switch (s.kind) {
     case "circle": return PI * s.r * s.r;
     case "rect":   return s.w * s.h;

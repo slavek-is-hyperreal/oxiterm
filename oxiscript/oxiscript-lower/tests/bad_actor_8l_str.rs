@@ -8,17 +8,17 @@ use Value::I32;
 
 const SRC: &str = r#"import { Log } from "host:log";
 const S: string = "aé€😀z";
-export function sl(a: i32, b: i32): i32 { return S.slice(a, b).byteLength; }
-function slTxt(a: i32, b: i32): string { return S.slice(a, b); }
-export function slOf(s: string, a: i32, b: i32): i32 { return s.slice(a, b).byteLength; }
-export function bytesOf(s: string): i32 { const bs = s.bytes(); let t = 0; for (const b of bs) t = t * 3 + (b as i32); return t % 1000003 + bs.length; }
-export function charsOf(s: string): i32 { const cs = s.chars(); return cs.length * 1000 + (cs.length > 0 ? (cs[cs.length - 1] as i32) % 1000 : 0); }
-export function idx(s: string): i32 { return s.indexOf("é"); }
-export function idxE(s: string): i32 { return s.indexOf(""); }
-export function starts(s: string): i32 { return (s.startsWith("a") ? 1 : 0) + (s.startsWith("") ? 2 : 0) + (s.startsWith(s + "x") ? 4 : 0) + (s.endsWith("z") ? 8 : 0) + (s.includes("€") ? 16 : 0) + (s.endsWith("") ? 32 : 0); }
-export function cmp(s: string): i32 { return (s < "b" ? 1 : 0) + (s > "a" ? 2 : 0) + (s === "a" ? 4 : 0) + (s !== "" ? 8 : 0) + (s <= "a\0" ? 16 : 0) + (s >= "é" ? 32 : 0); }
-export function eqPrefix(s: string): i32 { return (s === s.slice(0, 1) ? 1 : 0) + (s + "" === s ? 2 : 0) + ("ab" === s + "b" ? 4 : 0); }
-export function popStr(): i32 {
+@host export function sl(a: i32, b: i32): i32 { return S.slice(a, b).byteLength; }
+export function slTxt(a: i32, b: i32): string { return S.slice(a, b); }
+@host export function slOf(s: string, a: i32, b: i32): i32 { return s.slice(a, b).byteLength; }
+@host export function bytesOf(s: string): i32 { const bs = s.bytes(); let t = 0; for (const b of bs) t = t * 3 + (b as i32); return t % 1000003 + bs.length; }
+@host export function charsOf(s: string): i32 { const cs = s.chars(); return cs.length * 1000 + (cs.length > 0 ? (cs[cs.length - 1] as i32) % 1000 : 0); }
+@host export function idx(s: string): i32 { return s.indexOf("é"); }
+@host export function idxE(s: string): i32 { return s.indexOf(""); }
+@host export function starts(s: string): i32 { return (s.startsWith("a") ? 1 : 0) + (s.startsWith("") ? 2 : 0) + (s.startsWith(s + "x") ? 4 : 0) + (s.endsWith("z") ? 8 : 0) + (s.includes("€") ? 16 : 0) + (s.endsWith("") ? 32 : 0); }
+@host export function cmp(s: string): i32 { return (s < "b" ? 1 : 0) + (s > "a" ? 2 : 0) + (s === "a" ? 4 : 0) + (s !== "" ? 8 : 0) + (s <= "a\0" ? 16 : 0) + (s >= "é" ? 32 : 0); }
+@host export function eqPrefix(s: string): i32 { return (s === s.slice(0, 1) ? 1 : 0) + (s + "" === s ? 2 : 0) + ("ab" === s + "b" ? 4 : 0); }
+@host export function popStr(): i32 {
   const xs: string[] = ["a" + "b", "c" + "d", "e" + "f"];
   const p = xs.pop();
   const q = xs.pop();
@@ -26,9 +26,9 @@ export function popStr(): i32 {
   const s = xs.pop();
   return (p ?? "").byteLength + (q ?? "").byteLength * 10 + (r ?? "").byteLength * 100 + (s === null ? 1000 : 0) + xs.length * 10000;
 }
-export function emptyArr(): i32 { const e: string[] = []; const f: i32[] = []; e.push("x" + "y"); f.push(1); return e.length + f.length + (e.pop() ?? "").byteLength; }
-export function popEmptyStructs(): i32 { const e: P[] = []; const p = e.pop(); return p === null ? 7 : 8; }
-export function popThenPush(): i32 { const xs: P[] = [{ s: "a" + "b" }]; const p = xs.pop(); xs.push({ s: "z" }); xs.push({ s: "w" + "w" }); const q = xs.pop(); return xs.length * 100 + (p ?? { s: "" }).s.byteLength * 10 + (q ?? { s: "" }).s.byteLength; }
+@host export function emptyArr(): i32 { const e: string[] = []; const f: i32[] = []; e.push("x" + "y"); f.push(1); return e.length + f.length + (e.pop() ?? "").byteLength; }
+@host export function popEmptyStructs(): i32 { const e: P[] = []; const p = e.pop(); return p === null ? 7 : 8; }
+@host export function popThenPush(): i32 { const xs: P[] = [{ s: "a" + "b" }]; const p = xs.pop(); xs.push({ s: "z" }); xs.push({ s: "w" + "w" }); const q = xs.pop(); return xs.length * 100 + (p ?? { s: "" }).s.byteLength * 10 + (q ?? { s: "" }).s.byteLength; }
 struct P { s: string; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#;

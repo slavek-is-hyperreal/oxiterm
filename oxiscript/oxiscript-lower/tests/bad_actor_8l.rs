@@ -728,7 +728,7 @@ export function main(log: Log): void {
 fn ka212_infinite_recursion_traps_cleanly() {
     let mut p = Prog::new(&format!("{HDR}{}", r#"
 function f(n: i32): i32 { return f(n + 1) + 1; }
-export function go(): i32 { return f(0); }
+@host export function go(): i32 { return f(0); }
 export function main(log: Log): void { log.write(2, "up"); }
 "#));
     let e = p.call_err("go", &[]);
@@ -751,13 +751,13 @@ export function main(log: Log): void {
 #[test]
 fn unfit_exports_are_type_errors() {
     for (decl, what) in [
-        ("struct P { x: i32; }\nexport function mk(x: i32): P { return { x: x }; }", "result type"),
-        ("export function arr(xs: i32[]): i32 { return xs.length; }", "parameter"),
-        ("export function g<T>(x: T): i32 { return 1; }", "generic"),
-        ("export function f(x: i32 | null): i32 { return 1; }", "parameter"),
-        ("export function f(h: () => i32): i32 { return h(); }", "parameter"),
-        ("export function f(x: i32): string { return \"a\"; }", "result type"),
-        ("type U = { kind: \"a\" } | { kind: \"b\" };\nexport function f(u: U): i32 { return 1; }", "parameter"),
+        ("struct P { x: i32; }\n@host export function mk(x: i32): P { return { x: x }; }", "result type"),
+        ("@host export function arr(xs: i32[]): i32 { return xs.length; }", "parameter"),
+        ("@host export function g<T>(x: T): i32 { return 1; }", "generic"),
+        ("@host export function f(x: i32 | null): i32 { return 1; }", "parameter"),
+        ("@host export function f(h: () => i32): i32 { return h(); }", "parameter"),
+        ("@host export function f(x: i32): string { return \"a\"; }", "result type"),
+        ("type U = { kind: \"a\" } | { kind: \"b\" };\n@host export function f(u: U): i32 { return 1; }", "parameter"),
     ] {
         let src = format!("{HDR}{decl}\nexport function main(log: Log): void {{ log.write(2, \"up\"); }}\n");
         let e = oxiscript_lower::compile_source(&src, &interfaces(), &oxiscript_lower::Options::default()).expect_err(&src);
@@ -766,9 +766,9 @@ fn unfit_exports_are_type_errors() {
     }
     // the fitting ones still export
     let src = format!("{HDR}{}", r#"
-export function okf(x: i32): i32 { return x + 1; }
-export function oks(s: string, n: u8): bool { return n > 0; }
-export function okb(b: u8[]): i32 { return b.length; }
+@host export function okf(x: i32): i32 { return x + 1; }
+@host export function oks(s: string, n: u8): bool { return n > 0; }
+@host export function okb(b: u8[]): i32 { return b.length; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#);
     let (wasm, notes) = oxiscript_lower::compile_source_with_notes(&src, &interfaces(), &oxiscript_lower::Options::default()).unwrap();

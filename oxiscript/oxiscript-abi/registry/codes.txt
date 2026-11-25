@@ -272,7 +272,7 @@ severity error
 phase check
 title Invalid entry point or export
 message {detail}
-fix Fix the exported signature.
+fix Fix the entry point, or the `@host` function's signature or placement.
 
 code OXS-E0122
 severity error
@@ -293,7 +293,7 @@ severity error
 phase check
 title Unknown attribute
 message `@{name}` is not a known attribute
-fix Check the spelling; known attributes are expect, profile, allow, inline, noinline, export_name.
+fix Check the spelling; known attributes are expect, profile, allow, inline, noinline, export_name, host.
 
 code OXS-E0125
 severity error

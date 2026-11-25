@@ -9,6 +9,7 @@ function sum(xs: f64[]): f64 {
 }
 
 @allow("OXS-P0102", "reason given")
+@host
 @export_name("init")
 export function init(): void {}
 

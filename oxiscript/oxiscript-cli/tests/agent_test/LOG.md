@@ -24,16 +24,16 @@ Result: 7 of 10 passed on the first check, 3 needed one fix each. 13 `oxi check`
 are `maybe-incorrect` type-level repairs), so the "apply fixes" half of the loop was exercised by hand.
 
 Eight further programs (`extra_first_try/`, 11-18; wrapping `+%=`, generics, interface bound, closures,
-code points, linked list with `T | null`, `range`) found two more gaps: an exported function cannot be
-generic (E0121) and `?` needs the very same error type (E0104).
+code points, linked list with `T | null`, `range`) found two more gaps: an exported function could not be
+generic (E0121; lifted by the 2026-11-26 `@host` decision, `export` is now module visibility only) and `?` needs the very same error type (E0104).
 
 Guidance that was missing and is now in AGENTS.md / the skill:
 
 1. `as` binds looser than arithmetic: parenthesise each operand (`(a as f64) + (b as f64)`).
 2. Integer `/` yields an integer; convert both operands before dividing when a float is wanted.
 3. A literal adapts to its context but a typed variable never converts implicitly.
-4. Exported functions cannot be generic.
+4. (Superseded 2026-11-26.) `export` is module visibility only; only `@host export function` is limited to the ABI types and cannot be generic.
 5. `?` needs the same `E`; there is no automatic error conversion.
 6. `range(a, b)` exists (it was missing from the list of built-ins).
 
-`cargo test -p oxiscript-cli` re-checks the record: `final/` passes, `first_try/` fails exactly on 02, 05 and 08 with the codes above, and extras 12 and 16 fail with E0121 and E0104.
+`cargo test -p oxiscript-cli` re-checks the record: `final/` passes, `first_try/` fails exactly on 02, 05 and 08 with the codes above, and extra 16 fails with E0104 (extra 12 failed with E0121 until 2026-11-26, now passes).

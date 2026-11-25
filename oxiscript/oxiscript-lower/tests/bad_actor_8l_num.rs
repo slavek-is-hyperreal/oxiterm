@@ -7,71 +7,71 @@ use oxiscript_runtime::Value;
 use Value::{F64, I32, I64};
 
 const SRC: &str = r#"import { Log } from "host:log";
-export function addI(a: i32, b: i32): i32 { return a + b; }
-export function subI(a: i32, b: i32): i32 { return a - b; }
-export function mulI(a: i32, b: i32): i32 { return a * b; }
-export function divI(a: i32, b: i32): i32 { return a / b; }
-export function remI(a: i32, b: i32): i32 { return a % b; }
-export function negI(a: i32): i32 { return -a; }
-export function shlI(a: i32, b: i32): i32 { return a << b; }
-export function shrI(a: i32, b: i32): i32 { return a >> b; }
-export function addW(a: i32, b: i32): i32 { return a +% b; }
-export function mulW(a: i32, b: i32): i32 { return a *% b; }
-export function addS(a: i32, b: i32): i32 { return a +| b; }
-export function subS(a: i32, b: i32): i32 { return a -| b; }
-export function divL(a: i64, b: i64): i64 { return a / b; }
-export function remL(a: i64, b: i64): i64 { return a % b; }
-export function mulL(a: i64, b: i64): i64 { return a * b; }
-export function addL(a: i64, b: i64): i64 { return a + b; }
-export function negL(a: i64): i64 { return -a; }
-export function u8w(a: u8, b: u8): u8 { return a +% b; }
-export function u8sub(a: u8, b: u8): i32 { return (a -% b) as i32; }
-export function u8mul(a: u8, b: u8): u8 { return a * b; }
-export function u8mulw(a: u8, b: u8): i32 { return (a *% b) as i32; }
-export function u8shl(a: u8, b: u8): i32 { return (a << b) as i32; }
-export function u8not(a: u8): i32 { return (~a) as i32; }
-export function u8lt(a: u8, b: u8): bool { return (a +% b) < a; }
-export function u8sats(a: u8, b: u8): i32 { return (a +| b) as i32; }
-export function u8inc(a: u8): u8 { let x = a; x += 1; return x; }
-export function i8w(a: i8, b: i8): i32 { return (a *% b) as i32; }
-export function i8neg(a: i8): i8 { return -a; }
-export function i8divm(a: i8, b: i8): i8 { return a / b; }
-export function i8not(a: i8): i32 { return (~a) as i32; }
-export function i8sat(a: i8, b: i8): i32 { return (a -| b) as i32; }
-export function i16w(a: i16, b: i16): i32 { return (a +% b) as i32; }
-export function u16shl(a: u16, b: u16): i32 { return (a << b) as i32; }
-export function u32div(a: u32, b: u32): u32 { return a / b; }
-export function u32rem(a: u32, b: u32): u32 { return a % b; }
-export function u32shr(a: u32, b: u32): u32 { return a >> b; }
-export function u32lt(a: u32, b: u32): bool { return a < b; }
-export function u32addw(a: u32, b: u32): u32 { return a +% b; }
-export function u32add(a: u32, b: u32): u32 { return a + b; }
-export function u32to64(a: u32): u64 { return a as u64; }
-export function i32to64(a: i32): i64 { return a as i64; }
-export function u32toi(a: u32): i32 { return a as i32; }
-export function itou(a: i32): u32 { return a as u32; }
-export function u8toi8(a: u8): i8 { return a as i8; }
-export function l2i(a: i64): i32 { return a as i32; }
-export function u64lt(a: u64, b: u64): bool { return a < b; }
-export function u64div(a: u64, b: u64): u64 { return a / b; }
-export function u64shr(a: u64, b: u64): u64 { return a >> b; }
-export function u64max(): u64 { return 18446744073709551615; }
-export function i64min(): i64 { return -9223372036854775808; }
-export function u64toi64(a: u64): i64 { return a as i64; }
-export function f2i(x: f64): i32 { return x as i32; }
-export function f2u8(x: f64): u8 { return x as u8; }
-export function f2u32(x: f64): u32 { return x as u32; }
-export function f2l(x: f64): i64 { return x as i64; }
-export function f2ul(x: f64): u64 { return x as u64; }
-export function i2f(x: i32): f64 { return x as f64; }
-export function l2f(x: i64): f64 { return x as f64; }
-export function ul2f(x: u64): f64 { return x as f64; }
-export function nanOut(): f64 { const z = 0.0; return z / z; }
-export function fdiv(a: f64, b: f64): f64 { return a / b; }
-export function fmin(a: f64, b: f64): f64 { return a < b ? a : b; }
-export function nanlt(a: f64): i32 { return (a < 1.0 ? 1 : 0) + (a >= 1.0 ? 2 : 0) + (a === a ? 4 : 0) + (a !== a ? 8 : 0); }
-export function negzero(a: f64): f64 { return -a; }
-export function fsub(a: f64, b: f64): f64 { return a - b; }
+@host export function addI(a: i32, b: i32): i32 { return a + b; }
+@host export function subI(a: i32, b: i32): i32 { return a - b; }
+@host export function mulI(a: i32, b: i32): i32 { return a * b; }
+@host export function divI(a: i32, b: i32): i32 { return a / b; }
+@host export function remI(a: i32, b: i32): i32 { return a % b; }
+@host export function negI(a: i32): i32 { return -a; }
+@host export function shlI(a: i32, b: i32): i32 { return a << b; }
+@host export function shrI(a: i32, b: i32): i32 { return a >> b; }
+@host export function addW(a: i32, b: i32): i32 { return a +% b; }
+@host export function mulW(a: i32, b: i32): i32 { return a *% b; }
+@host export function addS(a: i32, b: i32): i32 { return a +| b; }
+@host export function subS(a: i32, b: i32): i32 { return a -| b; }
+@host export function divL(a: i64, b: i64): i64 { return a / b; }
+@host export function remL(a: i64, b: i64): i64 { return a % b; }
+@host export function mulL(a: i64, b: i64): i64 { return a * b; }
+@host export function addL(a: i64, b: i64): i64 { return a + b; }
+@host export function negL(a: i64): i64 { return -a; }
+@host export function u8w(a: u8, b: u8): u8 { return a +% b; }
+@host export function u8sub(a: u8, b: u8): i32 { return (a -% b) as i32; }
+@host export function u8mul(a: u8, b: u8): u8 { return a * b; }
+@host export function u8mulw(a: u8, b: u8): i32 { return (a *% b) as i32; }
+@host export function u8shl(a: u8, b: u8): i32 { return (a << b) as i32; }
+@host export function u8not(a: u8): i32 { return (~a) as i32; }
+@host export function u8lt(a: u8, b: u8): bool { return (a +% b) < a; }
+@host export function u8sats(a: u8, b: u8): i32 { return (a +| b) as i32; }
+@host export function u8inc(a: u8): u8 { let x = a; x += 1; return x; }
+@host export function i8w(a: i8, b: i8): i32 { return (a *% b) as i32; }
+@host export function i8neg(a: i8): i8 { return -a; }
+@host export function i8divm(a: i8, b: i8): i8 { return a / b; }
+@host export function i8not(a: i8): i32 { return (~a) as i32; }
+@host export function i8sat(a: i8, b: i8): i32 { return (a -| b) as i32; }
+@host export function i16w(a: i16, b: i16): i32 { return (a +% b) as i32; }
+@host export function u16shl(a: u16, b: u16): i32 { return (a << b) as i32; }
+@host export function u32div(a: u32, b: u32): u32 { return a / b; }
+@host export function u32rem(a: u32, b: u32): u32 { return a % b; }
+@host export function u32shr(a: u32, b: u32): u32 { return a >> b; }
+@host export function u32lt(a: u32, b: u32): bool { return a < b; }
+@host export function u32addw(a: u32, b: u32): u32 { return a +% b; }
+@host export function u32add(a: u32, b: u32): u32 { return a + b; }
+@host export function u32to64(a: u32): u64 { return a as u64; }
+@host export function i32to64(a: i32): i64 { return a as i64; }
+@host export function u32toi(a: u32): i32 { return a as i32; }
+@host export function itou(a: i32): u32 { return a as u32; }
+@host export function u8toi8(a: u8): i8 { return a as i8; }
+@host export function l2i(a: i64): i32 { return a as i32; }
+@host export function u64lt(a: u64, b: u64): bool { return a < b; }
+@host export function u64div(a: u64, b: u64): u64 { return a / b; }
+@host export function u64shr(a: u64, b: u64): u64 { return a >> b; }
+@host export function u64max(): u64 { return 18446744073709551615; }
+@host export function i64min(): i64 { return -9223372036854775808; }
+@host export function u64toi64(a: u64): i64 { return a as i64; }
+@host export function f2i(x: f64): i32 { return x as i32; }
+@host export function f2u8(x: f64): u8 { return x as u8; }
+@host export function f2u32(x: f64): u32 { return x as u32; }
+@host export function f2l(x: f64): i64 { return x as i64; }
+@host export function f2ul(x: f64): u64 { return x as u64; }
+@host export function i2f(x: i32): f64 { return x as f64; }
+@host export function l2f(x: i64): f64 { return x as f64; }
+@host export function ul2f(x: u64): f64 { return x as f64; }
+@host export function nanOut(): f64 { const z = 0.0; return z / z; }
+@host export function fdiv(a: f64, b: f64): f64 { return a / b; }
+@host export function fmin(a: f64, b: f64): f64 { return a < b ? a : b; }
+@host export function nanlt(a: f64): i32 { return (a < 1.0 ? 1 : 0) + (a >= 1.0 ? 2 : 0) + (a === a ? 4 : 0) + (a !== a ? 8 : 0); }
+@host export function negzero(a: f64): f64 { return -a; }
+@host export function fsub(a: f64, b: f64): f64 { return a - b; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#;
 

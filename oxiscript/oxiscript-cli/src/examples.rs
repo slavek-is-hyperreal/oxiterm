@@ -142,8 +142,8 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
     ),
     (
         "OXS-E0121",
-        "export function main(x: i32): void {}\n",
-        "import { Log } from \"host:log\";\nexport function main(log: Log): void {}\n",
+        "struct P {\n  x: i32;\n}\n@host export function f(p: P): i32 {\n  return p.x;\n}\n",
+        "struct P {\n  x: i32;\n}\nexport function f(p: P): i32 {\n  return p.x;\n}\n",
     ),
     (
         "OXS-E0122",
