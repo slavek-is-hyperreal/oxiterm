@@ -37,9 +37,14 @@ fn valid_module_calls_log_and_state() {
     // state: bump from the guest, read from the host
     assert_eq!(rt.call_export("bump", &[]).unwrap(), vec![Value::I64(1)]);
     assert_eq!(rt.call_export("bump", &[]).unwrap(), vec![Value::I64(2)]);
-    assert_eq!(e.store.get("k"), Some(StateValue::I64(2)));
+    assert_eq!(
+        e.store.get_in(rt.namespace(), "k"),
+        Some(StateValue::I64(2))
+    );
     // host writes, guest sees
-    e.store.set("k", StateValue::I64(40)).unwrap();
+    e.store
+        .set_in(rt.namespace(), "k", StateValue::I64(40))
+        .unwrap();
     assert_eq!(rt.call_export("bump", &[]).unwrap(), vec![Value::I64(41)]);
     assert!(rt.last_fuel_used() > 0);
     assert!(rt.host_calls() >= 4);
@@ -444,14 +449,7 @@ fn capability_handle_from_another_interface_is_denied() {
             .unwrap_err(),
     );
     assert!(matches!(t.cause, TrapCause::HostDenied { .. }));
-    // handles of a *different instance* never validate
-    let mut other = quick(&f, &e);
-    let t = trap_of(
-        other
-            .call_export("log_with_cap", &[Value::I32(log_cap)])
-            .unwrap_err(),
-    );
-    assert!(matches!(t.cause, TrapCause::HostDenied { .. }));
+    // (cross-instance handles: see `handles_differ_per_instance_with_entropy_and_are_stable_without`)
 }
 
 #[test]
@@ -781,7 +779,10 @@ fn reload_swaps_code_and_keeps_host_state() {
     assert!(st.build.as_secs() < 5);
     // module-local state reset, host-held state survived
     assert_eq!(rt.call_export("local", &[]).unwrap(), vec![Value::I32(0)]);
-    assert_eq!(e.store.get("k"), Some(StateValue::I64(2)));
+    assert_eq!(
+        e.store.get_in(rt.namespace(), "k"),
+        Some(StateValue::I64(2))
+    );
     assert_eq!(rt.call_export("bump", &[]).unwrap(), vec![Value::I64(3)]);
     assert_eq!(rt.call_export("v2", &[]).unwrap(), vec![Value::I32(222)]);
     assert_eq!(e.host.live_instances(), 1);
@@ -1071,4 +1072,158 @@ fn queued_releases_are_bounded_per_pump() {
         total += s.released;
     }
     assert_eq!(total, 9);
+}
+
+#[test]
+fn handles_differ_per_instance_with_entropy_and_are_stable_without() {
+    use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
+    use oxiscript_runtime::caps::state::{StateLimits, StateProvider, StateStore};
+    let f = app().body(r#"(func (export "cap0") (result i32) (global.get $cap0))"#);
+    let mk = |entropy: Option<[u8; 16]>| {
+        let host = match entropy {
+            Some(e) => oxiscript_runtime::Host::with_entropy(Limits::default(), e),
+            None => oxiscript_runtime::Host::new(Limits::default()),
+        };
+        host.register(std::sync::Arc::new(LogProvider::new(
+            LogSink::new(8),
+            LogLimits::default(),
+        )))
+        .unwrap();
+        host.register(std::sync::Arc::new(StateProvider::new(StateStore::new(
+            StateLimits::default(),
+        ))))
+        .unwrap();
+        host
+    };
+    let cap = |h: &oxiscript_runtime::Host| {
+        let mut rt = h.instantiate(&f.bytes(), Grants::all()).unwrap();
+        match rt.call_export("cap0", &[]).unwrap()[0] {
+            Value::I32(x) => (x, rt),
+            _ => unreachable!(),
+        }
+    };
+    // deterministic mode: same module, same value, whatever the host did before
+    let h = mk(None);
+    let (a, ra) = cap(&h);
+    let (b, _rb) = cap(&h);
+    assert_eq!(a, b);
+    drop(ra);
+    // entropy mode: differs per instance and per secret; a handle of another
+    // instance is denied
+    let h = mk(Some([7; 16]));
+    let (a, _ra) = cap(&h);
+    let (b, mut rb) = cap(&h);
+    assert_ne!(a, b);
+    let (c, _) = cap(&mk(Some([8; 16])));
+    assert_ne!(a, c);
+    let t = trap_of(
+        rb.call_export("log_with_cap", &[Value::I32(a)])
+            .unwrap_err(),
+    );
+    assert!(matches!(t.cause, TrapCause::HostDenied { .. }));
+}
+
+#[test]
+fn state_namespaces_isolate_runtimes_and_survive_restart() {
+    let e = env();
+    let mut a = quick(&app(), &e);
+    let mut b = quick(&app(), &e);
+    assert_ne!(a.namespace(), b.namespace());
+    a.call_export("bump", &[]).unwrap();
+    a.restart().unwrap();
+    assert_eq!(a.call_export("bump", &[]).unwrap(), vec![Value::I64(2)]);
+    assert_eq!(b.call_export("bump", &[]).unwrap(), vec![Value::I64(1)]);
+    // host namespace is a read-only fallback: shadowed once the guest wrote
+    e.store.set("k", StateValue::I64(100)).unwrap();
+    assert_eq!(a.call_export("bump", &[]).unwrap(), vec![Value::I64(3)]);
+    // anonymous namespaces are freed with their runtime
+    let ns = b.namespace().to_string();
+    assert!(e.store.get_in(&ns, "k").is_some());
+    drop(b);
+    assert!(e.store.get_in(&ns, "k").is_none());
+    // named namespaces persist until the embedder clears them
+    let r = e
+        .host
+        .instantiate_in(&app().bytes(), Grants::all(), "app:one")
+        .unwrap();
+    drop(r);
+    e.store.set_in("app:one", "x", StateValue::I64(1)).unwrap();
+    assert_eq!(e.store.get_in("app:one", "x"), Some(StateValue::I64(1)));
+    assert!(e.store.delete_in("app:one", "x"));
+    e.store.clear_ns("app:one");
+    assert_eq!(e.store.bytes_in("app:one"), 0);
+}
+
+#[test]
+fn host_write_does_not_notify_a_shadowing_namespace() {
+    let e = env();
+    let mut rt = quick(&app_cb(), &e);
+    rt.call_export("bump", &[]).unwrap(); // guest now owns `k`
+    rt.pump().unwrap();
+    e.store.set("k", StateValue::I64(5)).unwrap();
+    assert_eq!(rt.pump().unwrap().delivered, 0);
+}
+
+#[test]
+fn reexported_imports_are_rejected() {
+    let e = env();
+    let f = app().body(r#"(export "relog" (func $log_write))"#);
+    assert_eq!(code_of(load(&e, &f)), "OXS-E0407");
+    let f = app_no_cb().body(r#"(export "cb:host:state@1.State.OnChange" (func $s_watch))"#);
+    assert_eq!(code_of(load(&e, &f)), "OXS-E0407");
+}
+
+#[test]
+fn revocation_is_sticky_until_regrant() {
+    let e = env();
+    e.store.set("k", StateValue::I64(1)).unwrap();
+    let mut rt = quick(&app(), &e);
+    assert!(rt.revoke("host:state@1"));
+    let _ = rt.call_export("unreachable", &[]);
+    rt.restart().unwrap();
+    assert_eq!(
+        rt.call_export("get_status", &[]).unwrap(),
+        vec![Value::I32(2)]
+    );
+    rt.reload(&app().bytes()).unwrap();
+    assert_eq!(
+        rt.call_export("get_status", &[]).unwrap(),
+        vec![Value::I32(2)]
+    );
+    assert!(rt.regrant("host:state@1"));
+    rt.restart().unwrap();
+    assert_eq!(
+        rt.call_export("get_status", &[]).unwrap(),
+        vec![Value::I32(0)]
+    );
+}
+
+#[test]
+fn release_queue_is_bounded_with_a_dedicated_code() {
+    let e = env();
+    let f = app().body(
+        r#"(func (export "rewatch_many") (param $n i32)
+             (local $i i32)
+             (loop $l
+               (call $s_watch (global.get $cap1) (global.get $slot) (i32.add (i32.const 5000) (local.get $i)))
+               (local.set $i (i32.add (local.get $i) (i32.const 1)))
+               (br_if $l (i32.lt_u (local.get $i) (local.get 0)))))"#,
+    );
+    let mut rt = quick(&f, &e);
+    let t = trap_of(
+        rt.call_export("rewatch_many", &[Value::I32(100_000)])
+            .unwrap_err(),
+    );
+    assert!(matches!(t.cause, TrapCause::QueueFull(_)));
+    assert_eq!(t.code(), "OXS-E0429");
+    assert!(rt.host_calls() <= 1024 + 8, "{}", rt.host_calls());
+}
+
+#[test]
+fn log_lines_are_sanitised() {
+    use oxiscript_runtime::caps::log::sanitize;
+    assert_eq!(sanitize("a\nb\x1b[2Jc\0", 100), "a\\x0ab\\x1b[2Jc\\x00");
+    // never cut inside an escape
+    assert_eq!(sanitize("ab\n", 4), "ab");
+    assert!(!sanitize("\u{85}\u{7f}x", 100).chars().any(char::is_control));
 }

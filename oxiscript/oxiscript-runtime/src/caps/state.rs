@@ -118,7 +118,9 @@ impl Inner {
         if ns == HOST_NS {
             if let Some(ids) = self.by_key.get(key) {
                 for id in ids {
-                    let Some(s) = self.subs.get_mut(id) else { continue };
+                    let Some(s) = self.subs.get_mut(id) else {
+                        continue;
+                    };
                     let shadowed = self
                         .ns
                         .get(&s.ns)

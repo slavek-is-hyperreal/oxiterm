@@ -88,6 +88,7 @@ pub struct HostOptions {
     pub no_clock: bool,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn default_clock() -> Option<Clock> {
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     {
@@ -197,7 +198,10 @@ impl Host {
     /// Build a runtime from a `.wasm` module in a fresh anonymous state
     /// namespace (freed when the `Runtime` drops).
     pub fn instantiate(&self, wasm: &[u8], grants: Grants) -> Result<Runtime> {
-        let ns = format!("~rt{}", self.inner.ns_counter.fetch_add(1, Ordering::SeqCst));
+        let ns = format!(
+            "~rt{}",
+            self.inner.ns_counter.fetch_add(1, Ordering::SeqCst)
+        );
         Runtime::new(self, wasm, grants, ns, true)
     }
 
@@ -657,7 +661,13 @@ impl Runtime {
     /// instance first, then swap. On error the old instance is untouched.
     pub fn reload(&mut self, wasm: &[u8]) -> Result<ReloadStats> {
         let t = self.host.clock.as_ref().map(|c| c());
-        let new = Instance::build(&self.host, wasm, &self.grants, &self.namespace, &self.revoked)?;
+        let new = Instance::build(
+            &self.host,
+            wasm,
+            &self.grants,
+            &self.namespace,
+            &self.revoked,
+        )?;
         let build = match (t, self.host.clock.as_ref()) {
             (Some(t0), Some(c)) => Duration::from_micros(c().saturating_sub(t0)),
             _ => Duration::ZERO,
