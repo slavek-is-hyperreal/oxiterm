@@ -6,3 +6,17 @@ license = "MIT OR Apache-2.0"
 description = "OxiIR to Core WebAssembly code generator (Phase 8)."
 
 [dependencies]
+oxiscript-abi = { path = "../oxiscript-abi" }
+oxiscript-ir = { path = "../oxiscript-ir" }
+# Bytecode Alliance; Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT.
+wasm-encoder = { version = "0.263", default-features = false, features = ["std"] }
+# Same licence; validates our own output with exactly the ABI feature set.
+wasmparser = { version = "0.263", default-features = false, features = ["std", "validate", "features"] }
+
+[dev-dependencies]
+oxiscript-runtime = { path = "../oxiscript-runtime" }
+# Same version/features as oxiscript-runtime (MIT OR Apache-2.0); differential tests.
+wasmi = { version = "2.0.3", default-features = false, features = ["validate", "deterministic", "stable", "auto-dispatch"] }
+# Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.
+wasmprinter = "0.263"
+wat = "1"
