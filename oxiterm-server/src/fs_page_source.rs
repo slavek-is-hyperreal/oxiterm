@@ -6,7 +6,7 @@ use oxiterm_proto::style::RenderMode;
 use oxiterm_renderer::document::THTMLDocument;
 use tracing::warn;
 
-use crate::page_source::{strip_mobile, PageError, PageRef, PageSource};
+use crate::page_source::{page_path, strip_mobile, target_is_well_formed, PageError, PageRef, PageSource};
 
 /// How `FsPageSource` finds its root.
 enum Root {
@@ -55,12 +55,17 @@ impl PageSource for FsPageSource {
             Some(b) => b.base.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| root.clone()),
             None => root.clone(),
         };
-        let non_mobile = dir.join(strip_mobile(target));
+        if !target_is_well_formed(target) {
+            return Err(PageError::Unavailable);
+        }
+        // Same id normalisation as `MemPageSource` (`.`/empty segments dropped, `..` kept).
+        let non_mobile = page_path(&dir, &strip_mobile(target));
         let actual = crate::pathsafe::resolve_variant(&non_mobile, mobile);
 
         // Containment gate: reject path traversals and non-existent targets with one generic
         // error; do not distinguish traversal from a missing file.
-        if !crate::pathsafe::is_within_base(&root, &actual) {
+        // A page is a regular file with no foreign hard link (see `pathsafe::is_multi_linked`).
+        if !crate::pathsafe::is_within_base(&root, &actual) || !actual.is_file() || crate::pathsafe::is_multi_linked(&actual) {
             warn!("resolve_and_load_page: blocked path traversal or missing file for {:?}", actual);
             return Err(PageError::Unavailable);
         }

@@ -235,3 +235,4 @@ pub enum MouseAction {
 }
 
 pub mod decoder;
+pub mod wire;

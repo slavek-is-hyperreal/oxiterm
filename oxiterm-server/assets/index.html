@@ -353,7 +353,30 @@
 
     <!-- WASM Entry Module -->
     <script type="module">
-        import init, { WebTerminal } from "./oxiterm_web.js";
+        // ── Bundle selection (OxiUI 7.1) ───────────────────────────────────────
+        // Two bundles from one crate: oxiterm_web (thin + cell clients, no core) and
+        // oxiterm_local (adds the core, text shaping and the fonts: 3+ MB). The big one is loaded
+        // only for `?local=1`, and only when the server has local mode switched on: pages.json is
+        // probed first, and a refusal (404 = off, 401/403 = not allowed) falls back to the thin
+        // GUI client with the ordinary WebSocket session.
+        const pageParams = new URLSearchParams(window.location.search);
+        const wantLocal = pageParams.get('local') === '1';
+        let localIdx = null;       // the parsed pages.json when local mode is available
+        let localSession = '';     // the signed session token minted with it
+        if (wantLocal) {
+            try {
+                const res = await fetch('/oxiui/local/pages.json', { cache: 'no-store' });
+                if (res.ok) {
+                    localSession = res.headers.get('X-OxiTerm-Local-Session') || '';
+                    localIdx = await res.json();
+                }
+            } catch (e) { /* fall through to the thin GUI */ }
+            if (!localIdx) console.info('OxiUI: local mode is not available on this server; using the thin GUI client');
+        }
+        // Namespace import: the thin bundle has no LocalApp.
+        const oxi = await import(localIdx ? './oxiterm_local.js' : './oxiterm_web.js');
+        const init = oxi.default;
+        const WebTerminal = oxi.WebTerminal;
 
         // ── DOM refs ───────────────────────────────────────────────────────────
         const canvas       = document.getElementById("terminal-canvas");
@@ -401,7 +424,9 @@
         // ── GUI (display-list) mode: opt-in with ?gui=1 (OxiUI phase 3a) ───────
         // Read once at load: the 0x30 page announce rewrites the URL, and reconnects must
         // keep the mode. Cell-diff mode stays the default.
-        const guiMode = new URLSearchParams(window.location.search).get('gui') === '1';
+        // `?local=1` (OxiUI 7.1) runs the core in this page, no WebSocket; it implies GUI mode.
+        const localMode = localIdx !== null;
+        const guiMode = wantLocal || pageParams.get('gui') === '1';
         let dlActive = false;                 // per socket: set when the first 0x36 arrives
         let dlChain = Promise.resolve();      // frames are painted strictly in arrival order
         let lastDlPayload = null;             // last inflated list, repainted after a resize
@@ -694,6 +719,118 @@
             }
         }
 
+
+        // ── Local mode (OxiUI 7.1): oxiterm-core runs in this page ─────────────────────────
+        // The page's input code is unchanged: `currentSocket` is a stand-in whose send() hands the
+        // very same binary messages (0x01/0x02/0x03/0x10/0x11/0x31) to the in-page core. Frames go
+        // from the core's display list straight to the painter; side-channel messages (page
+        // announce, notices, ARIA mirror, media coordinates) come back through onMessage().
+        let localApp = null;
+        let localTimer = null;
+        const localSock = {
+            readyState: 1,   // WebSocket.OPEN
+            send(buf) { if (localApp) { localApp.input(buf, performance.now()); localPump(); } },
+            close() {},
+        };
+
+        // The core embeds the faces it measures with: hand those bytes to FontFace (no download).
+        async function loadLocalFonts() {
+            try {
+                const m = JSON.parse(oxi.local_fonts_json());
+                if (!(m.cell_w_px > 0 && m.cell_h_px > 0 && m.font_size_px > 0 && Array.isArray(m.faces))) {
+                    throw new Error('bad embedded font metrics');
+                }
+                await Promise.all(m.faces.map(async (f) => {
+                    const desc = f.id === 'oxi-mono' ? { featureSettings: '"liga" 0, "calt" 0' } : {};
+                    const face = new FontFace(f.id, oxi.local_font_bytes(f.id), desc);
+                    await face.load();
+                    document.fonts.add(face);
+                }));
+                return m;
+            } catch (e) {
+                console.warn('OxiUI: embedded fonts unavailable, using the browser monospace cell:', e);
+                return null;
+            }
+        }
+
+        async function startLocal() {
+            const idx = localIdx;
+            if (idx.truncated) console.warn('OxiUI local mode: the page index was truncated by a server cap');
+            resizeTerminal(true);   // dims for the core; nothing is sent yet (no socket)
+            const pagesJson = JSON.stringify({ pages: idx.pages, dirs: idx.dirs || [] });
+            const token = localStorage.getItem('oxiterm_app_token') || '';
+            const wanted = new URLSearchParams(window.location.search).get('page');
+            const make = (page) => new oxi.LocalApp(pagesJson, page, currentCols, currentRows, isMobile, !!idx.actions, token, performance.now());
+            try {
+                localApp = make(wanted || idx.start);
+            } catch (e) {
+                try { localApp = make(idx.start); } catch (e2) { console.warn('OxiUI local mode: cannot start', e2); overlayText.textContent = 'Local mode unavailable.'; return; }
+            }
+            needsClear = false;
+            dlActive = true;
+            clearMediaLayer();
+            clearA11yLayer();
+            currentSocket = localSock;
+            setUiState('CONNECTED', 'Local');
+            canvas.focus();
+            localPump();
+        }
+
+        function localPump() {
+            if (!localApp) return;
+            localApp.pump(term, performance.now());
+            drainLocal();
+            if (localTimer) clearTimeout(localTimer);
+            const d = Math.max(4, localApp.next_delay_ms(performance.now()));
+            localTimer = setTimeout(() => { localTimer = null; localPump(); }, d);
+        }
+
+        function drainLocal() {
+            const packed = localApp.take_messages();
+            const dv = new DataView(packed.buffer, packed.byteOffset, packed.byteLength);
+            for (let i = 0; i + 4 <= packed.length;) {
+                const n = dv.getUint32(i, true);
+                const m = packed.slice(i + 4, i + 4 + n);
+                i += 4 + n;
+                if (m[0] === 0xE0) {
+                    fetchLocalAsset(new DataView(m.buffer).getUint32(1, true), new TextDecoder().decode(m.subarray(5)));
+                } else {
+                    onMessage({ data: m.buffer });
+                }
+            }
+            for (const a of JSON.parse(localApp.take_actions())) runLocalAction(a);
+        }
+
+        // An action the core parked: the same-origin proxy holds the App Server token. Any
+        // failure is "no response", like a dead App Server; built-in state actions already ran.
+        async function runLocalAction(a) {
+            const app = localApp;
+            try {
+                const res = await fetch('/oxiui/local/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OxiTerm-Local-Session': localSession }, body: a.body });
+                if (app !== localApp) return;
+                if (res.status === 200) app.action_reply(a.id, await res.text()); else app.action_failed(a.id);
+            } catch (e) {
+                if (app === localApp) app.action_failed(a.id);
+            }
+            localPump();
+        }
+
+        async function fetchLocalAsset(hash, rel) {
+            const app = localApp;
+            try {
+                const res = await fetch('/oxiui/local/asset/' + rel.split('/').map(encodeURIComponent).join('/'));
+                if (!res.ok || app !== localApp) return;
+                const bytes = new Uint8Array(await res.arrayBuffer());
+                const msg = new Uint8Array(5 + bytes.length);
+                msg[0] = 0x20;
+                new DataView(msg.buffer).setUint32(1, hash, true);
+                msg.set(bytes, 5);
+                onMessage({ data: msg.buffer });   // cache it like a 0x20 blob
+                app.media_refresh();               // and re-emit the coordinates
+                drainLocal();
+            } catch (e) { /* the media slot stays empty */ }
+        }
+
         // ── connect() — sets up socket only; listeners are registered once in boot() ──
         async function connect() {
             // Init WASM exactly once
@@ -701,11 +838,13 @@
                 await init();
                 // GUI mode: the cell is the server's (bundled mono face), loaded BEFORE the first
                 // 0x10 dims. Any failure falls back to measuring the browser monospace.
-                const gf = guiMode ? await loadGuiFonts() : null;
+                const gf = localMode ? await loadLocalFonts() : guiMode ? await loadGuiFonts() : null;
                 term = new WebTerminal(canvas, gf ? `${gf.font_size_px}px "oxi-mono"` : "16px monospace", 20.0);
                 [charWidth, charHeight] = term.get_char_dimensions();
                 if (gf) { charWidth = gf.cell_w_px; charHeight = gf.cell_h_px; }
             }
+
+            if (localMode) { await startLocal(); return; }
 
             // R6a: consume session token from URL, store in sessionStorage, scrub URL
             const urlOnLoad = new URL(window.location);
@@ -915,7 +1054,7 @@
                 const pagePath = new TextDecoder().decode(bytes.subarray(1));
                 const url = new URL(window.location);
                 if (url.searchParams.get('page') !== pagePath) {
-                    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}${guiMode ? '&gui=1' : ''}`;
+                    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?page=${encodeURIComponent(pagePath)}${localMode ? '&local=1' : guiMode ? '&gui=1' : ''}`;
                     window.history.pushState({ page: pagePath }, '', newUrl);
                 }
                 return;
@@ -1067,6 +1206,7 @@
                         .then(() => { if (lastDlPayload) term.draw_display_list(lastDlPayload); })
                         .catch((e) => console.warn('display list repaint failed', e));
                 }
+                if (localMode && localApp) localApp.repaint(term);
 
                 if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
                     const buf = new Uint8Array(5);

@@ -29,7 +29,10 @@ pub mod web_impl {
     use futures::{StreamExt, SinkExt};
     use tracing::{info, warn, error};
     use crate::session::{SessionRegistry, PtyDimensions, EventLoop, ClientSession};
-    use oxiterm_proto::input::{InputEvent, KeyEvent, KeyModifiers, KeyKind, MouseInput, MouseButton, MouseAction, PointerInput};
+    #[cfg(test)]
+    #[allow(unused_imports)]
+    use oxiterm_proto::input::{MouseAction, MouseButton};
+    use oxiterm_proto::input::{InputEvent, PointerInput};
     use oxiterm_renderer::FrameSink;
     use oxiterm_renderer::CellBuffer;
     use oxiterm_renderer::DiffEngine;
@@ -43,6 +46,10 @@ pub mod web_impl {
     const HTML_ASSET: &[u8] = include_bytes!("../assets/index.html");
     const JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web.js");
     const WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_web_bg.wasm");
+    // The local-mode bundle (the same crate built with `--features local`, `--out-name
+    // oxiterm_local`): served only when local mode is on, loaded by the page only for `?local=1`.
+    const LOCAL_JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local.js");
+    const LOCAL_WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local_bg.wasm");
     /// Client-side coordinate round-trip tests. Compiled into the binary but injected into
     /// the served page ONLY in web-test mode (`OXITERM_WEB_TEST`), so real users never load it.
     const WEB_TEST_JS: &str = include_str!("../assets/web_coord_tests.js");
@@ -76,35 +83,7 @@ pub mod web_impl {
     /// bytes mean what they mean in `0x02`. Anything shorter than 12 bytes or with a
     /// non-finite coordinate is dropped (`None`); trailing bytes are ignored.
     pub fn decode_pointer(bytes: &[u8]) -> Option<PointerInput> {
-        if bytes.len() < 12 || bytes[0] != 0x03 {
-            return None;
-        }
-        let x = f32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-        let y = f32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        if !x.is_finite() || !y.is_finite() {
-            return None;
-        }
-        let button = match bytes[9] {
-            0 => MouseButton::Left,
-            1 => MouseButton::Middle,
-            2 => MouseButton::Right,
-            3 => MouseButton::WheelUp,
-            4 => MouseButton::WheelDown,
-            _ => MouseButton::None,
-        };
-        let action = match bytes[10] {
-            0 => MouseAction::Press,
-            1 => MouseAction::Release,
-            _ => MouseAction::Move,
-        };
-        let flags = bytes[11];
-        Some(PointerInput {
-            x,
-            y,
-            button,
-            action,
-            modifiers: KeyModifiers { shift: flags & 1 != 0, ctrl: flags & 2 != 0, alt: flags & 4 != 0, ..Default::default() },
-        })
+        oxiterm_proto::input::wire::decode_pointer(bytes)
     }
 
     pub fn hash_path(path: &str) -> u32 {
@@ -553,7 +532,7 @@ pub mod web_impl {
                         let initial_doc = initial_doc.clone();
                         let source_path = source_path.clone();
                         async move {
-                            handle_request(req, registry, initial_doc, source_path, peer_addr).await
+                            serve_request(req, registry, initial_doc, source_path, peer_addr).await
                         }
                     });
 
@@ -581,6 +560,28 @@ pub mod web_impl {
         }
     }
 
+    /// Who a web request is: a trusted-header user, or a guest (when guests are allowed).
+    /// `None` = refuse with 401. Shared by `/ws` and the local-mode routes.
+    fn resolve_identity(headers: &hyper::HeaderMap, peer_addr: std::net::SocketAddr) -> Option<crate::identity::UserIdentity> {
+        let forwarded_user = headers.get("X-Forwarded-User").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let trusted_proxy = std::env::var("OXITERM_TRUSTED_PROXY").ok();
+        let allow_guest = match std::env::var("OXITERM_ALLOW_GUEST") {
+            Ok(v) => v != "false" && v != "0",
+            Err(_) => true, // default = true (unset) (F1)
+        };
+        match (forwarded_user, trusted_proxy) {
+            (Some(user), Some(proxy)) => match crate::identity::UserIdentity::from_trusted_header(&user, peer_addr, &proxy) {
+                Some(id) => Some(id),
+                None => allow_guest.then(crate::identity::UserIdentity::guest),
+            },
+            (None, _) => allow_guest.then(crate::identity::UserIdentity::guest),
+            (Some(user), None) => {
+                warn!("X-Forwarded-User '{}' received but OXITERM_TRUSTED_PROXY not set; ignoring", user);
+                allow_guest.then(crate::identity::UserIdentity::guest)
+            }
+        }
+    }
+
     fn http_401() -> Response<Full<Bytes>> {
         Response::builder()
             .status(StatusCode::UNAUTHORIZED)
@@ -595,6 +596,199 @@ pub mod web_impl {
             .unwrap()
     }
 
+    /// Plain response with optional gzip (same policy as the static routes) and extra headers.
+    fn local_response(accepts_gzip: bool, status: StatusCode, mime: &str, body: Vec<u8>, extra: &[(&'static str, &'static str)]) -> Response<Full<Bytes>> {
+        let mut out = body;
+        let mut gz = false;
+        if accepts_gzip && status == StatusCode::OK {
+            use flate2::write::GzEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+            let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+            if enc.write_all(&out).is_ok() {
+                if let Ok(c) = enc.finish() {
+                    out = c;
+                    gz = true;
+                }
+            }
+        }
+        let mut res = Response::builder()
+            .status(status)
+            .header("Content-Type", mime)
+            .header("Content-Length", out.len())
+            .body(Full::new(Bytes::from(out)))
+            .unwrap();
+        if gz {
+            res.headers_mut().insert("Content-Encoding", hyper::header::HeaderValue::from_static("gzip"));
+        }
+        for (k, v) in extra {
+            res.headers_mut().insert(*k, hyper::header::HeaderValue::from_static(v));
+        }
+        res
+    }
+
+    /// Generic 403/404/... answer of the local routes.
+    fn local_status(accepts_gzip: bool, status: StatusCode) -> Response<Full<Bytes>> {
+        local_response(accepts_gzip, status, "text/plain", status.canonical_reason().unwrap_or("Error").as_bytes().to_vec(), &[])
+    }
+
+    /// The common front door of every `/oxiui/local/*` request: local mode on, `Host` allowed,
+    /// identity (the `/ws` rules). `Err` is the response to send. Off means one uniform 404.
+    fn local_gate(req_headers: &hyper::HeaderMap, accepts_gzip: bool, peer_addr: std::net::SocketAddr) -> Result<crate::identity::UserIdentity, Response<Full<Bytes>>> {
+        if !crate::local_mode::enabled() {
+            return Err(local_status(accepts_gzip, StatusCode::NOT_FOUND));
+        }
+        if !crate::local_mode::host_allowed(req_headers) {
+            return Err(local_status(accepts_gzip, StatusCode::FORBIDDEN));
+        }
+        resolve_identity(req_headers, peer_addr).ok_or_else(http_401)
+    }
+
+    /// `/oxiui/local/*` except assets: `GET pages.json`, `POST events`. Off by default; with no
+    /// start page (the server was not started with one) or on any refusal the answer is one
+    /// generic 404, so nothing about the filesystem can be probed.
+    async fn local_route(
+        req: Request<Incoming>,
+        source_path: Option<std::path::PathBuf>,
+        peer_addr: std::net::SocketAddr,
+    ) -> Result<Response<Full<Bytes>>, hyper::Error> {
+        use crate::local_mode as lm;
+        let accepts_gzip = req.headers().get("Accept-Encoding").and_then(|v| v.to_str().ok()).map_or(false, |v| v.contains("gzip"));
+        let identity = match local_gate(req.headers(), accepts_gzip, peer_addr) {
+            Ok(i) => i,
+            Err(r) => return Ok(r),
+        };
+        let not_found = || local_status(accepts_gzip, StatusCode::NOT_FOUND);
+        let path = req.uri().path().to_string();
+        let method = req.method().clone();
+        let Some(source) = source_path else { return Ok(not_found()) };
+        let base = lm::app_base(&source);
+
+        if method == hyper::Method::POST && path == "/oxiui/local/events" {
+            use http_body_util::BodyExt;
+            if lm::app_server_url().is_none() {
+                return Ok(not_found());
+            }
+            if let Err(code) = lm::check_same_origin_json(req.headers()) {
+                return Ok(local_status(accepts_gzip, StatusCode::from_u16(code).unwrap_or(StatusCode::FORBIDDEN)));
+            }
+            // The session token was minted with pages.json for this page load; a missing or
+            // forged one is refused (the custom header also forces a CORS preflight).
+            let Some(session_id) = req.headers().get(lm::SESSION_HEADER).and_then(|v| v.to_str().ok()).and_then(lm::verify_session) else {
+                return Ok(local_status(accepts_gzip, StatusCode::FORBIDDEN));
+            };
+            let limited = http_body_util::Limited::new(req.into_body(), lm::MAX_EVENT_BODY);
+            let bytes = match limited.collect().await {
+                Ok(c) => c.to_bytes(),
+                Err(_) => return Ok(payload_too_large()),
+            };
+            let (status, body) = tokio::task::spawn_blocking(move || match lm::local_index(&base) {
+                Some(idx) => {
+                    let ctx = lm::ProxyCtx { session_id, actions: idx.actions.clone(), bound_keys: idx.bound_keys.clone() };
+                    lm::proxy_event_ctx(&bytes, &identity, &ctx)
+                }
+                None => (404, b"Not Found".to_vec()),
+            })
+            .await
+            .unwrap_or((502, b"Bad Gateway".to_vec()));
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            let mime = if status == StatusCode::OK { "application/json" } else { "text/plain" };
+            return Ok(local_response(accepts_gzip, status, mime, body, &[("Cache-Control", "no-store")]));
+        }
+        if method == hyper::Method::GET && path == "/oxiui/local/pages.json" {
+            let Some(start) = lm::start_page(&source) else { return Ok(not_found()) };
+            let actions = lm::app_server_url().is_some();
+            let json = tokio::task::spawn_blocking(move || lm::local_index(&base).and_then(|i| i.json(&start, actions))).await.ok().flatten();
+            return Ok(match json {
+                Some(j) => {
+                    let (_, token) = lm::mint_session();
+                    let mut r = local_response(accepts_gzip, StatusCode::OK, "application/json", j, &[("Cache-Control", "no-store")]);
+                    if let Ok(v) = hyper::header::HeaderValue::from_str(&token) {
+                        r.headers_mut().insert("X-OxiTerm-Local-Session", v);
+                    }
+                    r
+                }
+                None => not_found(),
+            });
+        }
+        Ok(not_found())
+    }
+
+    /// Body type of the server's responses: everything but a local asset is a `Full` body.
+    type RespBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
+
+    /// `GET /oxiui/local/asset/<path>`: a media file under the app base, streamed from disk in
+    /// 64 KiB frames (a 16 MiB video no longer sits in memory per request). sandbox + nosniff:
+    /// an SVG opened directly cannot run script in the page's origin.
+    async fn local_asset(
+        req: Request<Incoming>,
+        source_path: Option<std::path::PathBuf>,
+        peer_addr: std::net::SocketAddr,
+    ) -> Response<RespBody> {
+        use crate::local_mode as lm;
+        use http_body_util::BodyExt;
+        use tokio::io::AsyncReadExt;
+        let boxed = |r: Response<Full<Bytes>>| r.map(|b| b.map_err(|e| match e {}).boxed());
+        let accepts_gzip = false;
+        if let Err(r) = local_gate(req.headers(), accepts_gzip, peer_addr) {
+            return boxed(r);
+        }
+        let not_found = || boxed(local_status(accepts_gzip, StatusCode::NOT_FOUND));
+        if req.method() != hyper::Method::GET {
+            return not_found();
+        }
+        let Some(source) = source_path else { return not_found() };
+        let base = lm::app_base(&source);
+        let rest = req.uri().path().strip_prefix("/oxiui/local/asset/").unwrap_or("").to_string();
+        let Some(asset) = tokio::task::spawn_blocking(move || lm::resolve_asset(&base, &rest)).await.ok().flatten() else { return not_found() };
+        let Ok(file) = tokio::fs::File::open(&asset.path).await else { return not_found() };
+        // Re-check the file actually opened (the path may have been swapped since resolve).
+        let Ok(meta) = file.metadata().await else { return not_found() };
+        if !lm::check_opened_asset(&meta) {
+            return not_found();
+        }
+        let len = meta.len();
+        let stream = futures::stream::unfold((file, len), |(mut f, rem)| async move {
+            if rem == 0 {
+                return None;
+            }
+            let mut buf = vec![0u8; rem.min(64 * 1024) as usize];
+            match f.read(&mut buf).await {
+                Ok(0) => None,
+                Ok(n) => {
+                    buf.truncate(n);
+                    Some((Ok(hyper::body::Frame::data(Bytes::from(buf))), (f, rem - n as u64)))
+                }
+                Err(e) => Some((Err(e), (f, 0))),
+            }
+        });
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", asset.mime)
+            .header("Content-Length", len)
+            .header("Cache-Control", "no-cache")
+            .header("X-Content-Type-Options", "nosniff")
+            .header("Content-Security-Policy", "sandbox")
+            .body(BodyExt::boxed(http_body_util::StreamBody::new(stream)))
+            .unwrap()
+    }
+
+    /// The service entry: assets stream, everything else is `handle_request`'s `Full` body.
+    async fn serve_request(
+        req: Request<Incoming>,
+        registry: Arc<SessionRegistry>,
+        initial_doc: Option<oxiterm_renderer::THTMLDocument>,
+        source_path: Option<std::path::PathBuf>,
+        peer_addr: std::net::SocketAddr,
+    ) -> Result<Response<RespBody>, hyper::Error> {
+        use http_body_util::BodyExt;
+        if req.uri().path().starts_with("/oxiui/local/asset/") {
+            return Ok(local_asset(req, source_path, peer_addr).await);
+        }
+        let r = handle_request(req, registry, initial_doc, source_path, peer_addr).await?;
+        Ok(r.map(|b| b.map_err(|e| match e {}).boxed()))
+    }
+
     async fn handle_request(
         mut req: Request<Incoming>,
         registry: Arc<SessionRegistry>,
@@ -602,6 +796,10 @@ pub mod web_impl {
         source_path: Option<std::path::PathBuf>,
         peer_addr: std::net::SocketAddr,
     ) -> Result<Response<Full<Bytes>>, hyper::Error> {
+        // Browser local mode (OxiUI 7.1): page index, media assets, App Server proxy.
+        if req.uri().path().starts_with("/oxiui/local/") {
+            return local_route(req, source_path, peer_addr).await;
+        }
         let path = req.uri().path();
 
         // Handle POST /sessions/{id}/patch (Phase 5)
@@ -650,6 +848,11 @@ pub mod web_impl {
                 Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Bad Request"))).unwrap()),
             };
 
+            // Local-mode page loads have ids in their own namespace; a push cannot address one (and
+            // never reaches a thin client, whose ids are small registry counters).
+            if crate::local_mode::is_local_session_id(session_id) {
+                return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(Full::new(Bytes::from("Not Found"))).unwrap());
+            }
             let session = {
                 let sessions = registry.sessions.read();
                 sessions.get(&session_id).cloned()
@@ -733,32 +936,12 @@ pub mod web_impl {
         let connection_header = req.headers().get("Connection").and_then(|h| h.to_str().ok()).unwrap_or_default().to_lowercase();
         if path == "/ws" && upgrade_header == "websocket" && connection_header.contains("upgrade") {
             // Determine user identity for this Web session (Phase 4 / F1)
-            let forwarded_user = req.headers().get("X-Forwarded-User").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
-            let trusted_proxy = std::env::var("OXITERM_TRUSTED_PROXY").ok();
-            let allow_guest = match std::env::var("OXITERM_ALLOW_GUEST") {
-                Ok(v) => v != "false" && v != "0",
-                Err(_) => true, // default = true (unset) (F1)
-            };
-
-            let identity: Option<crate::identity::UserIdentity> = match (forwarded_user, trusted_proxy) {
-                (Some(user), Some(proxy)) => {
-                    match crate::identity::UserIdentity::from_trusted_header(&user, peer_addr, &proxy) {
-                        Some(id) => Some(id),
-                        None => {
-                            if allow_guest { Some(crate::identity::UserIdentity::guest()) }
-                            else { return Ok(http_401()); }
-                        }
-                    }
-                }
-                (None, _) => {
-                    if allow_guest { Some(crate::identity::UserIdentity::guest()) }
-                    else { return Ok(http_401()); }
-                }
-                (Some(user), None) => {
-                    warn!("X-Forwarded-User '{}' received but OXITERM_TRUSTED_PROXY not set; ignoring", user);
-                    if allow_guest { Some(crate::identity::UserIdentity::guest()) }
-                    else { return Ok(http_401()); }
-                }
+            if !crate::local_mode::host_allowed(req.headers()) {
+                return Ok(Response::builder().status(StatusCode::FORBIDDEN).body(Full::new(Bytes::from("Forbidden"))).unwrap());
+            }
+            let identity: Option<crate::identity::UserIdentity> = match resolve_identity(req.headers(), peer_addr) {
+                Some(id) => Some(id),
+                None => return Ok(http_401()),
             };
 
             let sec_ws_key = req.headers().get("Sec-WebSocket-Key")
@@ -828,6 +1011,12 @@ pub mod web_impl {
             }
             "/oxiterm_web_bg.wasm" => {
                 (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(WASM_ASSET))
+            }
+            "/oxiterm_local.js" if crate::local_mode::enabled() => {
+                (StatusCode::OK, "application/javascript", std::borrow::Cow::Borrowed(LOCAL_JS_ASSET))
+            }
+            "/oxiterm_local_bg.wasm" if crate::local_mode::enabled() => {
+                (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(LOCAL_WASM_ASSET))
             }
             "/oxiui/fonts.json" => {
                 let json = serde_json::to_vec(oxiterm_renderer::text::bundle::FontBundle::metrics()).unwrap_or_default();
@@ -1023,9 +1212,7 @@ pub mod web_impl {
                     continue;
                 }
                 if !bytes.is_empty() && bytes[0] == 0x10 {
-                    if bytes.len() >= 5 {
-                        let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
-                        let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
+                    if let Some((cols, rows)) = oxiterm_proto::input::wire::decode_resize(&bytes) {
                         *client_session.dims.write() = PtyDimensions { cols, rows };
                         dims = PtyDimensions { cols, rows };
                         break;
@@ -1155,66 +1342,12 @@ pub mod web_impl {
                 let tag = bytes[0];
                 match tag {
                     0x01 => {
-                        if bytes.len() >= 6 {
-                            let val = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-                            if let Some(codepoint) = char::from_u32(val) {
-                                let flags = bytes[5];
-                                let shift = (flags & 1) != 0;
-                                let ctrl = (flags & 2) != 0;
-                                let alt = (flags & 4) != 0;
-                                let key_event = KeyEvent {
-                                    codepoint,
-                                    modifiers: KeyModifiers {
-                                        shift,
-                                        ctrl,
-                                        alt,
-                                        ..Default::default()
-                                    },
-                                    kind: KeyKind::Press,
-                                };
-                                let _ = client_session.event_tx.try_send(InputEvent::KeyPress(key_event));
-                            }
+                        if let Some(key_event) = oxiterm_proto::input::wire::decode_key(&bytes) {
+                            let _ = client_session.event_tx.try_send(InputEvent::KeyPress(key_event));
                         }
                     }
                     0x02 => {
-                        if bytes.len() >= 8 {
-                            let col = u16::from_le_bytes([bytes[1], bytes[2]]);
-                            let row = u16::from_le_bytes([bytes[3], bytes[4]]);
-                            let button_byte = bytes[5];
-                            let action_byte = bytes[6];
-                            let flags = bytes[7];
-
-                            let button = match button_byte {
-                                0 => MouseButton::Left,
-                                1 => MouseButton::Middle,
-                                2 => MouseButton::Right,
-                                3 => MouseButton::WheelUp,
-                                4 => MouseButton::WheelDown,
-                                _ => MouseButton::None,
-                            };
-
-                            let action = match action_byte {
-                                0 => MouseAction::Press,
-                                1 => MouseAction::Release,
-                                _ => MouseAction::Move,
-                            };
-
-                            let shift = (flags & 1) != 0;
-                            let ctrl = (flags & 2) != 0;
-                            let alt = (flags & 4) != 0;
-
-                            let mouse_event = MouseInput {
-                                col,
-                                row,
-                                button,
-                                action,
-                                modifiers: KeyModifiers {
-                                    shift,
-                                    ctrl,
-                                    alt,
-                                    ..Default::default()
-                                },
-                            };
+                        if let Some(mouse_event) = oxiterm_proto::input::wire::decode_mouse(&bytes) {
                             let _ = client_session.event_tx.try_send(InputEvent::MouseEvent(mouse_event));
                         }
                     }
@@ -1232,16 +1365,14 @@ pub mod web_impl {
                         }
                     }
                     0x10 => {
-                        if bytes.len() >= 5 {
-                            let cols = u16::from_le_bytes([bytes[1], bytes[2]]);
-                            let rows = u16::from_le_bytes([bytes[3], bytes[4]]);
+                        // Clamped by the decoder: an unclamped 65535x65535 resize aborts the process.
+                        if let Some((cols, rows)) = oxiterm_proto::input::wire::decode_resize(&bytes) {
                             { let now = client_session.clock.now(); client_session.resize_debouncer.write().push(PtyDimensions { cols, rows }, now); }
                             let _ = client_session.event_tx.try_send(InputEvent::Resize { cols, rows });
                         }
                     }
                     0x11 => {
-                        if bytes.len() >= 2 {
-                            let is_mobile = bytes[1] != 0;
+                        if let Some(is_mobile) = oxiterm_proto::input::wire::decode_viewport(&bytes) {
                             let _ = client_session.event_tx.try_send(InputEvent::SwitchViewport(is_mobile));
                         }
                     }
@@ -1260,10 +1391,8 @@ pub mod web_impl {
                         }
                     }
                     0x31 => {
-                        if bytes.len() > 1 {
-                            if let Ok(rel_path) = String::from_utf8(bytes[1..].to_vec()) {
-                                let _ = client_session.event_tx.try_send(InputEvent::NavigateTo(rel_path));
-                            }
+                        if let Some(rel_path) = oxiterm_proto::input::wire::decode_navigate(&bytes) {
+                            let _ = client_session.event_tx.try_send(InputEvent::NavigateTo(rel_path));
                         }
                     }
                     _ => {}
@@ -2050,6 +2179,238 @@ pub mod web_impl {
             assert!(session.state.read().get("large_key").is_none());
         }
 
+        /// Two bundles from one crate: the default (thin + cell) one carries no core, the local one
+        /// does and loads its own wasm. A CI that forgets `--no-default-features` for the default
+        /// bundle fails here.
+        #[test]
+        fn test_the_two_bundles_are_split() {
+            let thin_js = String::from_utf8_lossy(JS_ASSET);
+            let local_js = String::from_utf8_lossy(LOCAL_JS_ASSET);
+            assert!(!thin_js.contains("LocalApp") && !thin_js.contains("local_font_bytes"), "the default bundle must be built with --no-default-features");
+            assert!(local_js.contains("LocalApp") && local_js.contains("local_font_bytes"), "the local bundle must be built with --features local");
+            assert!(local_js.contains("oxiterm_local_bg.wasm"), "the local JS loads its own wasm");
+            assert!(thin_js.contains("oxiterm_web_bg.wasm"));
+            assert!(WASM_ASSET.len() + 1_000_000 < LOCAL_WASM_ASSET.len(), "thin {} vs local {}", WASM_ASSET.len(), LOCAL_WASM_ASSET.len());
+        }
+
+        /// OxiUI 7.1 local-mode routes over a real socket: page index, media assets, App Server
+        /// proxy; the identity gate; and the generic 404 for everything else.
+        #[tokio::test]
+        async fn test_local_mode_routes() {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let app = std::env::temp_dir().join(format!("oxi_local_routes_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&app);
+            std::fs::create_dir_all(app.join("sub")).unwrap();
+            std::fs::write(app.join("index.thtml"), r#"<screen><text bind-state="c">hi</text><button event-htmx="inc:c">go</button></screen>"#).unwrap();
+            std::fs::write(app.join("sub/b.thtml"), "<screen><text>b</text></screen>").unwrap();
+            std::fs::write(app.join("pic.png"), b"\x89PNG").unwrap();
+            std::fs::write(app.join("pic.svg"), b"<svg/>").unwrap();
+            std::fs::write(app.join("secret.json"), b"{}").unwrap();
+            std::fs::write(app.parent().unwrap().join(format!("oxi_outside_{}.png", std::process::id())), b"OUT").unwrap();
+
+            // A mock App Server: answers one POST with a patch and keeps the request text.
+            let mock = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let mock_url = format!("http://127.0.0.1:{}/events", mock.local_addr().unwrap().port());
+            let mock_req = std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let (mut s, _) = mock.accept().unwrap();
+                let mut buf = vec![0u8; 8192];
+                let mut n = 0;
+                loop {
+                    n += s.read(&mut buf[n..]).unwrap();
+                    let t = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    if let Some(sp) = t.find("\r\n\r\n") {
+                        let len: usize = t.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length: ").map(|v| v.trim().parse().unwrap())).unwrap_or(0);
+                        if n >= sp + 4 + len { break; }
+                    }
+                }
+                let body = r#"{"c":"7"}"#;
+                s.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).as_bytes()).unwrap();
+                String::from_utf8_lossy(&buf[..n]).into_owned()
+            });
+
+            let _env = EnvGuard::lock_and_set(&[
+                ("OXITERM_APP_SERVER", Some(&mock_url)),
+                ("OXITERM_APP_TOKEN", Some("tok_local_route")),
+                ("OXITERM_ALLOW_GUEST", None),
+                ("OXITERM_TRUSTED_PROXY", None),
+                ("OXITERM_LOCAL_MODE", Some("1")),
+                ("OXITERM_ALLOWED_HOSTS", None),
+            ]);
+
+            async fn start(source: Option<std::path::PathBuf>) -> std::net::SocketAddr {
+                let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+                let rl = Arc::new(crate::ratelimit::RateLimiter::new(600));
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = l.local_addr().unwrap();
+                drop(l);
+                tokio::spawn(async move { start_web_server("127.0.0.1".to_string(), addr.port(), reg, rl, None, source); });
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                addr
+            }
+            // (lowercased head, body)
+            async fn req(addr: std::net::SocketAddr, method: &str, path: &str, body: &[u8]) -> (String, Vec<u8>) {
+                req_h(addr, method, path, "Content-Type: application/json\r\n", body).await
+            }
+            async fn req_h(addr: std::net::SocketAddr, method: &str, path: &str, extra: &str, body: &[u8]) -> (String, Vec<u8>) {
+                let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+                let head = format!("{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n{extra}Content-Length: {}\r\n\r\n", body.len());
+                s.write_all(head.as_bytes()).await.unwrap();
+                s.write_all(body).await.unwrap();
+                let mut raw = Vec::new();
+                s.read_to_end(&mut raw).await.unwrap();
+                let split = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+                (String::from_utf8_lossy(&raw[..split]).to_lowercase(), raw[split..].to_vec())
+            }
+
+            let addr = start(Some(app.join("index.thtml"))).await;
+
+            // page index: the start page, every page, the actions flag, no cache
+            let (head, body) = req(addr, "GET", "/oxiui/local/pages.json", b"").await;
+            assert!(head.contains("200 ok") && head.contains("application/json") && head.contains("no-store"), "{head}");
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(v["start"], "index.thtml");
+            assert_eq!(v["actions"], true);
+            assert_eq!(v["pages"]["sub/b.thtml"], "<screen><text>b</text></screen>");
+            assert!(v["pages"].as_object().unwrap().len() == 2, "{v}");
+            assert_eq!(v["dirs"], serde_json::json!(["sub"]));
+            // a signed session token per page load, in a header (never in the cached body)
+            let token = head.lines().find_map(|l| l.strip_prefix("x-oxiterm-local-session: ")).expect("session header").trim().to_string();
+            let (head2, _) = req(addr, "GET", "/oxiui/local/pages.json", b"").await;
+            let token2 = head2.lines().find_map(|l| l.strip_prefix("x-oxiterm-local-session: ")).unwrap().trim().to_string();
+            assert_ne!(token, token2, "one session per page load");
+            let sess = format!("X-OxiTerm-Local-Session: {token}\r\n");
+
+            // assets: media only, sandboxed, nothing outside the base
+            let (head, body) = req(addr, "GET", "/oxiui/local/asset/pic.png", b"").await;
+            assert!(head.contains("200 ok") && head.contains("image/png") && head.contains("nosniff") && head.contains("sandbox"), "{head}");
+            assert_eq!(body, b"\x89PNG");
+            let (head, _) = req(addr, "GET", "/oxiui/local/asset/pic.svg", b"").await;
+            assert!(head.contains("200 ok") && head.contains("image/svg+xml") && head.contains("content-security-policy: sandbox"), "{head}");
+            for bad in [
+                "/oxiui/local/asset/secret.json",
+                "/oxiui/local/asset/index.thtml",
+                "/oxiui/local/asset/../pic.png",
+                "/oxiui/local/asset/%2e%2e/pic.png",
+                &format!("/oxiui/local/asset/..%2Foxi_outside_{}.png", std::process::id()),
+                "/oxiui/local/asset/",
+                "/oxiui/local/asset//etc/passwd",
+                "/oxiui/local/nothing",
+                "/oxiui/local/pages.json/x",
+            ] {
+                let (head, body) = req(addr, "GET", bad, b"").await;
+                assert!(head.contains("404"), "{bad}: {head}");
+                assert_eq!(body, b"Not Found", "{bad}: one generic body");
+            }
+            let (head, _) = req(addr, "POST", "/oxiui/local/pages.json", b"{}").await;
+            assert!(head.contains("404"), "{head}");
+
+            // events proxy: the server sets identity and token, the answer comes back verbatim
+            let json_sess = format!("Content-Type: application/json\r\n{sess}");
+            let (head, _) = req_h(addr, "POST", "/oxiui/local/events", &json_sess, b"not json").await;
+            assert!(head.contains("400"), "{head}");
+            let big = vec![b' '; crate::local_mode::MAX_EVENT_BODY + 10];
+            let (head, _) = req_h(addr, "POST", "/oxiui/local/events", &json_sess, &big).await;
+            assert!(head.contains("413"), "{head}");
+            // no session token, a forged one, one of another process: refused before anything else
+            let id: usize = token.split('.').next().unwrap().parse().unwrap();
+            for t in [String::new(), format!("{}.{}", id + 1, token.split('.').nth(1).unwrap()), "0.0000000000000000".to_string(), "garbage".to_string()] {
+                let extra = if t.is_empty() { "Content-Type: application/json\r\n".to_string() } else { format!("Content-Type: application/json\r\nX-OxiTerm-Local-Session: {t}\r\n") };
+                let (head, _) = req_h(addr, "POST", "/oxiui/local/events", &extra, br#"{"action":"inc:c","state":{},"session_id":1}"#).await;
+                assert!(head.contains("403"), "{t:?}: {head}");
+            }
+            // an action no page declares is refused (the mock below still has its one connection)
+            let (head, _) = req_h(addr, "POST", "/oxiui/local/events", &json_sess, br#"{"action":"admin:delete_all","state":{},"session_id":1}"#).await;
+            assert!(head.contains("403"), "{head}");
+            let forged = br#"{"action":"inc:c","state":{"c":"6"},"session_id":9,"username":"root","auth_method":"SshKey"}"#;
+            // CSRF: a cross-site page can send a text/plain POST or carry a foreign Origin; neither
+            // may reach the App Server (the mock accepts exactly one connection, used below)
+            for (extra, code) in [
+                ("Content-Type: text/plain\r\n".to_string(), "415"),
+                ("".to_string(), "415"),
+                ("Content-Type: application/json\r\nOrigin: http://evil.example\r\n".to_string(), "403"),
+                (format!("Content-Type: application/json\r\nOrigin: http://{addr}.evil.example\r\n"), "403"),
+                ("Content-Type: application/json\r\nSec-Fetch-Site: cross-site\r\n".to_string(), "403"),
+            ] {
+                let (head, _) = req_h(addr, "POST", "/oxiui/local/events", &extra, forged).await;
+                assert!(head.contains(code), "{extra:?}: {head}");
+            }
+            let same = format!("Content-Type: application/json; charset=utf-8\r\nOrigin: http://{addr}\r\nSec-Fetch-Site: same-origin\r\n{sess}");
+            let (head, body) = req_h(addr, "POST", "/oxiui/local/events", &same, forged).await;
+            assert!(head.contains("200 ok") && head.contains("application/json"), "{head}");
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap(), serde_json::json!({"c":"7"}));
+            let seen = tokio::task::spawn_blocking(move || mock_req.join().unwrap()).await.unwrap();
+            assert!(seen.contains("Bearer tok_local_route"), "{seen}");
+            assert!(seen.contains("\"username\":\"guest\"") && seen.contains(&format!("\"session_id\":{id}")), "{seen}");
+            assert!(!seen.contains("\"session_id\":0") && !seen.contains("root"), "{seen}");
+
+            // a push to a local id never reaches a session (and an ordinary id is just unknown)
+            let patch_hdr = "Authorization: Bearer tok_local_route\r\nContent-Type: application/json\r\n";
+            let (head, _) = req_h(addr, "POST", &format!("/sessions/{id}/patch"), patch_hdr, b"{}").await;
+            assert!(head.contains("404"), "{head}");
+
+            // the local bundle is served only with local mode on
+            let (head, body) = req(addr, "GET", "/oxiterm_local.js", b"").await;
+            assert!(head.contains("200 ok") && head.contains("javascript") && !body.is_empty(), "{head}");
+            let (head, _) = req(addr, "GET", "/oxiterm_local_bg.wasm", b"").await;
+            assert!(head.contains("200 ok") && head.contains("application/wasm"), "{head}");
+
+            // /ws and the local routes honour OXITERM_ALLOWED_HOSTS (DNS rebinding)
+            let ws_raw = |host: &str| format!("GET /ws HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+            async fn raw_head(addr: std::net::SocketAddr, raw: String) -> String {
+                let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+                s.write_all(raw.as_bytes()).await.unwrap();
+                let mut buf = vec![0u8; 512];
+                let n = s.read(&mut buf).await.unwrap();
+                String::from_utf8_lossy(&buf[..n]).to_lowercase()
+            }
+            assert!(raw_head(addr, ws_raw("evil.test")).await.contains("101"), "no allowlist: the upgrade works");
+            // (the guard above owns the lock and restores the variable)
+            std::env::set_var("OXITERM_ALLOWED_HOSTS", "good.test");
+            assert!(raw_head(addr, ws_raw("evil.test")).await.contains("403"));
+            assert!(raw_head(addr, ws_raw("good.test")).await.contains("101"));
+            let (head, _) = req_h(addr, "GET", "/oxiui/local/pages.json", "", b"").await;
+            assert!(head.contains("403"), "{head}");
+            std::env::remove_var("OXITERM_ALLOWED_HOSTS");
+
+            // without a start page (server not started on a page) every local route is a 404
+            let addr_none = start(None).await;
+            for (m, p) in [("GET", "/oxiui/local/pages.json"), ("GET", "/oxiui/local/asset/pic.png")] {
+                let (head, _) = req(addr_none, m, p, b"").await;
+                assert!(head.contains("404"), "{p}: {head}");
+            }
+
+            // guests refused: every local route is 401, like /ws
+            drop(_env);
+            let _env2 = EnvGuard::lock_and_set(&[("OXITERM_LOCAL_MODE", Some("1")), ("OXITERM_ALLOW_GUEST", Some("false")), ("OXITERM_APP_SERVER", Some(&mock_url)), ("OXITERM_TRUSTED_PROXY", None)]);
+            for (m, p) in [("GET", "/oxiui/local/pages.json"), ("GET", "/oxiui/local/asset/pic.png"), ("POST", "/oxiui/local/events")] {
+                let (head, _) = req(addr, m, p, b"{}").await;
+                assert!(head.contains("401"), "{p}: {head}");
+            }
+
+            // no App Server: the proxy does not exist and the index says so
+            drop(_env2);
+            let _env3 = EnvGuard::lock_and_set(&[("OXITERM_LOCAL_MODE", Some("1")), ("OXITERM_APP_SERVER", None), ("OXITERM_ALLOW_GUEST", None), ("OXITERM_TRUSTED_PROXY", None)]);
+            let (head, _) = req(addr, "POST", "/oxiui/local/events", forged).await;
+            assert!(head.contains("404"), "{head}");
+            let (_, body) = req(addr, "GET", "/oxiui/local/pages.json", b"").await;
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["actions"], false);
+
+            // local mode OFF (the default): every local route and the local bundle are one 404
+            drop(_env3);
+            let _off = EnvGuard::lock_and_set(&[("OXITERM_LOCAL_MODE", None), ("OXITERM_APP_SERVER", Some(&mock_url)), ("OXITERM_ALLOW_GUEST", None)]);
+            for (m, p) in [("GET", "/oxiui/local/pages.json"), ("GET", "/oxiui/local/asset/pic.png"), ("POST", "/oxiui/local/events"), ("GET", "/oxiterm_local.js"), ("GET", "/oxiterm_local_bg.wasm")] {
+                let (head, body) = req_h(addr, m, p, &json_sess, b"{}").await;
+                assert!(head.contains("404"), "{p}: {head}");
+                assert_eq!(body, b"Not Found", "{p}");
+            }
+            let (head, _) = req(addr, "GET", "/oxiterm_web.js", b"").await;
+            assert!(head.contains("200 ok"), "the thin bundle is always served");
+
+            let _ = std::fs::remove_dir_all(&app);
+            let _ = std::fs::remove_file(app.parent().unwrap().join(format!("oxi_outside_{}.png", std::process::id())));
+        }
+
         #[tokio::test]
         async fn test_oxiui_font_routes() {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -2519,6 +2880,61 @@ pub mod web_impl {
             assert!(got_list, "no display-list frame received");
             let session = reg.sessions.read().values().next().cloned().expect("session");
             assert!(session.display_list_client.load(std::sync::atomic::Ordering::SeqCst));
+        }
+
+        /// A client-chosen grid size is untrusted: 65535x65535 cells used to abort the whole server
+        /// process (a ~gigabyte allocation per buffer). Both the handshake `0x10` (before the loop
+        /// exists) and a later one are clamped; the process survives and another session is served.
+        #[tokio::test]
+        async fn test_huge_resize_is_clamped_and_other_sessions_keep_working() {
+            let _env = EnvGuard::lock_and_set(&[]);
+            let reg = Arc::new(SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20));
+            let local_addr = boot_test_server(reg.clone()).await;
+            let url = format!("ws://{}/ws", local_addr);
+
+            // Session A: the very first message is the hostile resize (handshake path).
+            let (ws_a, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut a_write, mut a_read) = ws_a.split();
+            a_write.send(Message::Binary(vec![0x12, 0x03])).await.unwrap();
+            a_write.send(Message::Binary(vec![0x10, 0xff, 0xff, 0xff, 0xff])).await.unwrap();
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            let mut a_list = false;
+            while tokio::time::Instant::now() < end && !a_list {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), a_read.next()).await else { continue };
+                let data = m.into_data();
+                a_list = data.first() == Some(&WS_TAG_DISPLAY_LIST);
+            }
+            assert!(a_list, "the session with a hostile first resize still gets frames");
+            let max = (oxiterm_proto::input::wire::MAX_COLS, oxiterm_proto::input::wire::MAX_ROWS);
+            {
+                let sessions = reg.sessions.read();
+                let d = *sessions.values().next().unwrap().dims.read();
+                assert_eq!((d.cols, d.rows), max, "handshake resize clamped");
+            }
+
+            // ... and again later, through the loop path.
+            a_write.send(Message::Binary(vec![0x10, 0xff, 0xff, 0xff, 0xff])).await.unwrap();
+            a_write.send(Message::Binary(vec![0x10, 0xff, 0xff, 0x00, 0x00])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            // Session B, afterwards: a normal client is served.
+            let (ws_b, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let (mut b_write, mut b_read) = ws_b.split();
+            b_write.send(Message::Binary(vec![0x12, 0x03])).await.unwrap();
+            b_write.send(Message::Binary(vec![0x10, 80, 0, 24, 0])).await.unwrap();
+            let end = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            let mut b_list = false;
+            while tokio::time::Instant::now() < end && !b_list {
+                let Ok(Some(Ok(m))) = tokio::time::timeout(std::time::Duration::from_millis(300), b_read.next()).await else { continue };
+                b_list = m.into_data().first() == Some(&WS_TAG_DISPLAY_LIST);
+            }
+            assert!(b_list, "another session keeps working after a hostile resize");
+            // the hostile session's dims never exceeded the cap (and a zero is at least 1)
+            let sessions = reg.sessions.read();
+            for s in sessions.values() {
+                let d = *s.dims.read();
+                assert!(d.cols <= max.0 && d.rows <= max.1 && d.cols >= 1 && d.rows >= 1, "{d:?}");
+            }
         }
 
         #[tokio::test]
