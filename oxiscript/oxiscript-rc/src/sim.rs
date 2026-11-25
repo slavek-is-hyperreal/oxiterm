@@ -67,6 +67,7 @@ pub struct SimHeap {
     /// probability, but never twice in a row (so one retry always succeeds).
     inject: Option<(u64, u64)>,
     just_failed: bool,
+    fail_next: u32,
     pub injected_failures: u64,
 }
 
@@ -76,12 +77,17 @@ impl SimHeap {
         let mut mem = vec![0u8; size].into_boxed_slice();
         let base = mem.as_mut_ptr() as usize;
         let dl = Dlmalloc::new_with_allocator(Arena { base, next: AtomicUsize::new(RESERVED), limit: size });
-        SimHeap { mem, dl, live: BTreeMap::new(), checks, last_trap: 0, inject: None, just_failed: false, injected_failures: 0 }
+        SimHeap { mem, dl, live: BTreeMap::new(), checks, last_trap: 0, inject: None, just_failed: false, fail_next: 0, injected_failures: 0 }
     }
 
     /// Make `alloc` fail with probability `pct` percent (see the field docs).
     pub fn inject_failures(&mut self, seed: u64, pct: u64) {
         self.inject = Some((seed | 1, pct));
+    }
+
+    /// Make the next `n` allocations fail unconditionally (persistent OOM).
+    pub fn fail_next(&mut self, n: u32) {
+        self.fail_next = n;
     }
 
     pub fn live_blocks(&self) -> usize {
@@ -146,6 +152,11 @@ impl Heap for SimHeap {
     }
     fn alloc(&mut self, size: u32) -> u32 {
         assert!(size > 0);
+        if self.fail_next > 0 {
+            self.fail_next -= 1;
+            self.injected_failures += 1;
+            return 0;
+        }
         if self.just_failed {
             self.just_failed = false;
         } else if let Some((st, pct)) = self.inject.as_mut() {

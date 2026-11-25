@@ -123,43 +123,36 @@ fn native_costs() {
         let freed = g.collect();
         println!("collect_cycles: live ring of {n} (false alarm)        {:>8.2} ms (freed {freed})", t.elapsed().as_secs_f64() * 1e3);
     }
-    // incremental: worst single gc_step latency with a 10k-node budget over many small cycles
-    let mut g = native();
-    for _ in 0..200_000 {
-        let (a, b) = (g.alloc(ty::NODE), g.alloc(ty::NODE));
-        g.retain(b);
-        g.wr(a, b);
-        g.retain(a);
-        g.wr(b, a);
-        g.release(a);
-        g.release(b);
-    }
-    let mut worst = 0f64;
-    let mut steps = 0;
-    let t0 = Instant::now();
-    while g.gc_step(10_000) != 0 {
-        steps += 1;
-    }
-    let _ = t0;
-    let mut g = native();
-    for _ in 0..200_000 {
-        let (a, b) = (g.alloc(ty::NODE), g.alloc(ty::NODE));
-        g.retain(b);
-        g.wr(a, b);
-        g.retain(a);
-        g.wr(b, a);
-        g.release(a);
-        g.release(b);
-    }
-    loop {
-        let t = Instant::now();
-        let s = g.gc_step(10_000);
-        worst = worst.max(t.elapsed().as_secs_f64() * 1e6);
-        if s == 0 {
-            break;
+    // incremental: single gc_step latency over many small dead cycles
+    for budget in [1_000u32, 10_000] {
+        let mut g = native();
+        for _ in 0..200_000 {
+            let (a, b) = (g.alloc(ty::NODE), g.alloc(ty::NODE));
+            g.retain(b);
+            g.wr(a, b);
+            g.retain(a);
+            g.wr(b, a);
+            g.release(a);
+            g.release(b);
         }
+        let (mut worst, mut steps, mut total) = (0f64, 0u32, 0f64);
+        let mut all = vec![];
+        loop {
+            let t = Instant::now();
+            let s = g.gc_step(budget);
+            let us = t.elapsed().as_secs_f64() * 1e6;
+            worst = worst.max(us);
+            all.push(us);
+            total += us;
+            steps += 1;
+            if s == 0 {
+                break;
+            }
+        }
+        all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p99 = all[all.len() * 99 / 100];
+        println!("gc_step({budget} units) over 400k garbage objects: {steps} steps, worst step {worst:.0} us, p99 {p99:.0} us, mean {:.0} us", total / f64::from(steps));
     }
-    println!("gc_step(10_000 units) over 400k garbage objects: {steps} steps, worst step {worst:.0} us");
 }
 
 #[test]

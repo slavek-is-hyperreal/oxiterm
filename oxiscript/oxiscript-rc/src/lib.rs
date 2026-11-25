@@ -53,8 +53,12 @@
 //! invalidate: owned values hold counts, and trial deletion only frees objects
 //! no count reaches. `oxi_gc_step(budget)` does O(`budget`) work per call (plus
 //! at most one record's pointer count, because a record is destroyed
-//! atomically); one unit is about 0.2 us natively. Loop `while step(b) & 1 {}`
-//! only with `b > 0`. A candidate whose mark phase exceeds the budget is
+//! atomically). Measured natively (x86-64, 2-cycle garbage): mean about 0.09 us per
+//! unit, p99 about 8x the mean, worst observed step 4 ms at budget 1_000 and 7 ms
+//! at 10_000 (an aborted trial costs mark + undo, and allocator/page-fault
+//! outliers show up): treat the budget as a bound on *work*, not a latency
+//! promise, and size it from the target's own measurement. Loop
+//! `while step(b) & 1 {}` only with `b > 0`. A candidate whose mark phase exceeds the budget is
 //! deferred (bit 2) and skipped by later steps with the same or a smaller
 //! budget, so it costs one unit per step until `oxi_collect_cycles` (unbounded,
 //! call it when idle) or a larger budget examines it.

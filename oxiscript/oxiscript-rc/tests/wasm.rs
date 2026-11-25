@@ -192,6 +192,34 @@ fn debug_wasm_build_with_poisoning_passes_the_same_fuzz() {
 }
 
 #[test]
+fn debug_wasm_build_traps_65_on_double_release_and_non_objects() {
+    if !wasm_available() {
+        return;
+    }
+    let path = build_wasm("dev");
+    let mut g = WasmGuest::standard(&path);
+    let cell = g.global_i32("oxi_trap_cell");
+    let a = g.alloc(ty::NODE);
+    let _guard = g.alloc(ty::NODE);
+    g.release(a);
+    assert!(g.try_call("oxi_release", &[a]).is_err());
+    assert_eq!(g.rd(cell), 65, "double release");
+    let mut g = WasmGuest::standard(&path);
+    let cell = g.global_i32("oxi_trap_cell");
+    let b = g.alloc_bytes(64);
+    assert!(g.try_call("oxi_release", &[b + 8]).is_err());
+    assert_eq!(g.rd(cell), 65, "release of an alloc_bytes block");
+    // the descriptor table is validated by the real wasm too
+    let mut g = WasmGuest::load(&path);
+    let cell = g.global_i32("oxi_trap_cell");
+    let t = g.alloc_bytes(32);
+    g.wr(t + 16, 16); // id 1: size 16 ...
+    g.wr(t + 20, 1); // ... kind 1 (struct) where id 1 must be the string
+    assert!(g.try_call("oxi_rt_init", &[t, 2]).is_err());
+    assert_eq!(g.rd(cell), 64, "bad descriptor table");
+}
+
+#[test]
 fn one_million_node_ring_is_collected_under_a_64k_stack() {
     if !wasm_available() {
         return;

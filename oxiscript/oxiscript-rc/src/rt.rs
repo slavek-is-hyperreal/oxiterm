@@ -200,6 +200,7 @@ pub struct Rt<H: Heap> {
     batch: u32,
     deferred_limit: u32,
     skip_flagged: bool,
+    oom_streak: u32,
     step_unflagged: u32,
     livemap: V32,
     tdc_id: u32,
@@ -241,6 +242,7 @@ impl<H: Heap> Rt<H> {
             batch: u32::MAX,
             deferred_limit: 0,
             skip_flagged: false,
+            oom_streak: 0,
             step_unflagged: 0,
             livemap: V32::new(),
             tdc_id: 0,
@@ -1045,16 +1047,7 @@ impl<H: Heap> Rt<H> {
                     return Err(self.work);
                 }
             } else {
-                self.heap.st32(self.roots.ptr + 4 * i, 0);
-                if col == ZOMBIE {
-                    let id = m & META_TYPE_MASK;
-                    let total = self.obj_total(s, id);
-                    self.zombie_objects -= 1;
-                    self.zombie_bytes -= u64::from(total);
-                    self.dealloc_object(s);
-                } else {
-                    self.heap.st32(s - 4, m & !BUFFERED);
-                }
+                self.drop_candidate(i, s, m);
             }
         }
         let used = self.work;
@@ -1113,6 +1106,20 @@ impl<H: Heap> Rt<H> {
         Ok((dead, used))
     }
 
+    /// A candidate entry whose object is no longer purple: unlist it; a dead
+    /// object that was only kept for the listing (ZOMBIE) is freed now.
+    fn drop_candidate(&mut self, i: u32, s: u32, m: u32) {
+        self.heap.st32(self.roots.ptr + 4 * i, 0);
+        if colour(m) == ZOMBIE {
+            let total = self.obj_total(s, m & META_TYPE_MASK);
+            self.zombie_objects -= 1;
+            self.zombie_bytes -= u64::from(total);
+            self.dealloc_object(s);
+        } else {
+            self.heap.st32(s - 4, m & !BUFFERED);
+        }
+    }
+
     fn compact_roots(&mut self) {
         let mut w = 0;
         for r in 0..self.roots.len {
@@ -1153,6 +1160,7 @@ impl<H: Heap> Rt<H> {
         }
         self.deferred_limit = 0;
         self.skip_flagged = false;
+        self.oom_streak = 0;
         self.batch = u32::MAX;
         loop {
             self.drain(u32::MAX);
@@ -1226,8 +1234,15 @@ impl<H: Heap> Rt<H> {
                 continue;
             }
             if raw & 7 != 0 && self.skip_flagged {
-                // deferred at a budget at least as big as this one: stay out of the way
-                self.keep_root(i);
+                // deferred at a budget at least as big as this one: stay out of the way,
+                // unless it is no longer a candidate (died or was retained): reap it
+                let s = raw & !7;
+                let m = self.heap.ld32(s - 4);
+                if colour(m) == PURPLE {
+                    self.keep_root(i);
+                } else {
+                    self.drop_candidate(i, s, m);
+                }
                 self.step_cursor += 1;
                 left = left.saturating_sub(1);
                 continue;
@@ -1238,27 +1253,30 @@ impl<H: Heap> Rt<H> {
             if let Ok((freed, used)) = self.trial(i, end, lim) {
                 self.cycle_freed += u64::from(freed);
                 left = left.saturating_sub(used.max(1));
-                self.batch = self.batch.saturating_mul(2);
+                if used < lim / 2 {
+                    self.batch = self.batch.saturating_mul(2); // cheap: try more roots next time
+                }
                 for k in i..end {
                     self.keep_root(k);
                 }
                 self.step_cursor = end;
+                self.oom_streak = 0;
             } else {
                 // limit hit or an internal vector could not grow: the trial was undone
                 left = 0;
-                if !self.oom_abort {
-                    if end - i > 1 {
-                        self.batch = ((end - i) / 2).max(1);
+                if self.oom_abort {
+                    self.oom_streak += 1;
+                } else if end - i > 1 {
+                    self.batch = ((end - i) / 2).max(1);
+                } else {
+                    if lim >= budget - budget / 2 {
+                        self.heap.st32(self.roots.ptr + 4 * i, (raw & !7) | 1);
+                        self.deferred_limit = self.deferred_limit.max(lim);
                     } else {
-                        if lim >= budget - budget / 2 {
-                            self.heap.st32(self.roots.ptr + 4 * i, (raw & !7) | 1);
-                            self.deferred_limit = self.deferred_limit.max(lim);
-                        } else {
-                            self.step_unflagged += 1;
-                        }
-                        self.keep_root(i);
-                        self.step_cursor = i + 1;
+                        self.step_unflagged += 1;
                     }
+                    self.keep_root(i);
+                    self.step_cursor = i + 1;
                 }
             }
         }
@@ -1275,6 +1293,11 @@ impl<H: Heap> Rt<H> {
                 r |= STEP_DEFERRED;
             }
             return r;
+        }
+        if self.oom_streak >= 2 && self.q_head == 0 {
+            // repeated allocation failure inside trials: do not invite the host to spin;
+            // `oxi_collect_cycles` will drain, retry and trap OutOfMemory cleanly
+            return STEP_DEFERRED;
         }
         STEP_MORE
     }
