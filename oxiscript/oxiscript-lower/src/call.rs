@@ -211,7 +211,8 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                 return Opnd::void();
             };
             // an argument that is the very object we move needs its own count
-            if ops.iter().any(|o| o.v == Some(rv)) {
+            let aliased = ops.iter().any(|o| o.v == Some(rv));
+            if aliased {
                 self.retain(rv);
             }
             let mut argv = vec![rv];
@@ -219,6 +220,10 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             let mut rets = vec![self.fb.ty(rv).clone()];
             rets.extend(self.lw.repr(ret));
             let res = self.fb.emit(Op::Call { callee: sym, args: argv }, &rets);
+            if aliased {
+                // the callee only borrows its arguments: give back the extra count taken above
+                self.release(rv);
+            }
             self.env.insert(key, Slot::Ssa { v: res[0], owned: true });
             result = res.get(1).map(|v| Opnd::owned(*v)).unwrap_or_else(Opnd::void);
         } else {

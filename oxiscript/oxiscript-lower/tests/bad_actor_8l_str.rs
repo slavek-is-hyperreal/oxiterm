@@ -9,7 +9,7 @@ use Value::I32;
 const SRC: &str = r#"import { Log } from "host:log";
 const S: string = "aé€😀z";
 export function sl(a: i32, b: i32): i32 { return S.slice(a, b).byteLength; }
-export function slTxt(a: i32, b: i32): string { return S.slice(a, b); }
+function slTxt(a: i32, b: i32): string { return S.slice(a, b); }
 export function slOf(s: string, a: i32, b: i32): i32 { return s.slice(a, b).byteLength; }
 export function bytesOf(s: string): i32 { const bs = s.bytes(); let t = 0; for (const b of bs) t = t * 3 + (b as i32); return t % 1000003 + bs.length; }
 export function charsOf(s: string): i32 { const cs = s.chars(); return cs.length * 1000 + (cs.length > 0 ? (cs[cs.length - 1] as i32) % 1000 : 0); }

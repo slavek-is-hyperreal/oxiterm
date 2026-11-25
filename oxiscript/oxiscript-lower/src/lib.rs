@@ -90,7 +90,7 @@ mod types;
 use oxiscript_syntax::Span;
 use std::fmt;
 
-pub use driver::{compile_program, compile_source, lower, lower_full, lower_with, CompileOutput, Lowered, Options};
+pub use driver::{compile_program, compile_source, compile_source_with_notes, lower, lower_full, lower_with, CompileOutput, Lowered, Options};
 
 /// A lowering (or pipeline) diagnostic. `code` is a registry code (`OXS-E07xx` for the
 /// lowering itself; check and code generator codes are passed through).

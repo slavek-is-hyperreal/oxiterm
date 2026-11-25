@@ -358,7 +358,22 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         if let Some(i) = init {
             self.stmt(i);
         }
-        let set = self.assigned_in(|sc| {
+        // L02: a `let` of the init that a closure captures and that is assigned (`i++`) lives in a cell; JS gives
+        // every iteration a fresh binding, so the cell is copied per iteration. The current cell travels through the
+        // loop joins as a hidden SSA variable (`hidden`), the variable's own slot is re-derived from it.
+        let mut per_iter: Vec<(Key, Key, String)> = Vec::new();
+        if init.is_some() && !do_while {
+            let keys = self.scopes.last().cloned().unwrap_or_default();
+            for k in keys {
+                if let Some(Slot::Cell { cell, ty, .. }) = self.env.get(&k).cloned() {
+                    let hidden = self.tmp_key();
+                    self.env.insert(k, Slot::Cell { cell, owned: false, ty: ty.clone() });
+                    self.declare(hidden, Slot::Ssa { v: cell, owned: true });
+                    per_iter.push((k, hidden, ty));
+                }
+            }
+        }
+        let mut set = self.assigned_in(|sc| {
             if let Some(c) = cond {
                 sc.visit_expr(c);
             }
@@ -367,11 +382,13 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             }
             sc.visit_stmt(body);
         });
+        set.extend(per_iter.iter().map(|(_, h, _)| *h));
         let mut head = self.new_join(None, set.clone());
         let mut exit = self.new_join(None, set.clone());
         let mut upd = self.new_join(None, set.clone());
         self.jump_join(&mut head, None);
         self.enter_join(&head);
+        self.resync_cells(&per_iter);
         if !do_while {
             if let Some(c) = cond {
                 let co = self.expr(c);
@@ -401,6 +418,8 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         upd.reached |= f.cont_hit;
         exit.reached |= f.brk_reached;
         self.enter_join(&upd);
+        self.resync_cells(&per_iter);
+        self.copy_cells(&per_iter);
         if let Some(u) = update {
             self.expr_stmt(u);
         }
@@ -423,7 +442,42 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             self.jump_join(&mut head, None);
         }
         self.enter_join(&exit);
+        self.resync_cells(&per_iter);
         self.pop_scope();
+    }
+
+    /// Re-point the variables of a C-style `for` at the cell their hidden join variable now holds.
+    fn resync_cells(&mut self, cells: &[(Key, Key, String)]) {
+        for (k, h, ty) in cells {
+            if let Some(Slot::Ssa { v, .. }) = self.env.get(h).cloned() {
+                self.env.insert(*k, Slot::Cell { cell: v, owned: false, ty: ty.clone() });
+            }
+        }
+    }
+
+    /// CreatePerIterationEnvironment: the next iteration's cell starts from the current value.
+    fn copy_cells(&mut self, cells: &[(Key, Key, String)]) {
+        if self.dead {
+            return;
+        }
+        for (k, h, ty) in cells {
+            let Some(Slot::Ssa { v: old, .. }) = self.env.get(h).cloned() else { continue };
+            let cur = self.load_cell(old, ty);
+            let cv = cur.val();
+            let nc = self.fb.emit1(
+                Op::Alloc(oxiscript_ir::TypeRef { ty: ty.clone(), variant: None }),
+                It::Ref(ty.clone()),
+            );
+            self.fb.emit0(Op::SetField {
+                field: oxiscript_ir::FieldRef { ty: ty.clone(), variant: None, field: "v".into() },
+                obj: nc,
+                val: cv,
+                init: true,
+            });
+            self.release(old);
+            self.env.insert(*h, Slot::Ssa { v: nc, owned: true });
+            self.env.insert(*k, Slot::Cell { cell: nc, owned: false, ty: ty.clone() });
+        }
     }
 
     /// `br_if cond, body(), exit(args)`; the code after it is dead until a block is entered.

@@ -38,7 +38,7 @@ pub struct CompileOutput {
     pub wasm: Vec<u8>,
     pub module: ir::Module,
     pub needs: Vec<Need>,
-    /// Warnings of the lowering (`OXS-W0700`).
+    /// Warnings of the lowering (none today).
     pub notes: Vec<Diagnostic>,
 }
 
@@ -46,7 +46,7 @@ pub struct CompileOutput {
 pub struct Lowered {
     pub module: ir::Module,
     pub needs: Vec<Need>,
-    /// Warnings (`OXS-W0700`: a function that cannot be exported under ABI 1.0 stays internal).
+    /// Warnings (none today; unfit exports are `OXS-E0121` errors in the checker).
     pub notes: Vec<Diagnostic>,
 }
 
@@ -312,12 +312,9 @@ impl<'c, 'a> Lw<'c, 'a> {
         let mut is_export = info.exported && m == 0 && info.kind == DefKind::Fn && !info.local && Some(def) != self.ck.entry;
         let name = info.name.clone();
         if is_export && !self.abi_exportable(&sig, &map) {
+            // 8.T rejects such exports (`OXS-E0121`), so this cannot fire for a checked program.
+            self.unsupported(&format!("the export `{name}`: its signature does not fit ABI 1.0 (the checker should have rejected it)"), Some(info.span));
             is_export = false;
-            self.notes.push(Diagnostic::new(
-                "OXS-W0700",
-                format!("function `{name}` is not exported: ABI 1.0 exports take scalars and `str`/`[u8]` parameters and return scalars"),
-                Some(info.span),
-            ));
         }
         let owner_args: Vec<Ty> = match info.owner {
             Some(o) => {
@@ -625,7 +622,14 @@ pub fn compile_program(
     Ok(CompileOutput { wasm, module, needs, notes })
 }
 
-/// Check, lower, verify and compile a single source file to Wasm bytes.
+/// Check, lower, verify and compile a single source file to Wasm bytes. Notes of the lowering are dropped;
+/// use [`compile_source_with_notes`] to see them (today the lowering produces none: unfit exports are
+/// type errors in 8.T).
 pub fn compile_source(src: &str, interfaces: &[Interface], opts: &Options) -> Result<Vec<u8>, Diagnostics> {
-    compile_program("", src, &mut NoLoader, interfaces, opts).map(|o| o.wasm)
+    compile_source_with_notes(src, interfaces, opts).map(|(w, _)| w)
+}
+
+/// Like [`compile_source`], also returning the lowering notes (warnings).
+pub fn compile_source_with_notes(src: &str, interfaces: &[Interface], opts: &Options) -> Result<(Vec<u8>, Vec<Diagnostic>), Diagnostics> {
+    compile_program("", src, &mut NoLoader, interfaces, opts).map(|o| (o.wasm, o.notes))
 }

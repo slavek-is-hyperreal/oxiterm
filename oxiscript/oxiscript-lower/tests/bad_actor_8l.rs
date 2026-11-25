@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic, clippy::nursery, dead_code)]
+#![allow(clippy::pedantic, clippy::nursery, dead_code, clippy::useless_format, clippy::format_in_format_args)]
 //! BAD ACTOR 8.L: targeted probes. Each `probe!` is a test; FAIL = finding (or probe error, see message).
 //! Message prefixes: REJECT (checker/lowering diagnostic), PANIC (compiler panic), TRAP (main trapped),
 //! LOG (wrong output), LEAK (live objects after deinit).
@@ -746,28 +746,34 @@ export function main(log: Log): void {
 }
 "#, ["1 zw zw 2 qr xy"]);
 
-// ---------------- W0700: exported function with an ABI-unfit signature stays internal ----------------
+// ---------------- L08 (flipped): an export whose signature does not fit ABI 1.0 is a type error (8.T OXS-E0121) ----------------
+// Was `w0700_is_visible_and_export_absent`, which asserted the old behaviour (silent W0700 + export dropped).
 #[test]
-fn w0700_is_visible_and_export_absent() {
+fn unfit_exports_are_type_errors() {
+    for (decl, what) in [
+        ("struct P { x: i32; }\nexport function mk(x: i32): P { return { x: x }; }", "result type"),
+        ("export function arr(xs: i32[]): i32 { return xs.length; }", "parameter"),
+        ("export function g<T>(x: T): i32 { return 1; }", "generic"),
+        ("export function f(x: i32 | null): i32 { return 1; }", "parameter"),
+        ("export function f(h: () => i32): i32 { return h(); }", "parameter"),
+        ("export function f(x: i32): string { return \"a\"; }", "result type"),
+        ("type U = { kind: \"a\" } | { kind: \"b\" };\nexport function f(u: U): i32 { return 1; }", "parameter"),
+    ] {
+        let src = format!("{HDR}{decl}\nexport function main(log: Log): void {{ log.write(2, \"up\"); }}\n");
+        let e = oxiscript_lower::compile_source(&src, &interfaces(), &oxiscript_lower::Options::default()).expect_err(&src);
+        let t = e.to_string();
+        assert!(t.contains("OXS-E0121") && !t.contains("W0700"), "{what}: {t}");
+    }
+    // the fitting ones still export
     let src = format!("{HDR}{}", r#"
-struct P { x: i32; }
-export function mk(x: i32): P { return { x: x }; }
-export function arr(xs: i32[]): i32 { return xs.length; }
 export function okf(x: i32): i32 { return x + 1; }
+export function oks(s: string, n: u8): bool { return n > 0; }
+export function okb(b: u8[]): i32 { return b.length; }
 export function main(log: Log): void { log.write(2, "up"); }
 "#);
-    let out = compile_full(&src);
-    eprintln!("notes: {:?}", out.notes);
-    let mut p = Prog::from_wasm(out.wasm.clone());
-    for name in ["mk", "arr"] {
-        let r = p.rt.call_export(name, &[]);
-        eprintln!("export {name}: {:?}", r.as_ref().map(|_| ()).map_err(|e| e.to_string()));
-        assert!(r.is_err(), "{name} must not be callable");
-    }
-    let joined = format!("{:?}", out.notes);
-    for name in ["mk", "arr"] {
-        assert!(joined.contains("W0700") && joined.contains(name), "no visible W0700 note for `{name}`: {joined}");
-    }
+    let (wasm, notes) = oxiscript_lower::compile_source_with_notes(&src, &interfaces(), &oxiscript_lower::Options::default()).unwrap();
+    assert!(notes.is_empty());
+    let mut p = Prog::from_wasm(wasm);
     assert_eq!(p.call("okf", &[oxiscript_runtime::Value::I32(1)]), vec![oxiscript_runtime::Value::I32(2)]);
 }
 

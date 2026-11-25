@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic, clippy::nursery, dead_code)]
+#![allow(clippy::pedantic, clippy::nursery, dead_code, clippy::enum_variant_names, clippy::vec_init_then_push)]
 //! BAD ACTOR 8.L: seeded differential generator. Eval-while-generate: an AST of a small subset is both
 //! emitted as OxiScript and executed by a reference model in Rust. Oracles: log equals the model's, plain
 //! and metamorphically-wrapped variants agree, zero live objects after deinit, no trap.

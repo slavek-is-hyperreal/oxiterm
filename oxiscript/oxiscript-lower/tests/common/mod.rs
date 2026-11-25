@@ -145,7 +145,11 @@ pub struct Env {
 }
 
 pub fn env() -> Env {
-    let host = Host::new(Limits::default());
+    env_with_limits(Limits::default())
+}
+
+pub fn env_with_limits(l: Limits) -> Env {
+    let host = Host::new(l);
     let sink = LogSink::new(4096);
     let store = StateStore::new(StateLimits::default());
     let ticker = Arc::new(Mutex::new(TickerState::default()));
@@ -177,6 +181,12 @@ impl Prog {
     pub fn new(src: &str) -> Prog {
         let wasm = compile(src);
         Prog::from_wasm(wasm)
+    }
+
+    pub fn from_wasm_limits(wasm: Vec<u8>, l: Limits) -> Prog {
+        let env = env_with_limits(l);
+        let rt = env.host.instantiate(&wasm, Grants::all()).unwrap_or_else(|e| panic!("instantiate: {e}"));
+        Prog { env, rt, wasm }
     }
 
     pub fn from_wasm(wasm: Vec<u8>) -> Prog {

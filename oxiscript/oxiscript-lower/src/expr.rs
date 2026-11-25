@@ -289,33 +289,40 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
     fn template(&mut self, e: &Expr, parts: &[TemplatePart]) -> Opnd {
         let _ = e;
         let mut acc: Option<Opnd> = None;
-        for p in parts {
-            let piece = match p {
+        for (i, p) in parts.iter().enumerate() {
+            let later_expr = parts[i + 1..].iter().any(|q| matches!(q, TemplatePart::Expr(_)));
+            let (piece, is_const) = match p {
                 TemplatePart::Str(s) => {
                     if s.is_empty() {
                         continue;
                     }
                     let v = self.str_const(s);
-                    Opnd::borrowed(v)
+                    (Opnd::borrowed(v), true)
                 }
                 TemplatePart::Expr(x) => {
                     let o = self.expr(x);
-                    self.to_string_op(o)
+                    (self.to_string_op(o), false)
                 }
             };
             acc = Some(match acc {
                 None => piece,
                 Some(a) => {
-                    self.hold(a);
-                    self.hold(piece);
-                    self.unhold(piece);
+                    // `a` was held across the evaluation of `piece`; both are consumed here
                     self.unhold(a);
                     self.concat(a, piece)
                 }
             });
-            if let Some(a) = acc {
-                // pieces are produced before the next expression runs: keep the accumulator alive across `?`
-                let _ = a;
+            if later_expr {
+                // keep the accumulator alive (and owned) across a later expression that may `?`-exit or
+                // reassign a variable the accumulator borrows from
+                let mut a = acc.take().expect("acc");
+                if !a.own && !is_const {
+                    if let Some(v) = self.own_of(a) {
+                        a = Opnd::owned(v);
+                    }
+                }
+                self.hold(a);
+                acc = Some(a);
             }
         }
         acc.unwrap_or_else(|| {
@@ -336,6 +343,12 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                 let declared = self.local_info(l).ty;
                 let actual = self.ty_of(e.id);
                 let declared = self.cty(declared);
+                let actual_c = self.cty(actual);
+                if matches!(self.kind(actual_c), TyKind::Null) && matches!(self.kind(declared), TyKind::Nullable(_)) {
+                    // narrowed to exactly `null`: behaves like the `null` literal (a typed null in any nullable context)
+                    self.drop_o(o);
+                    return Opnd::void();
+                }
                 self.narrow(o, declared, actual)
             }
             Some(Res::Def(d)) => self.def_value(e, d),
@@ -419,7 +432,7 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         It::I32
     }
 
-    fn load_cell(&mut self, cell: ValueId, cty: &str) -> Opnd {
+    pub(crate) fn load_cell(&mut self, cell: ValueId, cty: &str) -> Opnd {
         let ft = self.cell_field_ty(cty);
         let v = self.fb.emit1(
             Op::GetField {
@@ -1263,7 +1276,14 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         let Some(rr) = self.repr(rty) else { return Opnd::void() };
         let lty = self.ty_of(strip(lhs).id);
         let a = self.expr(lhs);
-        let Some(av) = a.v else { return Opnd::void() };
+        let Some(av) = a.v else {
+            let lc = self.cty(lty);
+            if matches!(self.kind(lc), TyKind::Null) {
+                // `null ?? x` (a literal or a local narrowed to null): always `x`
+                return self.expr_val(rhs, &rr);
+            }
+            return Opnd::void();
+        };
         let set = self.assigned_in_exprs(&[rhs]);
         let snap = self.env.clone();
         let mut j = self.new_join(Some(rr.clone()), set);
