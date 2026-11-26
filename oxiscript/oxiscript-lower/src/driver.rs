@@ -26,7 +26,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            runtime: oxiscript_wasm::RuntimeMode::Stub,
+            runtime: oxiscript_wasm::RuntimeMode::Linked,
             validate_output: true,
             lower_all: false,
         }

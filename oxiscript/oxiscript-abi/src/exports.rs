@@ -56,6 +56,7 @@ pub const SCRATCH_CAP: &str = "oxi_scratch_cap";
 pub const INIT: &str = "oxi_init";
 pub const DEINIT: &str = "oxi_deinit";
 pub const TICK: &str = "oxi_tick";
+pub const RT_INIT: &str = "oxi_rt_init";
 
 pub const ALLOC: &str = "oxi_alloc";
 pub const ALLOC_BYTES: &str = "oxi_alloc_bytes";
@@ -163,6 +164,8 @@ pub const EXPORTS: &[ExportSpec] = &[
         doc: "oxi_array_grow(array, min_cap): ensure cap >= min_cap (amortised doubling); may move the data buffer, never the array object." },
     ExportSpec { name: TRAP, kind: ExportKind::Func, provider: Provider::Runtime, params: &[I32], results: &[],
         doc: "oxi_trap(kind): store kind in oxi_trap_kind, then `unreachable`. Never returns." },
+    ExportSpec { name: RT_INIT, kind: ExportKind::Func, provider: Provider::Runtime, params: &[I32, I32, I32], results: &[],
+        doc: "oxi_rt_init(typedesc_base, typedesc_count, heap_base): validate/install the descriptor table and start the runtime allocator at heap_base (8-aligned end of static data; 0 keeps the default). Called first by oxi_init." },
 ];
 
 pub fn find(name: &str) -> Option<&'static ExportSpec> {

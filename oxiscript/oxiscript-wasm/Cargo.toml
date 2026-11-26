@@ -9,7 +9,7 @@ description = "OxiIR to Core WebAssembly code generator (Phase 8)."
 oxiscript-abi = { path = "../oxiscript-abi" }
 oxiscript-ir = { path = "../oxiscript-ir" }
 # Bytecode Alliance; Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT.
-wasm-encoder = { version = "0.263", default-features = false, features = ["std"] }
+wasm-encoder = { version = "0.263", default-features = false, features = ["std", "wasmparser"] }
 # Same licence; validates our own output with exactly the ABI feature set.
 wasmparser = { version = "0.263", default-features = false, features = ["std", "validate", "features"] }
 

@@ -26,12 +26,22 @@ fn conv(t: WasmTy) -> wasmi::ValType {
 }
 
 #[test]
-fn module_has_no_imports_and_exports_every_runtime_row() {
+fn module_imports_only_set_trap_and_exports_every_runtime_row() {
     if !wasm_available() {
         return;
     }
     let g = WasmGuest::load(wasm_path());
-    assert_eq!(g.module.imports().count(), 0, "the runtime must be self-contained: no imports");
+    let imps: Vec<_> = g.module.imports().collect();
+    assert_eq!(imps.len(), 1, "the runtime must import only oxi_set_trap");
+    assert_eq!(imps[0].module(), "oxi:rt");
+    assert_eq!(imps[0].name(), "oxi_set_trap");
+    match imps[0].ty() {
+        ExternType::Func(ft) => {
+            assert_eq!(ft.params(), &[wasmi::ValType::I32]);
+            assert!(ft.results().is_empty());
+        }
+        other => panic!("oxi_set_trap: expected func, got {other:?}"),
+    }
     let ex: std::collections::HashMap<String, ExternType> =
         g.module.exports().map(|e| (e.name().to_string(), e.ty().clone())).collect();
     for row in exports::EXPORTS.iter().filter(|r| r.provider == Provider::Runtime) {
@@ -63,7 +73,7 @@ fn module_has_no_imports_and_exports_every_runtime_row() {
             other => panic!("extension export {name}: {other:?}"),
         }
     }
-    // only reserved names are exported (plus memory and the trap cell)
+    // only reserved names are exported (plus linker globals)
     for name in ex.keys() {
         assert!(
             exports::is_reserved_export_name(name) || name == "__data_end" || name == "__heap_base",
@@ -73,7 +83,7 @@ fn module_has_no_imports_and_exports_every_runtime_row() {
 }
 
 #[test]
-fn scratch_region_and_trap_cell() {
+fn scratch_region_trap_channel_and_heap_base() {
     if !wasm_available() {
         return;
     }
@@ -87,21 +97,33 @@ fn scratch_region_and_trap_cell() {
     let s = g.call("oxi_str_new", &[p, 13]);
     assert_eq!(g.str_read(s), "hello scratch");
     g.release(s);
-    // traps: store the kind and execute unreachable
-    let cell = g.global_i32("oxi_trap_cell");
+    // traps: call oxi_set_trap(kind) and execute unreachable
     assert!(g.try_call("oxi_alloc", &[999]).is_err());
-    assert_eq!(g.rd(cell), 1);
+    assert_eq!(g.trap_kind(), 1);
     let mut g2 = WasmGuest::standard(wasm_path());
-    let cell2 = g2.global_i32("oxi_trap_cell");
     assert!(g2.try_call("oxi_trap", &[7]).is_err());
-    assert_eq!(g2.rd(cell2), 7);
+    assert_eq!(g2.trap_kind(), 7);
     // bad utf-8
     let mut g3 = WasmGuest::standard(wasm_path());
-    let cell3 = g3.global_i32("oxi_trap_cell");
     let p3 = g3.global_i32("oxi_scratch_ptr");
     g3.wr_bytes(p3, &[0xFF, 0xFE]);
     assert!(g3.try_call("oxi_str_new", &[p3, 2]).is_err());
-    assert_eq!(g3.rd(cell3), 9);
+    assert_eq!(g3.trap_kind(), 9);
+    // heap_base: allocator starts at or above the passed static_end
+    let mut g4 = WasmGuest::load(wasm_path());
+    let rt_hb = g4.global_i32("__heap_base");
+    let td_base = (rt_hb + 15) & !15;
+    // minimal valid descriptor table: 16 entries, id 1 = string (kind 4, acyclic 1)
+    g4.wr(td_base + 16 + 4, 4 | (1 << 8));
+    let heap_base = (td_base + 16 * 16 + 256 + 7) & !7;
+    g4.call("oxi_rt_init", &[td_base, 16, heap_base]);
+    let blk = g4.alloc_bytes(32);
+    assert!(blk >= heap_base, "allocation {blk:#x} overlapped static region ending at {heap_base:#x}");
+    g4.free_bytes(blk, 32);
+    // invalid heap_base below __heap_base traps 64
+    let mut g5 = WasmGuest::load(wasm_path());
+    assert!(g5.try_call("oxi_rt_init", &[td_base, 16, 1024]).is_err());
+    assert_eq!(g5.trap_kind(), 64);
 }
 
 #[test]
@@ -198,25 +220,22 @@ fn debug_wasm_build_traps_65_on_double_release_and_non_objects() {
     }
     let path = build_wasm("dev");
     let mut g = WasmGuest::standard(&path);
-    let cell = g.global_i32("oxi_trap_cell");
     let a = g.alloc(ty::NODE);
     let _guard = g.alloc(ty::NODE);
     g.release(a);
     assert!(g.try_call("oxi_release", &[a]).is_err());
-    assert_eq!(g.rd(cell), 65, "double release");
+    assert_eq!(g.trap_kind(), 65, "double release");
     let mut g = WasmGuest::standard(&path);
-    let cell = g.global_i32("oxi_trap_cell");
     let b = g.alloc_bytes(64);
     assert!(g.try_call("oxi_release", &[b + 8]).is_err());
-    assert_eq!(g.rd(cell), 65, "release of an alloc_bytes block");
+    assert_eq!(g.trap_kind(), 65, "release of an alloc_bytes block");
     // the descriptor table is validated by the real wasm too
     let mut g = WasmGuest::load(&path);
-    let cell = g.global_i32("oxi_trap_cell");
     let t = g.alloc_bytes(32);
     g.wr(t + 16, 16); // id 1: size 16 ...
     g.wr(t + 20, 1); // ... kind 1 (struct) where id 1 must be the string
-    assert!(g.try_call("oxi_rt_init", &[t, 2]).is_err());
-    assert_eq!(g.rd(cell), 64, "bad descriptor table");
+    assert!(g.try_call("oxi_rt_init", &[t, 2, 0]).is_err());
+    assert_eq!(g.trap_kind(), 64, "bad descriptor table");
 }
 
 #[test]

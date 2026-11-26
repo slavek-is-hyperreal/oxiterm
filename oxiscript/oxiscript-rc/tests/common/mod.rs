@@ -47,7 +47,7 @@ pub fn build_wasm(profile: &str) -> PathBuf {
 }
 
 pub struct WasmGuest {
-    pub store: Store<()>,
+    pub store: Store<u32>,
     pub instance: Instance,
     pub memory: Memory,
     funcs: HashMap<String, Func>,
@@ -59,11 +59,20 @@ impl WasmGuest {
         let bytes = std::fs::read(path).unwrap();
         let engine = Engine::default();
         let module = Module::new(&engine, &bytes[..]).expect("valid wasm");
-        let mut store = Store::new(&engine, ());
-        let linker = <Linker<()>>::new(&engine);
+        let mut store = Store::new(&engine, 0u32);
+        let mut linker = <Linker<u32>>::new(&engine);
+        linker
+            .func_wrap("oxi:rt", "oxi_set_trap", |mut c: wasmi::Caller<'_, u32>, kind: i32| {
+                *c.data_mut() = kind as u32;
+            })
+            .expect("define oxi_set_trap");
         let instance = linker.instantiate_and_start(&mut store, &module).expect("instantiate");
         let memory = instance.get_memory(&store, "memory").expect("memory export");
         WasmGuest { store, instance, memory, funcs: HashMap::new(), module }
+    }
+
+    pub fn trap_kind(&self) -> u32 {
+        *self.store.data()
     }
 
     pub fn standard(path: &PathBuf) -> WasmGuest {
@@ -114,7 +123,7 @@ impl WasmGuest {
 
 impl Guest for WasmGuest {
     fn init(&mut self, base: u32, count: u32) {
-        self.call("oxi_rt_init", &[base, count]);
+        self.call("oxi_rt_init", &[base, count, 0]);
     }
     fn alloc(&mut self, id: u32) -> u32 {
         self.call("oxi_alloc", &[id])

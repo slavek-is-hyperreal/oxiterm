@@ -61,16 +61,6 @@ macro_rules! probe {
     };
 }
 
-macro_rules! probe_ign {
-    ($name:ident, $body:expr, $want:expr) => {
-        #[test]
-        #[ignore = "closure cycle leak: expected until the 8.M cycle collector exists (Stub has none); handoff L04"]
-        fn $name() {
-            check($body, &$want);
-        }
-    };
-}
-
 // ---------------- convention 10: borrows across calls/stores ----------------
 probe!(c10_this_field_held_across_reset, r#"
 class H { arr: i32[] = [1, 2, 3]; reset(): void { this.arr = [9]; }
@@ -532,7 +522,7 @@ export function main(log: Log): void {
 }
 "#, ["abxx2", "abxx10", "210 210"]);
 
-probe_ign!(cl_class_field_closure_capturing_self, r#"
+probe!(cl_class_field_closure_capturing_self, r#"
 class Node { name: string; cb: (() => string) | null = null; constructor(name: string) { this.name = name; } }
 export function main(log: Log): void {
   const n = new Node("a" + "b");
@@ -543,7 +533,7 @@ export function main(log: Log): void {
 }
 "#, ["set", "ab!"]);
 
-probe_ign!(cl_recursion_via_closure_var, r#"
+probe!(cl_recursion_via_closure_var, r#"
 export function main(log: Log): void {
   let fib: (n: i32) => i32 = (n) => n;
   fib = (n) => n < 2 ? n : fib(n - 1) + fib(n - 2);

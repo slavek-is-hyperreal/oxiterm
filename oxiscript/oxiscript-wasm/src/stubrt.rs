@@ -41,6 +41,7 @@ pub(crate) const FUNCS: &[&str] = &[
     "oxi_array_new",
     "oxi_array_grow",
     "oxi_trap",
+    "oxi_rt_init",
     // internal helpers (not exported)
     "bump",
     "free_obj",
@@ -65,6 +66,7 @@ pub(crate) fn sig(name: &str) -> (Vec<ValType>, Vec<ValType>) {
             (vec![I32, I32], vec![I32])
         }
         "oxi_str_slice" => (vec![I32, I32, I32], vec![I32]),
+        "oxi_rt_init" => (vec![I32, I32, I32], vec![]),
         "oxi_str_from_i64" => (vec![I64], vec![I32]),
         "oxi_str_from_f64" => (vec![F64], vec![I32]),
         _ => (vec![], vec![]),
@@ -922,6 +924,7 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
             b.get(0);
             b.s().global_set(G_TRAP).unreachable();
         }
+        "oxi_rt_init" => {}
         other => unreachable!("unknown stub function {other}"),
     }
     body.finish()

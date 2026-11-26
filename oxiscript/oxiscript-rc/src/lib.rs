@@ -25,17 +25,18 @@
 //!   so the exported global's value (an address) is exactly the ABI value.
 //! * `oxi_scratch_cap`: not a global here; function `oxi_rt_scratch_cap()`
 //!   returns it and the linker materialises the global (value 4096).
-//! * `oxi_trap_kind`: `oxi_trap` stores the kind in the memory cell
-//!   `oxi_trap_cell` (exported address) before `unreachable`; the linking
-//!   step either mirrors it into the mutable global or replaces `oxi_trap`
-//!   by its own three-instruction version.
-//! * `oxi_typedesc_base/count` are compiler globals the runtime cannot read:
-//!   the generated `oxi_init` must call the extension export
-//!   `oxi_rt_init(base, count)` before anything else.
+//! * `oxi_trap_kind`: `oxi_trap` and all runtime-raised traps call the imported
+//!   function `("oxi:rt", "oxi_set_trap")(kind: i32)` before `unreachable`; the
+//!   linker resolves it to a compiler-generated helper that writes the single
+//!   exported mutable global `oxi_trap_kind`.
+//! * `oxi_typedesc_base/count` and heap ownership: the generated `oxi_init`
+//!   calls `oxi_rt_init(base, count, heap_base)` before anything else, passing
+//!   the 8-aligned end of the compiler's static data so the allocator starts
+//!   there (0 keeps the runtime's default `__heap_base`).
 //!
-//! # Extension exports (additive; to be promoted into `exports::EXPORTS`)
+//! # Extension exports (internal/diagnostic, not exported in final linked modules)
 //!
-//! `oxi_rt_init(base, count)`, `oxi_rt_scratch_cap() -> i32`,
+//! `oxi_rt_scratch_cap() -> i32`,
 //! `oxi_gc_step(budget) -> i32` (bits: 1 more work, 2 deferred candidates need
 //! a full `oxi_collect_cycles` or a bigger budget; `budget == 0` does nothing
 //! and returns 0), `oxi_gc_stat(key) -> i32`, `oxi_gc_config(key, value)`.
@@ -160,7 +161,6 @@ pub mod testkit;
 /// Extension exports provided by this runtime beyond `exports::EXPORTS`:
 /// `(name, params, results)` with `i32` for every value.
 pub const EXTENSION_EXPORTS: &[(&str, usize, usize)] = &[
-    ("oxi_rt_init", 2, 0),
     ("oxi_rt_scratch_cap", 0, 1),
     ("oxi_gc_step", 1, 1),
     ("oxi_gc_stat", 1, 1),

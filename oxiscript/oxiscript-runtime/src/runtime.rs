@@ -801,11 +801,13 @@ impl Runtime {
         }
     }
 
-    /// Call `oxi_deinit()` and return `oxi_live_objects()` (0 = no leaks). The
-    /// instance should be dropped afterwards.
+    /// Call `oxi_deinit()`, run `oxi_collect_cycles()`, and return
+    /// `oxi_live_objects()` (0 = no leaks). The instance should be dropped
+    /// afterwards.
     pub fn deinit(&mut self) -> Result<i32> {
         let f = self.rt_func(exports::DEINIT);
         self.inst.invoke(f, &[], None)?;
+        self.collect_cycles()?;
         self.live_objects()
     }
 

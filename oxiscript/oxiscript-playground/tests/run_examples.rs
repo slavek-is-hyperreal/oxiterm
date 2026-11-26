@@ -79,11 +79,13 @@ fn array_bounds_trap() {
 }
 
 #[test]
-fn f64_to_text_is_not_available_yet() {
-    // The Stub runtime has no float formatting: it traps as `unreachable`. The site copy says exactly this.
-    let (r, l) = stop_of(&main_only("const x = 1.5;\nlog.write(2, `${x}`);"), DEFAULT_FUEL);
-    assert_eq!(r, "unreachable");
-    assert!(l.is_empty());
+fn f64_to_text_works() {
+    assert_eq!(
+        lines(&main_only(
+            "const x = 1.5;\nconst z = 0.0;\nlog.write(2, `${x} ${(1.0).toString()} ${(0.1).toString()} ${(-0.0).toString()} ${(z / z).toString()} ${(1.0 / z).toString()} ${(-1.0 / z).toString()}`);"
+        )),
+        ["1.5 1 0.1 -0 NaN Infinity -Infinity"]
+    );
     // float arithmetic and conversion to an integer work
     assert_eq!(lines(&main_only("const x = 1.5;\nlog.write(2, `${(x * 4.0) as i32}`);")), ["6"]);
 }
