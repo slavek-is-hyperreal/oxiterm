@@ -60,7 +60,11 @@ fn codes(v: &Value) -> Vec<String> {
 fn version() {
     let o = oxi(&["--version"], &crate_dir(), None);
     assert!(o.status.success());
-    assert!(text(&o).starts_with("oxi "), "{}", text(&o));
+    let want = format!(
+        "oxi {}\nOxiScript 0.0.x: nothing is guaranteed before 1.0.0 (docs/oxiscript/VERSIONING.md)",
+        env!("CARGO_PKG_VERSION")
+    );
+    assert_eq!(text(&o).trim_end(), want);
 }
 
 // ---------------------------------------------------------------- JSON schema

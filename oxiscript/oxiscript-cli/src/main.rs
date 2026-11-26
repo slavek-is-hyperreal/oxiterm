@@ -29,7 +29,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "oxi", version, about = "The OxiScript toolchain: check, fmt, explain, new, run, build")]
+#[command(name = "oxi", version, long_version = concat!(env!("CARGO_PKG_VERSION"), "\nOxiScript 0.0.x: nothing is guaranteed before 1.0.0 (docs/oxiscript/VERSIONING.md)"), about = "The OxiScript toolchain: check, fmt, explain, new, run, build")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

@@ -860,6 +860,7 @@
       "error": "error",
       "fixes": "Quo modo corrigatur:",
       "thtmlNote": "Palaestra editor est et paginam simplicem requirit.",
+      "versionNote": "OxiScript {v} · nihil praestatur ante 1.0",
       "staleFix": "Codex post ultimam examinationem mutatus est. Iterum examino; remedium iterum preme.",
       "fixFailed": "Hoc remedium adhiberi non potuit.",
       "tooLargeTitle": "Codex nimis magnus",

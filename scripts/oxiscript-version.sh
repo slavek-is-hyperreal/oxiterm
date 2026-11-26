@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# OxiScript version tool (rule: docs/oxiscript/VERSIONING.md).
+#   scripts/oxiscript-version.sh           print the next version (and the carry for the tag message)
+#   scripts/oxiscript-version.sh --check   verify every manifest carries ONE version (exit 1 otherwise)
+#
+# Rule: x.y.c; c += 1 per 5555 changed lines (added + deleted) in oxiscript/oxiscript-*/src/**
+# since the last tag `oxiscript-v*`; the remainder carries over. The carry lives in the ANNOTATED
+# tag message as a line `carry=N`, so the result is deterministic from git alone.
+# No tag yet: initial release, prints 0.0.1 (history before the first tag is not counted).
+# Exit codes: 0 ok, 1 error / mismatch, 2 usage, 3 no release due yet.
+set -eu
+cd "$(dirname "$0")/.."
+STEP=5555
+
+manifests_check() {
+  local versions="" f v
+  for f in oxiscript/*/Cargo.toml; do
+    v=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$f" | head -n1)
+    versions="$versions$f $v
+"
+  done
+  v=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' editors/vscode-oxiscript/package.json | head -n1)
+  versions="${versions}editors/vscode-oxiscript/package.json $v
+"
+  # package-lock.json: the root version appears twice (top level and packages[""]).
+  v=$(sed -n '3s/^  "version": "\(.*\)",$/\1/p' editors/vscode-oxiscript/package-lock.json)
+  versions="${versions}editors/vscode-oxiscript/package-lock.json(top) $v
+"
+  v=$(sed -n '/^    "": {$/,/^    },\{0,1\}$/s/^      "version": "\(.*\)",$/\1/p' editors/vscode-oxiscript/package-lock.json | head -n1)
+  versions="${versions}editors/vscode-oxiscript/package-lock.json(root) $v
+"
+  # The playground page reads the CLI manifest at build time (sites/build.mjs): no separate literal.
+  local distinct count
+  distinct=$(printf '%s' "$versions" | awk 'NF==2{print $2}' | sort -u)
+  count=$(printf '%s' "$versions" | awk 'NF!=2 || 1{print $2}' | sort -u | wc -l)
+  if [ "$count" -ne 1 ] || [ -z "$distinct" ]; then
+    echo "oxiscript version mismatch:" >&2
+    printf '%s' "$versions" | awk 'NF{printf "  %-55s %s\n", $1, ($2==""?"(none)":$2)}' >&2
+    return 1
+  fi
+  echo "oxiscript version $distinct: all manifests agree"
+}
+
+if [ "${1:-}" = "--check" ]; then manifests_check; exit $?; fi
+[ $# -eq 0 ] || { echo "usage: $0 [--check]" >&2; exit 2; }
+
+TAG=$(git tag -l 'oxiscript-v*' --sort=-v:refname | head -n1)
+if [ -z "$TAG" ]; then
+  echo "0.0.1"
+  echo "initial release (no oxiscript-v* tag yet): tag message must contain carry=0" >&2
+  exit 0
+fi
+
+# Must be an annotated tag with carry=N.
+[ "$(git cat-file -t "refs/tags/$TAG")" = tag ] || { echo "$TAG is a lightweight tag: re-create it annotated with a carry=N line" >&2; exit 1; }
+CARRY=$(git tag -l --format='%(contents)' "$TAG" | sed -n 's/^carry=\([0-9][0-9]*\)$/\1/p' | head -n1)
+[ -n "$CARRY" ] || { echo "$TAG has no 'carry=N' line in its message" >&2; exit 1; }
+
+# added + deleted lines (same sum as `git diff --shortstat`, binary files skipped).
+DIFF=$(git diff --numstat "$TAG" HEAD -- ':(glob)oxiscript/oxiscript-*/src/**' | awk '$1!="-"{s+=$1+$2} END{print s+0}')
+TOTAL=$((DIFF + CARRY))
+BUMP=$((TOTAL / STEP))
+NEWCARRY=$((TOTAL % STEP))
+BASE=${TAG#oxiscript-v}
+X=${BASE%%.*}; REST=${BASE#*.}; Y=${REST%%.*}; C=${REST#*.}
+echo "since $TAG: $DIFF changed src lines + carry $CARRY = $TOTAL; +$BUMP" >&2
+if [ "$BUMP" -eq 0 ]; then
+  echo "no release due (need $((STEP - TOTAL)) more changed lines); carry stays $TOTAL" >&2
+  exit 3
+fi
+echo "$X.$Y.$((C + BUMP))"
+echo "tag message must contain: carry=$NEWCARRY" >&2

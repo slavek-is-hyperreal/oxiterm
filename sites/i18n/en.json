@@ -860,6 +860,7 @@
       "error": "error",
       "fixes": "How to fix:",
       "thtmlNote": "The playground is an editor and needs the plain web page.",
+      "versionNote": "OxiScript {v} · no guarantees before 1.0",
       "staleFix": "The code changed since the last check. Checking again; press the fix button once more.",
       "fixFailed": "This fix could not be applied.",
       "tooLargeTitle": "Source too large",

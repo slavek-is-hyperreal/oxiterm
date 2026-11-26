@@ -33,8 +33,8 @@ npm test            # compiles, then: TextMate grammar (vscode-textmate + vscode
                     # JSON conversion, snippets (expanded and run through oxi), extension logic
                     # against a fake `vscode` module and the real `oxi` (needs ../../target/debug/oxi
                     # or OXI_BIN=/path/to/oxi; the oxi-based tests skip when it is missing)
-npm run package     # oxiscript-0.1.0.vsix  (npx @vscode/vsce package; offline after npm install)
-code --install-extension oxiscript-0.1.0.vsix
+npm run package     # oxiscript-0.0.1.vsix  (npx @vscode/vsce package; offline after npm install)
+code --install-extension oxiscript-0.0.1.vsix
 ```
 
 What is not tested: a real VS Code window (rendering of squiggles, the quick-fix lightbulb, format-on-save through the editor, the "oxi not found" notification UI). Manual check list: open a `.oxs` file, type `a == b` (squiggle `OXS-E0005`, lightbulb offers "use `===`"), save (file is formatted), set `oxiscript.oxiPath` to a wrong path (one warning, not one per save).

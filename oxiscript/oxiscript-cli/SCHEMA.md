@@ -24,7 +24,7 @@ Keys are emitted in alphabetical order; the shape is stable within schema 1 (fie
 {
   "schema": 1,
   "tool": "oxi",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "ok": false,
   "fatal": null,
   "files": ["main.oxs"],

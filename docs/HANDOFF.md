@@ -28,7 +28,7 @@ This file lets another Claude account (or a person) take over without the previo
 - **Known gaps:** real linking with the 8.M runtime (`RuntimeMode::Import`) is not done yet (tests use the Stub runtime; `f64` to string needs it); Wasm local reuse (~6000 statements per function); closure cycles leak until the cycle collector is linked; two 8.P oracles (comment re-attachment, an E0006 no-op fix) passed at seed 1 on 2026-11-26 and need a multi-seed check before they are called fixed.
 
 ## 4. Next steps (in order)
-1. Bump all OxiScript crates, the extension and the playground to **0.0.1**, add the version script, tag `v0.0.1`, write CHANGELOG.
+1. Bump all OxiScript crates, the extension and the playground to **0.0.1**, add the version script, tag `oxiscript-v0.0.1` (prepared, see [stages/0.0.1/release.md](stages/0.0.1/release.md)), write CHANGELOG.
 2. Wire `oxi run` / `oxi build` and the playground's Run button to `oxiscript_lower::compile_source`.
 3. Gemini pilot on a small stage, then decide whether implementation moves to Gemini.
 4. Link with the real 8.M runtime (decide the two open ABI questions from 8.G: heap base / static end, runtime trap cell), then **8.S1** `<script lang="oxs">` in an OxiUI page (end of the critical path).

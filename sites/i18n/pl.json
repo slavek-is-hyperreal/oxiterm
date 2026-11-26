@@ -860,6 +860,7 @@
       "error": "błąd",
       "fixes": "Jak naprawić:",
       "thtmlNote": "Plac zabaw to edytor i wymaga zwykłej strony internetowej.",
+      "versionNote": "OxiScript {v} · bez gwarancji przed 1.0",
       "staleFix": "Kod zmienił się od ostatniego sprawdzenia. Sprawdzam ponownie; naciśnij przycisk poprawki jeszcze raz.",
       "fixFailed": "Nie udało się zastosować tej poprawki.",
       "tooLargeTitle": "Kod jest za duży",

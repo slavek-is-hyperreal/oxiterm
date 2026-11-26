@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-runtime"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript execution runtime: wasmi host, capabilities, fuel, hot reload (Phase 8)."

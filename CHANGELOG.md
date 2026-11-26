@@ -1,5 +1,47 @@
 # Changelog
 
+## OxiScript 0.0.1 — 2026-11-26
+
+First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semantics, ABI, OxiIR, the `oxi` CLI and its JSON schema may change in any release ([docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md)). One version for all `oxiscript-*` crates, the `oxi` CLI, the VS Code extension and the playground. Git tag: `oxiscript-v0.0.1`.
+
+### Language
+- TypeScript-like syntax with a stricter, typed core: sized integers (`i8`..`u64`) and floats (`f32`, `f64`) with explicit `as` conversion, `===` only, mandatory `;`, `Result<T, E>` with the `?` operator instead of exceptions, `struct` (value) and `class` (reference), `interface`, generics, discriminated unions with exhaustive `switch`, `T | null` for absence, UTF-8 strings with template literals.
+- Capabilities enter only through `main` (`host:log`, `host:state`, ...), checked against `oxi.toml` `needs`. `export` is module visibility; host entry points are marked `@host`.
+- Small built-in library: arrays, strings, numbers, `Result`, `range`. `law` declarations are parsed and checked.
+- Reference: `docs/oxiscript/grammar.md`, `abi.md`, `ir.md`, `contracts.md`; model-oriented spec `docs/oxiscript/llms.txt`.
+
+### Compiler pipeline
+- `oxiscript-syntax` (parser, canonical formatter), `oxiscript-check` (type checker, reason codes `OXS-E/W` with machine-applicable fixes, append-only registry), `oxiscript-ir` (OxiIR), `oxiscript-lower` (end-to-end lowering), `oxiscript-wasm` (Wasm code generator), `oxiscript-rc` and `oxiscript-runtime` (reference-counting memory model, sandboxed wasmi runtime with fuel and host capability binding), `oxiscript-abi` (host interface IDL), `oxiscript-playground` (browser build).
+- Differential and fuzz testing: about 19.6k differential programs in the lowering stage, no miscompilation found.
+
+### `oxi` CLI
+- `oxi check [--json] [--fix] [--fix-only semicolons]`, `oxi fmt [--check]`, `oxi explain <code>`, `oxi new <name> --template blink|touch-button|sensor-dashboard|oxiui-page`, `oxi run`, `oxi build`. `oxi --version` prints the version and the no-guarantee notice. JSON schema 1 (`oxiscript/oxiscript-cli/SCHEMA.md`).
+
+### Tooling and sites
+- VS Code extension (`editors/vscode-oxiscript`): highlighting, diagnostics, quick fixes, format on save, snippets and the semicolon assistant.
+- Agent support: `AGENTS.md`, the `oxiscript-authoring` skill, `llms.txt`.
+- Web playground on the OxiScript site with Check, Format and **Run** (compiled and run in a Web Worker with an instruction limit and a time limit). Three static sites (slavekm.pl, OxiUI, OxiScript) in EN and PL; Latin is an unpublished draft.
+
+### Hardening
+- Every stage (parser/formatter 8.P, runtime 8.R, memory 8.M, type checker 8.T with 22 findings, Wasm generator 8.G, lowering 8.L, DevKit 8.D with 17 findings, websites 8.W with 12 findings, Run) passed an adversarial BAD ACTOR review and fuzzing before merge. Findings and fixes are in `docs/stages/`.
+
+### Known limitations
+- `f64` cannot be converted to text yet (needs the real 8.M runtime linked; the current Stub runtime traps on float formatting).
+- No standard library beyond the built-ins above; Rust crates as libraries (stage 8.N) not yet.
+- No language server (LSP) yet; no `<script lang="oxs">` in OxiUI pages yet (8.S1).
+- Closure cycles leak until the cycle collector is linked; Wasm local reuse limits very large functions (about 6000 statements).
+- In the playground only `host:log` and `host:state` exist; nothing persists between runs.
+- Two parser/formatter oracles (comment re-attachment, an E0006 no-op fix) still need a multi-seed check.
+
+## OxiTerm / OxiUI work since 2026-11-23 (OxiTerm crate versions unchanged)
+
+- **Phase 4:** `oxiterm-core` extracted as a pure crate (session state, event-loop step API, animations, frame limiter) driven by host traits; builds for wasm32 and Android.
+- **Phase 5.2:** headless GPU sink `oxiterm-gpu` (wgpu, SDF fills and borders, glyph atlas matching the CPU renderer, golden and CPU-comparison tests).
+- **Phase 6:** proportional text in both modes.
+- **Phase 7:** WASM local mode (7.1) and the OxiDE software framebuffer sink (7.2).
+- **Phase 7.6:** media and diagram parity across modes (SVG, PNG, Lottie, Rive, diagrams in GUI and local mode; honest missing-media placeholder in the no-native-media renderer).
+- Dependency security upgrade (below) and the showcase versions of the sites.
+
 ## [Unreleased] — 2026-11-23
 
 ### 🔒 Dependency security upgrade
