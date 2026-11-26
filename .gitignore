@@ -30,3 +30,7 @@ oxiterm-skills.zip
 
 # oxiterm-reader generated site
 /reader-site/
+
+# oxiterm-gpu unblessed golden candidate outputs
+*.new.png
+.wrangler/

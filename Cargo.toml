@@ -9,6 +9,7 @@ members = [
     "oxiterm-a11y",
     "apps/oxiterm-reader",
     "oxiterm-fb",
+    "oxiterm-gpu",
     "oxiscript/oxiscript-syntax",
     "oxiscript/oxiscript-check",
     "oxiscript/oxiscript-lower",

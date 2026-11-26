@@ -1,0 +1,19 @@
+[package]
+name = "oxiterm-gpu"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "OxiUI GPU sink (wgpu): renders a DisplayList to pixels (Phase 5.2, headless)."
+
+[dependencies]
+bytemuck = { version = "1.25.2", features = ["derive"] }
+etagere = "0.3.0"
+oxiterm-proto = { path = "../oxiterm-proto" }
+oxiterm-renderer = { version = "0.2.0", path = "../oxiterm-renderer", default-features = false, features = ["text-shaping"] }
+png = "0.18.1"
+pollster = "1.0.3"
+swash = "0.2.10"
+wgpu = "30.0.2"
+
+[dev-dependencies]
+oxiterm-fb = { path = "../oxiterm-fb" }
