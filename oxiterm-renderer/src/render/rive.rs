@@ -66,6 +66,46 @@ pub fn toggle_image(w: u32, h: u32, bits: usize) -> RgbaImage {
     img
 }
 
+/// Pixel budget of the web half-block raster (before the resize to `w x 2h` cells). The usual
+/// widget (a few dozen cells) is far below it and keeps the full 8 x 16 oversampling; a
+/// viewport-sized one (up to 500 x 200 cells, chosen by the visitor) is rasterised with less
+/// oversampling instead of 12.8 Mpx per frame (BAD ACTOR 7.6 F-13).
+pub const WEB_RASTER_BUDGET_PX: u64 = 1_500_000;
+const WEB_CACHE_CAPACITY: usize = 64;
+
+type WebKey = (u32, u32, usize);
+
+/// The toggle as half-block pixels (`width` x `height * 2`), cached per `(size, state bits)`. The
+/// key holds no path and no session, so sharing it between sessions leaks nothing.
+pub fn toggle_half_block_image(width: u32, height: u32, bits: usize) -> std::sync::Arc<RgbaImage> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<WebKey, Arc<RgbaImage>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = (width, height, bits);
+    if let Ok(c) = cache.lock() {
+        if let Some(img) = c.get(&key) {
+            return Arc::clone(img);
+        }
+    }
+    let (mut rw, mut rh) = (u64::from(width) * 8, u64::from(height) * 16);
+    if rw * rh > WEB_RASTER_BUDGET_PX {
+        // Same factor on both axes, never below one raster pixel per output pixel.
+        let f = (WEB_RASTER_BUDGET_PX as f64 / (rw * rh) as f64).sqrt();
+        rw = ((rw as f64 * f) as u64).max(u64::from(width));
+        rh = ((rh as f64 * f) as u64).max(u64::from(height) * 2);
+    }
+    let big = toggle_image(rw as u32, rh as u32, bits);
+    let img = Arc::new(image::imageops::resize(&big, width, height * 2, image::imageops::FilterType::Triangle));
+    if let Ok(mut c) = cache.lock() {
+        if c.len() >= WEB_CACHE_CAPACITY {
+            c.clear();
+        }
+        c.insert(key, Arc::clone(&img));
+    }
+    img
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +121,16 @@ mod tests {
         // Outside the track is transparent.
         assert_eq!(off.get_pixel(1, 1).0[3], 0);
         assert_eq!(toggle_image(8, 8, 0).get_pixel(4, 4).0[3], 0, "degenerate size draws nothing");
+    }
+
+    #[test]
+    fn web_raster_is_capped_and_cached() {
+        let a = toggle_half_block_image(496, 198, 0);
+        assert_eq!((a.width(), a.height()), (496, 396));
+        let b = toggle_half_block_image(496, 198, 0);
+        assert!(std::sync::Arc::ptr_eq(&a, &b), "second render is a cache hit");
+        // a small widget keeps the full oversampling
+        let small = toggle_half_block_image(14, 3, 4);
+        assert_eq!((small.width(), small.height()), (14, 6));
     }
 }

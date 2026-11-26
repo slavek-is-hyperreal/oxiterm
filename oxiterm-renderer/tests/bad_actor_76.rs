@@ -128,24 +128,28 @@ fn mermaid_hostile_shapes_complete_in_time() {
 
 /// Hostile Lottie JSON through rlottie (C++): a crash would kill this process, so each case runs in
 /// a child (`BA76_LOTTIE=<case>`) with a timeout.
+#[cfg(feature = "native-media")]
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-06: rlottie aborts (SIGABRT) on a self-referencing precomp and hangs >30 s on a 500k-point shape; both would take the server (SSH render path) down"]
 fn lottie_hostile_documents_in_a_child() {
     if let Ok(case) = std::env::var("BA76_LOTTIE") {
         let json = lottie_case(&case);
-        if let Some(mut a) = rlottie::Animation::from_data(json, "x".to_string(), "/unused".to_string()) {
+        // Test correction (fixes.md F-06): the child used to call `rlottie::Animation::from_data` itself,
+        // bypassing every guard. It now goes through the product loader; `REJECTED` is the safe outcome.
+        let parsed = oxiterm_renderer::render::cache::parse_lottie_guarded(json);
+        if let Err(e) = &parsed {
+            println!("REJECTED {e:?}");
+        }
+        if let Ok(mut a) = parsed {
             let n = a.totalframe();
             let mut s = rlottie::Surface::new(rlottie::Size { width: 64, height: 64 });
             a.render(if n > 0 { n / 2 } else { 0 }, &mut s);
             println!("LOADED frames={n} size={:?}", a.size());
-        } else {
-            println!("REJECTED");
         }
         return;
     }
     let exe = std::env::current_exe().unwrap();
     let mut bad = Vec::new();
-    for case in ["huge_dims", "frames_1e9", "deep_precomp", "many_layers", "nan_inf", "bracket_bomb", "truncated", "huge_shape_points", "layer_ref_cycle"] {
+    for case in ["huge_dims", "frames_1e9", "deep_precomp", "many_layers", "nan_inf", "bracket_bomb", "truncated", "huge_shape_points", "layer_ref_cycle", "dag_blowup", "points_near_cap", "unreachable_cycle", "duplicate_id"] {
         let t = Instant::now();
         let mut ch = std::process::Command::new(&exe)
             .args(["lottie_hostile_documents_in_a_child", "--exact", "--nocapture", "--test-threads=1"])
@@ -169,7 +173,7 @@ fn lottie_hostile_documents_in_a_child() {
         if res == "TIMEOUT" {
             let _ = ch.kill();
         }
-        let out = ch.wait_with_output().map(|o| String::from_utf8_lossy(&o.stdout).lines().filter(|l| l.starts_with("LOADED") || l.starts_with("REJECTED")).collect::<String>()).unwrap_or_default();
+        let out = ch.wait_with_output().map(|o| String::from_utf8_lossy(&o.stdout).lines().filter_map(|l| l.find("LOADED").or_else(|| l.find("REJECTED")).map(|i| l[i..].to_string())).collect::<String>()).unwrap_or_default();
         eprintln!("LOTTIE {case:18} {res:8} {:?} {out}", t.elapsed());
         if res != "ok" {
             bad.push((case, res));
@@ -197,26 +201,57 @@ fn lottie_case(c: &str) -> String {
             let pts = (0..500_000).map(|i| format!("[{},{}]", i % 100, (i * 7) % 100)).collect::<Vec<_>>().join(",");
             format!(r#"{{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"layers":[{{"ty":4,"ind":1,"ip":0,"op":60,"st":0,"ks":{{}},"shapes":[{{"ty":"sh","ks":{{"a":0,"k":{{"c":true,"v":[{pts}],"i":[{pts}],"o":[{pts}]}}}}}},{{"ty":"fl","c":{{"a":0,"k":[1,0,0,1]}},"o":{{"a":0,"k":100}}}}]}}]}}"#)
         }
+        // 40 levels, each instantiating the next one twice: 2^40 layer instances if expanded.
+        "dag_blowup" => {
+            let assets: Vec<String> = (0..40)
+                .map(|i| format!(r#"{{"id":"c{i}","layers":[{{"ty":0,"refId":"c{n}","ind":1,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{{}}}},{{"ty":0,"refId":"c{n}","ind":2,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{{}}}}]}}"#, n = i + 1))
+                .chain(std::iter::once(r#"{"id":"c40","layers":[]}"#.to_string()))
+                .collect();
+            format!(r#"{{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"assets":[{}],"layers":[{{"ty":0,"refId":"c0","ind":1,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{{}}}}]}}"#, assets.join(","))
+        }
+        // 19k points: the document is small, rlottie would not finish (cliff measured between 10k and 20k).
+        "points_near_cap" => {
+            let pts = (0..19_000).map(|i| format!("[{},{}]", i % 100, (i * 7) % 100)).collect::<Vec<_>>().join(",");
+            format!(r#"{{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"layers":[{{"ty":4,"ind":1,"ip":0,"op":60,"st":0,"ks":{{}},"shapes":[{{"ty":"sh","ks":{{"a":0,"k":{{"c":true,"v":[{pts}],"i":[{pts}],"o":[{pts}]}}}}}},{{"ty":"fl","c":{{"a":0,"k":[1,0,0,1]}},"o":{{"a":0,"k":100}}}}]}}]}}"#)
+        }
+        // a precomp that refers to itself but that no layer instantiates
+        "unreachable_cycle" => r#"{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"assets":[{"id":"z","layers":[{"ty":0,"refId":"z","ind":1,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{}}]}],"layers":[]}"#.into(),
+        // two assets with one id: the first refers to itself, the second is empty
+        "duplicate_id" => r#"{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"assets":[{"id":"a","layers":[{"ty":0,"refId":"a","ind":1,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{}}]},{"id":"a","layers":[]}],"layers":[{"ty":0,"refId":"a","ind":1,"ip":0,"op":60,"st":0,"w":100,"h":100,"ks":{}}]}"#.into(),
+        c if c.starts_with("points_") => {
+            let n: usize = c["points_".len()..].parse().unwrap();
+            let pts = (0..n).map(|i| format!("[{},{}]", i % 100, (i * 7) % 100)).collect::<Vec<_>>().join(",");
+            format!(r#"{{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"layers":[{{"ty":4,"ind":1,"ip":0,"op":60,"st":0,"ks":{{}},"shapes":[{{"ty":"sh","ks":{{"a":0,"k":{{"c":true,"v":[{pts}],"i":[{pts}],"o":[{pts}]}}}}}},{{"ty":"fl","c":{{"a":0,"k":[1,0,0,1]}},"o":{{"a":0,"k":100}}}}]}}]}}"#)
+        }
         _ => String::new(),
     }
 }
 
-/// F-12: `PlaybackRegistry` is a process-global keyed by file path only. One visitor's click flips
-/// the widget for every session showing the same file (integrity of shared UI state; hover also
-/// reveals that another visitor is present). Pre-existing, unchanged by 7.6.
+/// F-12: `PlaybackRegistry` used to be a process-global keyed by file path only. One visitor's click
+/// flipped the widget for every session showing the same file (and hover revealed that another visitor
+/// is present). The state is scoped by session now (`TerminalProfile::playback_scope`).
+///
+/// Test adaptation (fixes.md F-12): the setters take the scope; visitor A clicks in scope 1 and visitor
+/// B renders in scope 2.
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-12: Rive toggle/hover state is shared by all sessions of the process"]
 fn rive_state_is_per_session() {
     use oxiterm_renderer::render::cache::PlaybackRegistry;
     let d = tmp("riveglobal");
     std::fs::write(d.join("t.riv"), [0u8; 4]).unwrap();
-    let web = TerminalProfile { is_web: true, ..Default::default() };
-    let (visitor_b_before, _) = render("img", "t.riv", 20, 6, &web, &d);
-    // visitor A (another session) clicks the widget: same registry, same key
+    let a = TerminalProfile { is_web: true, playback_scope: 1, ..Default::default() };
+    let b = TerminalProfile { is_web: true, playback_scope: 2, ..Default::default() };
+    let (a_before, _) = render("img", "t.riv", 20, 6, &a, &d);
+    let (b_before, _) = render("img", "t.riv", 20, 6, &b, &d);
+    // visitor A (session 1) hovers and clicks the widget
     let key = oxiterm_proto::pathsafe::resolve_media(Some(&d), Some(&d), "t.riv").unwrap();
-    PlaybackRegistry::get().set_click(&key, true, Some((1, 1)));
-    let (visitor_b_after, _) = render("img", "t.riv", 20, 6, &web, &d);
-    let colours = |b: &CellBuffer| b.cells.iter().map(|c| (c.ch, format!("{:?}{:?}", c.fg, c.bg))).collect::<Vec<_>>();
-    assert_eq!(colours(&visitor_b_before), colours(&visitor_b_after), "visitor B saw visitor A's click");
+    PlaybackRegistry::get().set_hover(1, &key, true);
+    PlaybackRegistry::get().set_click(1, &key, true, Some((1, 1)));
+    let (a_after, _) = render("img", "t.riv", 20, 6, &a, &d);
+    let (b_after, _) = render("img", "t.riv", 20, 6, &b, &d);
+    let colours = |buf: &CellBuffer| buf.cells.iter().map(|c| (c.ch, format!("{:?}{:?}", c.fg, c.bg))).collect::<Vec<_>>();
+    assert_ne!(colours(&a_before), colours(&a_after), "visitor A sees their own click");
+    assert_eq!(colours(&b_before), colours(&b_after), "visitor B saw visitor A's click");
+    PlaybackRegistry::get().drop_scope(1);
+    PlaybackRegistry::get().drop_scope(2);
     let _ = std::fs::remove_dir_all(&d);
 }

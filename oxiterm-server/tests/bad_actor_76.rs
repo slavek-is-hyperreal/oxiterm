@@ -53,12 +53,12 @@ fn frame(s: &mut WsFrameSink) {
 }
 
 /// (hash, bytes) of every 0x20 and the hashes of every 0x21 with a body.
-fn drain(rx: &mut Rx) -> (Vec<(u32, Vec<u8>)>, Vec<u32>) {
+fn drain(rx: &mut Rx) -> (Vec<(u64, Vec<u8>)>, Vec<u64>) {
     let (mut blobs, mut pos) = (Vec::new(), Vec::new());
     while let Ok(m) = rx.try_recv() {
         match m[0] {
-            0x20 => blobs.push((u32::from_le_bytes(m[1..5].try_into().unwrap()), m[5..].to_vec())),
-            0x21 if m.len() > 1 => pos.push(u32::from_le_bytes(m[1..5].try_into().unwrap())),
+            0x20 => blobs.push((u64::from_le_bytes(m[1..9].try_into().unwrap()), m[9..].to_vec())),
+            0x21 if m.len() > 1 => pos.push(u64::from_le_bytes(m[1..9].try_into().unwrap())),
             _ => {}
         }
     }
@@ -98,11 +98,10 @@ async fn symlink_out_of_the_base_sends_nothing() {
     assert!(blobs.is_empty() && pos.is_empty());
 }
 
-/// F-02: the asset route / page index / FsPageSource refuse multiply linked files (7.1); the
-/// 0x20 path reads whatever `resolve_media` allows.
+/// F-02: the asset route / page index / `FsPageSource` refuse multiply linked files (7.1); the
+/// `0x20` path reads whatever `resolve_media` allows.
 #[cfg(unix)]
 #[tokio::test]
-#[ignore = "BAD ACTOR 7.6 F-02: a hard link inside the app base to an outside file is sent as a 0x20 blob (7.1 hard-link rule not applied to the WS media path)"]
 async fn hard_linked_file_is_not_sent() {
     let fx = Fx::new("hard");
     std::fs::write(fx.root.join("outside/s.png"), b"SECRET").unwrap();
@@ -115,7 +114,6 @@ async fn hard_linked_file_is_not_sent() {
 
 /// F-07: no size cap: a file of any size is read whole into memory (per session) and queued.
 #[tokio::test]
-#[ignore = "BAD ACTOR 7.6 F-07: the 0x20 path has no size cap (local asset route caps at MAX_ASSET_BYTES)"]
 async fn oversize_media_is_not_read_whole() {
     let fx = Fx::new("big");
     let f = std::fs::File::create(fx.root.join("app/assets/big.png")).unwrap();
@@ -131,7 +129,6 @@ async fn oversize_media_is_not_read_whole() {
 /// F-08: a FIFO named like an image blocks the sink (blocking `std::fs::read` on the render path).
 #[cfg(unix)]
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-08: fs::read on a FIFO blocks the frame sink forever (no is_file check)"]
 fn fifo_does_not_block_the_sink() {
     let fx = Fx::new("fifo");
     let fifo = fx.root.join("app/assets/f.png");
@@ -149,8 +146,11 @@ fn fifo_does_not_block_the_sink() {
         let _ = tx.send(());
     });
     let done = rx.recv_timeout(Duration::from_secs(3)).is_ok();
-    // unblock the stuck reader so the thread can end
-    let _ = std::fs::OpenOptions::new().write(true).open(&s_path);
+    // Unblock a stuck reader so its thread can end. Test correction (fixes.md F-08): only when the
+    // sink did block; a blocking write-open of a FIFO nobody reads would itself hang forever.
+    if !done {
+        let _ = std::fs::OpenOptions::new().write(true).open(&s_path);
+    }
     assert!(done, "sink blocked on a FIFO for >3 s");
 }
 
@@ -158,7 +158,6 @@ fn fifo_does_not_block_the_sink() {
 /// navigating to a page in another directory whose `src` string is the same, the new file is
 /// never sent, the browser keeps showing the old one.
 #[tokio::test]
-#[ignore = "BAD ACTOR 7.6 F-01: sent_assets / mediaCache are keyed by the raw src: same src in another directory shows the previous page's image"]
 async fn same_src_on_another_page_gets_its_own_bytes() {
     let fx = Fx::new("stale");
     std::fs::write(fx.root.join("app/a/logo.png"), b"AAA").unwrap();
@@ -178,7 +177,6 @@ async fn same_src_on_another_page_gets_its_own_bytes() {
 /// F-09: the client key is a 32-bit djb2 of the `src`; "Ez" and "FY" collide (so do countless
 /// others), the second blob overwrites the first in the browser's `mediaCache`.
 #[tokio::test]
-#[ignore = "BAD ACTOR 7.6 F-09: 32-bit djb2 media key collides (Ez.png / FY.png): two different images share one key"]
 async fn distinct_srcs_have_distinct_keys() {
     assert_ne!(hash_path("Ez.png"), hash_path("FY.png"));
 }
@@ -186,7 +184,6 @@ async fn distinct_srcs_have_distinct_keys() {
 /// F-04: any file type, hidden files included, is shipped when a page names it (the local asset
 /// route refuses dotfiles and non-media types; `src` is author-controlled, so author-level only).
 #[tokio::test]
-#[ignore = "BAD ACTOR 7.6 F-04: the 0x20 path has no type/dotfile filter (.env, oxi.toml, *.db are sent if a page names them)"]
 async fn non_media_files_are_not_sent() {
     let fx = Fx::new("any");
     std::fs::write(fx.root.join("app/.env"), b"KEY=V").unwrap();
@@ -259,15 +256,23 @@ fn only_exactly_named_files_are_servable_and_pages_cannot_name_outside_files() {
 /// symlink planted between `resolve_asset_for` and `open` is followed (needs write access to the app dir).
 #[cfg(unix)]
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-10: local asset route TOCTOU: a swapped-in symlink to an outside regular file passes check_opened_asset"]
 fn asset_route_symlink_swap_between_resolve_and_open() {
     let (fx, app) = local_fx("swap");
     let idx = lm::LocalIndex::build(&app).unwrap();
     let a = lm::resolve_asset_for(&app, "bell.json", Some(&*idx.media_files)).unwrap();
     std::fs::remove_file(&a.path).unwrap();
     std::os::unix::fs::symlink(fx.root.join("outside.json"), &a.path).unwrap();
-    let f = std::fs::File::open(&a.path).unwrap();
-    let meta = f.metadata().unwrap();
-    assert!(!lm::check_opened_asset(&meta), "the opened file is outside the base but passes the post-open check");
+    // Test correction (fixes.md F-10): the original opened the file itself and asked the
+    // Metadata-only `check_opened_asset`, which cannot know where the file is. The route now opens
+    // through `open_asset` (descriptor checks incl. location below the base).
+    assert!(lm::open_asset(&app, &a).is_err(), "a swapped-in symlink to an outside file must be refused");
+    // A swapped *directory* is refused too.
+    let (sub, moved) = (app.join("sub"), app.join("sub_moved"));
+    let b = lm::resolve_asset_for(&app, "sub/flow.mmd", Some(&*idx.media_files)).unwrap();
+    assert!(lm::open_asset(&app, &b).is_ok(), "the untouched file still opens");
+    std::fs::rename(&sub, &moved).unwrap();
+    std::os::unix::fs::symlink(fx.root.join("outside"), &sub).unwrap();
+    std::fs::write(fx.root.join("outside/flow.mmd"), b"graph TD\nSECRET-->B\n").unwrap();
+    assert!(lm::open_asset(&app, &b).is_err(), "a swapped directory must be refused");
 }
 

@@ -78,10 +78,9 @@ Video: the matrix only asserts the `<video>` element and its size (Playwright's 
 
 ## Known limits / not done
 
-* The Rive playback state (`PlaybackRegistry`) is a process-global singleton keyed by path, so one visitor's
-  click or hover is seen by every session of the same server. Pre-existing; the matrix tolerates it.
-* The server does not percent-decode the WebSocket `page=` parameter (`?page=demos%2Fmedia.thtml` is refused
-  as traversal and the start page loads instead). Pre-existing; the matrix uses the raw `demos/media.thtml`.
+* (Fixed after BAD ACTOR, see `fixes.md` F-12) The Rive playback state is per session now.
+* (Fixed after BAD ACTOR, see `fixes.md` F-11) The WebSocket `page=` parameter is percent-decoded once by the server.
+* Wire change after BAD ACTOR (`fixes.md` F-01/F-09): media keys are 64-bit (0x20/0x21/0xE0 carry 8 key bytes).
 * GUI overlays sit above `z-index` windows and snap to whole cells (section 7c of ARCHITECTURE.md).
 * The `native-media` off build still draws no SVG/Lottie/video itself (the browser does).
 * Goldens that change (not blessed here, for the lead): `oxiterm-renderer/tests/golden/` `demos__diagram@{80x24,120x40}`,

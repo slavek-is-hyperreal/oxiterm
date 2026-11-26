@@ -79,3 +79,60 @@ fn rel_path_matches_the_local_client_rule() {
     assert_eq!(media_rel_path("index.thtml", "../a.png"), None);
     assert_eq!(media_rel_path("demos/x.thtml", "%2e%2e/a.png"), None);
 }
+
+#[test]
+fn src_length_is_capped() {
+    assert!(media_src_is_plain(&format!("{}x.png", "a/".repeat(100))));
+    assert!(!media_src_is_plain(&("a".repeat(MAX_SRC_BYTES) + ".png")));
+    assert!(!media_src_is_plain(&"a/".repeat(MAX_SRC_BYTES)));
+}
+
+#[test]
+fn media_key_is_64_bit_and_path_based() {
+    // These two collided as 32-bit djb2.
+    assert_ne!(media_key("Ez.png"), media_key("FY.png"));
+    assert_ne!(media_key("a/logo.png"), media_key("b/logo.png"));
+    assert_eq!(media_key("a/logo.png"), media_key("a/logo.png"));
+    assert!(media_key("a/logo.png") > u64::from(u32::MAX) || media_key("b/logo.png") > u64::from(u32::MAX));
+}
+
+#[test]
+fn app_rel_is_below_the_base() {
+    let d = tmp("rel");
+    let (app, page) = (d.join("app"), d.join("app/demos"));
+    let r = resolve_media(Some(&page), Some(&app), "../assets/a.png").unwrap();
+    assert_eq!(app_rel(&app, &r).as_deref(), Some("assets/a.png"));
+    assert_eq!(app_rel(Path::new(""), Path::new("assets/a.png")).as_deref(), Some("assets/a.png"));
+    assert!(app_rel(&app, &d.join("outside/x.png")).is_none());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[cfg(unix)]
+#[test]
+fn checked_open_refuses_fifo_oversize_hard_link_and_non_files() {
+    let d = tmp("open");
+    let app = d.join("app");
+    let ok = app.join("assets/ok.png");
+    std::fs::write(&ok, "12345").unwrap();
+    assert_eq!(read_media_checked(&app, &ok, 16).unwrap(), b"12345");
+    // too big
+    assert!(read_media_checked(&app, &ok, 4).is_err());
+    // FIFO: refused without blocking
+    let fifo = app.join("assets/f.png");
+    assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+    let t = std::time::Instant::now();
+    assert!(open_media_checked(&app, &fifo, 16).is_err());
+    assert!(t.elapsed().as_secs() < 2);
+    // directory
+    assert!(open_media_checked(&app, &app.join("assets"), 16).is_err());
+    // hard link
+    std::fs::write(d.join("outside/s.png"), "S").unwrap();
+    std::fs::hard_link(d.join("outside/s.png"), app.join("assets/h.png")).unwrap();
+    assert!(open_media_checked(&app, &app.join("assets/h.png"), 16).is_err());
+    // outside the base by path
+    assert!(open_media_checked(&app, &d.join("outside/s.png"), 16).is_err());
+    // symlink as the last component
+    std::os::unix::fs::symlink(&ok, app.join("assets/l.png")).unwrap();
+    assert!(open_media_checked(&app, &app.join("assets/l.png"), 16).is_err());
+    let _ = std::fs::remove_dir_all(&d);
+}

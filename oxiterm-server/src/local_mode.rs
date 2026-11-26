@@ -379,6 +379,16 @@ fn asset_mime(name: &str) -> Option<&'static str> {
     })
 }
 
+/// May a file with this app-relative path be shipped to a browser as a media blob (the WebSocket
+/// 0x20 message)? No hidden path segment (`.env`, `.git/`), and a media extension: the types the
+/// asset route serves, plus `.json` (Lottie). Not `.mmd`: diagrams are drawn on the server.
+pub fn media_name_servable(rel: &str) -> bool {
+    if rel.is_empty() || rel.split('/').any(|seg| seg.is_empty() || seg.starts_with('.')) {
+        return false;
+    }
+    asset_mime(rel).is_some() || rel.rsplit_once('.').is_some_and(|(_, e)| e.eq_ignore_ascii_case("json"))
+}
+
 /// Percent-decoding of a URL path (`%XX` only; `+` stays). `None` for malformed escapes and
 /// non-UTF-8 results.
 pub fn percent_decode(s: &str) -> Option<String> {
@@ -452,6 +462,13 @@ pub fn resolve_asset_for(base: &Path, rel_url: &str, referenced: Option<&HashSet
 /// [`resolve_asset`]): a regular, singly linked file of the validated size cap.
 pub fn check_opened_asset(meta: &std::fs::Metadata) -> bool {
     meta.is_file() && meta.len() <= MAX_ASSET_BYTES && !crate::pathsafe::meta_multi_linked(meta)
+}
+
+/// Opens a validated [`AssetFile`] and checks the *descriptor* (BAD ACTOR 7.6 F-10): regular file,
+/// size cap, hard-link rule, and that the opened file really lies below `base`, so a symlink or
+/// directory swapped in between [`resolve_asset`] and the open is refused.
+pub fn open_asset(base: &Path, asset: &AssetFile) -> std::io::Result<std::fs::File> {
+    oxiterm_proto::pathsafe::open_media_checked(base, &asset.path, MAX_ASSET_BYTES)
 }
 
 /// [`resolve_asset`] plus a whole read (tests, small tools); the HTTP route streams instead.

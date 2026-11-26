@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const base = process.argv[2], pagePath = process.argv[3] || 'demos/media.thtml';
-const b = await chromium.launch();
+const b = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined, args: ['--no-sandbox'] });
 const pg = await b.newPage({ viewport: { width: 1200, height: 800 } });
 const wsUrls = [], announces = [];
 pg.on('websocket', (ws) => {

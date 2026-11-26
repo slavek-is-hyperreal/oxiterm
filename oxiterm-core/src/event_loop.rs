@@ -210,10 +210,13 @@ enum EventOutcome {
 
 pub struct EventLoopGuard {
     pub host: Arc<dyn LoopHost>,
+    /// The session's playback scope: its media state is forgotten when the loop ends.
+    pub scope: u64,
 }
 
 impl Drop for EventLoopGuard {
     fn drop(&mut self) {
+        oxiterm_renderer::render::cache::PlaybackRegistry::get().drop_scope(self.scope);
         self.host.loop_exited();
     }
 }
@@ -1166,7 +1169,7 @@ impl EventLoop {
     /// with its own wait and calls `handle_event` / `tick` / `next_deadline` directly.
     pub fn run(&mut self) {
         // Must stay in `run()`: dropping it is what reports `loop_exited()` to the host.
-        let _guard = EventLoopGuard { host: self.host.clone() };
+        let _guard = EventLoopGuard { host: self.host.clone(), scope: self.session.id as u64 };
         self.prepare_session();
         self.first_frame = true;
         self.render_carry = false;
@@ -1711,6 +1714,7 @@ impl EventLoop {
 
         let mut profile = self.session.terminal_profile.read().clone();
         profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
+        profile.playback_scope = self.session.id as u64;
         let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
         let app_base_dir = self.session.app_base_dir.read().clone();
         self.buffer.back.clear();
@@ -1967,11 +1971,12 @@ impl EventLoop {
                                 };
 
                                 let registry = oxiterm_renderer::render::cache::PlaybackRegistry::get();
-                                registry.set_hover(&resolved_path, is_inside);
+                                let scope = self.session.id as u64;
+                                registry.set_hover(scope, &resolved_path, is_inside);
                                 if is_inside && mouse.action == oxiterm_proto::input::MouseAction::Press {
-                                    registry.set_click(&resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
+                                    registry.set_click(scope, &resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
                                 } else if mouse.action == oxiterm_proto::input::MouseAction::Release {
-                                    registry.set_click(&resolved_path, false, None);
+                                    registry.set_click(scope, &resolved_path, false, None);
                                 }
                             }
                         }

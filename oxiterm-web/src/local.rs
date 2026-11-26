@@ -41,7 +41,7 @@ pub const TAG_OPEN_URL: u8 = 0x33;
 pub const TAG_ERROR_CHIP: u8 = 0x34;
 pub const TAG_APP_TOKEN: u8 = 0x35;
 pub const TAG_A11Y: u8 = 0x37;
-/// Local-mode only: `[0xE0, hash:u32le, rel_path]` asks the page to fetch a media asset.
+/// Local-mode only: `[0xE0, key:u64le, rel_path]` asks the page to fetch a media asset.
 pub const TAG_ASSET_REQUEST: u8 = 0xE0;
 
 /// Parked, unanswered action replies are bounded: an App Server that never answers cannot grow
@@ -171,13 +171,10 @@ pub fn encode_notice(notice: &ClientNotice) -> Vec<u8> {
     frame
 }
 
-/// Same hash the server uses to key media (`web.rs::hash_path`).
-pub fn hash_path(path: &str) -> u32 {
-    let mut hash: u32 = 5381;
-    for c in path.chars() {
-        hash = ((hash << 5).wrapping_add(hash)).wrapping_add(c as u32);
-    }
-    hash
+/// The key of a media file on the wire: the one the server uses (`oxiterm_proto::pathsafe::media_key`)
+/// of the file's path relative to the app base, i.e. of the page-resolved `rel`, never of the raw `src`.
+pub fn hash_path(rel: &str) -> u64 {
+    oxiterm_proto::pathsafe::media_key(rel)
 }
 
 /// Lexical `dir(page)/src` with `.`/`..` collapsed; `None` when it would leave the app base or
@@ -360,7 +357,7 @@ impl LocalSession {
         let page = self.session.current_page.read().clone().unwrap_or_default();
         for m in media {
             let Some(rel) = media_rel_path(&page, &m.path) else { continue };
-            let h = hash_path(&m.path);
+            let h = hash_path(&rel);
             if self.requested_assets.insert(rel.clone()) {
                 let mut req = vec![TAG_ASSET_REQUEST];
                 req.extend_from_slice(&h.to_le_bytes());
@@ -394,7 +391,7 @@ impl LocalSession {
             let Some(rel) = media_rel_path(&page, &src) else { continue };
             if self.requested_assets.insert(rel.clone()) {
                 let mut req = vec![TAG_ASSET_REQUEST];
-                req.extend_from_slice(&hash_path(&src).to_le_bytes());
+                req.extend_from_slice(&hash_path(&rel).to_le_bytes());
                 req.extend_from_slice(rel.as_bytes());
                 self.messages.push(req);
             }
@@ -402,15 +399,17 @@ impl LocalSession {
     }
 
     /// Hands a fetched file (a `.mmd` diagram) to the core's virtual file system and re-renders.
-    /// Only text-sized files are accepted: the virtual file system is cloned on every access.
+    /// Only text-sized files are accepted (256 KiB each), at most 64 files and 4 MiB in all.
     pub fn mount_asset(&mut self, rel: &str, bytes: &[u8]) -> bool {
         const MAX_MOUNT: usize = 256 * 1024;
+        const MAX_FILES: usize = 64;
+        const MAX_TOTAL: usize = 4 * 1024 * 1024;
         if bytes.len() > MAX_MOUNT || media_rel_path("", rel).as_deref() != Some(rel) {
             return false;
         }
-        oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
-            fs.borrow_mut().insert(std::path::PathBuf::from(rel), bytes.to_vec());
-        });
+        if !oxiterm_renderer::render::renderer::VIRTUAL_FS.insert_capped(std::path::PathBuf::from(rel), bytes.to_vec(), MAX_FILES, MAX_TOTAL) {
+            return false;
+        }
         let d = *self.session.dims.read();
         self.queue.push(InputEvent::Resize { cols: d.cols, rows: d.rows });
         true
@@ -506,8 +505,9 @@ mod tests {
 
     #[test]
     fn hash_matches_the_server_function() {
-        // djb2 over chars, as oxiterm-server's `hash_path`.
-        assert_eq!(hash_path(""), 5381);
-        assert_eq!(hash_path("a"), 5381u32.wrapping_mul(33).wrapping_add('a' as u32));
+        // FNV-1a 64 of the app-relative path, one definition in oxiterm-proto.
+        assert_eq!(hash_path(""), 0xcbf2_9ce4_8422_2325);
+        assert_ne!(hash_path("Ez.png"), hash_path("FY.png"));
+        assert_ne!(hash_path("a/logo.png"), hash_path("b/logo.png"));
     }
 }

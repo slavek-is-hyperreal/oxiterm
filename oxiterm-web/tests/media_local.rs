@@ -23,15 +23,15 @@ fn messages(s: &mut LocalSession) -> Vec<Vec<u8>> {
     s.take_messages()
 }
 
-fn requests(msgs: &[Vec<u8>]) -> Vec<(u32, String)> {
+fn requests(msgs: &[Vec<u8>]) -> Vec<(u64, String)> {
     msgs.iter()
         .filter(|m| m[0] == 0xE0)
-        .map(|m| (u32::from_le_bytes(m[1..5].try_into().unwrap()), String::from_utf8(m[5..].to_vec()).unwrap()))
+        .map(|m| (u64::from_le_bytes(m[1..9].try_into().unwrap()), String::from_utf8(m[9..].to_vec()).unwrap()))
         .collect()
 }
 
-fn coords(msgs: &[Vec<u8>]) -> Vec<u32> {
-    msgs.iter().filter(|m| m[0] == 0x21 && m.len() >= 13).map(|m| u32::from_le_bytes(m[1..5].try_into().unwrap())).collect()
+fn coords(msgs: &[Vec<u8>]) -> Vec<u64> {
+    msgs.iter().filter(|m| m[0] == 0x21 && m.len() >= 17).map(|m| u64::from_le_bytes(m[1..9].try_into().unwrap())).collect()
 }
 
 fn grid_text(list: &DisplayList) -> String {
@@ -52,15 +52,15 @@ fn media_page_asks_for_every_browser_shown_asset_and_positions_it() {
     let msgs = messages(&mut s);
     let req = requests(&msgs);
     let want = [("../assets/mascot.svg", "assets/mascot.svg"), ("../assets/logo.jpg", "assets/logo.jpg"), ("../assets/bell.json", "assets/bell.json")];
-    for (src, rel) in want {
-        assert!(req.contains(&(hash_path(src), rel.to_string())), "no 0xE0 request for {rel}: {req:?}");
+    for (_, rel) in want {
+        assert!(req.contains(&(hash_path(rel), rel.to_string())), "no 0xE0 request for {rel}: {req:?}");
     }
     assert!(!req.iter().any(|(_, r)| r.to_ascii_lowercase().ends_with(".riv")), "the Rive widget is drawn by the core, never fetched");
     let c = coords(&msgs);
-    for (src, _) in want {
-        assert!(c.contains(&hash_path(src)), "no 0x21 position for {src}");
+    for (src, rel) in want {
+        assert!(c.contains(&hash_path(rel)), "no 0x21 position for {src}");
     }
-    assert!(!c.contains(&hash_path("../assets/toggle.riv")));
+    assert!(!c.contains(&hash_path("assets/toggle.riv")));
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn diagram_is_requested_mounted_and_drawn_by_the_core() {
     s.pump(0.0);
     let msgs = messages(&mut s);
     let req = requests(&msgs);
-    assert!(req.contains(&(hash_path("../assets/flow.mmd"), "assets/flow.mmd".to_string())), "{req:?}");
+    assert!(req.contains(&(hash_path("assets/flow.mmd"), "assets/flow.mmd".to_string())), "{req:?}");
     // Before the file arrives the box is quiet: no placeholder, no diagram.
     let before = grid_text(&s.last_list().unwrap());
     assert!(!before.contains("5 nodes") && !before.contains("brak grafiki"), "{before}");

@@ -66,17 +66,20 @@ pub struct PlaybackState {
     pub click_coord: Option<(u16, u16)>,
     /// State toggle switcher state (e.g. play/pause).
     pub toggled: bool,
-    /// Optional reference to the underlying Lottie animation.
-    #[cfg(feature = "native-media")]
-    pub lottie_animation: Option<Arc<Mutex<SafeAnimation>>>,
 }
 
-/// Registry storing state for all playing media instances.
+/// Registry storing the state of playing media instances, **per owner** (BAD ACTOR 7.6 F-12): every
+/// method takes a `scope` (the session id; see `TerminalProfile::playback_scope`), so one visitor's
+/// hover, click or toggle is never seen by another session showing the same file. Only
+/// content-derived caches (the Lottie parse, the Rive raster, `AssetCache`) are shared.
 pub struct PlaybackRegistry {
-    states: Mutex<HashMap<PathBuf, PlaybackState>>,
+    states: Mutex<HashMap<(u64, PathBuf), PlaybackState>>,
 }
 
 impl PlaybackRegistry {
+    /// Entries kept in all; at the cap the entries of every other scope are dropped.
+    const MAX_ENTRIES: usize = 4096;
+
     /// Returns the global thread-safe singleton instance of the registry.
     pub fn get() -> &'static Self {
         static INSTANCE: OnceLock<PlaybackRegistry> = OnceLock::new();
@@ -85,70 +88,310 @@ impl PlaybackRegistry {
         })
     }
 
-    /// Fetches the playback state of the given path, creating a new default one if missing.
-    pub fn get_or_create(&self, path: &Path) -> PlaybackState {
-        let mut lock = self.states.lock().unwrap();
-        if let Some(state) = lock.get(path) {
-            return state.clone();
-        }
-        let state = PlaybackState {
+    fn fresh() -> PlaybackState {
+        PlaybackState {
             #[cfg(feature = "native-media")]
             start_time: std::time::Instant::now(),
             hover: false,
             click_active: false,
             click_coord: None,
             toggled: false,
-            #[cfg(feature = "native-media")]
-            lottie_animation: None,
-        };
-        lock.insert(path.to_path_buf(), state.clone());
+        }
+    }
+
+    /// Fetches the playback state of `path` for `scope`, creating a default one if missing.
+    pub fn get_or_create(&self, scope: u64, path: &Path) -> PlaybackState {
+        let mut lock = self.states.lock().unwrap();
+        let key = (scope, path.to_path_buf());
+        if let Some(state) = lock.get(&key) {
+            return state.clone();
+        }
+        if lock.len() >= Self::MAX_ENTRIES {
+            lock.retain(|(s, _), _| *s == scope);
+            if lock.len() >= Self::MAX_ENTRIES {
+                lock.clear();
+            }
+        }
+        let state = Self::fresh();
+        lock.insert(key, state.clone());
         state
     }
 
-    /// Fetches or parses Lottie animation files into the playback registry.
+    /// Forgets everything of a scope (its session ended).
+    pub fn drop_scope(&self, scope: u64) {
+        self.states.lock().unwrap().retain(|(s, _), _| *s != scope);
+    }
+
+    /// Fetches or parses a Lottie animation (content cache shared by every session: see
+    /// [`LottieCache`]); `None` when the file is missing or rejected.
     #[cfg(feature = "native-media")]
     pub fn get_or_load_lottie(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
-        let mut lock = self.states.lock().unwrap();
-        let state = lock.entry(path.to_path_buf()).or_insert_with(|| PlaybackState {
-            #[cfg(feature = "native-media")]
-            start_time: std::time::Instant::now(),
-            hover: false,
-            click_active: false,
-            click_coord: None,
-            toggled: false,
-            lottie_animation: None,
-        });
-
-        if state.lottie_animation.is_none() {
-            if let Ok(bytes) = crate::render::renderer::Renderer::read_asset(path) {
-                if let Ok(data_str) = String::from_utf8(bytes) {
-                    if let Some(anim) = rlottie::Animation::from_data(data_str, String::new(), String::new()) {
-                        state.lottie_animation = Some(Arc::new(Mutex::new(SafeAnimation { anim })));
-                    }
-                }
-            }
-        }
-        state.lottie_animation.clone()
+        LottieCache::get().get_or_load(path)
     }
 
     /// Sets the hover flag of a registered playback state.
-    pub fn set_hover(&self, path: &Path, hover: bool) {
+    pub fn set_hover(&self, scope: u64, path: &Path, hover: bool) {
         let mut lock = self.states.lock().unwrap();
-        if let Some(state) = lock.get_mut(path) {
+        if let Some(state) = lock.get_mut(&(scope, path.to_path_buf())) {
             state.hover = hover;
         }
     }
 
     /// Sets the click state parameters of a registered playback instance.
-    pub fn set_click(&self, path: &Path, active: bool, coord: Option<(u16, u16)>) {
+    pub fn set_click(&self, scope: u64, path: &Path, active: bool, coord: Option<(u16, u16)>) {
         let mut lock = self.states.lock().unwrap();
-        if let Some(state) = lock.get_mut(path) {
+        if let Some(state) = lock.get_mut(&(scope, path.to_path_buf())) {
             state.click_active = active;
             state.click_coord = coord;
             if active {
                 state.toggled = !state.toggled;
             }
         }
+    }
+}
+
+/// Largest Lottie file parsed (a parsed JSON tree takes several times its size).
+#[cfg(feature = "native-media")]
+pub const MAX_LOTTIE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Most vertices in one bezier path, and in the whole document.
+#[cfg(feature = "native-media")]
+pub const MAX_PATH_VERTICES: usize = 5_000;
+#[cfg(feature = "native-media")]
+pub const MAX_TOTAL_VERTICES: usize = 40_000;
+
+/// Why a Lottie document was not handed to rlottie.
+#[cfg(feature = "native-media")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LottieReject {
+    /// Larger than [`MAX_LOTTIE_BYTES`].
+    TooLarge,
+    /// Not JSON, nested too deeply, or not a Lottie object.
+    Malformed,
+    /// A precomp refers (directly or through others) to itself, or nests too deeply.
+    RefCycle,
+    /// Dimensions, duration, layer count or expanded layer count out of bounds.
+    TooComplex(&'static str),
+    /// rlottie refused it.
+    Engine,
+}
+
+/// Checks a Lottie document before rlottie sees it. rlottie (C++) aborts the whole process on a
+/// self-referencing precomp and spends unbounded time on huge shapes; neither can be caught
+/// in-process, so they are rejected here from the parsed JSON (BAD ACTOR 7.6 F-06):
+///
+/// * size <= [`MAX_LOTTIE_BYTES`] and JSON nesting within serde_json's recursion limit;
+/// * `w`/`h` finite in `1..=4096`, `fr` finite and positive, `ip`/`op` finite, at most 1e6 frames;
+/// * at most 5 000 vertices per bezier path and 40 000 in all (measured: 10 000 in one path 0.06 s, 20 000 > 100 s),
+///   at most 1 000 star points;
+/// * at most 20 000 layers in total, asset ids unique, `refId` references acyclic (checked from every
+///   asset, reachable or not), nesting depth <= 64 (a deeper chain is reported as `RefCycle`), and at most
+///   200 000 layer instances once precomps are expanded (a DAG that references the next precomp
+///   twice per level would otherwise be exponential).
+#[cfg(feature = "native-media")]
+pub fn validate_lottie(data: &str) -> Result<(), LottieReject> {
+    use serde_json::Value;
+    if data.len() as u64 > MAX_LOTTIE_BYTES {
+        return Err(LottieReject::TooLarge);
+    }
+    let v: Value = serde_json::from_str(data).map_err(|_| LottieReject::Malformed)?;
+    let root = v.as_object().ok_or(LottieReject::Malformed)?;
+    let num = |k: &str| root.get(k).and_then(Value::as_f64);
+    let (w, h) = (num("w").ok_or(LottieReject::Malformed)?, num("h").ok_or(LottieReject::Malformed)?);
+    if !(1.0..=4096.0).contains(&w) || !(1.0..=4096.0).contains(&h) {
+        return Err(LottieReject::TooComplex("size"));
+    }
+    let fr = num("fr").ok_or(LottieReject::Malformed)?;
+    let (ip, op) = (num("ip").ok_or(LottieReject::Malformed)?, num("op").ok_or(LottieReject::Malformed)?);
+    if !(fr.is_finite() && fr > 0.0 && ip.is_finite() && op.is_finite()) || (op - ip).abs() > 1e6 {
+        return Err(LottieReject::TooComplex("time"));
+    }
+    let layers_of = |val: &Value| -> Vec<Value> { val.get("layers").and_then(Value::as_array).cloned().unwrap_or_default() };
+    // Path complexity: rlottie's rasteriser has a cliff (10k vertices in one path 0.06 s, 20k more
+    // than 100 s). Bezier paths are objects with parallel `v`/`i`/`o` arrays; keyframed paths repeat
+    // them per keyframe, so every one is counted.
+    let (mut vertices, mut stack) = (0usize, vec![&v]);
+    while let Some(node) = stack.pop() {
+        match node {
+            Value::Object(m) => {
+                if let (Some(Value::Array(vs)), Some(_), Some(_)) = (m.get("v"), m.get("i"), m.get("o")) {
+                    if vs.len() > MAX_PATH_VERTICES {
+                        return Err(LottieReject::TooComplex("path vertices"));
+                    }
+                    vertices += vs.len();
+                }
+                if m.get("ty").and_then(Value::as_str) == Some("sr") {
+                    let pt = m.get("pt").and_then(|p| p.get("k")).and_then(Value::as_f64);
+                    if pt.is_some_and(|n| !(0.0..=1000.0).contains(&n)) {
+                        return Err(LottieReject::TooComplex("star points"));
+                    }
+                }
+                stack.extend(m.values());
+            }
+            Value::Array(a) => stack.extend(a.iter()),
+            _ => {}
+        }
+        if vertices > MAX_TOTAL_VERTICES {
+            return Err(LottieReject::TooComplex("path vertices"));
+        }
+    }
+    // Graph: node 0 = the root composition, then one node per asset that has layers.
+    let assets: Vec<&Value> = root.get("assets").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
+    let mut ids: HashMap<String, usize> = HashMap::new();
+    let mut nodes: Vec<Vec<Value>> = vec![layers_of(&v)];
+    for a in &assets {
+        if a.get("layers").is_some() {
+            if let Some(id) = a.get("id").and_then(Value::as_str) {
+                // Two assets with one id: which one a `refId` means is up to the engine, so the
+                // graph checked here might not be the graph rlottie walks. Refuse the document.
+                if ids.insert(id.to_string(), nodes.len()).is_some() {
+                    return Err(LottieReject::Malformed);
+                }
+                nodes.push(layers_of(a));
+            }
+        }
+    }
+    let total: usize = nodes.iter().map(Vec::len).sum();
+    if total > 20_000 {
+        return Err(LottieReject::TooComplex("layers"));
+    }
+    // Edges: layer `refId` -> the asset composition it instantiates.
+    let edges: Vec<Vec<usize>> = nodes
+        .iter()
+        .map(|ls| ls.iter().filter_map(|l| l.get("refId").and_then(Value::as_str).and_then(|r| ids.get(r).copied())).collect())
+        .collect();
+    // Iterative DFS from every node (a cycle among assets the root never reaches is refused too:
+    // the engine might still resolve it): cycle detection and depth.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        New,
+        Open,
+        Done,
+    }
+    let mut mark = vec![Mark::New; nodes.len()];
+    for start in 0..nodes.len() {
+        if mark[start] != Mark::New {
+            continue;
+        }
+        let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+        mark[start] = Mark::Open;
+        while let Some(&(n, i)) = stack.last() {
+            if stack.len() > 64 {
+                return Err(LottieReject::RefCycle);
+            }
+            if let Some(&next) = edges[n].get(i) {
+                stack.last_mut().unwrap().1 += 1;
+                match mark[next] {
+                    Mark::Open => return Err(LottieReject::RefCycle),
+                    Mark::New => {
+                        mark[next] = Mark::Open;
+                        stack.push((next, 0));
+                    }
+                    Mark::Done => {}
+                }
+            } else {
+                mark[n] = Mark::Done;
+                stack.pop();
+            }
+        }
+    }
+    // Expanded layer instances (memoised, saturating): the graph is acyclic now.
+    let mut memo: Vec<Option<u64>> = vec![None; nodes.len()];
+    let mut order: Vec<usize> = Vec::new();
+    let mut seen = vec![false; nodes.len()];
+    let mut st = vec![(0usize, 0usize)];
+    seen[0] = true;
+    while let Some(&(n, i)) = st.last() {
+        if let Some(&next) = edges[n].get(i) {
+            st.last_mut().unwrap().1 += 1;
+            if !seen[next] {
+                seen[next] = true;
+                st.push((next, 0));
+            }
+        } else {
+            order.push(n);
+            st.pop();
+        }
+    }
+    for n in order {
+        let mut count = nodes[n].len() as u64;
+        for &e in &edges[n] {
+            count = count.saturating_add(memo[e].unwrap_or(0));
+        }
+        memo[n] = Some(count);
+    }
+    if memo[0].unwrap_or(0) > 200_000 {
+        return Err(LottieReject::TooComplex("expanded layers"));
+    }
+    Ok(())
+}
+
+/// Validates ([`validate_lottie`]) and parses a Lottie document.
+#[cfg(feature = "native-media")]
+pub fn parse_lottie_guarded(data: String) -> Result<rlottie::Animation, LottieReject> {
+    validate_lottie(&data)?;
+    rlottie::Animation::from_data(data, String::new(), String::new()).ok_or(LottieReject::Engine)
+}
+
+/// Parsed Lottie animations by path: a content-only cache (no session state, no hover/click),
+/// parsed **outside** any lock that other sessions need, revalidated against the file's
+/// `(len, mtime)` (a changed file is reloaded; a rejected file is not re-parsed on every frame).
+#[cfg(feature = "native-media")]
+pub struct LottieCache {
+    entries: Mutex<HashMap<PathBuf, LottieEntry>>,
+}
+
+#[cfg(feature = "native-media")]
+struct LottieEntry {
+    stamp: (u64, Option<std::time::SystemTime>),
+    anim: Option<Arc<Mutex<SafeAnimation>>>,
+}
+
+#[cfg(feature = "native-media")]
+impl LottieCache {
+    const MAX_ENTRIES: usize = 64;
+
+    /// Returns the global singleton instance.
+    pub fn get() -> &'static Self {
+        static INSTANCE: OnceLock<LottieCache> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self { entries: Mutex::new(HashMap::new()) })
+    }
+
+    /// The animation of `path`, parsing it on a miss; `None` when missing or rejected (remembered).
+    pub fn get_or_load(&self, path: &Path) -> Option<Arc<Mutex<SafeAnimation>>> {
+        let meta = std::fs::metadata(path).ok();
+        let stamp = meta.as_ref().map_or((0, None), |m| (m.len(), m.modified().ok()));
+        {
+            let lock = self.entries.lock().unwrap();
+            if let Some(e) = lock.get(path) {
+                if e.stamp == stamp {
+                    return e.anim.clone();
+                }
+            }
+        }
+        // Parse without holding the cache lock.
+        let anim = match meta {
+            Some(m) if m.len() > MAX_LOTTIE_BYTES => {
+                tracing::warn!("lottie {:?} refused: {:?}", path, LottieReject::TooLarge);
+                None
+            }
+            _ => crate::render::renderer::Renderer::read_asset(path)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .and_then(|text| match parse_lottie_guarded(text) {
+                    Ok(a) => Some(Arc::new(Mutex::new(SafeAnimation { anim: a }))),
+                    Err(e) => {
+                        tracing::warn!("lottie {:?} refused: {:?}", path, e);
+                        None
+                    }
+                }),
+        };
+        let mut lock = self.entries.lock().unwrap();
+        if lock.len() >= Self::MAX_ENTRIES && !lock.contains_key(path) {
+            lock.clear();
+        }
+        lock.insert(path.to_path_buf(), LottieEntry { stamp, anim: anim.clone() });
+        anim
     }
 }
 
@@ -383,5 +626,53 @@ impl VideoPlayerRegistry {
     pub fn cleanup(&self) {
         let mut players = self.players.lock().unwrap();
         players.clear();
+    }
+}
+
+#[cfg(all(test, feature = "native-media"))]
+mod lottie_guard_tests {
+    use super::*;
+
+    fn doc(assets: &str, layers: &str) -> String {
+        format!(r#"{{"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"assets":[{assets}],"layers":[{layers}]}}"#)
+    }
+    const REF_A: &str = r#"{"ty":0,"refId":"a","ind":1}"#;
+
+    #[test]
+    fn plain_documents_pass() {
+        assert_eq!(validate_lottie(&doc("", "")), Ok(()));
+        assert_eq!(validate_lottie(&doc(r#"{"id":"a","layers":[{"ty":4}]}"#, REF_A)), Ok(()));
+    }
+
+    #[test]
+    fn precomp_cycles_are_rejected() {
+        let selfref = r#"{"id":"a","layers":[{"ty":0,"refId":"a"}]}"#;
+        assert_eq!(validate_lottie(&doc(selfref, REF_A)), Err(LottieReject::RefCycle));
+        let two = r#"{"id":"a","layers":[{"ty":0,"refId":"b"}]},{"id":"b","layers":[{"ty":0,"refId":"a"}]}"#;
+        assert_eq!(validate_lottie(&doc(two, REF_A)), Err(LottieReject::RefCycle));
+    }
+
+    #[test]
+    fn unreachable_cycles_and_duplicate_ids_are_rejected() {
+        let lone = r#"{"id":"z","layers":[{"ty":0,"refId":"z"}]}"#;
+        assert_eq!(validate_lottie(&doc(lone, "")), Err(LottieReject::RefCycle), "a cycle the root never reaches");
+        let dup = r#"{"id":"a","layers":[{"ty":0,"refId":"a"}]},{"id":"a","layers":[]}"#;
+        assert_eq!(validate_lottie(&doc(dup, REF_A)), Err(LottieReject::Malformed), "duplicate asset id");
+        // a 3000-deep chain is refused by the depth cap (reported as RefCycle)
+        let chain: Vec<String> = (0..3000).map(|i| format!(r#"{{"id":"c{i}","layers":[{{"refId":"c{n}"}}]}}"#, n = i + 1)).collect();
+        assert_eq!(validate_lottie(&doc(&chain.join(","), r#"{"refId":"c0"}"#)), Err(LottieReject::RefCycle));
+    }
+
+    #[test]
+    fn exponential_and_oversized_documents_are_rejected() {
+        let assets: Vec<String> = (0..30).map(|i| format!(r#"{{"id":"c{i}","layers":[{{"refId":"c{n}"}},{{"refId":"c{n}"}}]}}"#, n = i + 1)).chain([r#"{"id":"c30","layers":[{"ty":4}]}"#.to_string()]).collect();
+        // 30 levels would also be deeper than the 64-level cap only at 65+: this one is the instance count.
+        assert!(matches!(validate_lottie(&doc(&assets.join(","), r#"{"refId":"c0"}"#)), Err(LottieReject::TooComplex(_))));
+        assert_eq!(validate_lottie(&"[".repeat(100_000)), Err(LottieReject::Malformed));
+        assert_eq!(validate_lottie(&" ".repeat(MAX_LOTTIE_BYTES as usize + 1)), Err(LottieReject::TooLarge));
+        assert!(matches!(validate_lottie(r#"{"fr":30,"ip":0,"op":60,"w":2000000000,"h":10,"layers":[]}"#), Err(LottieReject::TooComplex("size"))));
+        let pts = vec!["[1,1]"; MAX_PATH_VERTICES + 1].join(",");
+        let big = doc("", &format!(r#"{{"shapes":[{{"ks":{{"k":{{"v":[{pts}],"i":[],"o":[]}}}}}}]}}"#));
+        assert!(matches!(validate_lottie(&big), Err(LottieReject::TooComplex("path vertices"))));
     }
 }

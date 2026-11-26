@@ -413,7 +413,21 @@
         let isMobile = window.innerWidth < 800;
         let dpr = window.devicePixelRatio || 1;
 
+        // Media are keyed by a 64-bit hash of the file's path relative to the app base (the server
+        // and the local core agree on it), written as "lo:hi" hex. A new connection starts empty.
         const mediaCache = {};
+        function mediaKey(b, o) {
+            const lo = (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+            const hi = (b[o + 4] | (b[o + 5] << 8) | (b[o + 6] << 16) | (b[o + 7] << 24)) >>> 0;
+            return lo.toString(16) + ':' + hi.toString(16);
+        }
+        function resetMediaCache() {
+            for (const k of Object.keys(mediaCache)) {
+                const c = mediaCache[k];
+                if (c && c.url) { try { URL.revokeObjectURL(c.url); } catch (e) { /* gone */ } }
+                delete mediaCache[k];
+            }
+        }
         let activeMedia = [];
 
         let reconnectDelay = 500;
@@ -505,7 +519,12 @@
             if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
             if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
             if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
-            if (bytes[0] === 0x7B) return 'lottie';
+            // Lottie is JSON: skip a UTF-8 BOM and leading whitespace before the `{`.
+            {
+                let i = (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) ? 3 : 0;
+                while (i < bytes.length && (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0A || bytes[i] === 0x0D)) i++;
+                if (bytes[i] === 0x7B) return 'lottie';
+            }
             if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'video/mp4';
             const head = new TextDecoder().decode(bytes.slice(0, 64));
             if (head.trimStart().startsWith('<')) return 'image/svg+xml';
@@ -848,7 +867,7 @@
                 const m = packed.slice(i + 4, i + 4 + n);
                 i += 4 + n;
                 if (m[0] === 0xE0) {
-                    fetchLocalAsset(new DataView(m.buffer).getUint32(1, true), new TextDecoder().decode(m.subarray(5)));
+                    fetchLocalAsset(m.slice(1, 9), new TextDecoder().decode(m.subarray(9)));
                 } else {
                     onMessage({ data: m.buffer });
                 }
@@ -870,7 +889,7 @@
             localPump();
         }
 
-        async function fetchLocalAsset(hash, rel) {
+        async function fetchLocalAsset(keyBytes, rel) {
             const app = localApp;
             try {
                 const res = await fetch('/oxiui/local/asset/' + rel.split('/').map(encodeURIComponent).join('/'));
@@ -883,10 +902,10 @@
                     drainLocal();
                     return;
                 }
-                const msg = new Uint8Array(5 + bytes.length);
+                const msg = new Uint8Array(9 + bytes.length);
                 msg[0] = 0x20;
-                new DataView(msg.buffer).setUint32(1, hash, true);
-                msg.set(bytes, 5);
+                msg.set(keyBytes, 1);
+                msg.set(bytes, 9);
                 onMessage({ data: msg.buffer });   // cache it like a 0x20 blob
                 app.media_refresh();               // and re-emit the coordinates
                 drainLocal();
@@ -943,6 +962,7 @@
                 // 0x21 positions BEFORE its first cell/list message, so clearing the media layer when
                 // that first frame arrives wiped the overlays (a race that hid media about half the time).
                 clearMediaLayer(false);
+                resetMediaCache();
                 setUiState('CONNECTED', 'Connected');
                 canvas.focus();
 
@@ -1080,13 +1100,13 @@
 
             // ── 0x20 media blob ────────────────────────────────────────────────
             if (bytes[0] === 0x20) {
-                if (bytes.length >= 5) {
-                    const hash = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
-                    const mediaBytes = bytes.subarray(5);
+                if (bytes.length >= 9) {
+                    const hash = mediaKey(bytes, 1);
+                    const mediaBytes = bytes.subarray(9);
                     const type = detectMediaType(mediaBytes);
                     if (type === 'lottie') {
                         try {
-                            const json = JSON.parse(new TextDecoder().decode(mediaBytes));
+                            const json = JSON.parse(new TextDecoder().decode(mediaBytes).replace(/^\uFEFF/, ''));
                             mediaCache[hash] = { url: null, type, json };
                         } catch(e) { console.warn('Lottie parse error', e); }
                     } else {
@@ -1102,14 +1122,14 @@
             if (bytes[0] === 0x21) {
                 if (bytes.length === 1) {
                     clearMediaLayer(true);
-                } else if (bytes.length >= 13) {
-                    const hash   = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
+                } else if (bytes.length >= 17) {
+                    const hash   = mediaKey(bytes, 1);
                     // col/row are signed (i16): media scrolled partly off the top or left edge
                     // keeps its true position and is clipped by #media-layer (overflow: hidden).
-                    const col    = ((bytes[5] | (bytes[6] << 8)) << 16) >> 16;
-                    const row    = ((bytes[7] | (bytes[8] << 8)) << 16) >> 16;
-                    const width  = bytes[9]  | (bytes[10] << 8);
-                    const height = bytes[11] | (bytes[12] << 8);
+                    const col    = ((bytes[9] | (bytes[10] << 8)) << 16) >> 16;
+                    const row    = ((bytes[11] | (bytes[12] << 8)) << 16) >> 16;
+                    const width  = bytes[13] | (bytes[14] << 8);
+                    const height = bytes[15] | (bytes[16] << 8);
                     addMediaToLayer(hash, col, row, width, height);
                 }
                 return;

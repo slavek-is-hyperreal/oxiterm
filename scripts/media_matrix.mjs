@@ -144,6 +144,9 @@ for (const [pname, spec] of Object.entries(PAGES)) {
     const pg = await ctx.newPage();
     const errs = [];
     pg.on('pageerror', (e) => errs.push(String(e)));
+    // A CSP only breaks what it is not told about: any "Refused to ..." console line fails the row.
+    const csp = [];
+    pg.on('console', (m) => { if (/Refused to|Content Security Policy/i.test(m.text())) csp.push(m.text().slice(0, 200)); });
     try {
       const bad = [];
       pg.on('response', (res) => { if (res.status() >= 400 && !res.url().endsWith('favicon.ico')) bad.push(`${res.status()} ${res.url().replace(base, '')}`); });
@@ -215,6 +218,7 @@ for (const [pname, spec] of Object.entries(PAGES)) {
         const n = await pg.evaluate(colours, { x: cv.x, y: cv.y, w: cv.w, h: cv.h });
         if (!(n >= 8)) fail(r, `canvas looks empty (${n} colours)`);
       }
+      if (csp.length) fail(r, 'CSP violations: ' + csp.join(' | '));
       if (bad.length) r.info.badResponses = bad;
       if (errs.length) r.info.pageErrors = errs;
       if (shots) {

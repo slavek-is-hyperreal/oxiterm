@@ -44,7 +44,6 @@ fn every_traversal_spelling_is_refused_or_stays_inside() {
 /// shorter prefix (O(n^2) syscalls) when the file does not exist. A long `src` of missing
 /// directories costs seconds of CPU per resolve (and it is resolved every frame/refresh).
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-05: a long src of missing dirs makes resolve_media quadratic (seconds)"]
 fn very_long_src_is_cheap() {
     let d = fx("long");
     let (app, page) = (d.join("app"), d.join("app/demos"));
@@ -99,7 +98,6 @@ fn symlink_forms_are_refused_including_chains_and_relative_links() {
 /// `FsPageSource` refuse multiply linked files (`meta_multi_linked`); the 0x20 path does not.
 #[cfg(unix)]
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-02: a hard link inside the base to a file outside it is accepted by resolve_media"]
 fn hard_link_out_of_the_base_is_refused() {
     let d = fx("hard");
     let (app, page) = (d.join("app"), d.join("app/demos"));
@@ -113,7 +111,6 @@ fn hard_link_out_of_the_base_is_refused() {
 /// follows whatever is there by then (a symlink planted in between). Deterministic version of the race.
 #[cfg(unix)]
 #[test]
-#[ignore = "BAD ACTOR 7.6 F-03: resolve_media's verdict is not bound to the opened file (TOCTOU), the 0x20 path uses fs::read(path)"]
 fn resolve_then_read_is_not_raceable() {
     let d = fx("race");
     let (app, page) = (d.join("app"), d.join("app/demos"));
@@ -123,8 +120,23 @@ fn resolve_then_read_is_not_raceable() {
     // attacker with write access to the app dir swaps the file between check and use
     std::fs::remove_file(&p).unwrap();
     std::os::unix::fs::symlink(d.join("outside/secret.png"), &p).unwrap();
-    let got = std::fs::read(&p).unwrap(); // what sync_preamble does
-    assert_ne!(got, b"TOPSECRET", "read through a swapped symlink leaked a file outside the base");
+    // Test correction (fixes.md F-03): the original called `std::fs::read(&p)` itself, which no
+    // product change can stop. The product now reads through `read_media_checked` (what
+    // `sync_preamble` does): `O_NOFOLLOW` + checks on the opened descriptor.
+    let got = oxiterm_proto::pathsafe::read_media_checked(&app, &p, oxiterm_proto::pathsafe::MAX_MEDIA_BYTES);
+    assert!(got.as_ref().map_or(true, |b| b != b"TOPSECRET"), "read through a swapped symlink leaked a file outside the base");
+    assert!(got.is_err(), "a swapped-in symlink must be refused, got {got:?}");
+    // And a swapped *directory* in the middle of the path (O_NOFOLLOW covers only the last part).
+    std::fs::remove_file(&p).unwrap();
+    std::fs::write(&p, "fine").unwrap();
+    let ok = oxiterm_proto::pathsafe::read_media_checked(&app, &p, oxiterm_proto::pathsafe::MAX_MEDIA_BYTES);
+    assert_eq!(ok.unwrap(), b"fine");
+    let assets = d.join("app/assets");
+    std::fs::rename(&assets, d.join("app/assets_moved")).unwrap();
+    std::os::unix::fs::symlink(d.join("outside"), &assets).unwrap();
+    std::fs::write(d.join("outside/a.png"), "TOPSECRET").unwrap();
+    let swapped = oxiterm_proto::pathsafe::read_media_checked(&app, &p, oxiterm_proto::pathsafe::MAX_MEDIA_BYTES);
+    assert!(swapped.is_err(), "a swapped directory must be refused, got {swapped:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -26,6 +26,29 @@ fn get_global_virtual_fs() -> &'static RwLock<HashMap<PathBuf, Vec<u8>>> {
 pub struct VirtualFsProxy;
 
 impl VirtualFsProxy {
+    /// The bytes of `path`, read straight from the global map (no whole-map clone).
+    pub fn get(&self, path: &Path) -> Option<Vec<u8>> {
+        get_global_virtual_fs().read().ok()?.get(path).cloned()
+    }
+
+    /// Is `path` mounted (no clone).
+    pub fn contains(&self, path: &Path) -> bool {
+        get_global_virtual_fs().read().is_ok_and(|g| g.contains_key(path))
+    }
+
+    /// Mounts `bytes` at `path` unless that would exceed `max_files` entries or `max_total` bytes
+    /// in all (the replaced entry does not count). Returns whether it was mounted.
+    pub fn insert_capped(&self, path: PathBuf, bytes: Vec<u8>, max_files: usize, max_total: usize) -> bool {
+        let Ok(mut g) = get_global_virtual_fs().write() else { return false };
+        let old = g.get(&path).map_or(0, Vec::len);
+        let total: usize = g.values().map(Vec::len).sum::<usize>() - old + bytes.len();
+        if (!g.contains_key(&path) && g.len() >= max_files) || total > max_total {
+            return false;
+        }
+        g.insert(path, bytes);
+        true
+    }
+
     /// Executes a closure with access to the thread-local virtual file system.
     pub fn with<F, R>(&self, f: F) -> R
     where
@@ -62,10 +85,7 @@ pub struct Renderer;
 impl Renderer {
     pub fn read_asset(path: &Path) -> Result<Vec<u8>, anyhow::Error> {
         let path_str = path.to_string_lossy().into_owned();
-        let local_bytes = VIRTUAL_FS.with(|fs| {
-            fs.borrow().get(path).cloned()
-        });
-        if let Some(bytes) = local_bytes {
+        if let Some(bytes) = VIRTUAL_FS.get(path) {
             return Ok(bytes);
         }
         
@@ -75,6 +95,14 @@ impl Renderer {
         }
         #[cfg(feature = "native-media")]
         {
+            // A regular file of sane size only: `std::fs::read` on a FIFO blocks forever (and
+            // `SvgCache` holds its global lock across this call), a device or a huge file is no image.
+            const MAX_READ: u64 = 32 * 1024 * 1024;
+            match std::fs::metadata(path) {
+                Ok(m) if m.is_file() && m.len() <= MAX_READ => {}
+                Ok(_) => return Err(anyhow::anyhow!("AssetRefused: {}: not a regular file or too large", path_str)),
+                Err(e) => return Err(anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e)),
+            }
             std::fs::read(path).map_err(|e| anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e))
         }
     }
@@ -97,7 +125,7 @@ impl Renderer {
 
     /// Does the asset exist: in the virtual file system, or (native media) on disk.
     pub(crate) fn asset_exists(path: &Path) -> bool {
-        if VIRTUAL_FS.with(|fs| fs.borrow().contains_key(path)) {
+        if VIRTUAL_FS.contains(path) {
             return true;
         }
         #[cfg(feature = "native-media")]
@@ -481,7 +509,7 @@ impl Renderer {
             if is_lottie {
                 #[cfg(feature = "native-media")]
                 {
-                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(profile.playback_scope, &resolved_path);
                     if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
                         let lock = safe_anim.lock().unwrap();
                         let total_frames = lock.anim.totalframe();
@@ -502,7 +530,7 @@ impl Renderer {
                     frame_idx = Some(0);
                 }
             } else if is_rive {
-                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(profile.playback_scope, &resolved_path);
                 let mut bits = 0;
                 if playback.hover { bits |= 1; }
                 if playback.click_active { bits |= 2; }
@@ -623,8 +651,8 @@ impl Renderer {
                 // blocks, so it is rasterized at 1 x 2 pixels per cell and the fallback maps it 1:1.
                 let bits = frame_idx.unwrap_or(0);
                 if profile.is_web {
-                    Ok(super::rive::toggle_image(u32::from(width) * 8, u32::from(height) * 16, bits))
-                        .map(|img| image::imageops::resize(&img, u32::from(width), u32::from(height) * 2, image::imageops::FilterType::Triangle))
+                    // Cached per (size, state) and capped (F-13): not re-rasterised on every frame.
+                    Ok((*super::rive::toggle_half_block_image(u32::from(width), u32::from(height), bits)).clone())
                 } else {
                     Ok(super::rive::toggle_image(pixel_w, pixel_h, bits))
                 }

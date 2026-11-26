@@ -22,7 +22,7 @@ async def probe(port, query, w=100, h=40, wait=2.5):
                     if m[0] == 0x30:
                         out["0x30"] = m[1:].decode(errors="replace")
                     elif m[0] == 0x20:
-                        out["0x20"].append((struct.unpack("<I", m[1:5])[0], len(m) - 5))
+                        out["0x20"].append((struct.unpack("<Q", m[1:9])[0], len(m) - 9))
                     elif m[0] == 0x21 and len(m) > 1:
                         out["0x21"] += 1
     except Exception as e:

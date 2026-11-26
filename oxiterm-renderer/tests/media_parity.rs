@@ -178,8 +178,9 @@ fn rive_widget_is_drawn_as_cells_for_web_clients_and_follows_its_state() {
     // Toggle it through the registry the click handler uses (same resolved key).
     let key = oxiterm_proto::pathsafe::resolve_media(Some(&fx.page_dir()), Some(&fx.app()), "../assets/toggle.riv").unwrap();
     let reg = oxiterm_renderer::render::cache::PlaybackRegistry::get();
-    reg.set_click(&key, true, Some((1, 1)));
-    reg.set_click(&key, false, None);
+    // (the playback scope is the session id; `web()` renders in scope 0, so the click is in scope 0 too)
+    reg.set_click(0, &key, true, Some((1, 1)));
+    reg.set_click(0, &key, false, None);
     let on = render("img", "../assets/toggle.riv", 14, 3, &web(), Some(&fx.page_dir()), Some(&fx.app()));
     assert!(on.cells.iter().any(|c| c.fg == blue || c.bg == blue), "toggled: blue track expected");
 }

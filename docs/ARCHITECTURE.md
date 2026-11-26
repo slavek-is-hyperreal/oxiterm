@@ -170,6 +170,9 @@ Every media node reaches the screen in every output; which part draws it is fixe
   renderer, both loops of `WsFrameSink::sync_preamble` (bytes 0x20 and positions 0x21), the Rive click handler
   and the local-mode client all call it, so they cannot disagree again (they did until 7.6: the position check
   used the page directory, so `../assets/x.png` never got a position).
+  Wire keys (0x20 bytes, 0x21 positions, local 0xE0 requests) are a 64-bit FNV-1a (`pathsafe::media_key`, 8 bytes
+  little-endian after the tag) of the file's path relative to the app base, not of the raw `src`; bytes are read through
+  `pathsafe::read_media_checked` (descriptor checks, 16 MiB cap, media types only, no hidden segments).
 * **GUI uses the same overlay as the cell client** rather than image items in the display list. Reasons: no wire
   bump (v2/v3 stay byte-identical, `0x20`/`0x21` already exist), the browser decodes and scales SVG/PNG/Lottie/video
   natively and animates them without server frames, and local mode already worked that way. Known limits, both
