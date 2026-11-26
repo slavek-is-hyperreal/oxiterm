@@ -86,7 +86,7 @@ All imports are host capability functions (5) and nothing else: the runtime supp
 
 ### 3.3 The manifest (custom section `oxi.manifest`)
 
-Text, read before instantiation (`manifest::Manifest`): `abi 1.0`, `edition 2026`, `profile default|realtime|safety|kernel`, and one `needs host:state@1 State` line per required capability, which fixes the order of `oxi_init`'s parameters. Unknown directives are an error, so an old host refuses a newer module instead of misrunning it. Further rules: numbers are canonical decimals (no `+`, no leading zeros); `profile` is one of `default|realtime|safety|kernel`; a module needs at most one version of each capability module and one interface name per capability; `needs` lines are limited to `MAX_NEEDS = 32` (the parameter count of `oxi_init`); module names are `host:<identifier>` with a non-empty identifier.
+Text, read before instantiation (`manifest::Manifest`): `abi 1.0`, `edition 2026`, `profile default|realtime|safety|kernel`, (planned, 8.2) `target device|web|server` with the Wasm features the module needs, and one `needs host:state@1 State` line per required capability, which fixes the order of `oxi_init`'s parameters. Unknown directives are an error, so an old host refuses a newer module instead of misrunning it. Further rules: numbers are canonical decimals (no `+`, no leading zeros); `profile` is one of `default|realtime|safety|kernel`; a module needs at most one version of each capability module and one interface name per capability; `needs` lines are limited to `MAX_NEEDS = 32` (the parameter count of `oxi_init`); module names are `host:<identifier>` with a non-empty identifier.
 
 ### 3.4 Traps
 
