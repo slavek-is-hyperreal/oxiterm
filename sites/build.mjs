@@ -16,6 +16,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { demoThtml as demoTemplate } from './demo-thtml.mjs';
+import { asciiHtml, asciiThtml } from './shared/brand/oxi-ascii.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -48,11 +49,10 @@ const SITES = {
   oxiscript: { pages: ['index', 'ts', 'tour', 'course', 'roadmap'] },
 };
 const GALLERY = ['counter', 'state', 'input', 'todo', 'styles', 'showcase'];
-const PALETTE = {
-  home: { bg: '#1c1917', acc: '#fbbf24', card: '#292524', line: '#57534e' },
-  oxiui: { bg: '#0b1220', acc: '#4ade80', card: '#111c30', line: '#1e3a5f' },
-  oxiscript: { bg: '#0f1020', acc: '#a78bfa', card: '#1a1b36', line: '#3b3d73' },
-};
+// Identity palette: one JSON shared with sites/test/bad_actor_contrast.mjs (the CSS tokens are checked there too).
+const BRAND = JSON.parse(fs.readFileSync(path.join(HERE, 'shared/brand/palette.json'), 'utf8'));
+const PALETTE = Object.fromEntries(['home', 'oxiui', 'oxiscript'].map((s) => [s, { ...BRAND.text, ...BRAND[s] }]));
+const BRAND_FILES = ['oxi-cell-home.svg', 'oxi-cell-oxiui.svg', 'oxi-cell-oxiscript.svg', 'oxi-axolotl.svg', 'oxi-axolotl-small.svg'];
 
 // ---------------------------------------------------------------- i18n
 const I18N = {};
@@ -276,8 +276,9 @@ ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 }
 
 // ---------------------------------------------------------------- page chrome
-const faviconSvg = (acc, glyph) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#111"/><text x="16" y="23" font-size="20" font-family="monospace" font-weight="700" text-anchor="middle" fill="${acc}">${glyph}</text></svg>`)}`;
-const GLYPH = { home: 's', oxiui: '>_', oxiscript: '{}' };
+// Brand: the "Oxi cell" marks (favicon + header) and Oxi the axolotl are hand-written SVG files in sites/shared/brand,
+// copied to a content-hashed directory (ctx.brand) so they cache immutably. Used through <img>: no inline SVG, no CSS needed.
+const brandImg = (ctx, file, cls, w, h) => `<img class="${cls}" src="${ctx.brand}/${file}" width="${w}" height="${h}" alt="">`;
 
 function layout(site, lang, id, page, ctx) {
   const t = (k) => T(lang, k);
@@ -289,7 +290,11 @@ function layout(site, lang, id, page, ctx) {
   const langs = LANGS.map((l) => `<a href="${pagePath(l, id)}" hreflang="${I18N[l].meta.htmlLang}" lang="${I18N[l].meta.htmlLang}"${l === lang ? ' aria-current="true"' : ''} title="${esc(I18N[l].meta.name)}">${esc(I18N[l].meta.short)}</a>`).join('');
   const hreflangs = LANGS.map((l) => `<link rel="alternate" hreflang="${I18N[l].meta.htmlLang}" href="${urlFor(l)}">`).join('') + `<link rel="alternate" hreflang="x-default" href="${urlFor('en')}">`;
   const draft = isDraft(lang) ? `<p class="draft" role="note">${esc(t('common.draft'))}</p>` : '';
-  const hero = page.hero ? `<header class="hero"><p class="eyebrow">${esc(t(`common.sites.${site}`))}</p><h1>${inline(site, lang, page.hero.title)}</h1><p class="lead">${inline(site, lang, page.hero.lead)}</p></header>` : `<h1>${esc(page.h1 || page.title)}</h1>${page.lead ? `<p class="lead">${inline(site, lang, page.lead)}</p>` : ''}`;
+  // Oxi in the hero corner: ASCII on the terminal-flavoured OxiUI site, the vector axolotl elsewhere (small head on phones).
+  const heroArt = site === 'oxiui'
+    ? `<pre class="oxi-ascii" aria-hidden="true">${asciiHtml()}</pre>`
+    : `<picture><source media="(max-width: 599px)" srcset="${ctx.brand}/oxi-axolotl-small.svg">${brandImg(ctx, 'oxi-axolotl.svg', '', 240, 190)}</picture>`;
+  const hero = page.hero ? `<header class="hero"><div class="hero-text"><p class="eyebrow">${esc(t(`common.sites.${site}`))}</p><h1>${inline(site, lang, page.hero.title)}</h1><p class="lead">${inline(site, lang, page.hero.lead)}</p></div><div class="hero-art${site === 'oxiui' ? ' ascii' : ''}" aria-hidden="true">${heroArt}</div></header>` : `<h1>${esc(page.h1 || page.title)}</h1>${page.lead ? `<p class="lead">${inline(site, lang, page.lead)}</p>` : ''}${ctx.is404 ? brandImg(ctx, 'oxi-axolotl.svg', 'notfound-oxi', 240, 190) : ''}`;
   const body = (page.blocks || []).filter(blockOn).map((b) => renderBlock(site, lang, b, ctx)).join('\n');
   const viewLink = `<a class="viewlink" href="/app/?local=1&amp;page=${lang}/${id}.thtml" title="${esc(t('common.viewInOxiuiTitle'))}">${esc(t('common.viewInOxiui'))}</a>`;
   const title = id === 'index' ? `${t(`common.sites.${site}`)}: ${page.title}` : `${page.title} · ${t(`common.sites.${site}`)}`;
@@ -302,10 +307,11 @@ ${ctx.is404 ? META_CSP + '\n' : ''}<meta name="viewport" content="width=device-w
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(page.desc || t(`${site}.pages.index.desc`))}">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="${pal.bg}">
+<meta name="theme-color" content="${pal.bg}" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="${pal.lbg}" media="(prefers-color-scheme: light)">
 <link rel="canonical" href="${urlFor(lang)}">
 ${hreflangs}
-<link rel="icon" href="${faviconSvg(pal.acc, GLYPH[site])}">
+<link rel="icon" type="image/svg+xml" href="${ctx.brand}/oxi-cell-${site}.svg">
 <link rel="stylesheet" href="/assets/${ctx.cssHash}/site.css">
 <meta property="og:title" content="${esc(title)}"><meta property="og:type" content="website"><meta property="og:url" content="${urlFor(lang)}">
 </head>
@@ -313,7 +319,7 @@ ${hreflangs}
 <a class="skip" href="#main">${esc(t('common.skip'))}</a>
 <header class="top">
 <nav class="bar projects" aria-label="${esc(t('common.projects'))}"><div class="wrap"><span class="bar-label">${esc(t('common.projects'))}:</span> ${projects}<span class="spacer"></span><nav class="lang" aria-label="${esc(t('common.language'))}">${langs}</nav></div></nav>
-<div class="bar"><div class="wrap"><a class="brand" href="${pagePath(lang, 'index')}">${esc(t(`common.sites.${site}`))}</a><nav class="main" aria-label="${esc(t('common.menu'))}">${nav}</nav></div></div>
+<div class="bar"><div class="wrap"><a class="brand" href="${pagePath(lang, 'index')}">${brandImg(ctx, `oxi-cell-${site}.svg`, 'mark', 28, 28)}<span>${esc(t(`common.sites.${site}`))}</span></a><nav class="main" aria-label="${esc(t('common.menu'))}">${nav}</nav></div></div>
 </header>
 <main id="main" class="wrap">
 ${draft}
@@ -326,7 +332,7 @@ ${body}
 <section><h2>${esc(t('common.support'))}</h2><p>${esc(t('common.supportText'))}</p><p><a class="btn primary" href="${SUPPORT_URL}" rel="noopener">${esc(t('common.supportButton'))}</a></p></section>
 <section><h2>${esc(t('common.projects'))}</h2><p class="foot-links">${projects}<a href="${REPO_URL}" rel="noopener">${esc(t('common.repo'))}</a></p><p>${viewLink}</p></section>
 </div>
-<p class="fine">${esc(t('common.footerFine'))}</p>
+<p class="fine foot-oxi">${brandImg(ctx, 'oxi-axolotl-small.svg', '', 56, 49)}<span>${esc(t('common.footerFine'))}</span></p>
 </div></footer>
 <script src="/assets/${ctx.jsHash}/site.js" defer></script>
 ${ctx.extraScript || ''}
@@ -349,22 +355,25 @@ function thtmlPage(site, lang, id, page, mobile) {
     ? SITES[site].pages.map((p) => `<text class="navi${p === id ? ' cur' : ''}" event-htmx="${p}.thtml"> ${tx(t(`${site}.nav.${p}`))} </text>`).join('')
     : '';
   out.push(`<style>
-text { fg: #e2e8f0; }
+text { fg: ${pal.fg}; }
 .brand { fg: ${pal.acc}; height: 1; margin-right: 3; }
 .h1 { fg: ${pal.acc}; wrap: word; margin-top: 1; }
-.h2 { fg: ${pal.acc}; wrap: word; margin-top: 1; }
-.p { fg: #e2e8f0; wrap: word; margin-top: 1; }
-.dim { fg: #94a3b8; wrap: word; margin-top: 1; }
-.navi { fg: #94a3b8; height: 1; margin-right: 2; }
+.h2 { fg: ${pal.pat}; wrap: word; margin-top: 1; }
+.p { fg: ${pal.fg}; wrap: word; margin-top: 1; }
+.dim { fg: ${pal.muted}; wrap: word; margin-top: 1; }
+.navi { fg: ${pal.muted}; height: 1; margin-right: 2; }
 .cur { fg: ${pal.acc}; }
 .card { border-style: rounded; border-color: ${pal.line}; padding-left: 1; padding-right: 1; flex-direction: column; margin-top: 1; }
 .btn { border-style: single; border-color: ${pal.acc}; fg: ${pal.acc}; padding-left: 1; padding-right: 1; height: 3; align-items: center; margin-top: 1; }
-.code { fg: #86efac; height: 1; }
+.code { fg: ${pal.pat}; height: 1; }
+.ox-g { fg: ${pal.acc}; height: 1; }
+.ox-b { fg: ${pal.coral}; height: 1; }
 @media (render: gui) { .page-sans { font-family: sans-serif; } }
 .mono { font-family: monospace; }
 </style>
 <box class="page-sans" style="flex-direction: column; width: ${W}; bg: ${pal.bg}; padding: 1;">`);
   out.push(`  <box style="flex-direction: ${mobile ? 'column' : 'row'};${mobile ? '' : ' height: 1;'}"><text class="brand">${tx(t(`common.sites.${site}`))}  </text>${navRow}</box>`);
+  if (id === 'index') out.push(`  <box style="flex-direction: column; margin-top: 1; width: 34;">\n${asciiThtml()}\n  </box>`);
   const hero = page.hero;
   textL('h1', hero ? hero.title : page.h1 || page.title);
   if (hero) textL('p', plain(hero.lead));
@@ -496,6 +505,10 @@ function buildSite(site) {
   ctx.cssHash = hashOf(css); ctx.jsHash = hashOf(js);
   write(path.join(out, 'assets', ctx.cssHash, 'site.css'), css);
   write(path.join(out, 'assets', ctx.jsHash, 'site.js'), js);
+  const brandFiles = BRAND_FILES.map((f) => [f, read(path.join(HERE, 'shared/brand', f))]);
+  const bh = hashOf(brandFiles.map(([f, s]) => f + s).join('\n'));
+  ctx.brand = `/assets/${bh}/brand`;
+  for (const [f, s] of brandFiles) write(path.join(out, 'assets', bh, 'brand', f), s);
 
   // OxiUI local-mode app (every site can show "view this page in OxiUI")
   const localPkg = process.env.OXI_LOCAL_PKG || path.join(HERE, '.build/pkg_local');

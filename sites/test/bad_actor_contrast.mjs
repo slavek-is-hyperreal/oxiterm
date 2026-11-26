@@ -20,7 +20,20 @@ for (const site of ['home', 'oxiui', 'oxiscript']) {
   const s = split(fs.readFileSync(path.join(H, `../shared/site.css.d/${site}.css`), 'utf8'));
   for (const mode of ['dark', 'light']) {
     const t = { ...base.dark, ...(mode === 'light' ? base.light : {}), ...s.dark, ...(mode === 'light' ? s.light : {}) };
-    const pairs = [['fg', 'bg', 4.5], ['muted', 'bg', 4.5], ['muted', 'card', 4.5], ['muted', 'code-bg', 4.5], ['link', 'bg', 4.5], ['link', 'code-bg', 4.5], ['link', 'card', 4.5], ['acc', 'bg', 4.5], ['acc', 'code-bg', 4.5], ['acc-fg', 'acc', 4.5], ['warn', 'bg', 4.5], ['err', 'bg', 3], ['ok', 'bg', 4.5], ['ctl', 'bg', 3], ['ctl', 'card', 3], ['ctl', 'code-bg', 3], ['acc', 'card', 3]];
-    for (const [a, b, min] of pairs) { const r = cr(t[a], t[b]); console.log(`${site.padEnd(9)} ${mode.padEnd(5)} ${(a + ' on ' + b).padEnd(20)} ${r.toFixed(2)} ${r < min ? 'FAIL (<' + min + ')' : ''}`); }
+    const pairs = [['fg', 'bg', 4.5], ['muted', 'bg', 4.5], ['muted', 'card', 4.5], ['muted', 'code-bg', 4.5], ['link', 'bg', 4.5], ['link', 'code-bg', 4.5], ['link', 'card', 4.5], ['acc', 'bg', 4.5], ['acc', 'code-bg', 4.5], ['acc-fg', 'acc', 4.5], ['warn', 'bg', 4.5], ['err', 'bg', 3], ['ok', 'bg', 4.5], ['ctl', 'bg', 3], ['ctl', 'card', 3], ['ctl', 'code-bg', 3], ['acc', 'card', 4.5], ['link', 'card', 4.5], ['pat', 'bg', 4.5], ['pat', 'card', 4.5], ['pat', 'code-bg', 4.5], ['coral', 'bg', 4.5], ['coral', 'card', 4.5], ['coral', 'code-bg', 4.5], ['warn', 'card', 4.5], ['err', 'card', 3], ['ok', 'card', 4.5]];
+    for (const [a, b, min] of pairs) { if (!t[a] || !t[b]) throw new Error(`token missing: ${a} or ${b} (${site} ${mode})`); const r = cr(t[a], t[b]); console.log(`${site.padEnd(9)} ${mode.padEnd(5)} ${(a + ' on ' + b).padEnd(20)} ${r.toFixed(2)} ${r < min ? 'FAIL (<' + min + ')' : ''}`); if (r < min) process.exitCode = 1; }
+  }
+}
+// The THTML ("view in OxiUI") pages are dark only and take their colours from shared/brand/palette.json.
+{
+  const P = JSON.parse(fs.readFileSync(path.join(H, '../shared/brand/palette.json'), 'utf8'));
+  for (const site of ['home', 'oxiui', 'oxiscript']) {
+    for (const bg of ['bg', 'card']) {
+      for (const k of ['fg', 'muted', 'acc', 'pat', 'coral']) {
+        const r = cr(P.text[k], P[site][bg]);
+        console.log(`${site.padEnd(9)} thtml ${(k + ' on ' + bg).padEnd(20)} ${r.toFixed(2)} ${r < 4.5 ? 'FAIL (<4.5)' : ''}`);
+        if (r < 4.5) process.exitCode = 1;
+      }
+    }
   }
 }

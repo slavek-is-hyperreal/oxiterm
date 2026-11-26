@@ -1,10 +1,10 @@
-/* OxiScript: code-flavoured. Editor-like surfaces, violet accent, braces as ornament. */
-:root { --ctl: #61658d; --acc: #a78bfa; --acc-fg: #130a2e; --bg: #0f1020; --card: #17182f; --line: #34376a; --code-bg: #0b0c1a; --link: #93c5fd; }
-@media (prefers-color-scheme: light) { :root { --ctl: #85869e; --acc: #6d28d9; --acc-fg: #ffffff; --bg: #faf9ff; --card: #ffffff; --line: #d4d0ec; --code-bg: #f1effa; --link: #1d4ed8; } }
+/* OxiScript: code-editor flavoured. Slate-patina editor surfaces, rust accent, braces as ornament in patina. */
+:root { --bg: #0c1417; --fg: #e4ecee; --muted: #98adb2; --card: #131f23; --line: #2b4650; --ctl: #5c8590; --code-bg: #080f12; }
+@media (prefers-color-scheme: light) { :root { --bg: #f4f8f8; --fg: #0f1e22; --muted: #44595e; --card: #ffffff; --line: #bccfd3; --ctl: #647d84; --code-bg: #e6eff0; } }
 h1, h2 { font-family: var(--sans); letter-spacing: -0.01em; }
-h2::before { content: "{ "; color: var(--acc); font-family: var(--mono); font-weight: 400; }
-h2::after { content: " }"; color: var(--acc); font-family: var(--mono); font-weight: 400; }
-.pg-editor, pre.code { border-left: 4px solid var(--acc); }
+h2::before { content: "{ "; color: var(--pat); font-family: var(--mono); font-weight: 400; }
+h2::after { content: " }"; color: var(--pat); font-family: var(--mono); font-weight: 400; }
+.pg-editor, pre.code { border-left: 4px solid var(--pat); }
 .brand { font-family: var(--mono); }
-.brand::after { content: ".oxs"; color: var(--acc); font-weight: 400; }
-.hero h1 { background: linear-gradient(90deg, var(--fg), var(--acc)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.brand::after { content: ".oxs"; margin-left: -8px; color: var(--pat); font-weight: 400; }
+.hero h1 { background: linear-gradient(90deg, var(--fg) 30%, var(--acc)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
