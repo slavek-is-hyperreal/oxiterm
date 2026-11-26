@@ -47,13 +47,15 @@ Numbering `O-n` is local to this file (anchors `o-1`...). OxiScript principles a
 | <a id="o-17"></a>O-17 | Golden and trace baselines are blessed only by the lead (`OXI_BLESS*`); subagents run no git commands; shared files (root `Cargo.toml`, CI workflows, the plan) are edited only by the lead. | 2026-11-24 | oxi-ui.md:329-333; HANDOFF.md section 2 |
 | <a id="o-18"></a>O-18 | Report outcomes from independent evidence (check `gh run list` after each push); do not claim a gap without grepping the repo; code beats docs (`ONBOARDING.md`). | 2026-11-25/26 | HANDOFF.md section 1; ONBOARDING.md:11-14 |
 | <a id="o-19"></a>O-19 | Decisiveness: taste decisions (fonts, colours, visual calls) are delegated to the lead after screenshots; stop only for licence, money, scope, language semantics. | standing | HANDOFF.md section 1; memory |
-| <a id="o-20"></a>O-20 | Sites: Polish and English first, Latin after the owner's review (in memoriam dedication); Polish copy is a draft until the owner reviews; no trackers; HSTS only as a Cloudflare dashboard switch, never preload by default; sites are Cloudflare **Workers static assets**, not Pages (2026-11-26). | 2026-11-25/26 | oxi-ui.md:648; sites/DEPLOY.md; commit ddad8b3 |
+| <a id="o-20"></a>O-20 | Sites: Polish and English first, Latin after the owner's review (in memoriam dedication); Polish copy is a draft until the owner reviews it; no trackers; HSTS only as a Cloudflare dashboard switch, never preload by default. | 2026-11-25 | oxi-ui.md:648; sites/DEPLOY.md |
 | <a id="o-21"></a>O-21 | Language of work: the owner writes Polish and gets Polish answers; code, docs and commits are English. Dev blog posts only by the owner or the lead, each signed by its author. | standing | HANDOFF.md; memory |
 | <a id="o-22"></a>O-22 | Hardware: ESP32-S3 4.3" 800x480 touch (N16R8) is bought after 2026-12-10; device work waits for it; no public server yet (a VPS with port-22 SSH comes later). | 2026-11-26 | HANDOFF.md section 5; memory |
 | <a id="o-23"></a>O-23 | Compilation targets `device`, `web`, `server` are a build concept distinct from language profiles (owned by [8.2a](oxiscript.md#s-8-2a), done). | 2026-11-26 | oxi-ui.md:655 |
 
 Overtaken by events (not revoked by the owner; owner to confirm, see Q-1):
 - **Execution order of 2026-11-22** (5.0-5.1, then 6, then 7, then 5.2-5.7 last, Phase 8 after Phase 7). In fact Phase 8 ran in parallel with Phase 7 from 2026-11-24 (plan "Parallel schedule"), and 5.2 was pulled forward (as the plan itself foresaw in oxi-ui.md:759). 5.3-5.7 remain last. Sources: R2-09, R4-30.
+
+Fact reported by the lead on 2026-11-26 (not an owner decision): the sites are deployed as Cloudflare **Workers static assets**, not Pages (commit `ddad8b3`, `sites/deploy/<site>.wrangler.jsonc`, `npx wrangler@4.86.0 deploy`). `sites/DEPLOY.md` still describes Pages in its first part.
 
 Superseded design decisions from the original concept documents (kept for history, not owner decisions of the current plan):
 - CD1 mobile design (User-Agent detection and `/` to `/mobile` 302): replaced by client-side viewport classification (< 800 px) plus the `0x11` viewport sync (CHANGELOG 0.4.0, ARCHITECTURE section 7). Sources: R1-07, R1-48.
@@ -86,9 +88,9 @@ All hashes below were checked with `git merge-base --is-ancestor <hash> main`. F
 | 7.6 | Media and diagram parity across modes (one resolver `pathsafe::resolve_media`, pure-Rust Rive, vendored lottie-web, 64-bit media keys, wire break `0x20/0x21/0xE0`) | `docs/stages/7.6` | 2026-11-26, `83ba89e` |
 | Showcase | OxiUI versions of the three sites (80-column pages, `_mobile` variants, tabs/accordion/drag/spring/Lottie) | `docs/stages/showcase` | 2026-11-26, `782e539` |
 | Sites deploy | `oxiui.slavekm.pl` deployed as Workers static assets (wrangler configs) | `sites/DEPLOY.md` (second half) | 2026-11-26, `ddad8b3` |
-| Terminal baseline | SSH server (russh), DA1 capability negotiation, Kitty keyboard and SGR mouse decoding, synchronized updates `?2026`, bounded frame channel, XON/XOFF pause, resize debounce, predictive local echo (server side), Kitty/Sixel/half-block images | `CHANGELOG.md` 0.1.0-0.6.0, `docs/ARCHITECTURE.md` | before 2026-11-22 (CHANGELOG) |
-| OxiDESK window features | z-index, reverse hit-test, `position: absolute/fixed`, drag and drop, collapse/dock/taskbar, physics transitions (bezier, spring), layout linter | `CHANGELOG.md` 0.6.0 | before 2026-11-22 (CHANGELOG) |
-| App Server | `/events`, `/sessions/{id}/patch` (+ `navigate`, `open_url`, `set_app_token`), fail-closed auth, Spotify control center, oxiterm-reader | `docs/app-server-guide.md`, `docs/spotify-demo.md`, `apps/oxiterm-reader/README.md` | before 2026-11-22 (CHANGELOG) |
+| Terminal baseline | SSH server (russh, `oxiterm-server/src/ssh`), DA1 negotiation (`ssh/negotiator.rs`), Kitty keyboard and SGR mouse decoding (`oxiterm-proto/src/input/decoder.rs`), synchronized updates `?2026` (`session.rs`), `BoundedFrameChannel`, XON/XOFF (`InputEvent::Xoff`, test `test_xon_xoff_handling`), `ResizeDebouncer`, predictive echo (server side, `session_state.rs:41`), Kitty/Sixel/half-block images | `CHANGELOG.md` 0.1.0-0.6.0, `docs/ARCHITECTURE.md` | earlier history (code evidence in the row) |
+| OxiDESK window features | z-index, reverse hit-test, `position: absolute/fixed`, drag and drop, collapse/dock/taskbar, physics transitions (bezier, spring), layout linter | `CHANGELOG.md` 0.6.0 | earlier history (code evidence in the row) |
+| App Server | `/events`, `/sessions/{id}/patch` (+ `navigate`, `open_url`, `set_app_token`), fail-closed auth, Spotify control center, oxiterm-reader | `docs/app-server-guide.md`, `docs/spotify-demo.md`, `apps/oxiterm-reader/README.md` | earlier history (code evidence in the row) |
 
 Sources of the Done rows: R1-05,06,08,10,11,16-19,22,31,43,44,46,49,51,52,53,54,60,97,103,104,105; R2-11..15,23..25,28,33,40..42,44,45,50,126,127,140,143,148,151; R4-30,36.
 
@@ -104,11 +106,56 @@ Notes on dates: the CHANGELOG-based rows predate the plan; no single merge commi
 
 ## 5. Roadmap
 
-Ids: existing plan ids are kept (5.x, 7.x, 9.x). New ids use the prefix `U.` Each stage is a heading with an anchor `s-<id>` (lowercase, "." becomes "-"). Status: `todo`, `idea` (design only, owner may schedule), `blocked`, `conditional`. Every stage ends with a BAD ACTOR pass (O-8) unless it is documentation only. Order within a group is the dependency order; the suggested overall sequence is in 5.12.
+Ids: existing plan ids are kept (5.x, 7.x, 9.x). New ids use the prefix `U.` Each stage is a heading with an anchor `s-<id>` (lowercase, "." becomes "-"). Status: `todo`, `idea` (design only, owner may schedule), `blocked`, `conditional`. Every stage ends with a BAD ACTOR pass (O-8) unless it is documentation only. Order within a group is the dependency order; the suggested overall sequence is in 5.G. Groups are lettered 5.A-5.G so they do not collide with stage ids.
 
 Renamed ids (old -> new): oxi-ui.md "Phase 5 stages 5.2-5.7" keep their ids; "Stage 7.6" (absent from the old plan table) now appears in section 3; oxi-ui.md Phase 4 "Still open ... next_deadline" -> U.Idle; "8.3b GPU kernels" (old wording in `docs/stages/5.2`) -> [8.3c-8.3e](oxiscript.md#s-8-3c); OxiDE phases 1-5 of `retro-desktop-environment.md` -> 7.2b / U.OxiDE (the old phase numbers there collide with OxiUI phases and are retired); OxiScreens roadmap steps 1-7 of `iot-screens.md` -> U.Screens-1..4.
 
-### 5.1 Native window and GPU (Phase 5)
+
+#### Status table (machine-readable; same columns as the OxiScript roadmap)
+
+| Stage | Status | Merged |
+|---|---|---|
+| 5.3 | todo | — |
+| 5.4 | todo | — |
+| 5.5 | todo | — |
+| 5.6 | todo | — |
+| 5.7 | todo | — |
+| U.Hover | todo | — |
+| U.WebGPU | todo, measure first | — |
+| U.KernelDraw | idea | — |
+| 7.2b | todo | — |
+| 7.3 | todo | — |
+| 7.4 | todo | — |
+| 7.5 | todo | — |
+| U.OxiDE | idea | — |
+| U.IPC | idea | — |
+| U.Idle | todo | — |
+| U.S1 | todo, blocked on 8.S1 and 8.M-link | — |
+| U.Quirks | todo | — |
+| U.Cpu | todo | — |
+| U.Damage | conditional on 8.Mem | — |
+| U.Term | todo | — |
+| U.A11y | idea, owner to decide | — |
+| U.Media | todo | — |
+| U.Text | todo | — |
+| U.Apps | idea | — |
+| U.Secure | idea | — |
+| U.Screens | idea, waits for hardware | — |
+| 9.1 | idea | — |
+| 9.2 | idea | — |
+| 9.3 | idea | — |
+| 9.4 | idea | — |
+| U.CI | todo | — |
+| U.Sites | todo, partly owner-blocked | — |
+| U.Host | blocked on owner | — |
+| U.Bench | todo | — |
+| U.Ver | todo, needs owner choice | — |
+| U.Docs | todo | — |
+| U.Hygiene | todo | — |
+
+Done stages are in section 3 (same convention: id in the first cell, `date, hash` in the last).
+
+### 5.A Native window and GPU (Phase 5)
 
 <a id="s-5-3"></a>
 #### 5.3 Native window, thin-client mode
@@ -159,7 +206,7 @@ Renamed ids (old -> new): oxi-ui.md "Phase 5 stages 5.2-5.7" keep their ids; "St
 - Gate: defined by [8.3d](oxiscript.md#s-8-3d); lavapipe golden.
 - Depends: 5.2, [8.3c](oxiscript.md#s-8-3c), [8.3d](oxiscript.md#s-8-3d). Status: idea (owner O-9 fixed the design rule, not the item). Sources: R3-176; R4-39.
 
-### 5.2 Mobile, framebuffer and OxiDE (Phase 7 and OxiDE)
+### 5.B Mobile, framebuffer and OxiDE (Phase 7 and OxiDE)
 
 <a id="s-7-2b"></a>
 #### 7.2b OxiDE runner `oxide run page.thtml`
@@ -194,7 +241,7 @@ Renamed ids (old -> new): oxi-ui.md "Phase 5 stages 5.2-5.7" keep their ids; "St
 - Scope: Unix Domain Socket IPC for daemon patches (today only HTTP patch API), serial/UART/RS-485 sink (`/dev/ttyS0`), evdev touchscreen driver shared with 7.2b, sensor-to-UI flow (`event-htmx="gpio:relay_1=toggle"`), `no_std`/RTOS port of the core (links [8.S3](oxiscript.md#s-8-s3)).
 - Gate: defined when scheduled. Depends: 7.2b; hardware after 2026-12-10 (O-22). Status: idea. Sources: R1-62..66.
 
-### 5.3 Core, server and terminal
+### 5.C Core, server and terminal
 
 <a id="s-u-idle"></a>
 #### U.Idle Idle wake-ups
@@ -255,7 +302,7 @@ Renamed ids (old -> new): oxi-ui.md "Phase 5 stages 5.2-5.7" keep their ids; "St
 - Scope: IDEAS #8: login/PIN/payment as server-rendered surfaces (zero DOM, no secrets in the browser), WebAuthn bridge (`navigator.credentials` thin-client bridge), shuffled keypad, IEC 62443 kiosks; honest limits (phishing, keylogger, password managers) stay in the text.
 - Gate: none; owner explicitly "not scheduled" (O-11). Depends: 7.1 or 5.3. Status: idea. Sources: R1-58.
 
-### 5.4 Devices and screens
+### 5.D Devices and screens
 
 <a id="s-u-screens"></a>
 #### U.Screens OxiScreens (dumb networked screens)
@@ -266,7 +313,7 @@ Sub-stages, all unscheduled until the board arrives (O-22). Phase numbers in `io
 - **U.Screens-4** e-ink client (partial refresh) and `<scene>` 3D tiers (see 9.x). Sources: R1-70,72; R2-171.
 - Status: idea. Sources: R1-67..72; R2-88.
 
-### 5.5 Phase 9: 3D in OxiUI (draft, not scheduled, O-10)
+### 5.E Phase 9: 3D in OxiUI (draft, not scheduled, O-10)
 
 <a id="s-9-1"></a>
 #### 9.1 Tier-2 server projection
@@ -284,7 +331,7 @@ Needs 5.2 (done) and the shared context (O-9); depends on [8.3c](oxiscript.md#s-
 #### 9.4 OxiScript 3D API and kernel shaders
 Owned jointly: language part in [8.3d](oxiscript.md#s-8-3d). Status: idea. Sources: R2-86; R4-38. Slug-class/MSDF text for scalable or perspective labels only when 9.x needs it (R2-172).
 
-### 5.6 Infrastructure, CI, sites, release
+### 5.F Infrastructure, CI, sites, release
 
 <a id="s-u-ci"></a>
 #### U.CI CI and gates
@@ -322,7 +369,7 @@ Owned jointly: language part in [8.3d](oxiscript.md#s-8-3d). Status: idea. Sourc
 - Scope: prune merged worktrees (27 linked, 4 locked: `a402933a`, `a5c23966`, `a736d876`, `ad24f942`; only `gemini-rtlink`, `gemini-std`, `gemini-memres` hold unmerged or uncommitted work: do not delete `gemini-memres` before its research file is committed); keep stage notes of 8.C/8.P/8.R/8.M/7.1/7.2 that exist only in worktrees (`docs/stages/README.md`) before pruning, since the 8.S4 gate needs the 8.M findings.
 - Gate: `git worktree list` shows only live work. Depends: none. Status: todo. Sources: R2-89; R4-80; R2 inconsistency 8.
 
-### 5.7 Suggested sequence
+### 5.G Suggested sequence
 
 1. Now, no dependencies: U.CI, U.Idle, U.Quirks, U.Hygiene, U.Docs, U.Term (decisions).
 2. After the language critical path unblocks ([8.M-link](oxiscript.md#s-8-m-link) merge): U.S1 with [8.S1](oxiscript.md#s-8-s1); 7.3/7.4 in parallel (web client files); U.Hover (web part).
@@ -357,8 +404,12 @@ Owned jointly: language part in [8.3d](oxiscript.md#s-8-3d). Status: idea. Sourc
 | Media as display-list items (rejected for now to avoid a wire bump) | U.Apps, owner to decide | R1-45 |
 | Mosh-style prediction as a client-side wrapper (CD2) vs server-side buffer shipped | informational; U.Term | R1-12 |
 | AI acceleration (`host:ml`, tensor library) | [8.3e](oxiscript.md#s-8-3e) | R2-32; R4-13,14 |
-| Phase 9 e-graph, other OxiScript research ideas | W-OXS | R4-15 |
+| E-graph simplification and other OxiScript research ideas | W-OXS (8.3b) | R4-15 |
 | VS Code extension publishing | [8.Pub](oxiscript.md#s-8-pub) | R2-124 |
+
+---
+
+IDEAS.md index mapping: #1 OxiDESK -> 7.2b, U.OxiDE; #2 Embedded -> U.IPC, U.Screens, U.Bench; #3 framebuffer -> Done 7.2, 7.2b; #4 transitions -> Done (OxiDESK window features); #5 hover -> U.Hover; #6 OxiUI -> this file; #7 OxiScreens -> U.Screens; #8 high-risk surfaces -> U.Secure.
 
 ---
 
@@ -389,6 +440,8 @@ Owned jointly: language part in [8.3d](oxiscript.md#s-8-3d). Status: idea. Sourc
 - **BAD ACTOR gate (O-8):** every stage ends with an adversarial agent that writes failing tests and a report and never fixes code; a separate fix agent fixes; findings stay as regression tests. Stage notes go to `docs/stages/<stage>/`.
 - **Gates:** `scripts/oxiscript-gate.sh quick|merge` before merge and push; per-package cargo in worktrees (`-p ...`; a workspace build in a worktree fails on the missing web bundle); at most 3 concurrent agents, `CARGO_BUILD_JOBS=2`; nightly fuzz `.github/workflows/oxiscript-fuzz.yml`; check `gh run list` after every push (O-18).
 - **Golden files:** agents never set `OXI_BLESS*`; the lead blesses after review (O-17). GPU goldens are blessed only on the verified llvmpipe pairs (LLVM 20 / Mesa 25.2, LLVM 21 / Mesa 26.0); tolerance 2 / 0.25%. Stage changes that alter wire or traces say so explicitly (7.6 was a wire break: server and client ship together).
+- **Workflow:** lead (Opus) designs, briefs, reviews, merges; Sonnet implementers in their own worktrees call `advisor` before starting and before reporting; optional Gemini implementer (Gemini writes, Sonnet+advisor reviews, BAD ACTOR, lead merges; pilot done, default undecided, Q-13). Time every agent wave and keep the wave record.
+- **Usage limits** stop agents mid-work: every agent keeps a HANDOFF file current; on a stop, snapshot-commit its worktree and resume it with SendMessage.
 - **Never** touch `/dev/fb0`, `/dev/dri/*`, `/dev/input/*` from an agent (O-16).
 - **Permissive licences only** (O-14); SBOM and `cargo deny` come with U.CI.
 - **Clicks that miss:** three independent causes (ambiguous-width glyph in a label, SSH emitter cursor desync, web canvas pixel-to-cell mapping); check each before blaming layout.
