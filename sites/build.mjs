@@ -21,6 +21,8 @@ import { asciiHtml } from './shared/brand/oxi-ascii.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
 const DIST = process.env.SITES_DIST || path.join(HERE, 'dist'); // SITES_DIST / SITES_I18N_DIR: test hooks (sites/test/pipeline_label.mjs)
+// One shared OxiScript version (docs/oxiscript/VERSIONING.md): read from the CLI manifest.
+const OXI_VERSION = (fs.readFileSync(path.join(REPO, 'oxiscript/oxiscript-cli/Cargo.toml'), 'utf8').match(/^version = "([^"]+)"/m) || [])[1] || '0';
 const ALL_LANGS = ['en', 'pl', 'la']; // la = Latin: draft, written but NOT published until the owner enables it
 // Published languages. Default pl,en. Enable Latin later with SITES_LANGS=pl,en,la. `en` is always built (site root).
 const LANGS = ALL_LANGS.filter((l) => l === 'en' || (process.env.SITES_LANGS || 'pl,en').split(',').map((x) => x.trim()).includes(l));
@@ -282,6 +284,7 @@ function playgroundHtml(site, lang, ctx) {
 ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 <ul class="pg-diags" id="pg-diags"></ul>
 <div class="pg-explain" id="pg-explain" hidden></div>
+<p class="fine pg-version">${esc(T(lang, 'oxiscript.playground.versionNote').replace('{v}', OXI_VERSION))}</p>
 <script type="application/json" id="pg-labels">${json(labels)}</script>
 <script type="application/json" id="pg-examples">${json(examples)}</script>
 </section>`;

@@ -28,6 +28,7 @@ step() { # name, command...
 }
 
 # --- quick
+step version-check scripts/oxiscript-version.sh --check
 for c in "${CRATES[@]}"; do
   step "test-$c" cargo test -p "$c" --no-fail-fast
 done
