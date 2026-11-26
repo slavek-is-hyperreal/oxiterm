@@ -8,7 +8,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <style>
         :root {
             --bg-gradient: linear-gradient(135deg, #020617 0%, #0f172a 100%);
@@ -513,9 +512,53 @@
             return 'image/png';
         }
 
-        function clearMediaLayer() {
-            if (window.lottie) lottie.destroy();
-            mediaLayer.innerHTML = '';
+        // Lottie player: the lottie-web "light" build (MIT, SVG renderer), served same-origin from
+        // /oxiui/vendor/ and loaded on first use. Never from a CDN.
+        let lottieLoading = null;
+        function ensureLottie() {
+            if (window.lottie) return Promise.resolve(window.lottie);
+            if (!lottieLoading) {
+                lottieLoading = new Promise((resolve, reject) => {
+                    const sc = document.createElement('script');
+                    sc.src = 'oxiui/vendor/lottie_light.min.js';
+                    sc.onload = () => (window.lottie ? resolve(window.lottie) : reject(new Error('lottie missing')));
+                    sc.onerror = () => { lottieLoading = null; reject(new Error('lottie player unavailable')); };
+                    document.head.appendChild(sc);
+                });
+            }
+            return lottieLoading;
+        }
+
+        // A coordinate refresh (0x21, empty message first) must not restart a playing animation or
+        // reload a video, so the cleared elements wait hidden in a pool keyed by asset hash and the
+        // refresh takes them back; whatever is not taken within the grace period is destroyed.
+        const mediaPool = new Map();
+        let mediaSweep = null;
+        function destroyMediaElement(el) {
+            if (el.__anim) { try { el.__anim.destroy(); } catch (e) { /* already gone */ } }
+            el.remove();
+        }
+        function sweepMediaPool() {
+            mediaSweep = null;
+            for (const list of mediaPool.values()) for (const el of list) destroyMediaElement(el);
+            mediaPool.clear();
+        }
+        // soft: elements are pooled for reuse by the coordinates that follow; hard: everything goes.
+        function clearMediaLayer(soft) {
+            if (soft) {
+                for (const m of activeMedia) {
+                    if (!m.element) continue;
+                    m.element.style.display = 'none';
+                    if (!mediaPool.has(m.hash)) mediaPool.set(m.hash, []);
+                    mediaPool.get(m.hash).push(m.element);
+                }
+                if (!mediaSweep) mediaSweep = setTimeout(sweepMediaPool, 400);
+            } else {
+                if (mediaSweep) { clearTimeout(mediaSweep); mediaSweep = null; }
+                for (const el of Array.from(mediaLayer.children)) destroyMediaElement(el);
+                mediaLayer.innerHTML = '';
+                mediaPool.clear();
+            }
             activeMedia = [];
         }
 
@@ -650,10 +693,15 @@
             if (cached.type === 'lottie') {
                 const div = document.createElement('div');
                 div.className = 'lottie-slot';
+                div.dataset.lottie = 'loading';
                 div.style.cssText = css;
-                if (window.lottie && cached.json) {
-                    lottie.loadAnimation({ container: div, renderer: 'svg', loop: true, autoplay: true, animationData: cached.json });
-                }
+                ensureLottie().then((l) => {
+                    if (!div.isConnected && !mediaLayer.contains(div)) return; // gone before the player arrived
+                    // The slot's own box is the viewport: the animation scales to fit it.
+                    div.__anim = l.loadAnimation({ container: div, renderer: 'svg', loop: true, autoplay: true, animationData: cached.json,
+                        rendererSettings: { preserveAspectRatio: 'xMidYMid meet' } });
+                    div.dataset.lottie = 'playing';
+                }).catch((e) => { div.dataset.lottie = 'failed'; console.warn('Lottie player:', e); });
                 return div;
             } else if (cached.type && cached.type.startsWith('video/')) {
                 const video = document.createElement('video');
@@ -672,8 +720,15 @@
         function addMediaToLayer(hash, col, row, width, height) {
             const cached = mediaCache[hash];
             if (!cached) return;
-            const el = spawnMediaElement(cached, col, row, width, height);
-            mediaLayer.appendChild(el);
+            let el = null;
+            const pooled = mediaPool.get(hash);
+            if (pooled && pooled.length) {
+                el = pooled.shift();
+                el.style.cssText = `left:${col * cellW}px;top:${row * cellH}px;width:${width * cellW}px;height:${height * cellH}px;`;
+            } else {
+                el = spawnMediaElement(cached, col, row, width, height);
+                mediaLayer.appendChild(el);
+            }
             activeMedia.push({ hash, col, row, width, height, element: el });
         }
 
@@ -768,7 +823,7 @@
             }
             needsClear = false;
             dlActive = true;
-            clearMediaLayer();
+            clearMediaLayer(false);
             clearA11yLayer();
             currentSocket = localSock;
             setUiState('CONNECTED', 'Local');
@@ -821,6 +876,13 @@
                 const res = await fetch('/oxiui/local/asset/' + rel.split('/').map(encodeURIComponent).join('/'));
                 if (!res.ok || app !== localApp) return;
                 const bytes = new Uint8Array(await res.arrayBuffer());
+                if (/\.mmd$/i.test(rel)) {
+                    // A diagram is drawn by the in-page core (into cells), not by the browser:
+                    // the text goes into the core's virtual file system, which re-renders.
+                    app.mount_asset(rel, bytes);
+                    drainLocal();
+                    return;
+                }
                 const msg = new Uint8Array(5 + bytes.length);
                 msg[0] = 0x20;
                 new DataView(msg.buffer).setUint32(1, hash, true);
@@ -877,6 +939,10 @@
                 currentSocket = ws;
                 reconnectDelay = 500;
                 needsClear = true;
+                // Media belongs to the connection, not to the first frame: the server sends a frame's
+                // 0x21 positions BEFORE its first cell/list message, so clearing the media layer when
+                // that first frame arrives wiped the overlays (a race that hid media about half the time).
+                clearMediaLayer(false);
                 setUiState('CONNECTED', 'Connected');
                 canvas.focus();
 
@@ -1035,7 +1101,7 @@
             // ── 0x21 media coordinate / clear ─────────────────────────────────
             if (bytes[0] === 0x21) {
                 if (bytes.length === 1) {
-                    clearMediaLayer();
+                    clearMediaLayer(true);
                 } else if (bytes.length >= 13) {
                     const hash   = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
                     // col/row are signed (i16): media scrolled partly off the top or left edge
@@ -1107,9 +1173,7 @@
                 if (!guiMode) return;
                 dlActive = true;
                 if (needsClear) {
-                    // Media is cleared synchronously so a 0x21 arriving while this frame is
-                    // still inflating is not wiped. The list itself repaints everything.
-                    clearMediaLayer();
+                    // The list itself repaints everything (media was cleared at connect).
                     needsClear = false;
                 }
                 const sock = currentSocket;
@@ -1136,7 +1200,6 @@
             // ── render commands ───────────────────────────────────────────────
             if (needsClear) {
                 term.clear(currentCols, currentRows);
-                clearMediaLayer();
                 needsClear = false;
             }
             term.draw_commands(bytes);

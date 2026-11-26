@@ -50,6 +50,10 @@ pub mod web_impl {
     // oxiterm_local`): served only when local mode is on, loaded by the page only for `?local=1`.
     const LOCAL_JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local.js");
     const LOCAL_WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local_bg.wasm");
+    /// Lottie player (lottie-web "light" build, MIT, SVG renderer only), served same-origin: the
+    /// client never loads scripts from a CDN. The licence text is served next to it.
+    const LOTTIE_JS_ASSET: &[u8] = include_bytes!("../assets/vendor/lottie_light.min.js");
+    const LOTTIE_LICENSE_ASSET: &[u8] = include_bytes!("../assets/vendor/LICENSE-lottie-web.txt");
     /// Client-side coordinate round-trip tests. Compiled into the binary but injected into
     /// the served page ONLY in web-test mode (`OXITERM_WEB_TEST`), so real users never load it.
     const WEB_TEST_JS: &str = include_str!("../assets/web_coord_tests.js");
@@ -251,34 +255,26 @@ pub mod web_impl {
                 let _ = self.send_bytes(vec![0x21]);
             }
 
+            // One rule for the bytes and the coordinates (Stage 7.6): `src` is relative to the page's
+            // directory and must stay inside the app base (`pathsafe::resolve_media`). Before, the
+            // coordinates were checked against the page directory, so any `../assets/x.png` got its
+            // bytes (0x20) but never a position (0x21) and nothing appeared.
             let app_base_dir = self.session.app_base_dir.read().clone();
-            for media in &active_media {
-                let is_safe = if let (Some(ref base), Some(ref app_base)) = (&base_dir, &app_base_dir) {
-                    let full_path = base.join(&media.path);
-                    crate::pathsafe::is_within_base(app_base, &full_path)
-                } else {
-                    false
-                };
-
-                if !is_safe {
-                    // Distinguish traversal attempt from a simply missing asset.
-                    if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        if full_path.exists() {
-                            warn!("media outside app_base_dir (path traversal attempt): {:?}", full_path);
-                        } else {
-                            tracing::debug!("media not found (missing asset): {:?}", full_path);
-                        }
-                    } else {
-                        tracing::debug!("media not found (no base dir): {:?}", media.path);
+            let resolved: Vec<Option<std::path::PathBuf>> = active_media
+                .iter()
+                .map(|m| {
+                    let r = crate::pathsafe::resolve_media(base_dir.as_deref(), app_base_dir.as_deref(), &m.path);
+                    if r.is_none() {
+                        warn!("media src refused (outside app_base_dir or not a plain relative path): {:?}", m.path);
                     }
-                    continue;
-                }
-
+                    r
+                })
+                .collect();
+            for (media, full_path) in active_media.iter().zip(&resolved) {
+                let Some(full_path) = full_path else { continue };
                 if !self.sent_assets.contains(&media.path) {
-                    if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        if let Ok(file_bytes) = std::fs::read(&full_path) {
+                    match std::fs::read(full_path) {
+                        Ok(file_bytes) => {
                             let mut msg = vec![0x20];
                             msg.extend_from_slice(&hash_path(&media.path).to_le_bytes());
                             msg.extend_from_slice(&file_bytes);
@@ -286,6 +282,7 @@ pub mod web_impl {
                                 self.sent_assets.insert(media.path.clone());
                             }
                         }
+                        Err(_) => tracing::debug!("media not found (missing asset): {:?}", full_path),
                     }
                 }
             }
@@ -293,18 +290,10 @@ pub mod web_impl {
             if coords_changed {
                 self.sent_coordinates.clear();
 
-                for media in &active_media {
-                    let is_safe = if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        crate::pathsafe::is_within_base(base, &full_path)
-                    } else {
-                        false
-                    };
-
-                    if !is_safe {
+                for (media, full_path) in active_media.iter().zip(&resolved) {
+                    if full_path.is_none() {
                         continue;
                     }
-
                     let h = hash_path(&media.path);
                     let mut msg = vec![0x21];
                     msg.extend_from_slice(&h.to_le_bytes());
@@ -313,7 +302,7 @@ pub mod web_impl {
                     msg.extend_from_slice(&media.width.to_le_bytes());
                     msg.extend_from_slice(&media.height.to_le_bytes());
                     let _ = self.send_bytes(msg);
-                    
+
                     self.sent_coordinates.insert(h, media.clone());
                 }
             }
@@ -740,7 +729,14 @@ pub mod web_impl {
         let Some(source) = source_path else { return not_found() };
         let base = lm::app_base(&source);
         let rest = req.uri().path().strip_prefix("/oxiui/local/asset/").unwrap_or("").to_string();
-        let Some(asset) = tokio::task::spawn_blocking(move || lm::resolve_asset(&base, &rest)).await.ok().flatten() else { return not_found() };
+        let Some(asset) = tokio::task::spawn_blocking(move || {
+            // Lottie `.json` and diagram `.mmd` files are served only when a page names them.
+            let index = lm::local_index(&base);
+            lm::resolve_asset_for(&base, &rest, index.as_ref().map(|i| &*i.media_files))
+        })
+        .await
+        .ok()
+        .flatten() else { return not_found() };
         let Ok(file) = tokio::fs::File::open(&asset.path).await else { return not_found() };
         // Re-check the file actually opened (the path may have been swapped since resolve).
         let Ok(meta) = file.metadata().await else { return not_found() };
@@ -1017,6 +1013,12 @@ pub mod web_impl {
             }
             "/oxiterm_local_bg.wasm" if crate::local_mode::enabled() => {
                 (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(LOCAL_WASM_ASSET))
+            }
+            "/oxiui/vendor/lottie_light.min.js" => {
+                (StatusCode::OK, "application/javascript", std::borrow::Cow::Borrowed(LOTTIE_JS_ASSET))
+            }
+            "/oxiui/vendor/LICENSE-lottie-web.txt" => {
+                (StatusCode::OK, "text/plain; charset=utf-8", std::borrow::Cow::Borrowed(LOTTIE_LICENSE_ASSET))
             }
             "/oxiui/fonts.json" => {
                 let json = serde_json::to_vec(oxiterm_renderer::text::bundle::FontBundle::metrics()).unwrap_or_default();
@@ -1631,6 +1633,51 @@ pub mod web_impl {
             let res = sink.send_frame(&front, &back).unwrap();
             assert!(!res);
             assert!(rx.try_recv().is_err());
+        }
+
+        /// Stage 7.6 regression: a page in `demos/` pointing at `../assets/x.png` must get both the
+        /// bytes (0x20) and the position (0x21). Since Plan 3.0 only the bytes were sent, so no
+        /// overlay ever appeared. Also: refused sources get neither message.
+        #[tokio::test]
+        async fn test_ws_frame_sink_media_in_a_sibling_directory_gets_bytes_and_coordinates() {
+            use crate::session::MediaRenderInfo;
+            let root = std::env::temp_dir().join(format!("oxi_ws_sibling_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("app/assets")).unwrap();
+            std::fs::create_dir_all(root.join("app/demos")).unwrap();
+            std::fs::create_dir_all(root.join("outside")).unwrap();
+            std::fs::write(root.join("app/assets/a.png"), b"PNG_BYTES").unwrap();
+            std::fs::write(root.join("outside/secret.png"), b"SECRET").unwrap();
+
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            let info = |path: &str| MediaRenderInfo { path: path.to_string(), x: 3, y: 4, width: 16, height: 8 };
+            {
+                let mut m = session.active_media.write();
+                m.push(info("../assets/a.png"));
+                m.push(info("../../outside/secret.png"));
+                m.push(info("..%2f..%2foutside/secret.png"));
+            }
+            *session.app_base_dir.write() = Some(root.join("app"));
+            let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(root.join("app/demos/p.thtml")));
+            let _ = sink.send_frame(&CellBuffer::new(80, 24), &CellBuffer::new(80, 24));
+
+            let mut blobs = Vec::new();
+            let mut coords = Vec::new();
+            while let Ok(m) = rx.try_recv() {
+                match m[0] {
+                    0x20 => blobs.push(m[5..].to_vec()),
+                    0x21 if m.len() > 1 => coords.push(m),
+                    _ => {}
+                }
+            }
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(blobs, vec![b"PNG_BYTES".to_vec()], "only the contained file is sent");
+            assert_eq!(coords.len(), 1, "exactly one position (the contained file)");
+            assert_eq!(coords[0][1..5], hash_path("../assets/a.png").to_le_bytes(), "the position is for the same hash as the bytes");
         }
 
         #[test]

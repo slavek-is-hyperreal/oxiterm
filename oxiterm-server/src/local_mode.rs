@@ -243,13 +243,20 @@ pub fn build_page_index(base: &Path) -> Option<PageIndex> {
     Some(w.out)
 }
 
-fn scan_page(text: &str, actions: &mut HashSet<String>, bound: &mut HashSet<String>) {
+fn scan_page(name: &str, text: &str, actions: &mut HashSet<String>, bound: &mut HashSet<String>, files: &mut HashSet<String>) {
     let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         oxiterm_renderer::parser::THTMLParser::parse_with_mode(text, oxiterm_proto::style::RenderMode::Gui)
     }));
     let Ok(Ok(doc)) = parsed else { return };
     for (_, n) in doc.arena.iter() {
         let a = &n.attrs;
+        // Files a page itself points at (`img`/`video`/`diagram` `src`), as paths relative to the
+        // app base: the only way a `.json` (Lottie) or `.mmd` becomes servable.
+        if matches!(n.tag, oxiterm_proto::dom::NodeTag::Img | oxiterm_proto::dom::NodeTag::Video | oxiterm_proto::dom::NodeTag::Diagram) {
+            if let Some(rel) = a.src.as_deref().and_then(|src| oxiterm_proto::pathsafe::media_rel_path(name, src)) {
+                files.insert(rel);
+            }
+        }
         for act in [&a.event_htmx, &a.event_drag_end].into_iter().flatten() {
             actions.insert(act.clone());
         }
@@ -275,6 +282,8 @@ pub struct LocalIndex {
     pub actions: Arc<HashSet<String>>,
     /// Every state key some page binds.
     pub bound_keys: Arc<HashSet<String>>,
+    /// Every file (relative to the base) some page names as `src` of an `img`, `video` or `diagram`.
+    pub media_files: Arc<HashSet<String>>,
 }
 
 impl LocalIndex {
@@ -283,9 +292,10 @@ impl LocalIndex {
         let idx = build_page_index(base)?;
         let mut actions = HashSet::new();
         let mut bound = HashSet::new();
+        let mut files = HashSet::new();
         actions.insert("app_token_sync".to_string());
-        for text in idx.pages.values() {
-            scan_page(text, &mut actions, &mut bound);
+        for (name, text) in &idx.pages {
+            scan_page(name, text, &mut actions, &mut bound, &mut files);
         }
         Some(Self {
             pages_json: serde_json::to_vec(&idx.pages).ok()?,
@@ -294,6 +304,7 @@ impl LocalIndex {
             truncated: idx.truncated,
             actions: Arc::new(actions),
             bound_keys: Arc::new(bound),
+            media_files: Arc::new(files),
         })
     }
 
@@ -338,9 +349,22 @@ pub fn index_json(base: &Path, start: &str, actions: bool) -> Option<Vec<u8>> {
 
 // ---- assets --------------------------------------------------------------------------------
 
-/// Media types served by the asset route. `.json` (Lottie) and `.riv` are deliberately absent:
-/// the app directory may hold other JSON, and local mode serves only what a page can display
-/// as a plain image or video (see the 7.1 notes).
+/// Media types served by the asset route for any file: images and video. `.json` (Lottie) and
+/// `.mmd` (diagram source) are deliberately absent here: the app directory may hold other JSON, so
+/// they are served only when an indexed page names that exact file as the `src` of an
+/// `img`/`video`/`diagram` ([`resolve_asset_for`]). `.riv` is never served (the widget is drawn by
+/// the core, there is no file to show).
+/// Types the generic allowlist refuses but that a page may reference by name (see
+/// [`resolve_asset_for`]): Lottie animations and Mermaid diagram sources.
+fn referenced_asset_mime(name: &str) -> Option<&'static str> {
+    let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
+    match ext.as_str() {
+        "json" => Some("application/json"),
+        "mmd" => Some("text/plain; charset=utf-8"),
+        _ => None,
+    }
+}
+
 fn asset_mime(name: &str) -> Option<&'static str> {
     let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
     Some(match ext.as_str() {
@@ -386,6 +410,12 @@ pub struct AssetFile {
 /// as a media file inside `base`, without reading it. Every refusal is `None`. The caller opens
 /// the path and must re-check the opened file with [`check_opened_asset`].
 pub fn resolve_asset(base: &Path, rel_url: &str) -> Option<AssetFile> {
+    resolve_asset_for(base, rel_url, None)
+}
+
+/// [`resolve_asset`] that also serves `.json`/`.mmd` files named by `referenced` (the
+/// [`LocalIndex::media_files`] of the app's pages).
+pub fn resolve_asset_for(base: &Path, rel_url: &str, referenced: Option<&HashSet<String>>) -> Option<AssetFile> {
     let rel = percent_decode(rel_url)?;
     if rel.is_empty() || rel.starts_with('/') || rel.contains('\\') || rel.contains('\0') {
         return None;
@@ -398,7 +428,10 @@ pub fn resolve_asset(base: &Path, rel_url: &str) -> Option<AssetFile> {
         }
         full.push(seg);
     }
-    let mime = asset_mime(&rel)?;
+    let mime = match asset_mime(&rel) {
+        Some(m) => m,
+        None => referenced_asset_mime(&rel).filter(|_| referenced.is_some_and(|r| r.contains(&rel)))?,
+    };
     // No symlinks anywhere on the path below the base, then canonical containment.
     let mut probe = base.to_path_buf();
     for seg in rel.split('/') {

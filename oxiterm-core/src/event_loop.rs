@@ -1662,7 +1662,9 @@ impl EventLoop {
                     let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
 
                     if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
-                        if let Some(ref src) = node.attrs.src {
+                        // `.riv` is the procedural widget the renderer draws into the cells itself;
+                        // it is not a file for the browser to show.
+                        if let Some(src) = node.attrs.src.as_ref().filter(|s| !s.to_ascii_lowercase().ends_with(".riv")) {
                             // Keep the true (possibly negative) position so media
                             // scrolled partly out of view is clipped by the client
                             // instead of sticking to row/column 0; skip media that
@@ -1958,12 +1960,12 @@ impl EventLoop {
                                     && mouse.row >= rect.y
                                     && mouse.row < rect.y + rect.height;
                                 
-                                let resolved_path = if let Some(ref base) = self.source_path.as_ref().and_then(|p| p.parent()) {
-                                    base.join(src)
-                                } else {
-                                    std::path::PathBuf::from(src)
+                                // The same resolution the renderer keys the playback state by.
+                                let app_base = self.session.app_base_dir.read().clone();
+                                let Some(resolved_path) = oxiterm_proto::pathsafe::resolve_media(self.source_path.as_ref().and_then(|p| p.parent()), app_base.as_deref(), src) else {
+                                    continue;
                                 };
-                                
+
                                 let registry = oxiterm_renderer::render::cache::PlaybackRegistry::get();
                                 registry.set_hover(&resolved_path, is_inside);
                                 if is_inside && mouse.action == oxiterm_proto::input::MouseAction::Press {

@@ -17,9 +17,9 @@ size 80x24
 ||
 ||
 ||
-||
-|                                  Rive Procedural|
-||
+|                     ▄▀▀▀▀▀▀▀▀▀▀▄|
+|                     ████████████ Rive Procedural|
+|                     ▀▀▀▀▀▀▀▀▀▀▀▀|
 ||
 ||
 ||
@@ -43,9 +43,9 @@ size 80x24
 14: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
 15: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
 16: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
-17: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
-18: 0-19 fg=c15 bg=c0 | 20-33 fg=c15 bg=#0f172a | 34-48 fg=#64748b bg=#0f172a | 49-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
-19: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+17: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#0f172a | 21-21 fg=#2a2a2a bg=reset | 22-22 fg=#2a2a2a bg=#525252 | 23-24 fg=#2d2d2d bg=#aeaeae | 25-25 fg=#292929 bg=#4d4d4d | 26-30 fg=#292929 bg=#282828 | 31-31 fg=#2a2a2a bg=#2d2d2d | 32-32 fg=#2a2a2a bg=reset | 33-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+18: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#0f172a | 21-21 fg=#2d2d2d bg=reset | 22-22 fg=#aeaeae bg=reset | 23-24 fg=#fefefe bg=reset | 25-25 fg=#a9a9a9 bg=reset | 26-26 fg=#272727 bg=reset | 27-30 fg=#232323 bg=reset | 31-31 fg=#282828 bg=reset | 32-32 fg=#292929 bg=reset | 33-33 fg=c15 bg=#0f172a | 34-48 fg=#64748b bg=#0f172a | 49-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
+19: 0-19 fg=c15 bg=c0 | 20-20 fg=c15 bg=#0f172a | 21-21 fg=#2a2a2a bg=reset | 22-22 fg=#525252 bg=#2a2a2a | 23-24 fg=#aeaeae bg=#2d2d2d | 25-25 fg=#4d4d4d bg=#292929 | 26-30 fg=#282828 bg=#292929 | 31-31 fg=#2d2d2d bg=#2a2a2a | 32-32 fg=#2a2a2a bg=reset | 33-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
 20: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
 21: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0
 22: 0-19 fg=c15 bg=c0 | 20-59 fg=c15 bg=#0f172a | 60-79 fg=c15 bg=c0

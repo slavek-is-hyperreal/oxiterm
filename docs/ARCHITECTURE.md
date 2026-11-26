@@ -57,7 +57,7 @@ graph TD
 
 OxiTerm supports two independent TUI image distribution channels:
 * **SSH Server (russh):** An asynchronous SSH daemon. It negotiates PTY parameters (window dimensions, Kitty Graphics, SGR mouse) and captures input byte streams from the client, returning compressed ANSI diffs.
-* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers. The frontend is a custom Rust→WASM client (`oxiterm-web`, class `WebTerminal`) that decodes the server's binary cell-diff stream and paints it onto an HTML `<canvas>` — it does **not** use xterm.js. Media (SVG/Lottie/Rive/video) is overlaid as positioned DOM elements above the canvas.
+* **WebSocket Server:** Enables running OxiTerm applications directly in web browsers. The frontend is a custom Rust→WASM client (`oxiterm-web`, class `WebTerminal`) that decodes the server's binary cell-diff stream and paints it onto an HTML `<canvas>` — it does **not** use xterm.js. Raster/SVG/Lottie/video media is overlaid as positioned DOM elements above the canvas (`#media-layer`, fed by `0x20` bytes and `0x21` positions); the procedural Rive widget and `<diagram>` are drawn into the cells themselves (see section 7c).
 
 ---
 
@@ -147,7 +147,47 @@ Geometry is in the same logical cell units and absolute coordinates as the displ
 
 **Hit-test rule.** The event loop maps the screen point into layout space by subtracting the centering offset and adding the scroll (both whole cells; the same transform `0x02` uses), then picks the top-most node, in paint (z) order, whose fractional rect contains the point, each rect half-open `[x, x+w) x [y, y+h)` (`LayoutEngine::hit_test_point`, `HitTester::find_node`). The cell event is the special case of probing the cell centre `(col + 0.5, row + 0.5)`, so on whole-number layouts (TUI, and `0x03` at cell centres) both give the same node. A point left of or above the page is negative in layout space and hits nothing. Consumers that need a whole cell take its floor (clamped at zero): drag start and deltas (`left`/`top` stay whole cells) and the `.riv` hover/click. The wheel is a line-step scroll and carries no target.
 
-Items are painted in list order, later items overwrite earlier ones. The first item is a full-viewport `Fill` (the page background), so a client may repaint from scratch each frame. `img`/`video`/`diagram` areas and session overlays (focus ring, predictive echo, scroll indicator) arrive as `CellGrid` items. Painting the list onto an empty cell buffer reproduces the cell frame exactly.
+Items are painted in list order, later items overwrite earlier ones. The first item is a full-viewport `Fill` (the page background), so a client may repaint from scratch each frame. `<diagram>` areas, the procedural Rive widget and session overlays (focus ring, predictive echo, scroll indicator) arrive as `CellGrid` items. Raster/SVG/Lottie/video nodes are **not** in the list: the client shows them as DOM overlays fed by `0x20`/`0x21` (see section 7c, which also records why the GUI keeps the overlay). Painting the list onto an empty cell buffer reproduces the cell frame exactly.
+
+---
+
+## 7c. Media across modes (Stage 7.6)
+
+Every media node reaches the screen in every output; which part draws it is fixed per kind:
+
+| Node | SSH (cell sink) | Web cell (default) | Web GUI `?gui=1` | Web local `?local=1` |
+|---|---|---|---|---|
+| `<img>` png/jpg/gif | Kitty, Sixel or half blocks | DOM `<img>` overlay | DOM `<img>` overlay | DOM `<img>` overlay |
+| `<img>` svg | resvg to Kitty/Sixel/half blocks | DOM overlay | DOM overlay | DOM overlay |
+| `<img>` lottie `.json` | rlottie frames, as above | lottie-web in the overlay | same | same |
+| `<img>` `.riv` (procedural toggle) | pure-Rust raster (`render/rive.rs`) to Kitty/Sixel/half blocks | half-block cells | half-block cells (a `CellGrid`) | half-block cells |
+| `<video>` | ffmpeg frames | DOM `<video>` overlay | DOM overlay | DOM overlay |
+| `<diagram>` | cells | cells | cells (a `CellGrid`) | cells (core reads the mounted `.mmd`) |
+
+* **Source resolution is one rule** (`oxiterm_proto::pathsafe::resolve_media`): a `src` is relative to the
+  directory of the page that contains it; absolute paths, URL schemes, backslashes, NUL and percent-encoded
+  `.`/`/`/`\` are refused; the result must stay inside the app base (lexically, and on disk for symlinks). The
+  renderer, both loops of `WsFrameSink::sync_preamble` (bytes 0x20 and positions 0x21), the Rive click handler
+  and the local-mode client all call it, so they cannot disagree again (they did until 7.6: the position check
+  used the page directory, so `../assets/x.png` never got a position).
+* **GUI uses the same overlay as the cell client** rather than image items in the display list. Reasons: no wire
+  bump (v2/v3 stay byte-identical, `0x20`/`0x21` already exist), the browser decodes and scales SVG/PNG/Lottie/video
+  natively and animates them without server frames, and local mode already worked that way. Known limits, both
+  accepted: the overlay always sits *above* the canvas, so a `z-index` window drawn over a media node does not
+  hide it; and `0x21` positions are whole cells while the GUI layout is fractional (the overlay snaps to the
+  rounded content rect).
+* **Local mode** (`native-media` off, no file system): the core's app base is the empty path (a virtual root,
+  lexical checks only). `LocalSession` emits `0xE0` fetch requests for media `src` and `<diagram src>`; the page
+  fetches `/oxiui/local/asset/<rel>` and hands `.mmd` text to the core (`mount_asset`, kept in `VIRTUAL_FS`),
+  which redraws. The asset route serves images/video always, and `.json`/`.mmd` only when an indexed page names
+  that exact file as the `src` of an `img`/`video`/`diagram`.
+* **Lottie player:** lottie-web "light" (MIT, SVG renderer), vendored in `oxiterm-server/assets/vendor/` and served
+  same-origin at `/oxiui/vendor/lottie_light.min.js` (licence at `/oxiui/vendor/LICENSE-lottie-web.txt`); the page
+  loads it lazily. No CDN. Static hosts that copy `index.html` must copy `oxiui/vendor/` next to it.
+* **Regression net:** `oxiterm-renderer/tests/media_parity.rs` (cell sink per profile, traversal matrix),
+  `oxiterm-proto` `pathsafe/media_tests.rs`, `WsFrameSink` stream test in `web.rs`,
+  `oxiterm-web/tests/media_local.rs` (local session), and the headless browser matrix `scripts/media_matrix.mjs`
+  (page x mode).
 
 ---
 

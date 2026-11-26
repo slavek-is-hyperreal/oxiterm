@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-pub use oxiterm_proto::pathsafe::is_within_base;
+pub use oxiterm_proto::pathsafe::{is_within_base, resolve_media};
 
 /// A regular file with more than one hard link. A hard link inside the base to a file outside it
 /// passes every canonical-path containment check (it *is* a path inside the base), so the page

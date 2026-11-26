@@ -181,32 +181,8 @@ pub fn hash_path(path: &str) -> u32 {
 }
 
 /// Lexical `dir(page)/src` with `.`/`..` collapsed; `None` when it would leave the app base or
-/// is absolute (the same containment the page source applies to navigation).
-pub fn media_rel_path(current_page: &str, src: &str) -> Option<String> {
-    if src.starts_with('/') || src.starts_with('\\') || src.contains('\0') || src.contains("://") {
-        return None;
-    }
-    // A file name is required: `""`, `.`, `..` and `dir/` name directories.
-    if matches!(src.rsplit('/').next(), None | Some("") | Some(".") | Some("..")) {
-        return None;
-    }
-    let mut parts: Vec<&str> = Vec::new();
-    let dir = current_page.rsplit_once('/').map_or("", |(d, _)| d);
-    for seg in dir.split('/').chain(src.split('/')) {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            s => parts.push(s),
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join("/"))
-    }
-}
+/// is not a plain relative path. One rule for the server, the renderer and this client.
+pub use oxiterm_proto::pathsafe::media_rel_path;
 
 /// One in-browser session. All times are host milliseconds (`performance.now()`).
 pub struct LocalSession {
@@ -246,6 +222,9 @@ impl LocalSession {
         session.is_web_client.store(true, on);
         session.is_mobile.store(cfg.mobile, on);
         session.attach_identity(oxiterm_core::identity::UserIdentity::guest());
+        // Empty app base = a virtual root with no file system: media `src` are checked lexically
+        // (`pathsafe::resolve_media`) and files live in the renderer's VIRTUAL_FS.
+        *session.app_base_dir.write() = Some(std::path::PathBuf::new());
 
         let source = Arc::new(MemPageSource::with_dirs(pages, dirs));
         let page = source.resolve(None, &cfg.start_page, cfg.mobile).map_err(|_| "start page unavailable".to_string())?;
@@ -363,6 +342,9 @@ impl LocalSession {
             self.emit_media(&media);
             self.sent_media = media;
         }
+        if doc_changed {
+            self.request_diagram_files();
+        }
         // ARIA mirror.
         let a11y = std::mem::take(&mut self.out.lock().a11y);
         for json in a11y {
@@ -393,6 +375,45 @@ impl LocalSession {
             msg.extend_from_slice(&m.height.to_le_bytes());
             self.messages.push(msg);
         }
+    }
+
+    /// `<diagram src>` is drawn by the core into cells (not by the browser), so its `.mmd` text
+    /// must be in the core's virtual file system: ask the page to fetch it (`0xE0`, same message
+    /// as for media) and [`mount_asset`](Self::mount_asset) it.
+    fn request_diagram_files(&mut self) {
+        let page = self.session.current_page.read().clone().unwrap_or_default();
+        let srcs: Vec<String> = self
+            .el
+            .doc
+            .arena
+            .iter()
+            .filter(|(_, n)| n.tag == oxiterm_proto::dom::NodeTag::Diagram)
+            .filter_map(|(_, n)| n.attrs.src.clone())
+            .collect();
+        for src in srcs {
+            let Some(rel) = media_rel_path(&page, &src) else { continue };
+            if self.requested_assets.insert(rel.clone()) {
+                let mut req = vec![TAG_ASSET_REQUEST];
+                req.extend_from_slice(&hash_path(&src).to_le_bytes());
+                req.extend_from_slice(rel.as_bytes());
+                self.messages.push(req);
+            }
+        }
+    }
+
+    /// Hands a fetched file (a `.mmd` diagram) to the core's virtual file system and re-renders.
+    /// Only text-sized files are accepted: the virtual file system is cloned on every access.
+    pub fn mount_asset(&mut self, rel: &str, bytes: &[u8]) -> bool {
+        const MAX_MOUNT: usize = 256 * 1024;
+        if bytes.len() > MAX_MOUNT || media_rel_path("", rel).as_deref() != Some(rel) {
+            return false;
+        }
+        oxiterm_renderer::render::renderer::VIRTUAL_FS.with(|fs| {
+            fs.borrow_mut().insert(std::path::PathBuf::from(rel), bytes.to_vec());
+        });
+        let d = *self.session.dims.read();
+        self.queue.push(InputEvent::Resize { cols: d.cols, rows: d.rows });
+        true
     }
 
     /// Re-emits the media coordinates (after the page cached a requested asset).
