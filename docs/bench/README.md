@@ -7,7 +7,7 @@ Two separate benchmarks with separate names, methods and reports (owner, 2026-11
 | Question | How fast and how small are OxiScript programs, and how do they compare with other languages fairly? | How well do AI models (Claude, Gemini, others) write correct OxiScript, compared with TypeScript? |
 | Roadmap stage | [8.Bench](../roadmap/oxiscript.md#s-8-bench) (harness), feeds [8.Perf](../roadmap/oxiscript.md#s-8-perf), [8.Lab](../roadmap/oxiscript.md#s-8-lab), [8.Mem](../roadmap/oxiscript.md#s-8-mem), 8.3a-e; OxiUI side [U.Bench](../roadmap/oxiui.md#s-u-bench) | [8.OB](../roadmap/oxiscript.md#s-8-ob) |
 | Measures | fuel per operation (deterministic, wasmi), wall time (wasmi, w2c2, Wasmtime, browser, GPU), peak memory and RSS, `.wasm` and firmware size, compile latency; versus JS/TS, AssemblyScript, Rust, C, Go/TinyGo, Python/MicroPython | pass@1 on hidden tasks under conditions C0-C3 (cold, docs, docs + check loop, own runs), compile errors per 100 lines, the gap to a TypeScript twin of each task |
-| Methodology | [research/cross-language-benchmark-methodology.md](../research/cross-language-benchmark-methodology.md) (being written, Gemini research then Opus verification) + [research/oxiscript-memory-performance.md](../research/oxiscript-memory-performance.md) and its verification for the memory workloads | [research/oxibench-methodology.md](../research/oxibench-methodology.md) v0.1 |
+| Methodology | [research/cross-language-benchmark-methodology.md](../research/cross-language-benchmark-methodology.md) and its [verification](../research/cross-language-benchmark-methodology-verification.md) + [research/oxiscript-memory-performance.md](../research/oxiscript-memory-performance.md) and its verification for the memory workloads | [research/oxibench-methodology.md](../research/oxibench-methodology.md) v0.1 |
 | Who may claim results | only frozen, reproducible reports with tool versions, machine and date; ranges, not single numbers | only frozen reports with version, date and model IDs; negative results published |
 
 ## State (2026-11-26)
@@ -17,7 +17,7 @@ Two separate benchmarks with separate names, methods and reports (owner, 2026-11
 | Part | State |
 |---|---|
 | Name and scope | decided (this file) |
-| Methodology of fair cross-language comparison | **in progress**: Gemini research started 2026-11-26, then Opus verification |
+| Methodology of fair cross-language comparison | **written and verified** (Gemini draft, Opus verification 2026-11-26: 95 claims, 3 wrong, corrections inline); waiting for owner approval (Q-OP-1..7) |
 | Harness crate `oxiscript-bench` (one command, table + JSON, machine description) | **not started** (stage 8.Bench) |
 | Workloads | **not started** as a suite. Existing pieces: fuel-per-operation probes in `oxiscript-lower/tests/bad_actor_link_perf.rs` (on branch `gemini-rtlink`, merging soon; numbers in `docs/stages/8.M-link/`), OxiUI frame cost in `oxiterm-server/benches/frame_cost.rs` |
 | Reference implementations in other languages | **not started** |
