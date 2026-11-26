@@ -22,6 +22,17 @@ const MAX_DIFF_PERCENT: f64 = 0.25;
 fn shared_ctx() -> Option<Arc<GpuContext>> {
     static CTX: OnceLock<Option<Arc<GpuContext>>> = OnceLock::new();
     CTX.get_or_init(|| match GpuContext::new_headless() {
+        // The goldens were blessed on Mesa llvmpipe (lavapipe). Pixel output of other drivers
+        // (real GPUs, GL backends) legitimately differs at anti-aliased edges, so the golden
+        // comparison runs only on llvmpipe; the CPU-vs-GPU differential tests cover the rest.
+        Ok(ctx) if !ctx.adapter_info().name.to_ascii_lowercase().contains("llvmpipe") => {
+            eprintln!(
+                "SKIP golden tests: goldens are blessed on llvmpipe, this adapter is {:?} ({:?})",
+                ctx.adapter_info().name,
+                ctx.adapter_info().backend
+            );
+            None
+        }
         Ok(ctx) => Some(Arc::new(ctx)),
         Err(GpuError::NoAdapter(msg)) => {
             eprintln!("SKIP golden tests: no GPU adapter available ({msg})");
