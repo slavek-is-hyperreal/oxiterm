@@ -535,7 +535,7 @@
           {
             "t": "ul",
             "items": [
-              "**Uruchamianie programów.** Generator kodu istnieje, ale etap zamiany, który łączy z nim sprawdzanie typów, jest jeszcze budowany. Przycisk Uruchom jest do tego czasu wyłączony.",
+              "**Uruchamianie programów.** Uruchom kompiluje program i uruchamia go w przeglądarce, w osobnym wątku, z limitem instrukcji (paliwa) i limitem czasu 5 sekund; dostępne są `log` i `state`. Wynik pojawia się, gdy program się zatrzyma, a `f64` nie da się jeszcze zamienić na tekst (najpierw zamień go na liczbę całkowitą). Inne interfejsy hosta nie są dostępne na placu zabaw.",
               "Biblioteka standardowa, pakiety, serwer języka, urządzenia. Wszystko planowane, nic gotowe."
             ]
           },
@@ -642,7 +642,7 @@
           {
             "t": "ul",
             "items": [
-              "Nie potrafi jeszcze uruchamiać programów. TypeScript potrafi.",
+              "Jego środowisko wykonawcze jest młode: programy są interpretowane z limitem paliwa, a wypisanie `f64` nie jest jeszcze obsługiwane. Silniki TypeScriptu są dojrzałe i szybkie.",
               "Nie ma npm. Brak ekosystemu, malutka biblioteka standardowa, brak `async` (zarezerwowane, niezbudowane).",
               "Brak `any`, `eval` i cech dynamicznych. Taki jest cel, ale to też koszt przy przenoszeniu JavaScriptu.",
               "Na razie identyfikatory wyłącznie ASCII.",
@@ -759,7 +759,7 @@
           },
           {
             "t": "note",
-            "x": "Jeszcze niezbudowane. Lekcje potrzebują przycisku Uruchom, który czeka na etap zamiany."
+            "x": "Jeszcze niezbudowane. Przycisk Uruchom działa już na placu zabaw; lekcje i ocenianie trzeba jeszcze napisać."
           }
         ]
       },
@@ -798,7 +798,7 @@
       "check": "Sprawdź",
       "format": "Formatuj",
       "run": "Uruchom",
-      "runSoon": "Uruchom: wkrótce, razem z 8.L (etap zamiany).",
+      "runNote": "Uruchom kompiluje program i uruchamia go tutaj, w przeglądarce, z limitem instrukcji i limitem czasu 5 sekund.",
       "examples": "Przykład:",
       "apply": "Zastosuj poprawkę",
       "explain": "Wyjaśnij {code}",
@@ -822,7 +822,43 @@
       "discardAsk": "Zastąpić Twoje zmiany przykładem {name}? Zmiany w edytorze zostaną utracone.",
       "discard": "Zastąp",
       "keepEditing": "Edytuj dalej",
-      "compilerEnglish": "Komunikaty kompilatora są po angielsku."
+      "compilerEnglish": "Komunikaty kompilatora są po angielsku.",
+      "stop": "Zatrzymaj",
+      "outputTitle": "Wynik",
+      "outputEmpty": "(program niczego nie wypisał)",
+      "loadingRunner": "Ładowanie uruchamiacza (jednorazowo)...",
+      "running": "Uruchamiam...",
+      "ran": "Zakończono po {ms} ms, zużyto instrukcji: {fuel}.",
+      "stopped": "Zatrzymano.",
+      "timeout": "Zatrzymano po {s} s: program działał za długo. Nieskończona pętla?",
+      "stoppedBecause": "Program się zatrzymał: {why}",
+      "dropped": "Pominięto kolejne wiersze: {n} (limit wyniku).",
+      "moreLines": "... pominięto kolejne wiersze: {n}.",
+      "runFailed": "Nie udało się uruchomić uruchamiacza. Odśwież stronę.",
+      "cannotRun": "Nie uruchomiono: program ma problemy. Najpierw je popraw.",
+      "checkedOk": "✓ Brak problemów (sprawdzono {time})",
+      "checkedProblems": "Problemów: {n} (sprawdzono {time})",
+      "formatSame": "Już sformatowane, bez zmian ({time})",
+      "formatChanged": "Sformatowano: zmienionych wierszy: {n} ({time})",
+      "hint": "Wskazówka: wybierz {name}, żeby zobaczyć błędy i poprawki jednym kliknięciem.",
+      "trap_overflow": "przepełnienie liczby całkowitej (użyj `+%`, by zawijać, albo `+|`, by nasycać)",
+      "trap_div_by_zero": "dzielenie przez zero",
+      "trap_bounds": "indeks poza tablicą lub napisem",
+      "trap_bad_cast": "nieudane rzutowanie w dół",
+      "trap_null_deref": "użyto wartości null",
+      "trap_out_of_memory": "program wyczerpał pamięć",
+      "trap_assert": "nie powiodło się sprawdzenie (assert)",
+      "trap_bad_utf8": "niepoprawny tekst UTF-8",
+      "trap_panic": "program wywołał panic",
+      "trap_unreachable": "program doszedł do kodu, którego jeszcze nie da się wykonać (na przykład zamiana `f64` na tekst nie jest obsługiwana)",
+      "trap_out_of_fuel": "osiągnięto limit instrukcji (nieskończona pętla?)",
+      "trap_stack_overflow": "stos wywołań jest za głęboki (nieskończona rekurencja?)",
+      "trap_memory_bounds": "dostęp do pamięci poza zakresem",
+      "trap_host_denied": "program użył uprawnienia, którego nie dostał",
+      "trap_host_error": "funkcja hosta zawiodła",
+      "trap_rejected": "środowisko odrzuciło skompilowany moduł",
+      "trap_limit": "osiągnięto limit środowiska",
+      "trap_engine": "środowisko zatrzymało program"
     },
     "course": {
       "levels": [

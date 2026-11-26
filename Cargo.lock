@@ -2557,6 +2557,8 @@ dependencies = [
  "clap",
  "oxiscript-abi",
  "oxiscript-check",
+ "oxiscript-lower",
+ "oxiscript-playground",
  "oxiscript-syntax",
  "serde_json",
  "toml",
@@ -2587,6 +2589,8 @@ version = "0.1.0"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-check",
+ "oxiscript-lower",
+ "oxiscript-runtime",
  "oxiscript-syntax",
  "serde_json",
  "wasm-bindgen",

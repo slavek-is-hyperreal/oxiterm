@@ -20,7 +20,7 @@ pub const MANIFEST: &str = "oxi.toml";
 
 /// Parsed `oxi.toml` (only what the tools need today).
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)] // `name` and `version` are read by `build`/`run` once 8.L lands
+#[allow(dead_code)] // `version` is not read yet
 pub struct Manifest {
     pub name: String,
     pub version: String,
@@ -391,8 +391,8 @@ pub struct Entry<'a> {
     pub src: String,
 }
 
-/// Check one entry file with its imports. `hosts` come from [`load_hosts`].
-pub fn check_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Run {
+/// The loader and canonical entry name for one entry file.
+fn entry_loader(entry: &Entry<'_>) -> (FsLoader, String) {
     let cwd = std::env::current_dir().unwrap_or_default();
     let abs = if entry.path.is_absolute() {
         entry.path.to_path_buf()
@@ -415,13 +415,26 @@ pub fn check_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Run {
         .unwrap_or(entry.path)
         .to_string_lossy()
         .replace('\\', "/");
-    let mut loader = FsLoader {
+    let loader = FsLoader {
         root: base,
         files: vec![SourceFile::new(display, entry.src.clone())],
         names: vec![name.clone()],
         cwd,
         rejected: Vec::new(),
     };
+    (loader, name)
+}
+
+/// Check, lower and compile one entry file with its imports to a Wasm module (`oxi run` / `oxi build`).
+/// Call it only after [`check_entry`] was clean; errors come back as lowering diagnostics.
+pub fn compile_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Result<Vec<u8>, oxiscript_lower::Diagnostics> {
+    let (mut loader, name) = entry_loader(entry);
+    oxiscript_lower::compile_program(&name, &entry.src, &mut loader, &opts.hosts, &oxiscript_lower::Options::default()).map(|o| o.wasm)
+}
+
+/// Check one entry file with its imports. `hosts` come from [`load_hosts`].
+pub fn check_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Run {
+    let (mut loader, name) = entry_loader(entry);
     let mut checked = check_program(&name, &entry.src, &mut loader, opts);
     // say why an import was refused instead of a bare "module not found"
     for (spec, why) in &loader.rejected {
