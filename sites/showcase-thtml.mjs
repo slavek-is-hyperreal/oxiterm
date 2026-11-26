@@ -96,10 +96,31 @@ function oxiscript(ctx) {
   const ids = ['false', 'b', 'c'];
   const tabs = names.map((n, i) => `<box class="s-tab" event-htmx="set:os_tab=${ids[i]}">${text('s-tabl', n)}<box style="flex-direction: row; height: 1;"><box class="s-bar" bind-show="os_tab=${ids[i]}"></box></box></box>`).join('');
   parts.push(row(tabs));
-  const maxLen = IN - 8;
+  // Code lines: the engine strips the leading whitespace of a text node, so the indentation is a fixed-width spacer box in front of
+  // the text. A line longer than the card is wrapped at the last space that fits (continuation lines are indented two more columns),
+  // so no line is ever cut (SH-1). Width inside a card = IN - 4 (border + padding).
+  const codeLines = (l) => {
+    const ind = l.length - l.trimStart().length;
+    let rest = l.trimStart();
+    const out = [];
+    let pad = ind;
+    while (pad + rest.length > innerW) {
+      const room = Math.max(8, innerW - pad);
+      let cut = rest.lastIndexOf(' ', room);
+      if (cut < 1) cut = room;
+      out.push([pad, rest.slice(0, cut).trimEnd()]);
+      rest = rest.slice(cut).trimStart();
+      pad = Math.min(ind + 2, innerW - 12);
+    }
+    out.push([pad, rest]);
+    return out;
+  };
+  const codeRow = ([pad, str]) => pad > 0
+    ? row(`<box style="width: ${pad}; height: 1;"></box>${text('s-code mono', str)}`, 'height: 1;')
+    : text('s-code mono', str || ' ');
   const codeBox = (i) => {
-    const lines = readExample(ex[i]).replace(/\n+$/, '').split('\n').map((l) => l.replace(/\t/g, '  '));
-    const body = lines.map((l) => text('s-code mono', l.length > maxLen ? l.slice(0, maxLen - 1) + '~' : l || ' ')).join('');
+    const lines = readExample(ex[i]).replace(/\n+$/, '').split('\n').map((l) => l.replace(/\t/g, '  ').trimEnd());
+    const body = lines.flatMap(codeLines).map(codeRow).join('');
     return `<box class="s-card" bind-show="os_tab=${ids[i]}" style="bg: ${pal.bg};">${body}${text('s-cap', caps[i])}</box>`;
   };
   parts.push(names.map((_, i) => codeBox(i)).join(''));

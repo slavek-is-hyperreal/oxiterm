@@ -527,14 +527,14 @@
         "lottie": "Animatio Lottie",
         "lottieAlt": "Tintinnabulum sonans, animatio Lottie",
         "lottieHint": "Per se agitur.",
-        "rive": "Commutator Rive",
-        "riveAlt": "Commutator a motore pictus",
+        "rive": "Commutator proceduralis (locus pro Rive)",
+        "riveAlt": "Commutator a motore proceduraliter pictus; charta .riv est tantum exemplar provisorium, non vera pictura Rive",
         "riveHint": "Commutatorem preme."
       },
       "ssh": {
         "title": "Eadem pagina per SSH",
-        "p1": "Haec pagina est una charta .thtml. Mandato infra incepta, eadem charta per SSH ad terminale et etiam ad navigatrum praebetur. In hoc situ navigator nucleum OxiUI localiter exsequitur, ut WebAssembly.",
-        "cmd": "oxiterm-cli serve index.thtml",
+        "p1": "Haec pagina ex THTML et chartis instrumentorum (imagines, animatio Lottie, diagramma) constructa est. Eadem pagina per SSH ad terminale praestari potest mandato oxiterm-cli serve, ut infra. In hoc situ navigator nucleum OxiUI localiter exsequitur, ut WebAssembly.",
+        "cmd": "oxiterm-cli serve your-page.thtml",
         "p2": "Servitor SSH publicus nondum operatur. Eum in machina tua exsequere."
       }
     }

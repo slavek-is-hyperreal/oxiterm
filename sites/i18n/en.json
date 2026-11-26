@@ -527,14 +527,14 @@
         "lottie": "Lottie animation",
         "lottieAlt": "A ringing bell, a Lottie animation",
         "lottieHint": "Plays by itself.",
-        "rive": "Rive toggle",
-        "riveAlt": "A toggle switch drawn by the engine",
+        "rive": "Procedural toggle (Rive slot)",
+        "riveAlt": "A toggle switch drawn procedurally by the engine; the .riv file is a placeholder stub, not real Rive artwork",
         "riveHint": "Click the switch."
       },
       "ssh": {
         "title": "The same page over SSH",
-        "p1": "This page is a single .thtml file. Started with the command below, the very same file is served over SSH to a terminal and also to a browser. On this website the browser runs the OxiUI core locally, as WebAssembly.",
-        "cmd": "oxiterm-cli serve index.thtml",
+        "p1": "This page is built from THTML plus its media files (images, a Lottie animation, a diagram). The same page can be served over SSH to a terminal with oxiterm-cli serve, as in the command below. On this website the browser runs the OxiUI core locally, as WebAssembly.",
+        "cmd": "oxiterm-cli serve your-page.thtml",
         "p2": "No public SSH server is running yet. Run it on your own machine."
       }
     }

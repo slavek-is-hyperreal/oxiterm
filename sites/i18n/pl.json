@@ -527,14 +527,14 @@
         "lottie": "Animacja Lottie",
         "lottieAlt": "Dzwoniący dzwonek, animacja Lottie",
         "lottieHint": "Gra sama.",
-        "rive": "Przełącznik Rive",
-        "riveAlt": "Przełącznik rysowany przez silnik",
+        "rive": "Przełącznik proceduralny (miejsce na Rive)",
+        "riveAlt": "Przełącznik rysowany proceduralnie przez silnik; plik .riv to tymczasowy zalążek, nie prawdziwa grafika Rive",
         "riveHint": "Kliknij przełącznik."
       },
       "ssh": {
         "title": "Ta sama strona przez SSH",
-        "p1": "Ta strona to jeden plik .thtml. Uruchomiony poleceniem poniżej, dokładnie ten sam plik jest serwowany przez SSH do terminala, a także do przeglądarki. Na tej stronie przeglądarka uruchamia rdzeń OxiUI lokalnie, jako WebAssembly.",
-        "cmd": "oxiterm-cli serve index.thtml",
+        "p1": "Ta strona jest zbudowana z THTML i plików multimedialnych (obrazy, animacja Lottie, diagram). Tę samą stronę można serwować przez SSH do terminala poleceniem oxiterm-cli serve, jak poniżej. Na tej stronie przeglądarka uruchamia rdzeń OxiUI lokalnie, jako WebAssembly.",
+        "cmd": "oxiterm-cli serve your-page.thtml",
         "p2": "Publiczny serwer SSH jeszcze nie działa. Uruchom go na własnym komputerze."
       }
     }

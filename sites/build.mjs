@@ -20,7 +20,7 @@ import { asciiHtml } from './shared/brand/oxi-ascii.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
-const DIST = path.join(HERE, 'dist');
+const DIST = process.env.SITES_DIST || path.join(HERE, 'dist'); // SITES_DIST / SITES_I18N_DIR: test hooks (sites/test/pipeline_label.mjs)
 const ALL_LANGS = ['en', 'pl', 'la']; // la = Latin: draft, written but NOT published until the owner enables it
 // Published languages. Default pl,en. Enable Latin later with SITES_LANGS=pl,en,la. `en` is always built (site root).
 const LANGS = ALL_LANGS.filter((l) => l === 'en' || (process.env.SITES_LANGS || 'pl,en').split(',').map((x) => x.trim()).includes(l));
@@ -56,7 +56,7 @@ const BRAND_FILES = ['oxi-cell-home.svg', 'oxi-cell-oxiui.svg', 'oxi-cell-oxiscr
 
 // ---------------------------------------------------------------- i18n
 const I18N = {};
-for (const l of ALL_LANGS) I18N[l] = JSON.parse(read(path.join(HERE, 'i18n', `${l}.json`)));
+for (const l of ALL_LANGS) I18N[l] = JSON.parse(read(path.join(process.env.SITES_I18N_DIR || path.join(HERE, 'i18n'), `${l}.json`)));
 const missing = new Set();
 const dig = (o, key) => key.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
 function T(lang, key) {
@@ -495,7 +495,7 @@ const hashOf = (buf) => crypto.createHash('sha256').update(buf).digest('hex').sl
 /** Mermaid source of the OxiScript pipeline diagram, generated per language from i18n (labels are copy). `dir`: TD (a 6 node LR chain is 113 columns wide; the page is 96). */
 function pipelineMmd(lang, dir) {
   const n = (k) => T(lang, `oxiscript.showcase.pipeline.nodes.${k}`);
-  if (/[\[\](){}"|;<>]/.test(['src', 'parse', 'check', 'ir', 'wasm', 'run'].map(n).join(''))) throw new Error('pipeline diagram: label contains Mermaid syntax characters');
+  if (/[\[\](){}"|;<>\x00-\x1f\x7f\u2028\u2029]/.test(['src', 'parse', 'check', 'ir', 'wasm', 'run'].map(n).join(''))) throw new Error('pipeline diagram: label contains Mermaid syntax characters');
   return `flowchart ${dir}\n    A[${n('src')}] --> B[${n('parse')}]\n    B --> C[${n('check')}]\n    C --> D[${n('ir')}]\n    D --> E[${n('wasm')}]\n    E --> F[${n('run')}]\n`;
 }
 
