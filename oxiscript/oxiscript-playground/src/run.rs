@@ -144,7 +144,7 @@ pub fn compile(src: &str) -> Result<Vec<u8>, String> {
                     let (lo, hi) = d.span.map_or((0, 0), |s| (s.lo, s.hi.max(s.lo)));
                     let (line, col) = li.line_col(src, lo);
                     let (el, ec) = li.line_col(src, hi);
-                    let title = oxiscript_abi::codes::lookup(&d.code).map(|c| c.title).unwrap_or_default();
+                    let title = oxiscript_abi::codes::lookup(&d.code).map_or_else(Default::default, |c| c.title);
                     json!({ "code": d.code, "severity": "error", "title": title, "message": d.message,
                             "start": utf16_at(src, lo as usize), "end": utf16_at(src, hi as usize),
                             "line": line, "col": col, "endLine": el, "endCol": ec, "fixes": [] })

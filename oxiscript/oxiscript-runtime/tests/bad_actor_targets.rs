@@ -131,7 +131,7 @@ fn f1_nothing_undeclared_reaches_the_engine() {
             }
         }
     }
-    assert!(bad.is_empty(), "modules passed the policy layers with features outside policy:\n{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "modules passed the policy layers with features outside policy:\n{}", bad.join("\n"));
 }
 
 /// Full ABI modules that use a forbidden feature in an *exported, called* function.
@@ -160,7 +160,7 @@ fn f1_device_host_runs_simd_and_table64_under_feature_unification() {
         }
     }
     let _ = Value::I32(0);
-    assert!(ran.is_empty(), "a Device host ran code outside the Device feature set:\n{}", ran.join("\n"));
+    assert_eq!(ran.len(), 0, "a Device host ran code outside the Device feature set:\n{}", ran.join("\n"));
 }
 
 /// F2 (fixed by REMOVING multi-memory: ABI 1.0 has one memory, abi.md 3.6): the policy table and the
@@ -253,7 +253,7 @@ fn f3_smith_differential_policy_oracle() {
         }
     }
     println!("smith generated={gen} reached-load::check={passed} codes={codes:?}");
-    assert!(bad.is_empty(), "{} violations, first: {:#?}", bad.len(), &bad[..bad.len().min(5)]);
+    assert_eq!(bad.len(), 0, "{} violations, first: {:#?}", bad.len(), &bad[..bad.len().min(5)]);
 }
 
 /// Honesty inversion: an honest module must never fare worse than a lying one. Fails only when the

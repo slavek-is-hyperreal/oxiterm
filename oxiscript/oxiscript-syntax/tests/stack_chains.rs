@@ -45,7 +45,7 @@ fn check_shape(name: &str, hi: usize, make: impl Fn(usize) -> String + Send + Co
     let s1 = src.clone();
     let r = on_stack(32, move || {
         let p = parse_with(&s1, FileId(0), &no_thread());
-        assert!(p.diagnostics.is_empty());
+        assert_eq!(p.diagnostics.len(), 0);
         drop(p);
     });
     // format (parse, build, print, drop) on 256 KB without a helper thread
@@ -57,7 +57,7 @@ fn check_shape(name: &str, hi: usize, make: impl Fn(usize) -> String + Send + Co
             ..FormatOptions::default()
         };
         let out = format_with(&s2, &o).unwrap();
-        assert!(parse_module(&out).1.is_empty(), "{nm}: output must parse");
+        assert_eq!(parse_module(&out).1.len(), 0, "{nm}: output must parse");
     });
     eprintln!(
         "{name}: {n} links ok (threads available: {})",

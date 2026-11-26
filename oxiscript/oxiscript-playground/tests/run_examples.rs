@@ -83,7 +83,7 @@ fn f64_to_text_is_not_available_yet() {
     // The Stub runtime has no float formatting: it traps as `unreachable`. The site copy says exactly this.
     let (r, l) = stop_of(&main_only("const x = 1.5;\nlog.write(2, `${x}`);"), DEFAULT_FUEL);
     assert_eq!(r, "unreachable");
-    assert!(l.is_empty());
+    assert_eq!(l.len(), 0);
     // float arithmetic and conversion to an integer work
     assert_eq!(lines(&main_only("const x = 1.5;\nlog.write(2, `${(x * 4.0) as i32}`);")), ["6"]);
 }

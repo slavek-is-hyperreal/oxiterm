@@ -156,7 +156,7 @@ fn f1b_fuzz_with_random_first_try_alloc_failures() {
         if let Err(e) = r { bad.push((seed, msg(&e))); }
     }
     eprintln!("f1b: {seeds} seeds, {} failing", bad.len());
-    assert!(bad.is_empty(), "first failures: {:?}", &bad[..bad.len().min(3)]);
+    assert_eq!(bad.len(), 0, "first failures: {:?}", &bad[..bad.len().min(3)]);
 }
 
 fn loads(g: &FGuest) -> u64 { g.rt.heap.loads.get() }
@@ -271,7 +271,7 @@ fn f4_malformed_descriptors_are_rejected_or_trap_cleanly() {
         eprintln!("f4 {name:55} => {out}");
         if !out.starts_with("clean") { bad.push(format!("{name}: {out}")); }
     }
-    assert!(bad.is_empty(), "descriptor handling:\n{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "descriptor handling:\n{}", bad.join("\n"));
 }
 
 /// count > 2^24: ids >= 2^24 must be rejected (trap). Release builds wrap the
@@ -726,7 +726,7 @@ fn f8_extended_shapes_match_reference_model() {
         match r { Ok((s, a, f)) => { steps += s; aborts += a; freed += f; } Err(e) => fails.push((seed, msg(&e))) }
     }
     eprintln!("f8: {seeds} seeds x 250 ops, {steps} gc_steps, {aborts} aborted trials, {freed} objects cycle-freed, {} failing", fails.len());
-    assert!(fails.is_empty(), "first failures: {:?}", &fails[..fails.len().min(4)]);
+    assert_eq!(fails.len(), 0, "first failures: {:?}", &fails[..fails.len().min(4)]);
 }
 
 // ---------------------------------------------------------------- F9 performance amplification

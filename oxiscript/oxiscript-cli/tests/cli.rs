@@ -246,7 +246,7 @@ fn machine_applicable_fixes_apply_together_and_clear_their_codes() {
         let f = d.join(format!("c{i}.oxs"));
         std::fs::write(&f, c).unwrap();
         let before = json(&oxi(&["check", "--json", f.to_str().unwrap()], &d, None));
-        assert!(!codes(&before).is_empty(), "case {i} should fail: {c}");
+        assert_ne!(codes(&before).len(), 0, "case {i} should fail: {c}");
         // 1: all machine-applicable edits of one run apply as one set without overlap
         let mut edits: Vec<(usize, usize, String)> = Vec::new();
         for dg in before["diagnostics"].as_array().unwrap() {
@@ -370,7 +370,7 @@ fn fmt_check_and_stdin() {
     assert_eq!(String::from_utf8(o.stdout).unwrap(), "let x = 1;\n");
     let o = oxi(&["fmt", "--stdin"], &d, Some("let x = ;"));
     assert_eq!(o.status.code(), Some(1));
-    assert!(o.stdout.is_empty());
+    assert_eq!(o.stdout.len(), 0);
     let o = oxi(&["fmt", "a.oxs"], &d, None);
     assert_eq!(o.status.code(), Some(0));
     assert_eq!(std::fs::read_to_string(d.join("a.oxs")).unwrap(), "let x = 1;\n");

@@ -377,7 +377,7 @@ fn ill_typed_programs_report_the_expected_diagnostics() {
     for (name, src) in CASES {
         assert!(names.insert(*name), "duplicate case name {name}");
         let want = expected(src);
-        assert!(!want.is_empty(), "{name}: no expected diagnostics");
+        assert_ne!(want.len(), 0, "{name}: no expected diagnostics");
         let got = codes(src);
         for (c, _) in &got {
             *seen_codes.entry(c.clone()).or_default() += 1;
@@ -386,7 +386,7 @@ fn ill_typed_programs_report_the_expected_diagnostics() {
             bad.push_str(&format!("--- {name}\nwant {want:?}\n got {got:?}\n{}\n", show(src)));
         }
     }
-    assert!(bad.is_empty(), "\n{bad}");
+    assert_eq!(bad.len(), 0, "\n{bad}");
     assert!(seen_codes.len() >= 25, "the corpus should cover many codes: {seen_codes:?}");
 }
 
@@ -411,7 +411,7 @@ fn messages_are_complete_and_carry_fixes_where_mechanical() {
                     }
                 }
             }
-            assert!(!m.is_empty(), "{name}: empty message for {}", d.code);
+            assert_ne!(m.len(), 0, "{name}: empty message for {}", d.code);
         }
     }
     // mechanical fixes

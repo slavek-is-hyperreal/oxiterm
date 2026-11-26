@@ -51,7 +51,7 @@ fn programs_verify() {
             allow_raw_memory: *name == "raw",
         };
         let errs = verify_with(&m, opts);
-        assert!(errs.is_empty(), "{name}: {errs:#?}");
+        assert_eq!(errs.len(), 0, "{name}: {errs:#?}");
     }
 }
 
@@ -147,7 +147,7 @@ fn float_constants_round_trip_bit_exactly() {
         funcs: vec![b.finish()],
         ..Module::default()
     };
-    assert!(verify(&m).is_empty());
+    assert_eq!(verify(&m).len(), 0);
     let text = print_module(&m);
     let back = parse_module(&text).unwrap();
     assert_eq!(m, back);
@@ -157,7 +157,7 @@ fn float_constants_round_trip_bit_exactly() {
 fn integer_extremes_round_trip() {
     let src = "oxiir 1\nmodule \"i\"\n\nfunc @f() -> void {\nentry:\n  %a: i64 = const -9223372036854775808\n  %b: u64 = const 18446744073709551615\n  %c: i8 = const -128\n  %d: u16 = const 65535\n  ret\n}\n";
     let m = parse_module(src).unwrap();
-    assert!(verify(&m).is_empty());
+    assert_eq!(verify(&m).len(), 0);
     assert_eq!(print_module(&m), src);
 }
 
@@ -233,7 +233,7 @@ fn builder_matches_text() {
         funcs: vec![b.finish()],
         ..Module::default()
     };
-    assert!(verify(&built).is_empty(), "{:?}", verify(&built));
+    assert_eq!(verify(&built).len(), 0, "{:?}", verify(&built));
 
     let text = parse_module(PROGRAMS[1].1).unwrap();
     assert_eq!(built.funcs[0], text.funcs[0]);

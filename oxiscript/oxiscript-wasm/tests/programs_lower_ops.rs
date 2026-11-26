@@ -89,7 +89,7 @@ fn fixed() -> String {
 #[test]
 fn new_ops_round_trip_and_verify() {
     let m = parse_module(&fixed()).expect("parses");
-    assert!(verify(&m).is_empty(), "{:?}", verify(&m));
+    assert_eq!(verify(&m).len(), 0, "{:?}", verify(&m));
     let text = print_module(&m);
     let m2 = parse_module(&text).expect("re-parses");
     assert_eq!(m, m2);

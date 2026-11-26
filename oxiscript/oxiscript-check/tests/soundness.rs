@@ -40,7 +40,7 @@ fn unsound_casts_are_rejected() {
             bad.push_str(&format!("{name}: accepted\n"));
         }
     }
-    assert!(bad.is_empty(), "{bad}");
+    assert_eq!(bad.len(), 0, "{bad}");
     run_cases(&[(
         "string_to_number",
         "function f(s: string): i32 {\n  return s as i32; //! E0111\n}",
@@ -199,5 +199,5 @@ fn host_result_values_are_typed() {
     let bad = codes(&format!("{pre}  const r: i32 = st.open(\"k\");\n}}\n"));
     assert!(bad.iter().any(|(c, _)| c == "OXS-E0100"), "{bad:?}");
     let bad = codes(&format!("{pre}  const r = st.open(\"k\");\n  st.set_i64(r, 1);\n}}\n"));
-    assert!(!bad.is_empty(), "a Result is not a handle");
+    assert_ne!(bad.len(), 0, "a Result is not a handle");
 }

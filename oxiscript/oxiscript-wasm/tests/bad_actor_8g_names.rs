@@ -80,7 +80,7 @@ fn export_with_raw_object_params() {
         let src = format!("oxiir 1\nmodule \"e\"\ntype T = struct {{ x: i32 }}\ndata @d = \"x\"\nexport func @f({params}) -> {rets} {{\ne:\n{body}\n}}\n");
         let m = parse_module(&src).unwrap();
         let errs = verify(&m);
-        assert!(errs.is_empty(), "{params}: {errs:?}");
+        assert_eq!(errs.len(), 0, "{params}: {errs:?}");
         let e = compile(&m, &opts()).expect_err(params);
         assert_eq!(e.0[0].code, oxiscript_wasm::E_UNSUPPORTED, "{params} -> {rets}: {e}");
         // the trusted option still compiles it

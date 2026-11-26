@@ -59,7 +59,7 @@ fn no_host_runs_a_feature_outside_abi_1_0() {
             }
         }
     }
-    assert!(bad.is_empty(), "hosts loaded modules outside ABI 1.0:\n{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "hosts loaded modules outside ABI 1.0:\n{}", bad.join("\n"));
 }
 
 /// Even a Server host (the most permissive) refuses SIMD / relaxed-SIMD / table64 end to end. The

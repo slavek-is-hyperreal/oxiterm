@@ -62,6 +62,6 @@ fn every_checked_corpus_program_compiles_and_loads() {
         }
     }
     eprintln!("corpus: {ok} programs compiled (all code lowered) and loaded, {zero} with zero live objects, {skipped} skipped (do not pass the checker)");
-    assert!(failures.is_empty(), "\n{failures}");
+    assert_eq!(failures.len(), 0, "\n{failures}");
     assert!(ok >= 20, "only {ok} programs");
 }

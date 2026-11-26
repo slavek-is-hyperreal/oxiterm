@@ -222,7 +222,7 @@ pub fn run(a: &Args) -> i32 {
         // reports the target the files would be built for: --target, else each file's project
         // `oxi.toml`. Files of projects with different targets: `"target": "mixed"` plus a
         // `file_targets` object (file -> target); never the first file's target for all.
-        let first = file_targets.first().map(|(_, t)| *t).unwrap_or_default();
+        let first = file_targets.first().map_or_else(Default::default, |(_, t)| *t);
         let mixed = file_targets.iter().any(|(_, t)| *t != first);
         let (target, per_file) = if mixed {
             let m: serde_json::Map<String, serde_json::Value> =

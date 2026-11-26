@@ -46,7 +46,7 @@ fn all_targets_emit_the_same_code() {
         assert_eq!(code, dcode, "{t}: code and data identical");
         let mf = Manifest::parse(&m).unwrap();
         assert_eq!(mf.target, t);
-        assert!(mf.features.is_empty(), "no feature is emitted today");
+        assert_eq!(mf.features.len(), 0, "no feature is emitted today");
         // only the manifest section differs in length
         assert_eq!(w.len() - m.len(), dev.len() - dm.len(), "{t}: identical apart from the manifest text");
     }

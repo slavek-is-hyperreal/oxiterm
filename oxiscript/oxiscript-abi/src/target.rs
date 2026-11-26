@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn sets_are_nested_and_named() {
-        assert!(Target::Device.features().is_empty());
+        assert_eq!(Target::Device.features().len(), 0);
         assert_eq!(Target::Web.features().len(), 4);
         assert_eq!(Target::Server.features().len(), 5);
         for t in Target::ALL {

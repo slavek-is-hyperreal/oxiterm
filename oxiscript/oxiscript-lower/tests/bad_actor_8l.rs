@@ -772,7 +772,7 @@ fn unfit_exports_are_type_errors() {
 export function main(log: Log): void { log.write(2, "up"); }
 "#);
     let (wasm, notes) = oxiscript_lower::compile_source_with_notes(&src, &interfaces(), &oxiscript_lower::Options::default()).unwrap();
-    assert!(notes.is_empty());
+    assert_eq!(notes.len(), 0);
     let mut p = Prog::from_wasm(wasm);
     assert_eq!(p.call("okf", &[oxiscript_runtime::Value::I32(1)]), vec![oxiscript_runtime::Value::I32(2)]);
 }

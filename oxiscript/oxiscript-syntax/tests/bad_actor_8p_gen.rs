@@ -732,7 +732,7 @@ fn structured_roundtrip() {
         }
     }
     eprintln!("categories: {seen:?}");
-    assert!(fails.is_empty(), "{} oracle failures", fails.len());
+    assert_eq!(fails.len(), 0, "{} oracle failures", fails.len());
 }
 
 /// Apply every suggested fix of every diagnostic of mutated programs; the fix must apply,
@@ -862,5 +862,5 @@ fn fixit_sweep() {
             eprintln!("=== {k} (long input)");
         }
     }
-    assert!(bad.is_empty(), "{} fix-it problem classes", bad.len());
+    assert_eq!(bad.len(), 0, "{} fix-it problem classes", bad.len());
 }

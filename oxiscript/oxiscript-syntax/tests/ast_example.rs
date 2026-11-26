@@ -416,7 +416,7 @@ fn reserved_slots_default_to_off() {
         panic!()
     };
     assert!(!f.mods.kernel && !f.mods.is_async);
-    assert!(f.contracts.is_empty());
+    assert_eq!(f.contracts.len(), 0);
     let body = f.body.as_ref().unwrap();
     let StmtKind::ForOf { parallel, .. } = &body.stmts[1].kind else {
         panic!()
@@ -447,7 +447,7 @@ function sum(xs: f64[]): f64 {
 }
 "#;
     let (parsed, d) = parse_module(src);
-    assert!(d.is_empty(), "{d:?}");
+    assert_eq!(d.len(), 0, "{d:?}");
     let built = build();
     assert_eq!(common::shape(&parsed), common::shape(&built));
 }

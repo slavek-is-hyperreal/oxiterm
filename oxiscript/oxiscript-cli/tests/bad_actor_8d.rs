@@ -30,7 +30,7 @@ fn oxi(args: &[&str], dir: &Path, stdin: Option<&[u8]>, limit_s: u64) -> Out {
     c.args(args).current_dir(dir).env("NO_COLOR", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = c.spawn().unwrap();
     let mut si = child.stdin.take().unwrap();
-    let data = stdin.map(<[u8]>::to_vec).unwrap_or_default();
+    let data = stdin.map_or_else(Default::default, <[u8]>::to_vec);
     let w = std::thread::spawn(move || {
         let _ = si.write_all(&data);
     });
