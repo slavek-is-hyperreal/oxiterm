@@ -3,10 +3,11 @@
 //! Every GPU test skips cleanly (passing with a printed note) when no `wgpu` adapter is available,
 //! so CI environments without a GPU or software Vulkan driver stay green.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use oxiterm_gpu::color::DEFAULT_BG;
-use oxiterm_gpu::{FrameImage, GpuContext, GpuError, GpuSink};
+use oxiterm_gpu::{FrameImage, GpuContext, GpuContextOptions, GpuError, GpuSink};
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::style::{AnsiColor, BorderChars};
 use oxiterm_renderer::render::display_list::{
@@ -29,8 +30,7 @@ fn shared_ctx() -> Option<Arc<GpuContext>> {
             None
         }
         Err(other) => {
-            eprintln!("SKIP oxiterm-gpu tests: failed to initialize GPU context ({other})");
-            None
+            panic!("oxiterm-gpu tests: GPU context initialization failed unexpectedly: {other}");
         }
     })
     .clone()
@@ -517,4 +517,196 @@ fn rendering_is_deterministic_across_cold_warm_and_cleared_atlas() {
     sink.clear_atlas();
     let after_clear = sink.render_cells(&list, 14, 5).unwrap();
     assert_eq!(cold.rgba(), after_clear.rgba(), "post-clear render differs from cold");
+}
+
+#[test]
+fn context_options_constructs_shared_context() {
+    let opts = GpuContextOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        ..GpuContextOptions::default()
+    };
+    let ctx = match GpuContext::new_headless_with_options(&opts) {
+        Ok(c) => Arc::new(c),
+        Err(GpuError::NoAdapter(msg)) => {
+            eprintln!("SKIP context_options_constructs_shared_context: {msg}");
+            return;
+        }
+        Err(other) => panic!("GpuContext::new_headless_with_options failed: {other}"),
+    };
+    let mut sink = GpuSink::try_new(ctx, 1.0).expect("try_new");
+    let img = sink
+        .render_cells(&DisplayList { items: vec![fill(RectF::new(0.0, 0.0, 2.0, 1.0), 0.0, RED)] }, 4, 2)
+        .expect("render");
+    assert_eq!(img.pixel(2, 2), RED_RGB);
+}
+
+#[test]
+fn try_new_and_render_on_lost_device_return_device_lost() {
+    let ctx = match GpuContext::new_headless() {
+        Ok(c) => Arc::new(c),
+        Err(GpuError::NoAdapter(msg)) => {
+            eprintln!("SKIP try_new_and_render_on_lost_device_return_device_lost: {msg}");
+            return;
+        }
+        Err(other) => panic!("GpuContext init failed: {other}"),
+    };
+    let mut sink = GpuSink::try_new(Arc::clone(&ctx), 1.0).expect("try_new");
+    let list = DisplayList { items: vec![fill(RectF::new(0.0, 0.0, 2.0, 1.0), 0.0, RED)] };
+    let _ = sink.render_cells(&list, 4, 2).expect("initial render");
+
+    let tex = ctx.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("lost-device-test"),
+        size: wgpu::Extent3d { width: 32, height: 32, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: oxiterm_gpu::TARGET_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+    ctx.device().destroy();
+    assert!(matches!(sink.render_cells(&list, 4, 2), Err(GpuError::DeviceLost(_))));
+    assert!(matches!(sink.render_into_view(&list, &view, 32, 32), Err(GpuError::DeviceLost(_))));
+    assert!(matches!(GpuSink::try_new(Arc::clone(&ctx), 1.0), Err(GpuError::DeviceLost(_))));
+    let mut late_sink = GpuSink::new(ctx, 1.0);
+    assert!(matches!(late_sink.render_cells(&list, 4, 2), Err(GpuError::DeviceLost(_))));
+}
+
+#[test]
+fn error_scopes_isolate_destroyed_target_from_foreign_scope_and_handler() {
+    let ctx = match GpuContext::new_headless() {
+        Ok(c) => Arc::new(c),
+        Err(GpuError::NoAdapter(msg)) => {
+            eprintln!("SKIP error_scopes_isolate_destroyed_target: {msg}");
+            return;
+        }
+        Err(other) => panic!("GpuContext init failed: {other}"),
+    };
+    let handler_count = Arc::new(AtomicUsize::new(0));
+    let hc = Arc::clone(&handler_count);
+    ctx.device().on_uncaptured_error(Arc::new(move |_err| {
+        hc.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    let mut sink = GpuSink::new(Arc::clone(&ctx), 1.0);
+    let tex = ctx.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("destroyed-target"),
+        size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: oxiterm_gpu::TARGET_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+    // Destroy the texture so it passes metadata checks in `validate_target_view` and triggers a
+    // real wgpu Validation error inside the render pass.
+    tex.destroy();
+
+    let foreign_scope = ctx.device().push_error_scope(wgpu::ErrorFilter::Validation);
+    let list = DisplayList { items: vec![fill(RectF::new(0.0, 0.0, 2.0, 1.0), 0.0, RED)] };
+    let res = sink.render_into_view(&list, &view, 64, 64);
+    let foreign_captured = pollster::block_on(foreign_scope.pop());
+
+    assert!(matches!(res, Err(GpuError::Validation(_))), "expected Validation error, got {res:?}");
+    assert!(foreign_captured.is_none(), "sink error leaked into foreign error scope");
+    assert_eq!(handler_count.load(Ordering::SeqCst), 0, "sink error leaked to uncaptured handler");
+}
+
+#[test]
+fn oversized_glyphs_above_512px_are_reported_in_stats_and_atlas() {
+    let ctx = require_gpu!();
+    let mut sink = GpuSink::new(ctx, 3.0);
+    let run = shaped_run(FACE_SANS, 175.0); // 175 * 3 = 525 px > 512 px cap
+    let list = DisplayList {
+        items: vec![text(
+            (0.0, 0.0),
+            RectF::new(0.0, 0.0, 20.0, 10.0),
+            vec![glyph('W', 0.0, 0.0, 4.0)],
+            Modifiers::default(),
+            Some(run),
+        )],
+    };
+    let _ = sink.render_cells(&list, 20, 10).unwrap();
+    assert!(
+        sink.last_stats().dropped_oversized_glyphs >= 1,
+        "expected dropped_oversized_glyphs >= 1, got {:?}",
+        sink.last_stats()
+    );
+    assert!(sink.atlas().dropped_oversized_glyphs() >= 1);
+}
+
+#[test]
+fn cell_grid_and_shaped_runs_batch_per_pipeline() {
+    let ctx = require_gpu!();
+    let mut sink = GpuSink::new(ctx, 1.0);
+
+    // 40x10 = 400 non-bold/non-italic cells should batch into 2 draw calls (SDF bg + Glyph),
+    // not 800 alternating batches (F-08).
+    let cells: Vec<GridCell> = (0..400usize)
+        .map(|i| GridCell {
+            ch: (b'A' + (i % 26) as u8) as char,
+            fg: WHITE,
+            bg: AnsiColor::TrueColor(10, 20, 40),
+            mods: Modifiers::default(),
+            skip: false,
+        })
+        .collect();
+    let grid_list = DisplayList {
+        items: vec![DisplayItem::CellGrid { rect: RectF::new(0.0, 0.0, 40.0, 10.0), cells }],
+    };
+    let _ = sink.render_cells(&grid_list, 40, 10).unwrap();
+    assert!(
+        sink.last_stats().draw_batches <= 2,
+        "expected <= 2 batches for 400-cell CellGrid, got {:?}",
+        sink.last_stats()
+    );
+
+    // 10-line shaped run with background + underline should batch into <= 3 draw calls (bg + glyphs + underline).
+    let mut glyphs = Vec::new();
+    for line in 0..10 {
+        for (i, ch) in "BatchedLine".chars().enumerate() {
+            glyphs.push(glyph(ch, i as f32 * 0.9, line as f32 * 1.5, 0.9));
+        }
+    }
+    let mut run = shaped_run(FACE_SANS, 16.0);
+    run.line_height = 1.25;
+    let shaped_list = DisplayList {
+        items: vec![DisplayItem::Text {
+            node: NodeId(1),
+            origin: PointF { x: 0.0, y: 0.0 },
+            clip: RectF::new(0.0, 0.0, 40.0, 20.0),
+            glyphs,
+            fg: WHITE,
+            bg: AnsiColor::TrueColor(10, 20, 40),
+            mods: Modifiers { underline: true, ..Default::default() },
+            shaped: Some(Box::new(run)),
+        }],
+    };
+    let _ = sink.render_cells(&shaped_list, 40, 20).unwrap();
+    assert!(
+        sink.last_stats().draw_batches <= 3,
+        "expected <= 3 batches for 10-line shaped run, got {:?}",
+        sink.last_stats()
+    );
+}
+
+#[test]
+fn five_million_tiny_fills_render_across_multiple_passes_without_panic() {
+    let ctx = require_gpu!();
+    let mut sink = GpuSink::new(ctx, 1.0);
+    let mut items = Vec::with_capacity(5_000_000);
+    for _ in 0..4_999_999 {
+        items.push(fill(RectF::new(0.0, 0.0, 0.2, 0.1), 0.0, RED));
+    }
+    items.push(fill(RectF::new(0.0, 0.0, 0.5, 0.5), 0.0, GREEN));
+    let list = DisplayList { items };
+    let img = sink.render(&list, 8, 8).expect("5M fills must render without panicking");
+    let stats = sink.last_stats();
+    assert_eq!(stats.sdf_instances, 5_000_000);
+    assert!(stats.passes > 100, "expected multi-pass splitting, got {stats:?}");
+    assert_eq!(img.pixel(1, 1), GREEN_RGB);
 }

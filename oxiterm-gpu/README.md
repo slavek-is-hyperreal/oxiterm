@@ -23,7 +23,17 @@ Flags: `--cols N` (default 80), `--rows N` (default 24), `--scale S` (default 1.
 
 ## Frame Timing (Stage 5.2)
 
-Measured on Mesa `llvmpipe (LLVM 20.1.2, 256 bits)` software Vulkan (`Vulkan/Cpu`), debug build (`dev` profile), 80×24 cells at scale 1.0 (768×480 px), **including full GPU-to-CPU staging texture readback**:
+Measured on Mesa `llvmpipe (LLVM 20.1.2, 256 bits)` software Vulkan (`Vulkan/Cpu`), 80×24 cells at scale 1.0 (768×480 px), **including full GPU-to-CPU staging texture readback**:
+
+### Release build (`--release`)
+
+| Page | DisplayList items | Instances (SDF / glyphs) | Draw batches | Cold frame | Warm median (20 iters) |
+|---|---:|---:|---:|---:|---:|
+| `examples/demos/counter.thtml` | 53 | 144 / 204 | 45 | 39.1 ms | **8.9 ms/frame** (min 8.2 ms) |
+| `examples/index.thtml` | 75 | 231 / 345 | 40 | 33.5 ms | **9.6 ms/frame** (min 9.0 ms) |
+| `examples/demos/showcase.thtml` | 143 | 312 / 387 | 120 | 49.2 ms | **13.9 ms/frame** (min 11.7 ms) |
+
+### Debug build (`dev` profile)
 
 | Page | DisplayList items | Instances (SDF / glyphs) | Draw batches | Cold frame | Warm median (20 iters) |
 |---|---:|---:|---:|---:|---:|
@@ -31,7 +41,7 @@ Measured on Mesa `llvmpipe (LLVM 20.1.2, 256 bits)` software Vulkan (`Vulkan/Cpu
 | `examples/index.thtml` | 75 | 231 / 345 | 46 | 210.4 ms | **25.7 ms/frame** (min 22.9 ms) |
 | `examples/demos/showcase.thtml` | 143 | 312 / 387 | 120 | 356.8 ms | **45.5 ms/frame** (min 28.2 ms) |
 
-> Note: These timings are unoptimized debug builds on software Vulkan (`llvmpipe`) and include synchronous `copy_texture_to_buffer` + `map_async` readback every frame; hardware GPUs and window presentation without readback (Stage 5.3) will be dramatically faster.
+> Note: These timings are on software Vulkan (`llvmpipe`) and include synchronous `copy_texture_to_buffer` + `map_async` readback every frame; hardware GPUs and window presentation without readback (Stage 5.3) will be dramatically faster.
 
 ## Testing & Golden Workflow
 

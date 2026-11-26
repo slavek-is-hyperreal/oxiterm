@@ -28,6 +28,6 @@ pub mod page;
 pub mod sink;
 
 pub use atlas::GlyphAtlas;
-pub use context::{GpuContext, GpuError};
+pub use context::{GpuContext, GpuContextOptions, GpuError};
 pub use image::{diff_rgba, FrameImage, ImageDiff};
 pub use sink::{FrameStats, GpuSink, TARGET_FORMAT};

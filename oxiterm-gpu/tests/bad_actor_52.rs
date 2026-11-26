@@ -5,6 +5,8 @@
 //!   cargo test --release -p oxiterm-gpu --test bad_actor_52 -- --test-threads=1 --nocapture`
 //! Every test uses its OWN `GpuContext` (hostile tests may poison a device).
 
+#![allow(clippy::all, clippy::pedantic)]
+
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

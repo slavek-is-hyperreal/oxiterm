@@ -28,8 +28,7 @@ fn shared_ctx() -> Option<Arc<GpuContext>> {
             None
         }
         Err(other) => {
-            eprintln!("SKIP golden tests: GPU init failed ({other})");
-            None
+            panic!("golden tests: GPU context initialization failed unexpectedly: {other}");
         }
     })
     .clone()

@@ -5,8 +5,8 @@
 //! and `oxiterm-renderer` cluster `Shaper` as `oxiterm-fb` so GPU text matches CPU reference
 //! rendering pixel-for-pixel.
 
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use etagere::{size2, AtlasAllocator};
 use oxiterm_renderer::render::display_list::{FACE_MONO, FACE_SANS};
@@ -35,6 +35,14 @@ pub const ITALIC_DEGREES: f32 = 14.0;
 /// Byte budget for the CPU cluster cache before clearing.
 const CLUSTER_CACHE_BUDGET: usize = 8 << 20;
 const CLUSTER_ENTRY_OVERHEAD: usize = 96;
+/// Byte budget for the glyph entry map (mirrors `oxiterm-fb`'s bounded cache design).
+pub const ENTRY_CACHE_BUDGET: usize = 16 << 20;
+const MASK_ENTRY_OVERHEAD: usize = 96;
+/// Hard upper bound on cached visible glyph entries before triggering an atlas flush + reset.
+const MAX_ATLAS_ENTRIES: usize = 65_536;
+/// Small bounded set of blank/outline-less glyph keys so repeated zero-width lookups stay fast
+/// without unbounded growth across distinct sizes.
+const MAX_EMPTY_ENTRIES: usize = 512;
 /// 1 px zero border on each side of every packed glyph to prevent neighbour bleed.
 const GLYPH_PAD: u32 = 1;
 
@@ -109,13 +117,16 @@ pub struct GlyphAtlas {
     sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
 
-    entries: HashMap<MaskKey, Option<AtlasEntry>>,
-    clusters: HashMap<(u8, Box<str>, u32), Rc<[ClusterGlyph]>>,
+    entries: HashMap<MaskKey, AtlasEntry>,
+    entry_bytes: usize,
+    empty_glyphs: HashSet<MaskKey>,
+    clusters: HashMap<(u8, Box<str>, u32), Arc<[ClusterGlyph]>>,
     cluster_bytes: usize,
 
     hits: u64,
     misses: u64,
     resets: u64,
+    dropped_oversized_glyphs: u64,
 }
 
 impl GlyphAtlas {
@@ -163,11 +174,14 @@ impl GlyphAtlas {
             sampler,
             bind_group,
             entries: HashMap::new(),
+            entry_bytes: 0,
+            empty_glyphs: HashSet::new(),
             clusters: HashMap::new(),
             cluster_bytes: 0,
             hits: 0,
             misses: 0,
             resets: 0,
+            dropped_oversized_glyphs: 0,
         }
     }
 
@@ -206,6 +220,16 @@ impl GlyphAtlas {
         self.resets
     }
 
+    /// Cumulative number of glyphs/runs dropped because their scaled pixel size exceeded
+    /// [`MAX_GLYPH_PX`] (512 px).
+    pub fn dropped_oversized_glyphs(&self) -> u64 {
+        self.dropped_oversized_glyphs
+    }
+
+    pub(crate) fn record_oversized_glyph(&mut self, count: u64) {
+        self.dropped_oversized_glyphs = self.dropped_oversized_glyphs.saturating_add(count);
+    }
+
     /// Returns `true` if the atlas can still double in size before hitting `max_atlas_size`.
     pub fn can_grow(&self) -> bool {
         self.atlas_size < self.max_atlas_size
@@ -227,11 +251,18 @@ impl GlyphAtlas {
     pub fn reset(&mut self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) {
         let (texture, bind_group) =
             create_atlas_texture(device, layout, &self.sampler, self.atlas_size);
+        self.texture.destroy();
         self.texture = texture;
         self.bind_group = bind_group;
         self.allocator =
             AtlasAllocator::new(size2(self.atlas_size.cast_signed(), self.atlas_size.cast_signed()));
-        self.entries.clear();
+        if self.entries.capacity() > 4096 {
+            self.entries = HashMap::new();
+        } else {
+            self.entries.clear();
+        }
+        self.entry_bytes = 0;
+        self.empty_glyphs.clear();
         self.resets += 1;
     }
 
@@ -253,10 +284,10 @@ impl GlyphAtlas {
     }
 
     /// Shapes a multi-character cluster (e.g. ligature or combining mark) at `size_px`.
-    pub fn cluster_glyphs(&mut self, face: u8, text: &str, size_px: f32) -> Rc<[ClusterGlyph]> {
+    pub fn cluster_glyphs(&mut self, face: u8, text: &str, size_px: f32) -> Arc<[ClusterGlyph]> {
         let face = face.min(FACE_SANS);
         if !size_ok(size_px) || text.is_empty() || text.chars().nth(MAX_CLUSTER_CHARS).is_some() {
-            return Rc::from([]);
+            return Arc::from([]);
         }
         let key = (face, Box::<str>::from(text), size_px.to_bits());
         if let Some(c) = self.clusters.get(&key) {
@@ -279,15 +310,22 @@ impl GlyphAtlas {
                     .collect()
             })
             .unwrap_or_default();
-        let rc: Rc<[ClusterGlyph]> = glyphs.into();
-        let cost = CLUSTER_ENTRY_OVERHEAD + text.len() + rc.len() * std::mem::size_of::<ClusterGlyph>();
+        let arc: Arc<[ClusterGlyph]> = glyphs.into();
+        let cost = CLUSTER_ENTRY_OVERHEAD + text.len() + arc.len() * std::mem::size_of::<ClusterGlyph>();
         if self.cluster_bytes.saturating_add(cost) > CLUSTER_CACHE_BUDGET {
             self.clusters.clear();
             self.cluster_bytes = 0;
         }
         self.cluster_bytes += cost;
-        self.clusters.insert(key, rc.clone());
-        rc
+        self.clusters.insert(key, arc.clone());
+        arc
+    }
+
+    fn remember_empty(&mut self, key: MaskKey) {
+        if self.empty_glyphs.len() >= MAX_EMPTY_ENTRIES {
+            self.empty_glyphs.clear();
+        }
+        self.empty_glyphs.insert(key);
     }
 
     /// Looks up or rasterizes + uploads a glyph mask into the GPU atlas.
@@ -303,16 +341,20 @@ impl GlyphAtlas {
         sub: u8,
     ) -> AtlasLookup {
         if !size_ok(size_px) {
+            if size_px.is_finite() && size_px > MAX_GLYPH_PX {
+                self.record_oversized_glyph(1);
+            }
             return AtlasLookup::Empty;
         }
         let face = face.min(FACE_SANS);
         let key = MaskKey { face, gid, size_bits: size_px.to_bits(), bold, italic, sub };
-        if let Some(cached) = self.entries.get(&key) {
+        if let Some(entry) = self.entries.get(&key) {
             self.hits += 1;
-            return match cached {
-                Some(entry) => AtlasLookup::Hit(*entry),
-                None => AtlasLookup::Empty,
-            };
+            return AtlasLookup::Hit(*entry);
+        }
+        if self.empty_glyphs.contains(&key) {
+            self.hits += 1;
+            return AtlasLookup::Empty;
         }
 
         // Rasterize with swash identically to oxiterm-fb.
@@ -334,13 +376,13 @@ impl GlyphAtlas {
         let mut image = Image::new();
         if !render.render_into(&mut scaler, gid, &mut image) {
             self.misses += 1;
-            self.entries.insert(key, None);
+            self.remember_empty(key);
             return AtlasLookup::Empty;
         }
         let p = image.placement;
         if p.width == 0 || p.height == 0 {
             self.misses += 1;
-            self.entries.insert(key, None);
+            self.remember_empty(key);
             return AtlasLookup::Empty;
         }
 
@@ -352,9 +394,17 @@ impl GlyphAtlas {
                 AtlasLookup::Full
             } else {
                 self.misses += 1;
-                self.entries.insert(key, None);
+                self.remember_empty(key);
                 AtlasLookup::Empty
             };
+        }
+
+        // Enforce entry-count and metadata-byte budgets so the map never grows without bound.
+        if !self.entries.is_empty()
+            && (self.entries.len() >= MAX_ATLAS_ENTRIES
+                || self.entry_bytes.saturating_add(MASK_ENTRY_OVERHEAD) > ENTRY_CACHE_BUDGET)
+        {
+            return AtlasLookup::Full;
         }
 
         let Some(alloc) =
@@ -391,7 +441,8 @@ impl GlyphAtlas {
             atlas_y,
         };
         self.misses += 1;
-        self.entries.insert(key, Some(entry));
+        self.entry_bytes = self.entry_bytes.saturating_add(MASK_ENTRY_OVERHEAD);
+        self.entries.insert(key, entry);
         AtlasLookup::Hit(entry)
     }
 }
