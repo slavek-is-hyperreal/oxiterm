@@ -654,7 +654,7 @@ impl Renderer {
                     // Cached per (size, state) and capped (F-13): not re-rasterised on every frame.
                     Ok((*super::rive::toggle_half_block_image(u32::from(width), u32::from(height), bits)).clone())
                 } else {
-                    Ok(super::rive::toggle_image(pixel_w, pixel_h, bits))
+                    Ok(super::rive::toggle_image_capped(pixel_w, pixel_h, bits))
                 }
             } else {
                 // Standard image rendering

@@ -55,7 +55,12 @@ fn rive_at_the_largest_viewport_is_bounded() {
     let (_, tw2) = render("img", "t.riv", 496, 198, &web, &d);
     let (_, ts2) = render("img", "t.riv", 496, 198, &ssh, &d);
     eprintln!("RIVE 496x198 cells: web {tw:?} then {tw2:?}, ssh/kitty {ts:?} then {ts2:?}");
-    assert!(tw < Duration::from_secs(10) && ts < Duration::from_secs(10));
+    // The bound is for release builds (what ships). Unoptimised debug builds of the image
+    // encoders are ~30x slower; CI runs the workspace tests in debug, so allow more there.
+    let bound = Duration::from_secs(if cfg!(debug_assertions) { 120 } else { 10 });
+    assert!(tw < bound && ts < bound, "web {tw:?}, ssh {ts:?}, bound {bound:?}");
+    // The cache makes every later identical frame cheap in any build.
+    assert!(tw2 < Duration::from_secs(2) && ts2 < Duration::from_secs(2), "cached: web {tw2:?}, ssh {ts2:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
 
