@@ -93,6 +93,8 @@ summary { cursor: pointer; padding: 8px 0; min-height: 44px; }
 .demo { margin: 16px 0; }
 .demo-poster { background: var(--code-bg); border: 1px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; min-height: 11rem; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .demo-frame { width: 100%; height: min(78vh, 34rem); border: 1px solid var(--line); border-radius: 10px; background: var(--code-bg); }
+/* Live demos: much taller on large screens (owner 2026-11-26), same column width. */
+@media (min-width: 64rem) { .demo-frame { height: min(88vh, 64rem); } }
 .demo-actions { margin: 6px 0; }
 
 /* footer */

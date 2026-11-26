@@ -14,7 +14,7 @@ This file lets another Claude account (or a person) take over without the previo
 ## 2. How work is done
 - **Lead:** the main conversation (Opus) designs, writes briefs, reviews, merges and keeps the roadmaps.
 - **Implementers:** Sonnet subagents in their own git worktrees, using their `advisor` tool (Opus) before starting and before reporting. Optional since 2026-11-26: Gemini as implementer through the `gemini-oxi` MCP server (auto-policy: `cargo` allowed, writes only in the worktree, no network, no subagents); flow = Gemini writes, Sonnet with the advisor reviews, BAD ACTOR attacks, the lead merges (decision D-25 in [oxiscript.md](roadmap/oxiscript.md)).
-- **BAD ACTOR gate (every stage):** a separate adversarial agent writes failing tests and a report, never fixes code; then a fix agent fixes everything; findings stay as regression tests. Notes of each stage go to [stages/](stages/README.md).
+- **BAD ACTOR gate (every stage):** a separate adversarial **Claude** agent: Opus for large stages and releases, Sonnet with Opus consultation for small changes (owner rule, roadmap D-33; Gemini never as the only security reviewer, D-31) writes failing tests and a report, never fixes code; then a fix agent fixes everything; findings stay as regression tests. Notes of each stage go to [stages/](stages/README.md).
 - **Gates before every merge and push:** `scripts/oxiscript-gate.sh merge` for OxiScript work (each crate, clippy `-D warnings`, a CI-equivalent unified run, release with `OXI_FULL_FUZZ=1`, the long fuzz campaigns); nightly `.github/workflows/oxiscript-fuzz.yml` with date seeds.
 - **Shared files** (root `Cargo.toml`, CI workflows, the roadmaps) are edited only by the lead. Agents never set `OXI_BLESS*` and run no git commands unless told to; the lead blesses goldens after review.
 - **Usage limits** stop agents mid-work: every agent keeps a HANDOFF-style note current in its stage directory; on a stop, snapshot-commit its worktree and resume it with SendMessage.
@@ -37,6 +37,6 @@ Old 4-core box, about 12 GB free RAM: at most 3 concurrent agents, `CARGO_BUILD_
 - **Click-miss debugging:** three historical causes: ambiguous-width glyphs in labels, SSH emitter cursor desync, web canvas pixel↔cell mapping.
 
 ## 6. First steps for the next lead
-1. Read this file, then [roadmap/README.md](roadmap/README.md) and the roadmap of the product you work on, then [../AGENTS.md](../AGENTS.md).
+1. Read this file, then [roadmap/README.md](roadmap/README.md) and the roadmap of the product you work on, then [../AGENTS.md](../AGENTS.md), then [../creator_persona.md](../creator_persona.md) (how to explain things to the owner and teach during the work) and [owner-questions.md](owner-questions.md) (open owner questions with suggestions, in Polish).
 2. `gh run list -L 5`: is `main` green? If not, that is the first job.
 3. `git worktree list`: unmerged agent worktrees under `.claude/worktrees/` may hold work (the roadmaps say which).

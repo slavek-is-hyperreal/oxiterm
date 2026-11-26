@@ -9,3 +9,32 @@ h2::before { content: "## "; color: var(--pat); font-weight: 400; }
 .demo-poster, .demo-frame, pre.code, .tablewrap { border-radius: 2px; }
 .hero h1 { letter-spacing: -0.02em; }
 .demo-poster { background-image: repeating-linear-gradient(0deg, transparent 0 3px, rgba(108, 195, 164, 0.05) 3px 4px); }
+
+/* Pipeline diagram (how-it-works). Classes only: the CSP forbids style attributes. Colours are the site tokens, so both themes work. */
+.pipeline { margin: 1.2em 0; }
+.dg { display: block; width: 100%; height: auto; margin: 0 auto; font-family: var(--sans); }
+.dg-tall { display: block; max-width: 440px; }
+.dg-wide { display: none; }
+@media (min-width: 860px) { .dg-wide { display: block; } .dg-tall { display: none; } }
+.dg-box { fill: var(--card); stroke-width: 1.5; }
+.dg-pat { stroke: var(--pat); }
+.dg-act { stroke: var(--acc); stroke-width: 2; }
+.dg-core { stroke-width: 2.5; fill: var(--code-bg); }
+.dg-list { stroke-width: 2.5; }
+.dg-part { stroke: var(--warn); }
+.dg-plan { stroke: var(--muted); stroke-dasharray: 6 4; fill: none; }
+.dg-sub { fill: var(--card); stroke: var(--line); stroke-width: 1.2; }
+.dg-t { fill: var(--fg); font-size: 15px; font-weight: 700; }
+.dg-s, .dg-s2 { fill: var(--muted); font-size: 13px; }
+.dg-s2 { fill: var(--fg); font-size: 14px; }
+.dg-cap { fill: var(--pat); font-family: var(--mono); font-size: 13px; }
+.dg-lbl { fill: var(--acc); font-size: 13.5px; font-weight: 600; }
+.dg-edge { fill: none; stroke-width: 2; }
+.dg-edge.dg-pat { stroke: var(--pat); }
+.dg-edge.dg-act { stroke: var(--acc); }
+.dg-mk-pat path { fill: var(--pat); }
+.dg-mk-act path { fill: var(--acc); }
+.dg-tag { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+.dg-tag-done { fill: var(--ok); }
+.dg-tag-partial { fill: var(--warn); }
+.dg-tag-planned { fill: var(--muted); }
