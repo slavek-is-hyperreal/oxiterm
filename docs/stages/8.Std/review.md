@@ -2,13 +2,15 @@
 
 Scope: `git diff main...HEAD` (main has not moved: merge-base == main == 0b8b719), docs, `oxiscript/std/*.oxs`, lowering/check diffs. Nothing was compiled or timed; items marked "unverified" need the lead's gate numbers.
 
-## Verdict: MERGE after two small fixes (no numeric or determinism blocker found)
+## Verdict: MERGE, no blockers
 
-There is no blocker in the numeric code. Two items should be fixed or consciously accepted before merge: the weakened BS07 test (S1) and the stale skill text (S2). The rest can follow.
+No wrong numeric result, no non-determinism, no changed existing-language rule was found. S1-S5 are should-fix. The lead must decide S1 (accept the weakened BS07 test and rename it, or keep BS07 open) before merging; S2 (stale skill text) is a one-line fix worth doing in the same merge; S3 and S4 can be fixed or softened in docs; S5 depends on per-test debug timings from the lead's gate run (not measurable statically).
+
+Roadmap precondition "Depends on 8.M-link (f64 text)": 8.M-link is still `in-progress` (roadmap lines 179, 228). It is not required for this merge: std v0 contains no runtime float-to-text. `grep '\${' oxiscript/std/*.oxs` finds only two string templates (`string.oxs:262` joins strings, `:1228` prepends `-` to a radix string) and there is no `toString()` call; `toFixed` and `parseFloat` are pure OxiScript, and implementation.md says so. Users writing `${x}` with an f64 still depend on 8.M-link, independent of std.
 
 ## 1. BS01-BS08 verification
 
-`git diff b416210 HEAD -- '*bad_actor_8std*'` changes exactly one assertion in one file: `oxiscript-lower/tests/bad_actor_8std.rs`, `array_sort_30k_within_default_fuel` (line 34 of the diff hunk, test at ~line 292). The check-side file is unchanged. Every other BS test is unmodified, so BS01-BS06 were fixed in code.
+`git diff b416210 HEAD -- '*bad_actor_8std*'` changes exactly one assertion in one file: `oxiscript-lower/tests/bad_actor_8std.rs`, `array_sort_30k_within_default_fuel` (test at `bad_actor_8std.rs:292`). The check-side file is unchanged. Every other BS test is unmodified, so BS01-BS06 were fixed in code.
 
 | Finding | Code fix | Verdict |
 |---|---|---|
@@ -18,7 +20,7 @@ There is no blocker in the numeric code. Two items should be fixed or consciousl
 | BS04 NaN keys | `oxiscript-lower/src/call.rs:1216` `emit_prim_equals` is SameValueZero for f32/f64; hash canonicalises (see 2) | Really fixed |
 | BS05 OOM in tan | `remPio2Large` rewritten with scalar locals; grep of `math.oxs` finds no array literal, `push`, `new`, template or struct allocation; test asserts zero allocating IR ops in the module | Really fixed |
 | BS06 radix/digits | explicit `byteAt("",0)` trap (TrapKind::Bounds) at `toRadixU64` and `toFixed` entry | Fixed. Trapping via a dummy out-of-range `byteAt` is a hack; a named trap or `Result` would read better (nit N3) |
-| BS07 sort fuel | radix sort for ints, insertion runs, cached loads; `lw.range`/scalar `slice` use `array.new`+`set` | Improved 7x but **not** fixed as the finding stated; test weakened (S1) |
+| BS07 sort fuel | radix sort for ints, insertion runs, cached loads; `lw.range`/scalar `slice` use `array.new`+`set` | Documented as the finding asked, and sort fuel improved ~7x; but the test was relaxed and its name is now false (S1) |
 | BS08 hash/cycles | documentation only (`std.md` ~line 299-301) | Acceptable: finding was INFO and asked for documentation |
 
 ### The one changed assertion (S1)
@@ -37,6 +39,8 @@ Judgement: not a hidden correctness bug, and the justification in `fixes.md` (ha
 * **ULP claims (should-fix S3)**: `std.md` documents `<= 1 ULP` for 11 functions and `<= 2` for `tan`/`log10`, and tabulates "measured max ULP" (hand-written table, not generated). But `std_math_ulp.rs` asserts `bound = 2` for every function (`run_unary(..., 2)`), and the reference is the host's libm via Rust `f64::sin` etc., which is itself not correctly rounded and varies by platform/libm version. So the documented 1-ULP bounds are not enforced by any test, and the "measured" numbers are relative to a host libm. Either assert 1 where documented, or reword to "measured <= 1 vs glibc libm on release, test bound 2".
 
 ## 3. Determinism
+
+* Std sources never format a float: no `toString()`, the only template literals are string-only (see verdict). Float text is produced by `toFixed` in pure OxiScript.
 
 * No `format!`/`to_string`/`libm`/`powf`/`mul_add` in `oxiscript-lower/src` or `oxiscript-playground/src` diffs. Std math is pure OxiScript on Wasm f64 ops (add/mul/div/sqrt/floor/nearest, no FMA), and constants are emitted as raw bits. No compile-time folding of math. Host Rust floats appear only in tests as references.
 * `std.md:101` claims "every target (device, web, server) produces bit-identical results". No test compares the targets directly; the gate's `targets-web` step reruns the lower tests under `OXI_TARGET=web`, which only checks the ULP bound again, not equality of bits between targets (S4, should-fix: add a small fixed-input checksum test that runs under both targets, or soften the sentence). Risk is low (same Wasm ops), claim is untested. The roadmap gate for 8.Std explicitly says "bit-identical on device and web".
@@ -93,6 +97,9 @@ No checker rule is relaxed. No blocker here.
 | N5 | nit | check/lower builtins | New global `.hash()/.equals()` on primitives: inform owner (language surface change). |
 | N6 | nit | `lower/src/helpers.rs:305` | `range` now allocates up front and traps on overflow of `b - a`. |
 | N7 | nit | `docs/roadmap/oxiscript.md:288` | Gate text says "zero leaks"; actual guarantee is "zero acyclic leaks". |
+
+## Not verified
+Roadmap gate item "course levels 0-2 and the 8.S1 demo need no missing basic function" was not checked (no course material or demo in scope here). It is not claimed as met.
 
 ## Not found
 No wrong numeric result, no allocation in math, no host-libm or Rust float formatting in the Wasm path, no reuse or new reason code, no change to existing language rules, no unsound intrinsic exposure to user code.
