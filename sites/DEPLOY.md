@@ -21,7 +21,7 @@ To enable Latin later, after review: build with `SITES_LANGS=pl,en,la sites/buil
 - **Polish is a draft.** `sites/i18n/pl.json` has `"meta": { "status": "draft" }`, so every PL page shows the "Tłumaczenie robocze, czeka na przegląd" banner. The Polish copy was written by an agent. After you have read it, change `"status": "draft"` to `"reviewed"` in `sites/i18n/pl.json` and rebuild; the banner disappears. (English is the source language and carries `"source"`; Latin stays `"draft"`.)
 - **Home page "About".** The About block on `/` and `/pl/` is behind the flag `home.about` and is **off**: no biography is invented. Write the text in `sites/i18n/en.json` and `pl.json` (`home.pages.index.blocks`, the two blocks with `"flag": "home.about"`, replacing the `[PLACEHOLDER ...]` / `[DO UZUPEŁNIENIA ...]` text), then build with `SITES_FLAGS=home.about sites/build.sh`.
 - **Placeholder guard.** `sites/check.mjs` fails the build if `[PLACEHOLDER` or `[DO UZUPE` appears in any output file. `SITES_ALLOW_PLACEHOLDERS=1` switches the guard off (private previews only; never upload that build).
-- **Pending files from slice 8.D.** Pages link to `AGENTS.md` and `docs/oxiscript/llms.txt` on GitHub `main`. `sites/check.mjs` lists exactly those two paths in `PENDING_8D` so the build passes before slice 8.D is merged. After the merge, delete that allowlist (it is marked with a TODO) so the check enforces them, and drop the "(being added by the DevKit stage)" part of the two link labels in `sites/i18n/*.json`.
+- **Links to `AGENTS.md` and `docs/oxiscript/llms.txt`** on GitHub `main` are checked against the working tree by `sites/check.mjs` like every other repo link (slice 8.D is merged).
 
 ## Build (on your machine)
 
