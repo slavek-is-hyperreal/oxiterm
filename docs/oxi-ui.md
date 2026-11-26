@@ -692,11 +692,14 @@ Not reusable as code: the cycle collector for RC in Wasm linear memory (algorith
 | 8.C Contracts | 31 min (+3 min lead amendment) | ~15 min | 21 min | 28 (verifier crash, pointer forging, RC use-after-free in the spec, grammar ambiguities) | 2026-11-25, `2ba1aa0` |
 | 7.1 WASM local mode | 41 min | ~17 min | ~29 min | 8 (incl. a pre-existing server abort via a 65535×65535 resize) | 2026-11-25, `77f9002` |
 | 7.2 OxiDE sink | 30 min | ~10 min | ~1 h incl. 200k-case fuzz run | 21 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) + 1 found during fixes | 2026-11-25, `78fcdb5` |
-| 8.P Parser + formatter | ~45 min | ~20 min | in progress | 16 (formatter changes meaning/breaks code with comments, ~3 KB stack per nesting level, Trojan-Source escapes, quadratic comments) | — |
-| 8.R Runtime | ~26 min | ~25 min | in progress | 7, no sandbox escape (sticky revocation, pump budget, subscription scan DoS, guessable handles, shared-store quota, log injection) | — |
+| 8.P Parser + formatter | ~45 min | ~20 min | (not logged) | 16 (formatter changes meaning/breaks code with comments, ~3 KB stack per nesting level, Trojan-Source escapes, quadratic comments) | 2026-11-25, `13b5987` |
+| 8.R Runtime | ~26 min | ~25 min | (not logged) | 7, no sandbox escape (sticky revocation, pump budget, subscription scan DoS, guessable handles, shared-store quota, log injection) | 2026-11-25, `d007c74` |
 | 8.T Type checker | (not logged) | (not logged) | 2 agents: first stopped by usage limit, resume ~35 min | 22 (17 severe: uninitialised globals/statics, `never` falling off, private bypass, law purity bypass, polymorphic recursion, lossy fix texts) + 7 catalogue | 2026-11-25, `3cbf1b4` |
 | 8.G Codegen | (not logged) | (not logged) | agent stopped by usage limit after F1–F6; lead finished verify + clippy | 6 (NaN not canonicalised at exports, quadratic IR verifier, locals limit above engine, ptr_count truncation, raw-ref exports, loop limit), 0 miscompilations | 2026-11-25, `bad1e94` |
-| 8.L Lowering | started 2026-11-25 21:32 | — | — | — | — |
+| 8.M Memory | (not logged) | (not logged) | (not logged) | see docs/stages (notes not archived) | 2026-11-25, `5a5929d` |
+| 8.L Lowering | ~2 h incl. a usage-limit stop | ~16 min | ~40 min | 10 (2 RC leaks, per-iteration loop bindings vs TS, null narrowing, deep-drop recursion, limits); 0 miscompilations in ~19.6k differential programs | 2026-11-26, `c792b4f` |
+| 8.D DevKit v0 | ~29 min | ~22 min | ~17 min | 17 (import root escape, write through symlink, /dev/zero and FIFO DoS, `needs` not enforced, workspace-controlled binary path) | 2026-11-26, `148b8e8` |
+| 8.W Websites step 1 | ~25 min + usage-limit stop | ~7 min | ~18 min | 12 (no CSP, stale-fix index, placeholder text published, DNS keep-list, contrast) | 2026-11-25, `0df8681` |
 
 **Wave 1 (7.1, 7.2, 8.C) closed 2026-11-25 12:5x.** Usage limits, not agent speed, set the pace: two pauses (2h10 and ~4h) in the first ~9 hours of wall-clock time.
 
