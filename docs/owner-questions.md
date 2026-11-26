@@ -34,8 +34,18 @@ Stan: 2026-11-26 wieczór. Otwarte zostały:
 - **Q-SAFE-4** Kto utrzyma kompilator za 5 lat. **Sugestia:** dokumentacja przejęcia (HANDOFF, roadmapy, persona), którą już prowadzimy.
 - **Q-PLAN-2** Próg fałszywych alarmów automatycznie wykrywanych „znaków” (8.S4). **Sugestia:** 5%, potem dostroić.
 
+## K. OxiPerf (benchmark wydajności; metodologia: docs/research/cross-language-benchmark-methodology.md, sekcja 8)
+
+- **Q-OP-1** Zatwierdzić metodologię jako zasady OxiPerf; żadnych liczb porównawczych na stronach przed „zamrożeniem”. **Sugestia:** tak.
+- **Q-OP-2** Z kim porównujemy w pierwszej wersji. **Sugestia (Opus):** tylko twój komputer; 6 programów z zestawu Are We Fast Yet z ich gotowymi, cudzymi wersjami w JS, Lua, Pythonie i C++ plus OxiScript i Rust; Raspberry Pi (C, wasmi, LuaJIT, Lua, CPython) w ramach 8.Mem; ESP32 później.
+- **Q-OP-3** Programy „fizyka 2D” i „mała sieć neuronowa” wspólne dla OxiPerf i SIMD/GPU, mnożenie macierzy i filtr obrazu później (z 8.3a). **Sugestia:** tak.
+- **Q-OP-4** Na czas pomiarów: procesor na stałej częstotliwości, wyłączone Turbo i zbędne usługi (skrypt włącza i przywraca). Na twoim komputerze tylko, gdy nie pracujesz. **Sugestia:** tak, przez skrypt, w nocy.
+- **Q-OP-5** Przeglądarka: najpierw tylko Chromium (automatycznie), Firefox i Safari później. **Sugestia:** tak.
+- **Q-OP-6** Analiza statystyczna w Ruście, bez Pythona. **Sugestia:** tak.
+- **Q-OP-7** Cotygodniowe alfy Speedup Lab: pokazywać szybkie pomiary z dopiskiem „alfa, niezamrożone”, a pełne pomiary tylko dla przyspieszeń przyjętych na stałe. **Sugestia:** tak.
+
 ## Do uzupełnienia przez twórcę
 
 - **Dedykacja in memoriam** na stronie domowej: tekst i imię nauczycielki (dziś puste miejsca; strona pokaże dedykację dopiero, gdy je wpiszesz).
 - **Raspberry Pi:** czyszczenie, karta z Raspberry Pi OS Lite 32-bit (potrzebny adapter microSD), SSH, adres w sieci, zgoda.
-- **OxiPerf Q-OP-1..7:** pojawią się po weryfikacji metodologii przez Opusa.
+
