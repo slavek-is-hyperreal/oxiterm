@@ -299,7 +299,7 @@ function widget(site, lang, id, b, ctx) {
 }
 
 // Run / Check / Format feedback texts of the playground (i18n keys under oxiscript.playground.*).
-const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
+const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'noMain', 'noMainStatus', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
   ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_bad_argument', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
 
 function playgroundHtml(site, lang, ctx) {

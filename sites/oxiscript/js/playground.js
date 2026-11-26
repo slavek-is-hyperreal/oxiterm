@@ -288,7 +288,8 @@ function finishRun(m) {
   }
   const lines = r.lines || [];
   const prefix = (l) => (l.level === 3 ? L.warning + ': ' : l.level >= 4 ? L.error + ': ' : '');
-  outEl.textContent = lines.length ? lines.slice(0, MAX_SHOWN_LINES).map((l) => prefix(l) + l.msg).join('\n') : L.outputEmpty;
+  outEl.textContent = lines.length ? lines.slice(0, MAX_SHOWN_LINES).map((l) => prefix(l) + l.msg).join('\n')
+    : r.noMain ? L.noMain.replace('{fns}', (r.exported || []).join(', ') || '-') : L.outputEmpty;
   const notes = [];
   if (lines.length > MAX_SHOWN_LINES) notes.push(L.moreLines.replace('{n}', lines.length - MAX_SHOWN_LINES));
   if (r.dropped > 0) notes.push(L.dropped.replace('{n}', r.dropped));
@@ -296,6 +297,8 @@ function finishRun(m) {
     const why = L['trap_' + r.stop.reason] || r.stop.detail;
     const msg = L.stoppedBecause.replace('{why}', why) + ' [' + r.stop.code + ']';
     notes.push(msg); say(msg);
+  } else if (r.noMain) {
+    say(L.noMainStatus);
   } else {
     say(L.ran.replace('{ms}', m.ms).replace('{fuel}', r.fuelUsed));
   }

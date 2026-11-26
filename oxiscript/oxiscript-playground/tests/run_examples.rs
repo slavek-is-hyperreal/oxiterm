@@ -103,3 +103,21 @@ fn state_capability_works_and_is_per_run() {
     assert_eq!(lines(&src), ["counter = 1", "counter = 2"]);
     assert_eq!(lines(&src), ["counter = 1", "counter = 2"], "state does not leak between runs");
 }
+
+#[test]
+fn a_module_without_main_says_nothing_ran() {
+    let v: Value = serde_json::from_str(&run_json(
+        "export function same(a: i32, b: i32): bool {\n  return a === b;\n}\n",
+        DEFAULT_FUEL,
+    ))
+    .unwrap();
+    assert_eq!(v["ok"], Value::Bool(true));
+    assert_eq!(v["noMain"], Value::Bool(true));
+    assert_eq!(v["exported"], serde_json::json!(["same"]));
+    let hello: Value = serde_json::from_str(&run_json(
+        "import { Log } from \"host:log\";\nexport function main(log: Log): void {\n  log.write(2, \"hi\");\n}\n",
+        DEFAULT_FUEL,
+    ))
+    .unwrap();
+    assert_eq!(hello["noMain"], Value::Bool(false));
+}

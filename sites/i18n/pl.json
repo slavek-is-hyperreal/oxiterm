@@ -871,6 +871,8 @@
       "stop": "Zatrzymaj",
       "outputTitle": "Wynik",
       "outputEmpty": "(program niczego nie wypisał)",
+      "noMain": "(nic się nie wykonało: program nie ma `export function main(log: Log)`, więc Run nie miał czego wywołać. Eksportowane funkcje: {fns}. Dodaj main, który je wywoła, jak w przykładzie Hello.)",
+      "noMainStatus": "Nic się nie wykonało: brak funkcji main.",
       "loadingRunner": "Ładowanie uruchamiacza (jednorazowo; Zatrzymaj przerywa)...",
       "running": "Uruchamiam...",
       "ran": "Zakończono po {ms} ms, zużyto instrukcji: {fuel}.",

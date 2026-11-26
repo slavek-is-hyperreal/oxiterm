@@ -871,6 +871,8 @@
       "stop": "Stop",
       "outputTitle": "Output",
       "outputEmpty": "(the program wrote nothing)",
+      "noMain": "(nothing ran: this program has no `export function main(log: Log)`, so Run had nothing to call. Exported functions: {fns}. Add a main that calls them, as in the Hello example.)",
+      "noMainStatus": "Nothing ran: no main function.",
       "loadingRunner": "Loading the runner (once; Stop cancels)...",
       "running": "Running...",
       "ran": "Finished in {ms} ms, {fuel} instructions used.",

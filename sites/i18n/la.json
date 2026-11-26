@@ -871,6 +871,8 @@
       "stop": "Siste",
       "outputTitle": "Exitus",
       "outputEmpty": "(programma nihil scripsit)",
+      "noMain": "(nihil actum est: programma `export function main(log: Log)` non habet, itaque Run nihil vocare potuit. Functiones exportatae: {fns}. Adde main quae eas vocet, ut in exemplo Hello.)",
+      "noMainStatus": "Nihil actum est: functio main deest.",
       "loadingRunner": "Cursor oneratur (semel; Siste interrumpit)...",
       "running": "Curro...",
       "ran": "Peractum post {ms} ms, instructiones usae: {fuel}.",
