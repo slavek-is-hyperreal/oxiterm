@@ -112,3 +112,15 @@ fn host_in_a_non_entry_module_is_rejected() {
     let n = c.diagnostics.iter().filter(|d| d.code == "OXS-E0121").count();
     assert_eq!(n, 1, "{:?}", c.diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>());
 }
+
+#[test]
+fn reserved_export_names_are_rejected() {
+    for n in ["main", "memory", "__heap_base", "__data_end", "oxi_init", "oxi_abi", "oxi_x"] {
+        let src = format!("@host @export_name(\"{n}\") export function f(): void {{}}{MAIN}");
+        assert_eq!(count(&src, "OXS-E0123"), 1, "{n}: {}", show(&src));
+    }
+    for n in ["step", "init", "oxi", "heap_base", "mainx"] {
+        let src = format!("@host @export_name(\"{n}\") export function f(): void {{}}{MAIN}");
+        assert!(codes(&src).is_empty(), "{n}: {}", show(&src));
+    }
+}

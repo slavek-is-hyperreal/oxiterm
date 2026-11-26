@@ -1,11 +1,11 @@
-/* OxiUI: terminal-flavoured. Monospace headings, green phosphor accent, prompt-style markers. */
-:root { --ctl: #556b88; --heading: var(--mono); --acc: #4ade80; --acc-fg: #03140a; --bg: #0b1220; --card: #101a2e; --line: #1e3a5f; --code-bg: #08101c; }
-@media (prefers-color-scheme: light) { :root { --ctl: #7a8987; --acc: #137536; --acc-fg: #ffffff; --bg: #f4f8f4; --card: #ffffff; --line: #b6c9bb; --code-bg: #e9f0ea; } }
+/* OxiUI: terminal flavoured. Monospace headings, rust cursor, patina prompt markers, hard-edged cells. */
+:root { --heading: var(--mono); }
 h1::before { content: "> "; color: var(--acc); }
-h2::before { content: "## "; color: var(--acc); font-weight: 400; }
-.brand::before { content: "$ "; color: var(--acc); }
+h2::before { content: "## "; color: var(--pat); font-weight: 400; }
+.brand::before { content: "$"; color: var(--acc); margin-right: -2px; }
+.brand::after { content: "_"; margin-left: -6px; color: var(--acc); }
 .card { border-radius: 2px; border-style: solid; box-shadow: 4px 4px 0 var(--line); }
 .btn { border-radius: 2px; font-family: var(--mono); }
 .demo-poster, .demo-frame, pre.code, .tablewrap { border-radius: 2px; }
 .hero h1 { letter-spacing: -0.02em; }
-.demo-poster { background-image: repeating-linear-gradient(0deg, transparent 0 3px, rgba(74, 222, 128, 0.04) 3px 4px); }
+.demo-poster { background-image: repeating-linear-gradient(0deg, transparent 0 3px, rgba(108, 195, 164, 0.05) 3px 4px); }

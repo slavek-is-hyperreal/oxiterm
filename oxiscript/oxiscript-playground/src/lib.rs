@@ -8,11 +8,10 @@
 //! Every range returned here is UTF-16 (`start`/`end`) plus 1-based line/column. Fixes are
 //! applied in Rust ([`apply_fix_json`]), never by the page, so byte offsets never leave this crate.
 //!
-//! # Compile + run (8.L, not yet)
-//! TODO(8.L): `compile(src) -> JSON { ok, diagnostics, wasm_len, manifest }` plus
-//! `compile_bytes(src) -> Uint8Array` once `oxiscript-lower` lands; the page then instantiates the
-//! module with the `log`/`state` host imports (see [`hosts_json`]) using the browser's own
-//! `WebAssembly` engine. Only `sites/oxiscript/js/playground.js` changes (search `TODO(8.L)`).
+//! # Compile + run (feature `run`, module `run`)
+//! `run_json(src, fuel)` compiles with `oxiscript-lower` and runs the module in `oxiscript-runtime`
+//! (wasmi, compiled into this wasm), so the browser worker and `oxi run` execute programs the same way
+//! with the same fuel limits. The page runs it in a Web Worker and terminates the worker on timeout.
 
 use oxiscript_abi::codes;
 use oxiscript_abi::idl::{self, Interface};
@@ -21,10 +20,13 @@ use oxiscript_syntax::{apply_edits, Diagnostic, FileId, LineIndex, TextEdit};
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "run")]
+pub mod run;
+
 /// Most source bytes the playground accepts (the page also caps its textarea).
 pub const MAX_SOURCE_BYTES: usize = 256 * 1024;
 
-fn host_interfaces() -> Vec<Interface> {
+pub(crate) fn host_interfaces() -> Vec<Interface> {
     let mut v = idl::parse(idl::EXAMPLE_LOG_IDL).unwrap_or_default();
     v.extend(idl::parse(idl::EXAMPLE_STATE_IDL).unwrap_or_default());
     v
@@ -37,7 +39,7 @@ fn options() -> CheckOptions {
 }
 
 /// Byte offset -> UTF-16 offset.
-fn utf16_at(src: &str, byte: usize) -> usize {
+pub(crate) fn utf16_at(src: &str, byte: usize) -> usize {
     let mut b = byte.min(src.len());
     while !src.is_char_boundary(b) {
         b -= 1;
@@ -261,6 +263,13 @@ pub fn apply_fix(
     )
 }
 /// `explain(code) -> JSON` (see [`explain_json`]).
+/// Compile and run `src` with at most `fuel` instructions; JSON, see `run::run_json`.
+#[cfg(feature = "run")]
+#[wasm_bindgen]
+pub fn run(src: &str, fuel: f64) -> String {
+    run::run_json(src, if fuel >= 1.0 { fuel as u64 } else { run::DEFAULT_FUEL })
+}
+
 #[wasm_bindgen]
 pub fn explain(code: &str) -> String {
     explain_json(code)

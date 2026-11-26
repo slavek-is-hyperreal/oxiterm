@@ -57,13 +57,25 @@ Do this once per site. Use **Direct Upload** (no Git integration needed):
 4. Optional: in the home project, a redirect `www.slavekm.pl` to `slavekm.pl` (Rules, Redirect Rules, `www` host, 301) so there is one canonical address; the pages already declare `<link rel="canonical">` to the bare domain.
 5. Keep the "no trackers" promise true: in the zone leave **Web Analytics** off (it injects a beacon script), keep **Email Address Obfuscation** and **Rocket Loader** off (both inject scripts), and do not enable Cloudflare "Browser Insights" for the Pages projects.
 
+## How the sites are actually deployed (2026-11-26)
+
+They run as **Cloudflare Workers with static assets** (not Pages projects): `oxiscript` (created from the dashboard), `oxiui` and later `slavekm-home` (created by wrangler). Configs: `sites/deploy/<site>.wrangler.jsonc` (assets directory, `404-page` handling, custom domain route). After `sites/build.sh`, one command per site (the owner logs in once with `npx wrangler@4 login`):
+
+```
+npx wrangler@4.86.0 deploy --config sites/deploy/oxiui.wrangler.jsonc
+npx wrangler@4.86.0 deploy --config sites/deploy/oxiscript.wrangler.jsonc
+npx wrangler@4.86.0 deploy --config sites/deploy/home.wrangler.jsonc
+```
+
+The custom domain route makes Cloudflare create the DNS record and certificate; it fails if an old `A`/`AAAA`/`CNAME` for that name still exists (delete only that record). `_headers` works the same for Workers static assets.
+
 ## Headers, MIME and caching (already in each `_headers`)
 
 - `*.wasm` is served as `application/wasm` (needed for streaming compilation).
 - `/assets/<hash>/*`, `/app/<hash>/*` and `/play/<hash>/*` are content-hashed and `immutable` for a year; HTML is `max-age=0, must-revalidate`, so a new deploy shows up at once and old wasm is never mixed with new JS.
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that denies camera, microphone, geolocation, sensors, payment, USB and display capture.
 - **Content-Security-Policy**, strict and without `'unsafe-inline'`: own origin only (`default-src 'self'`), no inline script or style, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'self'` (the pages can only be framed by themselves, e.g. the demo iframe). `'wasm-unsafe-eval'` is granted only to `/app/*` (the OxiUI client) and to the OxiScript playground page (`/` and `/pl/` of oxiscript). The copied 7.1 client keeps its script and style in hashed files under `/app/<hash>/`, so it uses the same strict policy plus `blob:` for media and workers.
-- **Cloudflare Pages merges the headers of every matching `_headers` rule**; two different CSPs on one path would both be enforced (their intersection). So the CSP is attached to explicit, non-overlapping paths (one rule per HTML page plus `/app/`), never to `/*`. `sites/check.mjs` fails if two different policies apply to a path. If you add a page, rebuild: `_headers` is generated.
+- **Cloudflare Pages merges the headers of every matching `_headers` rule** (same header name from several rules is joined, not replaced; recalled, not re-verified), so a path must match exactly one rule that sets `Cache-Control` (hashed directories get one explicit rule each, HTML pages their own revalidate rule; `check.mjs` enforces it); two different CSPs on one path would both be enforced (their intersection). So the CSP is attached to explicit, non-overlapping paths (one rule per HTML page plus `/app/`), never to `/*`. `sites/check.mjs` fails if two different policies apply to a path. If you add a page, rebuild: `_headers` is generated.
 - `sites/test/csp_browser.mjs` serves `dist/` with these rules applied and opens every page, the live demo and the playground in headless Chromium (needs `playwright-core`, set `PLAYWRIGHT_CORE`); it fails on any CSP violation or console error.
 
 ### HSTS (one switch in Cloudflare, after the sites work over HTTPS)
@@ -78,5 +90,5 @@ Not a `_headers` line: set it in the dashboard, zone `slavekm.pl`, **SSL/TLS, Ed
 
 ## What changes later
 
-- 8.L: enable the Run button (`sites/oxiscript/js/playground.js`, search `TODO(8.L)`) and add `compile`/`compile_bytes` to `oxiscript/oxiscript-playground/src/lib.rs`; no page structure changes.
+- Run is live: the page loads a second wasm bundle (`/play/<hash>/oxiscript_runner*`, built by `sites/build.sh` with the `run` feature of `oxiscript-playground`) inside a Web Worker (`/assets/<hash>/runner-worker.js`, same origin, covered by the page CSP) on the first press of Run. No CSP change was needed.
 - Latin: see above. Course lessons: add them to `sites/i18n/<lang>.json` (one file per language, no strings elsewhere).

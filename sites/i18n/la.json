@@ -525,7 +525,8 @@
             "items": [
               "Analysator, formator et examinator typorum (idem codex quem supra adhibes, in WebAssembly compilatus).",
               "Index stabilis codicum errorum, quisque cum explicatione et saepe cum remedio mechanico.",
-              "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important."
+              "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important.",
+              "**Programmata currere.** Curre programma compilat et in pervagatore currit, in opere separato, cum termino instructionum (combustibilis) et termino temporis quinque secundorum; `log` et `state` praesto sunt (`state` in memoria unius cursus manet). Exitus apparet cum programma sistit."
             ]
           },
           {
@@ -535,7 +536,7 @@
           {
             "t": "ul",
             "items": [
-              "**Programmata currere.** Generator codicis exstat, sed gradus inferendi, qui examinatorem cum eo coniungit, adhuc exstruitur. Bulla Curre interim inhabilis est.",
+              "**Fines Curre.** `f64` nondum in textum converti potest (prius in integrum converte), aliae interfaces hospitis in palaestra non praesto sunt, et nihil inter cursus neque inter renovationes paginae servatur.",
               "Bibliotheca communis, fasciculi, servus linguae, instrumenta. Omnia destinata, nihil paratum."
             ]
           },
@@ -642,7 +643,7 @@
           {
             "t": "ul",
             "items": [
-              "Programmata nondum currere potest. TypeScript potest.",
+              "Ambitus eius iuvenis est: programmata interpretantur sub termino combustibilis et `f64` scribere nondum sustinetur. Machinae TypeScript maturae et celeres sunt.",
               "Npm non est. Nullum ecosystema, bibliotheca communis minima, nulla `async` (reservata, non exstructa).",
               "Nullum `any`, nullum `eval`, nullae res dynamicae. Hoc consilium est, sed etiam sumptus cum JavaScript transfertur.",
               "Identificatores ASCII tantum in praesentia.",
@@ -709,7 +710,7 @@
           },
           {
             "t": "h2",
-            "x": "Status qui renovationem superat"
+            "x": "Status per facultatem hospitis"
           },
           {
             "t": "code",
@@ -759,7 +760,7 @@
           },
           {
             "t": "note",
-            "x": "Nondum exstructum. Lectiones bulla Curre egent, quae gradum inferendi exspectat."
+            "x": "Nondum exstructum. Bulla Curre iam in palaestra operatur; lectiones et aestimatio adhuc scribendae sunt."
           }
         ]
       },
@@ -798,7 +799,7 @@
       "check": "Examina",
       "format": "Forma",
       "run": "Curre",
-      "runSoon": "Curre: mox, cum 8.L (gradu inferendi).",
+      "runNote": "Curre programma compilat et hic in pervagatore currit, cum termino instructionum et termino temporis quinque secundorum.",
       "examples": "Exemplum:",
       "apply": "Remedium adhibe",
       "explain": "Explica {code}",
@@ -822,7 +823,46 @@
       "discardAsk": "Mutationes tuas exemplo {name} substituere?  Mutationes in editore peribunt.",
       "discard": "Substitue",
       "keepEditing": "Pergere edere",
-      "compilerEnglish": "Nuntii compilatoris Anglice sunt."
+      "compilerEnglish": "Nuntii compilatoris Anglice sunt.",
+      "stop": "Siste",
+      "outputTitle": "Exitus",
+      "outputEmpty": "(programma nihil scripsit)",
+      "loadingRunner": "Cursor oneratur (semel; Siste interrumpit)...",
+      "running": "Curro...",
+      "ran": "Peractum post {ms} ms, instructiones usae: {fuel}.",
+      "stopped": "Sistitum est.",
+      "timeout": "Sistitum post {s} s: programma nimis diu cucurrit. Orbis sine fine?",
+      "bigInput": "Textus longus: numeri linearum et notae errorum primis {n} lineis tantum monstrantur. Probatio et cursus totum textum adhibent.",
+      "loadTimeout": "Cursor intra {s} s non est onustus (nexus tardus?). Preme Curre ut iterum temptes.",
+      "stoppedBecause": "Programma restitit: {why}",
+      "dropped": "Lineae ulteriores non ostensae: {n} (terminus exitus).",
+      "moreLines": "... lineae ulteriores non ostensae: {n}.",
+      "runFailed": "Cursor incipere non potuit. Paginam renova.",
+      "cannotRun": "Non cursum est: programma vitia habet. Prius corrige.",
+      "checkedOk": "✓ Nulla vitia (examinatum {time})",
+      "checkedProblems": "Vitia: {n} (examinatum {time})",
+      "formatSame": "Iam formatum, nihil mutatum ({time})",
+      "formatChanged": "Formatum: lineae mutatae: {n} ({time})",
+      "hint": "Monitum: elige {name}, ut errores et remedia uno ictu videas.",
+      "trap_overflow": "numerus integer modum excessit (utere `+%` ad circumvolvendum aut `+|` ad saturandum)",
+      "trap_div_by_zero": "divisio per nihil",
+      "trap_bounds": "index extra seriem vel textum",
+      "trap_bad_cast": "conversio inspecta defecit",
+      "trap_null_deref": "valor null adhibitus est",
+      "trap_out_of_memory": "memoria programmatis defecit",
+      "trap_assert": "adfirmatio defecit",
+      "trap_bad_utf8": "textus UTF-8 vitiosus",
+      "trap_panic": "programma panic vocavit",
+      "trap_unreachable": "programma ad codicem pervenit qui nondum currere potest (exempli gratia `f64` in textum conversus non sustinetur)",
+      "trap_out_of_fuel": "terminus instructionum attactus est (orbis sine fine?)",
+      "trap_stack_overflow": "acervus vocationum nimis altus (recursio sine fine?)",
+      "trap_memory_bounds": "accessus memoriae extra fines",
+      "trap_host_denied": "programma facultate usum est quae data non erat",
+      "trap_host_bad_argument": "programma argumentum dedit quod functio hospitis non accipit (exempli gratia nuntium aut clavem status ultra 64 KiB)",
+      "trap_host_error": "functio hospitis defecit",
+      "trap_rejected": "ambitus modulum compilatum reiecit",
+      "trap_limit": "terminus ambitus attactus est",
+      "trap_engine": "ambitus programma sistit"
     },
     "course": {
       "levels": [

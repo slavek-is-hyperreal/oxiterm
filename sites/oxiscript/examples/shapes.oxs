@@ -1,3 +1,5 @@
+import { Log } from "host:log";
+
 type Shape = { kind: "circle"; r: f64 } | { kind: "rect"; w: f64; h: f64 };
 
 export function area(s: Shape): f64 {
@@ -7,4 +9,11 @@ export function area(s: Shape): f64 {
     case "rect":
       return s.w * s.h;
   }
+}
+
+export function main(log: Log): void {
+  const circle: Shape = { kind: "circle", r: 2.0 };
+  const rect: Shape = { kind: "rect", w: 3.0, h: 4.5 };
+  log.write(2, `circle area x100 = ${(area(circle) * 100.0) as i32}`);
+  log.write(2, `rect area x100 = ${(area(rect) * 100.0) as i32}`);
 }

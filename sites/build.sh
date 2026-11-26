@@ -18,15 +18,20 @@ if [[ "$MODE" != "--pages" ]]; then
   # 1. OxiUI local-mode bundle (7.1): the core + painter + fonts, running in the browser.
   wasm-pack build --target web --release --out-dir "$PKG/pkg_local" --out-name oxiterm_local \
     oxiterm-web -- --features local
-  # 2. OxiScript playground: checker + formatter. Size-optimised per invocation (the workspace has no
+  # 2. OxiScript playground: checker + formatter (no `run` feature: the page loads this at once). Size-optimised per invocation (the workspace has no
   # wasm release profile and the root Cargo.toml is not ours to edit).
   CARGO_PROFILE_RELEASE_OPT_LEVEL=z CARGO_PROFILE_RELEASE_LTO=true \
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort \
     wasm-pack build --target web --release --out-dir "$PKG/pkg_play" --out-name oxiscript_playground \
+    oxiscript/oxiscript-playground -- --no-default-features
+  # 3. OxiScript runner (feature `run`: + lowering + the wasmi runtime). Loaded by a Web Worker on the first Run.
+  CARGO_PROFILE_RELEASE_OPT_LEVEL=z CARGO_PROFILE_RELEASE_LTO=true \
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort \
+    wasm-pack build --target web --release --out-dir "$PKG/pkg_run" --out-name oxiscript_runner \
     oxiscript/oxiscript-playground
 fi
 
-export OXI_LOCAL_PKG="$PKG/pkg_local" OXI_PLAY_PKG="$PKG/pkg_play"
+export OXI_LOCAL_PKG="$PKG/pkg_local" OXI_PLAY_PKG="$PKG/pkg_play" OXI_RUN_PKG="$PKG/pkg_run"
 node sites/build.mjs
 node sites/check.mjs
 

@@ -16,6 +16,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { demoThtml as demoTemplate } from './demo-thtml.mjs';
+import { asciiHtml, asciiThtml } from './shared/brand/oxi-ascii.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -48,11 +49,10 @@ const SITES = {
   oxiscript: { pages: ['index', 'ts', 'tour', 'course', 'roadmap'] },
 };
 const GALLERY = ['counter', 'state', 'input', 'todo', 'styles', 'showcase'];
-const PALETTE = {
-  home: { bg: '#1c1917', acc: '#fbbf24', card: '#292524', line: '#57534e' },
-  oxiui: { bg: '#0b1220', acc: '#4ade80', card: '#111c30', line: '#1e3a5f' },
-  oxiscript: { bg: '#0f1020', acc: '#a78bfa', card: '#1a1b36', line: '#3b3d73' },
-};
+// Identity palette: one JSON shared with sites/test/bad_actor_contrast.mjs (the CSS tokens are checked there too).
+const BRAND = JSON.parse(fs.readFileSync(path.join(HERE, 'shared/brand/palette.json'), 'utf8'));
+const PALETTE = Object.fromEntries(['home', 'oxiui', 'oxiscript'].map((s) => [s, { ...BRAND.text, ...BRAND[s] }]));
+const BRAND_FILES = ['oxi-cell-home.svg', 'oxi-cell-oxiui.svg', 'oxi-cell-oxiscript.svg', 'oxi-axolotl.svg', 'oxi-axolotl-small.svg'];
 
 // ---------------------------------------------------------------- i18n
 const I18N = {};
@@ -245,28 +245,40 @@ function widget(site, lang, id, b, ctx) {
   }
 }
 
+// Run / Check / Format feedback texts of the playground (i18n keys under oxiscript.playground.*).
+const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
+  ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_bad_argument', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
+
 function playgroundHtml(site, lang, ctx) {
   const labels = {};
-  for (const k of ['check', 'format', 'run', 'runSoon', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes', 'staleFix', 'fixFailed', 'tooLargeTitle', 'tooLarge', 'discardAsk', 'discard', 'keepEditing']) labels[k] = T(lang, `oxiscript.playground.${k}`);
+  for (const k of ['check', 'format', 'run', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes', 'staleFix', 'fixFailed', 'tooLargeTitle', 'tooLarge', 'discardAsk', 'discard', 'keepEditing', ...PG_RUN_KEYS]) labels[k] = T(lang, `oxiscript.playground.${k}`);
   const compilerEnglish = T(lang, 'oxiscript.playground.compilerEnglish'); // empty on the English page
   const examples = fs.readdirSync(path.join(HERE, 'oxiscript/examples')).filter((f) => f.endsWith('.oxs')).sort().map((f) => ({ id: f.replace(/\.oxs$/, ''), src: read(path.join(HERE, 'oxiscript/examples', f)) }));
   const json = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
-  return `<section class="pg" id="playground" data-wasm="${ctx.playJs}" aria-labelledby="pg-h">
+  return `<section class="pg" id="playground" data-wasm="${ctx.playJs}" data-runner="${ctx.runnerJs}" data-worker="${ctx.workerJs}" aria-labelledby="pg-h">
 <h2 id="pg-h">${esc(T(lang, 'oxiscript.playground.title'))}</h2>
 <div class="pg-bar">
 <label>${esc(labels.examples)} <select id="pg-ex"></select></label>
 <button type="button" class="btn" id="pg-check" disabled>${esc(labels.check)}</button>
 <button type="button" class="btn" id="pg-format" disabled>${esc(labels.format)}</button>
 <button type="button" class="btn" id="pg-run" disabled aria-describedby="pg-run-note">${esc(labels.run)}</button>
-<span class="note" id="pg-run-note">${esc(labels.runSoon)}</span>
+<button type="button" class="btn" id="pg-stop" hidden>${esc(labels.stop)}</button>
+<span class="pg-status" id="pg-status" role="status" aria-live="polite">${esc(labels.loading)}</span>
+</div>
+<p class="note" id="pg-run-note">${esc(labels.runNote)}</p>
+<p class="note" id="pg-hint" hidden></p>
+<p class="pg-confirm" id="pg-confirm" role="alert" hidden></p>
+<div class="pg-output" id="pg-output" hidden>
+<h3>${esc(labels.outputTitle)}</h3>
+<pre class="code" id="pg-out" tabindex="0"></pre>
+<p class="note" id="pg-out-note"></p>
 </div>
 <div class="pg-editor">
 <pre class="pg-gutter" id="pg-gutter" aria-hidden="true">1</pre>
 <div class="pg-pane"><div class="pg-mirror" id="pg-mirror" aria-hidden="true"></div>
 <textarea id="pg-src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" maxlength="200000" aria-label="${esc(labels.sourceLabel)}"></textarea></div>
 </div>
-<p class="pg-confirm" id="pg-confirm" role="alert" hidden></p>
-<p class="pg-status" id="pg-status" role="status">${esc(labels.loading)}</p>
+<p class="note" id="pg-big" hidden></p>
 ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 <ul class="pg-diags" id="pg-diags"></ul>
 <div class="pg-explain" id="pg-explain" hidden></div>
@@ -276,8 +288,9 @@ ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 }
 
 // ---------------------------------------------------------------- page chrome
-const faviconSvg = (acc, glyph) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#111"/><text x="16" y="23" font-size="20" font-family="monospace" font-weight="700" text-anchor="middle" fill="${acc}">${glyph}</text></svg>`)}`;
-const GLYPH = { home: 's', oxiui: '>_', oxiscript: '{}' };
+// Brand: the "Oxi cell" marks (favicon + header) and Oxi the axolotl are hand-written SVG files in sites/shared/brand,
+// copied to a content-hashed directory (ctx.brand) so they cache immutably. Used through <img>: no inline SVG, no CSS needed.
+const brandImg = (ctx, file, cls, w, h) => `<img class="${cls}" src="${ctx.brand}/${file}" width="${w}" height="${h}" alt="">`;
 
 function layout(site, lang, id, page, ctx) {
   const t = (k) => T(lang, k);
@@ -289,7 +302,11 @@ function layout(site, lang, id, page, ctx) {
   const langs = LANGS.map((l) => `<a href="${pagePath(l, id)}" hreflang="${I18N[l].meta.htmlLang}" lang="${I18N[l].meta.htmlLang}"${l === lang ? ' aria-current="true"' : ''} title="${esc(I18N[l].meta.name)}">${esc(I18N[l].meta.short)}</a>`).join('');
   const hreflangs = LANGS.map((l) => `<link rel="alternate" hreflang="${I18N[l].meta.htmlLang}" href="${urlFor(l)}">`).join('') + `<link rel="alternate" hreflang="x-default" href="${urlFor('en')}">`;
   const draft = isDraft(lang) ? `<p class="draft" role="note">${esc(t('common.draft'))}</p>` : '';
-  const hero = page.hero ? `<header class="hero"><p class="eyebrow">${esc(t(`common.sites.${site}`))}</p><h1>${inline(site, lang, page.hero.title)}</h1><p class="lead">${inline(site, lang, page.hero.lead)}</p></header>` : `<h1>${esc(page.h1 || page.title)}</h1>${page.lead ? `<p class="lead">${inline(site, lang, page.lead)}</p>` : ''}`;
+  // Oxi in the hero corner: ASCII on the terminal-flavoured OxiUI site, the vector axolotl elsewhere (small head on phones).
+  const heroArt = site === 'oxiui'
+    ? `<pre class="oxi-ascii" aria-hidden="true">${asciiHtml()}</pre>`
+    : `<picture><source media="(max-width: 599px)" srcset="${ctx.brand}/oxi-axolotl-small.svg">${brandImg(ctx, 'oxi-axolotl.svg', '', 240, 190)}</picture>`;
+  const hero = page.hero ? `<header class="hero"><div class="hero-text"><p class="eyebrow">${esc(t(`common.sites.${site}`))}</p><h1>${inline(site, lang, page.hero.title)}</h1><p class="lead">${inline(site, lang, page.hero.lead)}</p></div><div class="hero-art${site === 'oxiui' ? ' ascii' : ''}" aria-hidden="true">${heroArt}</div></header>` : `<h1>${esc(page.h1 || page.title)}</h1>${page.lead ? `<p class="lead">${inline(site, lang, page.lead)}</p>` : ''}${ctx.is404 ? brandImg(ctx, 'oxi-axolotl.svg', 'notfound-oxi', 240, 190) : ''}`;
   const body = (page.blocks || []).filter(blockOn).map((b) => renderBlock(site, lang, b, ctx)).join('\n');
   const viewLink = `<a class="viewlink" href="/app/?local=1&amp;page=${lang}/${id}.thtml" title="${esc(t('common.viewInOxiuiTitle'))}">${esc(t('common.viewInOxiui'))}</a>`;
   const title = id === 'index' ? `${t(`common.sites.${site}`)}: ${page.title}` : `${page.title} · ${t(`common.sites.${site}`)}`;
@@ -302,10 +319,11 @@ ${ctx.is404 ? META_CSP + '\n' : ''}<meta name="viewport" content="width=device-w
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(page.desc || t(`${site}.pages.index.desc`))}">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="${pal.bg}">
+<meta name="theme-color" content="${pal.bg}" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="${pal.lbg}" media="(prefers-color-scheme: light)">
 <link rel="canonical" href="${urlFor(lang)}">
 ${hreflangs}
-<link rel="icon" href="${faviconSvg(pal.acc, GLYPH[site])}">
+<link rel="icon" type="image/svg+xml" href="${ctx.brand}/oxi-cell-${site}.svg">
 <link rel="stylesheet" href="/assets/${ctx.cssHash}/site.css">
 <meta property="og:title" content="${esc(title)}"><meta property="og:type" content="website"><meta property="og:url" content="${urlFor(lang)}">
 </head>
@@ -313,7 +331,7 @@ ${hreflangs}
 <a class="skip" href="#main">${esc(t('common.skip'))}</a>
 <header class="top">
 <nav class="bar projects" aria-label="${esc(t('common.projects'))}"><div class="wrap"><span class="bar-label">${esc(t('common.projects'))}:</span> ${projects}<span class="spacer"></span><nav class="lang" aria-label="${esc(t('common.language'))}">${langs}</nav></div></nav>
-<div class="bar"><div class="wrap"><a class="brand" href="${pagePath(lang, 'index')}">${esc(t(`common.sites.${site}`))}</a><nav class="main" aria-label="${esc(t('common.menu'))}">${nav}</nav></div></div>
+<div class="bar"><div class="wrap"><a class="brand" href="${pagePath(lang, 'index')}">${brandImg(ctx, `oxi-cell-${site}.svg`, 'mark', 28, 28)}<span>${esc(t(`common.sites.${site}`))}</span></a><nav class="main" aria-label="${esc(t('common.menu'))}">${nav}</nav></div></div>
 </header>
 <main id="main" class="wrap">
 ${draft}
@@ -326,7 +344,7 @@ ${body}
 <section><h2>${esc(t('common.support'))}</h2><p>${esc(t('common.supportText'))}</p><p><a class="btn primary" href="${SUPPORT_URL}" rel="noopener">${esc(t('common.supportButton'))}</a></p></section>
 <section><h2>${esc(t('common.projects'))}</h2><p class="foot-links">${projects}<a href="${REPO_URL}" rel="noopener">${esc(t('common.repo'))}</a></p><p>${viewLink}</p></section>
 </div>
-<p class="fine">${esc(t('common.footerFine'))}</p>
+<p class="fine foot-oxi">${brandImg(ctx, 'oxi-axolotl-small.svg', '', 56, 49)}<span>${esc(t('common.footerFine'))}</span></p>
 </div></footer>
 <script src="/assets/${ctx.jsHash}/site.js" defer></script>
 ${ctx.extraScript || ''}
@@ -349,22 +367,25 @@ function thtmlPage(site, lang, id, page, mobile) {
     ? SITES[site].pages.map((p) => `<text class="navi${p === id ? ' cur' : ''}" event-htmx="${p}.thtml"> ${tx(t(`${site}.nav.${p}`))} </text>`).join('')
     : '';
   out.push(`<style>
-text { fg: #e2e8f0; }
+text { fg: ${pal.fg}; }
 .brand { fg: ${pal.acc}; height: 1; margin-right: 3; }
 .h1 { fg: ${pal.acc}; wrap: word; margin-top: 1; }
-.h2 { fg: ${pal.acc}; wrap: word; margin-top: 1; }
-.p { fg: #e2e8f0; wrap: word; margin-top: 1; }
-.dim { fg: #94a3b8; wrap: word; margin-top: 1; }
-.navi { fg: #94a3b8; height: 1; margin-right: 2; }
+.h2 { fg: ${pal.pat}; wrap: word; margin-top: 1; }
+.p { fg: ${pal.fg}; wrap: word; margin-top: 1; }
+.dim { fg: ${pal.muted}; wrap: word; margin-top: 1; }
+.navi { fg: ${pal.muted}; height: 1; margin-right: 2; }
 .cur { fg: ${pal.acc}; }
 .card { border-style: rounded; border-color: ${pal.line}; padding-left: 1; padding-right: 1; flex-direction: column; margin-top: 1; }
 .btn { border-style: single; border-color: ${pal.acc}; fg: ${pal.acc}; padding-left: 1; padding-right: 1; height: 3; align-items: center; margin-top: 1; }
-.code { fg: #86efac; height: 1; }
+.code { fg: ${pal.pat}; height: 1; }
+.ox-g { fg: ${pal.acc}; height: 1; }
+.ox-b { fg: ${pal.coral}; height: 1; }
 @media (render: gui) { .page-sans { font-family: sans-serif; } }
 .mono { font-family: monospace; }
 </style>
 <box class="page-sans" style="flex-direction: column; width: ${W}; bg: ${pal.bg}; padding: 1;">`);
   out.push(`  <box style="flex-direction: ${mobile ? 'column' : 'row'};${mobile ? '' : ' height: 1;'}"><text class="brand">${tx(t(`common.sites.${site}`))}  </text>${navRow}</box>`);
+  if (id === 'index') out.push(`  <box style="flex-direction: column; margin-top: 1; width: 34;">\n${asciiThtml()}\n  </box>`);
   const hero = page.hero;
   textL('h1', hero ? hero.title : page.h1 || page.title);
   if (hero) textL('p', plain(hero.lead));
@@ -496,6 +517,10 @@ function buildSite(site) {
   ctx.cssHash = hashOf(css); ctx.jsHash = hashOf(js);
   write(path.join(out, 'assets', ctx.cssHash, 'site.css'), css);
   write(path.join(out, 'assets', ctx.jsHash, 'site.js'), js);
+  const brandFiles = BRAND_FILES.map((f) => [f, read(path.join(HERE, 'shared/brand', f))]);
+  const bh = hashOf(brandFiles.map(([f, s]) => f + s).join('\n'));
+  ctx.brand = `/assets/${bh}/brand`;
+  for (const [f, s] of brandFiles) write(path.join(out, 'assets', bh, 'brand', f), s);
 
   // OxiUI local-mode app (every site can show "view this page in OxiUI")
   const localPkg = process.env.OXI_LOCAL_PKG || path.join(HERE, '.build/pkg_local');
@@ -524,6 +549,14 @@ function buildSite(site) {
     if (!playPkg) throw new Error('OXI_PLAY_PKG not set');
     const hash = copyBundle(playPkg, path.join(out, 'play'), ['oxiscript_playground.js', 'oxiscript_playground_bg.wasm']);
     ctx.playJs = `/play/${hash}/oxiscript_playground.js`;
+    // The runner (compiler + wasmi runtime, a few hundred KB more) is loaded by a Web Worker only when Run is first pressed.
+    const runPkg = process.env.OXI_RUN_PKG || path.join(HERE, '.build/pkg_run');
+    const rhash = copyBundle(runPkg, path.join(out, 'play'), ['oxiscript_runner.js', 'oxiscript_runner_bg.wasm']);
+    ctx.runnerJs = `/play/${rhash}/oxiscript_runner.js`;
+    const wjs = read(path.join(HERE, 'oxiscript/js/runner-worker.js'));
+    const wh = hashOf(wjs);
+    write(path.join(out, 'assets', wh, 'runner-worker.js'), wjs);
+    ctx.workerJs = `/assets/${wh}/runner-worker.js`;
     const pjs = read(path.join(HERE, 'oxiscript/js/playground.js'));
     const ph = hashOf(pjs);
     write(path.join(out, 'assets', ph, 'playground.js'), pjs);
@@ -545,7 +578,7 @@ function buildSite(site) {
   write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: T('en', 'common.notFound.title'), h1: T('en', 'common.notFound.title'), lead: LANGS.map((l) => T(l, 'common.notFound.lead')).join(' / '), blocks: [{ t: 'links', items: [{ label: LANGS.map((l) => T(l, 'common.notFound.home')).join(' / '), href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '', is404: true }));
   write(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${ORIGIN[site]}/sitemap.xml\n`);
   write(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
-  write(path.join(out, '_headers'), headers([...LANGS.flatMap((lang) => SITES[site].pages.map((id) => ({ p: pagePath(lang, id), wasm: site === 'oxiscript' && id === 'index' }))), { p: '/404.html', wasm: false }]));
+  write(path.join(out, '_headers'), headers([...LANGS.flatMap((lang) => SITES[site].pages.map((id) => ({ p: pagePath(lang, id), wasm: site === 'oxiscript' && id === 'index' }))), { p: '/404.html', wasm: false }], out, ctx.workerJs));
   return out;
 }
 
@@ -561,9 +594,44 @@ const META_CSP = `<meta http-equiv="Content-Security-Policy" content="${cspPage(
 // media layer / canvas helpers. Still no inline script or style, no remote origins.
 const cspApp = () => [...CSP_BASE.map((d) => (d.startsWith('img-src') ? "img-src 'self' data: blob:" : d)), "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self'", "media-src 'self' blob:", "worker-src 'self' blob:"].join('; ');
 
-function headers(htmlPaths) {
-  const pageRules = htmlPaths.map(({ p, wasm }) => `${p}\n  Content-Security-Policy: ${cspPage(wasm)}\n`).join('\n');
-  return `# Cloudflare Pages headers (see sites/DEPLOY.md). Rules MERGE: do not add a second Content-Security-Policy to a path.
+// Cache-Control (same discipline as the CSP: Cloudflare Pages does NOT let a later rule replace an earlier one, the
+// values of every matching rule for the same header name are JOINED with a comma; so a hashed file must match exactly one
+// rule that sets Cache-Control). Hashed directories get one explicit rule each (`/app/<hash>/*`, `/play/<hash>/*`,
+// `/assets/<hash>/*`: immutable); every unhashed entry point (HTML, /app/, pages.json, licenses) gets its own non-overlapping
+// rule (`max-age=0, must-revalidate`). No broad `/app/*` or `/assets/*` rule sets Cache-Control. sites/check.mjs enforces it.
+const CC_IMMUTABLE = 'public, max-age=31536000, immutable';
+const CC_REVALIDATE = 'public, max-age=0, must-revalidate';
+// The worker script runs the visitor's program, so its own response carries a policy (workers use the CSP of their script):
+// it may load itself, the runner module and the runner wasm, and nothing else.
+const cspWorker = () => ["default-src 'none'", "script-src 'self' 'wasm-unsafe-eval'", "connect-src 'self'"].join('; ');
+
+function headers(htmlPaths, out, workerPath) {
+  const pageRules = htmlPaths.map(({ p, wasm }) => `${p}\n  Content-Security-Policy: ${cspPage(wasm)}\n  Cache-Control: ${CC_REVALIDATE}\n`).join('\n');
+  const hashed = [];
+  for (const top of ['app', 'play', 'assets']) {
+    const d = path.join(out, top);
+    if (!fs.existsSync(d)) continue;
+    for (const n of fs.readdirSync(d).sort()) if (/^[0-9a-f]{10}$/.test(n) && fs.statSync(path.join(d, n)).isDirectory()) hashed.push(`/${top}/${n}/*`);
+  }
+  const hasApp = fs.existsSync(path.join(out, 'app/index.html'));
+  const appRules = hasApp ? `/app/
+  Content-Security-Policy: ${cspApp()}
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/index.html
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/licenses/*
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/pages.json
+  Cache-Control: public, max-age=300, must-revalidate
+
+/app/*
+  Content-Security-Policy: ${cspApp()}
+
+` : '';
+  return `# Cloudflare Pages headers (see sites/DEPLOY.md). Rules MERGE (same header name from several rules is JOINED): never give a path a second Content-Security-Policy or a second Cache-Control.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -571,29 +639,17 @@ function headers(htmlPaths) {
 
 # One CSP per HTML page (strict: no inline script or style, own origin only; 'wasm-unsafe-eval' only on the playground page)
 ${pageRules}
-/app/
-  Content-Security-Policy: ${cspApp()}
+${appRules}${workerPath ? `# the playground runner worker script (defence in depth)
+${workerPath}
+  Content-Security-Policy: ${cspWorker()}
 
-/app/*
-  Content-Security-Policy: ${cspApp()}
-
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/app/*/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/play/*
-  Cache-Control: public, max-age=31536000, immutable
-
+` : ''}# Content-hashed, never changes: one explicit rule per hashed directory
+${hashed.map((h) => `${h}\n  Cache-Control: ${CC_IMMUTABLE}\n`).join('\n')}
 /app/*.wasm
   Content-Type: application/wasm
 
 /play/*.wasm
   Content-Type: application/wasm
-
-/app/pages.json
-  Cache-Control: public, max-age=300, must-revalidate
 `;
 }
 

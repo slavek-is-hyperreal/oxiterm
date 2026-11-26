@@ -1,0 +1,13 @@
+// Cloudflare Worker with static assets for oxiui.slavekm.pl. Deploy (after sites/build.sh):
+//   npx wrangler@4.86.0 deploy --config sites/deploy/oxiui.wrangler.jsonc
+{
+  "name": "oxiui",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "../dist/oxiui",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  "workers_dev": true,
+  "routes": [{ "pattern": "oxiui.slavekm.pl", "custom_domain": true }]
+}
