@@ -28,67 +28,433 @@ export function last<T>(xs: T[]): T | null {
   return xs[xs.length - 1];
 }
 
-// Stable bottom-up merge sort with a fixed, deterministic comparison sequence.
+// Inner passes take immutable array parameters (`src`, `dst`, `counts`) so the
+// lowering borrows them without emitting per-access retain/release calls.
+
+function mergePassBy<T>(src: T[], dst: T[], n: i32, width: i32, cmp: (a: T, b: T) => i32): void {
+  let lo: i32 = 0;
+  const step = width *% 2;
+  while (lo < n) {
+    const mid = (lo + width < n) ? lo + width : n;
+    const hi = (lo + step < n) ? lo + step : n;
+    let i = lo;
+    let j = mid;
+    let k = lo;
+    if (i < mid && j < hi) {
+      let a = src[i];
+      let b = src[j];
+      while (true) {
+        if (cmp(a, b) <= 0) {
+          dst[k] = a;
+          i = i +% 1;
+          k = k +% 1;
+          if (i >= mid) {
+            break;
+          }
+          a = src[i];
+        } else {
+          dst[k] = b;
+          j = j +% 1;
+          k = k +% 1;
+          if (j >= hi) {
+            break;
+          }
+          b = src[j];
+        }
+      }
+    }
+    while (i < mid) {
+      dst[k] = src[i];
+      i = i +% 1;
+      k = k +% 1;
+    }
+    while (j < hi) {
+      dst[k] = src[j];
+      j = j +% 1;
+      k = k +% 1;
+    }
+    lo = lo +% step;
+  }
+}
+
+function insertionRunsBy<T>(arr: T[], n: i32, cmp: (a: T, b: T) => i32): void {
+  let runStart: i32 = 0;
+  while (runStart < n) {
+    const runEnd = (runStart + 16 < n) ? runStart + 16 : n;
+    let idx = runStart +% 1;
+    while (idx < runEnd) {
+      const key = arr[idx];
+      let j = idx;
+      while (j > runStart && cmp(arr[j - 1], key) > 0) {
+        arr[j] = arr[j - 1];
+        j = j -% 1;
+      }
+      arr[j] = key;
+      idx = idx +% 1;
+    }
+    runStart = runStart +% 16;
+  }
+}
+
+// Stable bottom-up merge sort with 16-element insertion-sort runs and a fixed,
+// deterministic comparison sequence.
 export function sortBy<T>(xs: T[], cmp: (a: T, b: T) => i32): T[] {
   const n = xs.length;
   if (n <= 1) {
     return xs.slice(0, n);
   }
   let src: T[] = xs.slice(0, n);
-  let dst: T[] = xs.slice(0, n);
-  let width: i32 = 1;
+  insertionRunsBy(src, n, cmp);
+  if (n <= 16) {
+    return src;
+  }
+  let dst: T[] = src.slice(0, n);
+  let width: i32 = 16;
   while (width < n) {
-    let lo: i32 = 0;
-    while (lo < n) {
-      const mid = (lo + width < n) ? lo + width : n;
-      const hi = (lo + width * 2 < n) ? lo + width * 2 : n;
-      let i = lo;
-      let j = mid;
-      let k = lo;
-      while (i < mid && j < hi) {
-        if (cmp(src[i], src[j]) <= 0) {
-          dst[k] = src[i];
-          i++;
-        } else {
-          dst[k] = src[j];
-          j++;
-        }
-        k++;
-      }
-      while (i < mid) {
-        dst[k] = src[i];
-        i++;
-        k++;
-      }
-      while (j < hi) {
-        dst[k] = src[j];
-        j++;
-        k++;
-      }
-      lo += width * 2;
-    }
+    mergePassBy(src, dst, n, width, cmp);
     const tmp = src;
     src = dst;
     dst = tmp;
-    width *= 2;
+    width = width *% 2;
   }
   return src;
 }
 
+// Specialized closure-free stable sorts for primitive integer types (O(n) LSD radix
+// sort for n >= 128, stable insertion sort for small arrays), f64, and string.
+
+function makeZeroCounts(k: i32): i32[] {
+  const c: i32[] = [];
+  let i: i32 = 0;
+  while (i < k) {
+    c.push(0);
+    i = i +% 1;
+  }
+  return c;
+}
+
+function radixPassI32(src: i32[], dst: i32[], counts: i32[], n: i32, shift: i32, numB: i32, xorMask: i32): bool {
+  const mask = numB - 1;
+  let b: i32 = 0;
+  while (b < numB) {
+    counts[b] = 0;
+    b = b +% 1;
+  }
+  let i: i32 = 0;
+  while (i < n) {
+    const bucket = ((src[i] >> shift) & mask) ^ xorMask;
+    counts[bucket] = counts[bucket] +% 1;
+    i = i +% 1;
+  }
+  let total: i32 = 0;
+  b = 0;
+  while (b < numB) {
+    const cnt = counts[b];
+    if (cnt === n) {
+      return false;
+    }
+    counts[b] = total;
+    total = total +% cnt;
+    b = b +% 1;
+  }
+  i = 0;
+  while (i < n) {
+    const v = src[i];
+    const bucket = ((v >> shift) & mask) ^ xorMask;
+    const pos = counts[bucket];
+    dst[pos] = v;
+    counts[bucket] = pos +% 1;
+    i = i +% 1;
+  }
+  return true;
+}
+
 export function sortI32(xs: i32[]): i32[] {
-  return sortBy(xs, (a: i32, b: i32): i32 => a < b ? -1 : (a > b ? 1 : 0));
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  if (n < 128) {
+    const src: i32[] = xs.slice(0, n);
+    let idx: i32 = 1;
+    while (idx < n) {
+      const key = src[idx];
+      let j = idx;
+      while (j > 0 && src[j - 1] > key) {
+        src[j] = src[j - 1];
+        j = j -% 1;
+      }
+      src[j] = key;
+      idx = idx +% 1;
+    }
+    return src;
+  }
+  const useWide = n >= 2048;
+  const numPasses = useWide ? 3 : 4;
+  const maxBuckets = useWide ? 2048 : 256;
+  let src: i32[] = xs;
+  let dst: i32[] = xs.slice(0, n);
+  let bufReady = false;
+  const counts = makeZeroCounts(maxBuckets);
+  let pass: i32 = 0;
+  while (pass < numPasses) {
+    const shift = useWide ? (pass === 0 ? 0 : (pass === 1 ? 11 : 22)) : (pass * 8);
+    const numB = useWide ? (pass === 2 ? 1024 : 2048) : 256;
+    const xorMask = pass === numPasses - 1 ? (numB >> 1) : 0;
+    if (radixPassI32(src, dst, counts, n, shift, numB, xorMask)) {
+      if (!bufReady) {
+        src = dst;
+        dst = src.slice(0, n);
+        bufReady = true;
+      } else {
+        const tmp = src;
+        src = dst;
+        dst = tmp;
+      }
+    }
+    pass = pass +% 1;
+  }
+  return bufReady ? src : dst;
+}
+
+function radixPassI64(src: i64[], dst: i64[], counts: i32[], n: i32, shift: i64, xorMask: i32): bool {
+  let b: i32 = 0;
+  while (b < 256) {
+    counts[b] = 0;
+    b = b +% 1;
+  }
+  let i: i32 = 0;
+  while (i < n) {
+    const bucket: i32 = (((src[i] >> shift) & 255i64) as i32) ^ xorMask;
+    counts[bucket] = counts[bucket] +% 1;
+    i = i +% 1;
+  }
+  let total: i32 = 0;
+  b = 0;
+  while (b < 256) {
+    const cnt = counts[b];
+    if (cnt === n) {
+      return false;
+    }
+    counts[b] = total;
+    total = total +% cnt;
+    b = b +% 1;
+  }
+  i = 0;
+  while (i < n) {
+    const v = src[i];
+    const bucket: i32 = (((v >> shift) & 255i64) as i32) ^ xorMask;
+    const pos = counts[bucket];
+    dst[pos] = v;
+    counts[bucket] = pos +% 1;
+    i = i +% 1;
+  }
+  return true;
 }
 
 export function sortI64(xs: i64[]): i64[] {
-  return sortBy(xs, (a: i64, b: i64): i32 => a < b ? -1 : (a > b ? 1 : 0));
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  if (n < 128) {
+    const src: i64[] = xs.slice(0, n);
+    let idx: i32 = 1;
+    while (idx < n) {
+      const key = src[idx];
+      let j = idx;
+      while (j > 0 && src[j - 1] > key) {
+        src[j] = src[j - 1];
+        j = j -% 1;
+      }
+      src[j] = key;
+      idx = idx +% 1;
+    }
+    return src;
+  }
+  let src: i64[] = xs;
+  let dst: i64[] = xs.slice(0, n);
+  let bufReady = false;
+  const counts = makeZeroCounts(256);
+  let pass: i32 = 0;
+  while (pass < 8) {
+    const shift: i64 = (pass * 8) as i64;
+    const xorMask = pass === 7 ? 128 : 0;
+    if (radixPassI64(src, dst, counts, n, shift, xorMask)) {
+      if (!bufReady) {
+        src = dst;
+        dst = src.slice(0, n);
+        bufReady = true;
+      } else {
+        const tmp = src;
+        src = dst;
+        dst = tmp;
+      }
+    }
+    pass = pass +% 1;
+  }
+  return bufReady ? src : dst;
+}
+
+function radixPassU32(src: u32[], dst: u32[], counts: i32[], n: i32, shift: u32, numB: i32): bool {
+  const mask: u32 = (numB - 1) as u32;
+  let b: i32 = 0;
+  while (b < numB) {
+    counts[b] = 0;
+    b = b +% 1;
+  }
+  let i: i32 = 0;
+  while (i < n) {
+    const bucket: i32 = ((src[i] >> shift) & mask) as i32;
+    counts[bucket] = counts[bucket] +% 1;
+    i = i +% 1;
+  }
+  let total: i32 = 0;
+  b = 0;
+  while (b < numB) {
+    const cnt = counts[b];
+    if (cnt === n) {
+      return false;
+    }
+    counts[b] = total;
+    total = total +% cnt;
+    b = b +% 1;
+  }
+  i = 0;
+  while (i < n) {
+    const v = src[i];
+    const bucket: i32 = ((v >> shift) & mask) as i32;
+    const pos = counts[bucket];
+    dst[pos] = v;
+    counts[bucket] = pos +% 1;
+    i = i +% 1;
+  }
+  return true;
 }
 
 export function sortU32(xs: u32[]): u32[] {
-  return sortBy(xs, (a: u32, b: u32): i32 => a < b ? -1 : (a > b ? 1 : 0));
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  if (n < 128) {
+    const src: u32[] = xs.slice(0, n);
+    let idx: i32 = 1;
+    while (idx < n) {
+      const key = src[idx];
+      let j = idx;
+      while (j > 0 && src[j - 1] > key) {
+        src[j] = src[j - 1];
+        j = j -% 1;
+      }
+      src[j] = key;
+      idx = idx +% 1;
+    }
+    return src;
+  }
+  const useWide = n >= 2048;
+  const numPasses = useWide ? 3 : 4;
+  const maxBuckets = useWide ? 2048 : 256;
+  let src: u32[] = xs;
+  let dst: u32[] = xs.slice(0, n);
+  let bufReady = false;
+  const counts = makeZeroCounts(maxBuckets);
+  let pass: i32 = 0;
+  while (pass < numPasses) {
+    const shift: u32 = (useWide ? (pass === 0 ? 0 : (pass === 1 ? 11 : 22)) : (pass * 8)) as u32;
+    const numB = useWide ? (pass === 2 ? 1024 : 2048) : 256;
+    if (radixPassU32(src, dst, counts, n, shift, numB)) {
+      if (!bufReady) {
+        src = dst;
+        dst = src.slice(0, n);
+        bufReady = true;
+      } else {
+        const tmp = src;
+        src = dst;
+        dst = tmp;
+      }
+    }
+    pass = pass +% 1;
+  }
+  return bufReady ? src : dst;
+}
+
+function radixPassU64(src: u64[], dst: u64[], counts: i32[], n: i32, shift: u64): bool {
+  let b: i32 = 0;
+  while (b < 256) {
+    counts[b] = 0;
+    b = b +% 1;
+  }
+  let i: i32 = 0;
+  while (i < n) {
+    const bucket: i32 = ((src[i] >> shift) & 255u64) as i32;
+    counts[bucket] = counts[bucket] +% 1;
+    i = i +% 1;
+  }
+  let total: i32 = 0;
+  b = 0;
+  while (b < 256) {
+    const cnt = counts[b];
+    if (cnt === n) {
+      return false;
+    }
+    counts[b] = total;
+    total = total +% cnt;
+    b = b +% 1;
+  }
+  i = 0;
+  while (i < n) {
+    const v = src[i];
+    const bucket: i32 = ((v >> shift) & 255u64) as i32;
+    const pos = counts[bucket];
+    dst[pos] = v;
+    counts[bucket] = pos +% 1;
+    i = i +% 1;
+  }
+  return true;
 }
 
 export function sortU64(xs: u64[]): u64[] {
-  return sortBy(xs, (a: u64, b: u64): i32 => a < b ? -1 : (a > b ? 1 : 0));
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  if (n < 128) {
+    const src: u64[] = xs.slice(0, n);
+    let idx: i32 = 1;
+    while (idx < n) {
+      const key = src[idx];
+      let j = idx;
+      while (j > 0 && src[j - 1] > key) {
+        src[j] = src[j - 1];
+        j = j -% 1;
+      }
+      src[j] = key;
+      idx = idx +% 1;
+    }
+    return src;
+  }
+  let src: u64[] = xs;
+  let dst: u64[] = xs.slice(0, n);
+  let bufReady = false;
+  const counts = makeZeroCounts(256);
+  let pass: i32 = 0;
+  while (pass < 8) {
+    const shift: u64 = (pass * 8) as u64;
+    if (radixPassU64(src, dst, counts, n, shift)) {
+      if (!bufReady) {
+        src = dst;
+        dst = src.slice(0, n);
+        bufReady = true;
+      } else {
+        const tmp = src;
+        src = dst;
+        dst = tmp;
+      }
+    }
+    pass = pass +% 1;
+  }
+  return bufReady ? src : dst;
 }
 
 function cmpF64Total(a: f64, b: f64): i32 {
@@ -118,22 +484,210 @@ function cmpF64Total(a: f64, b: f64): i32 {
   return ba > bb ? -1 : 1;
 }
 
+function insertionRunsF64(arr: f64[], n: i32): void {
+  let runStart: i32 = 0;
+  while (runStart < n) {
+    const runEnd = (runStart + 16 < n) ? runStart + 16 : n;
+    let idx = runStart +% 1;
+    while (idx < runEnd) {
+      const key = arr[idx];
+      let j = idx;
+      while (j > runStart && cmpF64Total(arr[j - 1], key) > 0) {
+        arr[j] = arr[j - 1];
+        j = j -% 1;
+      }
+      arr[j] = key;
+      idx = idx +% 1;
+    }
+    runStart = runStart +% 16;
+  }
+}
+
+function mergePassF64(src: f64[], dst: f64[], n: i32, width: i32): void {
+  let lo: i32 = 0;
+  const step = width *% 2;
+  while (lo < n) {
+    const mid = (lo + width < n) ? lo + width : n;
+    const hi = (lo + step < n) ? lo + step : n;
+    if (mid < hi && cmpF64Total(src[mid - 1], src[mid]) <= 0) {
+      let k = lo;
+      while (k < hi) {
+        dst[k] = src[k];
+        k = k +% 1;
+      }
+    } else {
+      let i = lo;
+      let j = mid;
+      let k = lo;
+      if (i < mid && j < hi) {
+        let a = src[i];
+        let b = src[j];
+        while (true) {
+          if (cmpF64Total(a, b) <= 0) {
+            dst[k] = a;
+            i = i +% 1;
+            k = k +% 1;
+            if (i >= mid) {
+              break;
+            }
+            a = src[i];
+          } else {
+            dst[k] = b;
+            j = j +% 1;
+            k = k +% 1;
+            if (j >= hi) {
+              break;
+            }
+            b = src[j];
+          }
+        }
+      }
+      while (i < mid) {
+        dst[k] = src[i];
+        i = i +% 1;
+        k = k +% 1;
+      }
+      while (j < hi) {
+        dst[k] = src[j];
+        j = j +% 1;
+        k = k +% 1;
+      }
+    }
+    lo = lo +% step;
+  }
+}
+
 export function sortF64(xs: f64[]): f64[] {
-  return sortBy(xs, cmpF64Total);
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  let src: f64[] = xs.slice(0, n);
+  insertionRunsF64(src, n);
+  if (n <= 16) {
+    return src;
+  }
+  let dst: f64[] = src.slice(0, n);
+  let width: i32 = 16;
+  while (width < n) {
+    mergePassF64(src, dst, n, width);
+    const tmp = src;
+    src = dst;
+    dst = tmp;
+    width = width *% 2;
+  }
+  return src;
+}
+
+function insertionRunsString(arr: string[], n: i32): void {
+  let runStart: i32 = 0;
+  while (runStart < n) {
+    const runEnd = (runStart + 16 < n) ? runStart + 16 : n;
+    let idx = runStart +% 1;
+    while (idx < runEnd) {
+      const key = arr[idx];
+      let j = idx;
+      while (j > runStart && compare(arr[j - 1], key) > 0) {
+        arr[j] = arr[j - 1];
+        j = j -% 1;
+      }
+      arr[j] = key;
+      idx = idx +% 1;
+    }
+    runStart = runStart +% 16;
+  }
+}
+
+function mergePassString(src: string[], dst: string[], n: i32, width: i32): void {
+  let lo: i32 = 0;
+  const step = width *% 2;
+  while (lo < n) {
+    const mid = (lo + width < n) ? lo + width : n;
+    const hi = (lo + step < n) ? lo + step : n;
+    if (mid < hi && compare(src[mid - 1], src[mid]) <= 0) {
+      let k = lo;
+      while (k < hi) {
+        dst[k] = src[k];
+        k = k +% 1;
+      }
+    } else {
+      let i = lo;
+      let j = mid;
+      let k = lo;
+      if (i < mid && j < hi) {
+        let a = src[i];
+        let b = src[j];
+        while (true) {
+          if (compare(a, b) <= 0) {
+            dst[k] = a;
+            i = i +% 1;
+            k = k +% 1;
+            if (i >= mid) {
+              break;
+            }
+            a = src[i];
+          } else {
+            dst[k] = b;
+            j = j +% 1;
+            k = k +% 1;
+            if (j >= hi) {
+              break;
+            }
+            b = src[j];
+          }
+        }
+      }
+      while (i < mid) {
+        dst[k] = src[i];
+        i = i +% 1;
+        k = k +% 1;
+      }
+      while (j < hi) {
+        dst[k] = src[j];
+        j = j +% 1;
+        k = k +% 1;
+      }
+    }
+    lo = lo +% step;
+  }
 }
 
 export function sortString(xs: string[]): string[] {
-  return sortBy(xs, compare);
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  let src: string[] = xs.slice(0, n);
+  insertionRunsString(src, n);
+  if (n <= 16) {
+    return src;
+  }
+  let dst: string[] = src.slice(0, n);
+  let width: i32 = 16;
+  while (width < n) {
+    mergePassString(src, dst, n, width);
+    const tmp = src;
+    src = dst;
+    dst = tmp;
+    width = width *% 2;
+  }
+  return src;
 }
 
 export function isSortedBy<T>(xs: T[], cmp: (a: T, b: T) => i32): bool {
   const n = xs.length;
+  if (n <= 1) {
+    return true;
+  }
+  let prev = xs[0];
   let i: i32 = 1;
   while (i < n) {
-    if (cmp(xs[i - 1], xs[i]) > 0) {
+    const cur = xs[i];
+    if (cmp(prev, cur) > 0) {
       return false;
     }
-    i++;
+    prev = cur;
+    i = i +% 1;
   }
   return true;
 }

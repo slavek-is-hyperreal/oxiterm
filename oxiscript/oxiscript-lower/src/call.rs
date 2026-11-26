@@ -1217,6 +1217,20 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         let ty = self.fb.ty(a).clone();
         let r = if ty == It::Str {
             self.fb.emit1(Op::StrEq { a, b }, It::Bool)
+        } else if matches!(ty, It::F64 | It::F32) {
+            // SameValueZero for float key equality: -0.0 equals +0.0, and NaN equals NaN.
+            // Matches emit_prim_hash which canonicalises -0.0 -> +0.0 and NaN -> canonical qNaN.
+            let eq = self.fb.emit1(Op::Cmp { op: CmpOp::Eq, a, b }, It::Bool);
+            let a_nan = self.fb.emit1(Op::Cmp { op: CmpOp::Ne, a, b: a }, It::Bool);
+            let b_nan = self.fb.emit1(Op::Cmp { op: CmpOp::Ne, a: b, b }, It::Bool);
+            let both_nan = self.fb.emit1(
+                Op::Bin { op: IrBinOp::And, ovf: Ovf::Trap, a: a_nan, b: b_nan },
+                It::Bool,
+            );
+            self.fb.emit1(
+                Op::Bin { op: IrBinOp::Or, ovf: Ovf::Trap, a: eq, b: both_nan },
+                It::Bool,
+            )
         } else {
             self.fb.emit1(Op::Cmp { op: CmpOp::Eq, a, b }, It::Bool)
         };

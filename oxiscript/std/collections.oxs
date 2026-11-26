@@ -25,7 +25,10 @@ export function hashCombine(seed: u64, value: u64): u64 {
 }
 
 // -----------------------------------------------------------------------------
-// Interface consistency laws (hash consistent with === for primitives and string)
+// Interface consistency laws:
+// - Integers, bool, string: equals matches `===` and hash is consistent with equals.
+// - Floats (f32, f64): SameValueZero (`NaN.equals(NaN)` is true, `(-0.0).equals(0.0)`
+//   is true), and hash is consistent with equals (both -0.0 and NaN canonicalised).
 // -----------------------------------------------------------------------------
 
 law i32_hash_eq_consistent(a: i32, b: i32) {
@@ -44,8 +47,20 @@ law u64_hash_eq_consistent(a: u64, b: u64) {
   !(a === b) || (a.equals(b) && a.hash() === b.hash())
 }
 
+law f64_equals_same_value_zero(a: f64, b: f64) {
+  a.equals(b) === (a === b || (a !== a && b !== b))
+}
+
 law f64_hash_eq_consistent(a: f64, b: f64) {
-  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+  !a.equals(b) || a.hash() === b.hash()
+}
+
+law f32_equals_same_value_zero(a: f32, b: f32) {
+  a.equals(b) === (a === b || (a !== a && b !== b))
+}
+
+law f32_hash_eq_consistent(a: f32, b: f32) {
+  !a.equals(b) || a.hash() === b.hash()
 }
 
 law bool_hash_eq_consistent(a: bool, b: bool) {

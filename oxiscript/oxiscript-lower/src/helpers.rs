@@ -305,16 +305,25 @@ done:
 const RANGE: &str = r#"
 func @lw.range(%a: i32, %b: i32) -> [i32] {
 entry:
+  %zero: i32 = const 0
   %one: i32 = const 1
-  %out: [i32] = array.empty
-  br loop(%a)
-loop(%i: i32):
-  %end: bool = ge %i, %b
+  %empty: bool = ge %a, %b
+  br_if %empty, ret_empty(), alloc()
+ret_empty:
+  %e: [i32] = array.empty
+  ret %e
+alloc:
+  %len: i32 = sub %b, %a
+  %out: [i32] = array.new %len
+  br loop(%zero)
+loop(%idx: i32):
+  %end: bool = ge %idx, %len
   br_if %end, done(), body()
 body:
-  array.push %out, %i
-  %i2: i32 = add %i, %one
-  br loop(%i2)
+  %val: i32 = add %a, %idx
+  array.set %out, %idx, %val
+  %idx2: i32 = add.wrap %idx, %one
+  br loop(%idx2)
 done:
   ret %out
 }
@@ -559,8 +568,43 @@ done:
 "#
                 )
             }
-            "slice" => format!(
-                r#"
+            "slice" => if !t.is_managed() {
+                format!(
+                    r#"
+func @{sym}(%a: [{tt}], %lo: i32, %hi: i32) -> [{tt}] {{
+entry:
+  %n: i32 = array.len %a
+  %zero: i32 = const 0
+  %one: i32 = const 1
+  %bad1: bool = lt %lo, %zero
+  %bad2: bool = gt %hi, %n
+  %bad3: bool = gt %lo, %hi
+  %b12: bool = or %bad1, %bad2
+  %bad: bool = or %b12, %bad3
+  br_if %bad, oob(), start()
+oob:
+  trap bounds
+start:
+  %len: i32 = sub %hi, %lo
+  %out: [{tt}] = array.new %len
+  br loop(%zero)
+loop(%k: i32):
+  %end: bool = ge %k, %len
+  br_if %end, done(), body()
+body:
+  %src_i: i32 = add.wrap %lo, %k
+  %e: {tt} = array.get %a, %src_i
+  array.set %out, %k, %e
+  %k2: i32 = add.wrap %k, %one
+  br loop(%k2)
+done:
+  ret %out
+}}
+"#
+                )
+            } else {
+                format!(
+                    r#"
 func @{sym}(%a: [{tt}], %lo: i32, %hi: i32) -> [{tt}] {{
 entry:
   %n: i32 = array.len %a
@@ -589,7 +633,8 @@ done:
   ret %out
 }}
 "#
-            ),
+                )
+            },
             "concat" => format!(
                 r#"
 func @{sym}(%a: [{tt}], %b: [{tt}]) -> [{tt}] {{

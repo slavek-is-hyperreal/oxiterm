@@ -98,7 +98,7 @@ export function bitSummary(x: u32, n: i32): i32 {
 
 ### Deterministic transcendental functions (`f64`)
 
-All 14 transcendental functions are implemented in pure OxiScript (IEEE-754 binary64, no FMA, no host libm) by porting the algorithms and coefficients of Sun Microsystems FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence). Every target (`device`, `web`, `server`) produces bit-identical results.
+All 14 transcendental functions are implemented in pure OxiScript (IEEE-754 binary64, no FMA, no host libm, zero heap allocations including large-argument Payne-Hanek range reduction) by porting the algorithms and coefficients of Sun Microsystems FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence). Every target (`device`, `web`, `server`) produces bit-identical results and can run unbounded call counts on a single instance without allocating memory.
 
 * `sin(x: f64): f64`
 * `cos(x: f64): f64`
@@ -169,9 +169,9 @@ UTF-8 string utilities, parsing (`Result`), and deterministic number formatting.
 * `lastIndexOf(s: string, needle: string): i32` — byte index of last occurrence or `-1`.
 * `parseInt(s: string, radix: i32 = 10): Result<i64, string>` — parses signed 64-bit integer in base `2..36`.
 * `parseInt32(s: string, radix: i32 = 10): Result<i32, string>` — parses signed 32-bit integer in base `2..36`.
-* `parseFloat(s: string): Result<f64, string>` — parses decimal floating-point literal (including `NaN`, `Infinity`, `-Infinity`).
-* `toRadix(n: i64, radix: i32): string`, `toRadixU64(n: u64, radix: i32): string`, `toRadixI32(n: i32, radix: i32): string` — formats integer in base `2..36`.
-* `toFixed(x: f64, digits: i32 = 0): string` — formats `f64` with fixed decimal places (`0..20`).
+* `parseFloat(s: string): Result<f64, string>` — correctly-rounded (IEEE-754 round-to-nearest-even) decimal floating-point parser (trims leading/trailing ASCII whitespace; accepts optional `+`/`-`, case-insensitive `NaN`, `Inf`, `Infinity`, and decimal mantissa with optional fractional part and `e`/`E` exponent; uses Clinger + Eisel-Lemire 128-bit fast paths with an exact big-integer fallback so results agree bit-for-bit with OxiScript literals and Rust `f64` parsing).
+* `toRadix(n: i64, radix: i32): string`, `toRadixU64(n: u64, radix: i32): string`, `toRadixI32(n: i32, radix: i32): string` — formats integer in base `2..36` (traps `bounds` if `radix` is outside `2..36`).
+* `toFixed(x: f64, digits: i32 = 0): string` — formats the exact binary64 value in fixed-point decimal with `0..20` fractional digits and exact round-to-nearest-even (no `"-0"` when all emitted digits are zero; handles all finite values up to `F64_MAX` without trapping; traps `bounds` if `digits` is outside `0..20`).
 
 ```oxs
 import {
@@ -206,18 +206,30 @@ Stable deterministic merge sort, searching, reversing, and joining.
 
 * `isEmpty<T>(xs: T[]): bool` — true if `xs.length === 0`.
 * `first<T>(xs: T[]): T | null`, `last<T>(xs: T[]): T | null` — first/last element or `null`.
-* `sortBy<T>(xs: T[], cmp: (a: T, b: T) => i32): T[]` — stable bottom-up merge sort with a fixed comparison sequence (non-mutating).
-* `sortI32(xs: i32[]): i32[]`, `sortI64(xs: i64[]): i64[]`, `sortU32(xs: u32[]): u32[]`, `sortU64(xs: u64[]): u64[]` — ascending numeric sorts.
+* `sortBy<T>(xs: T[], cmp: (a: T, b: T) => i32): T[]` — stable bottom-up merge sort with 16-element insertion-sort runs and a fixed comparison sequence (non-mutating).
+* `sortI32(xs: i32[]): i32[]`, `sortI64(xs: i64[]): i64[]`, `sortU32(xs: u32[]): u32[]`, `sortU64(xs: u64[]): u64[]` — ascending numeric sorts (closure-free; $O(n)$ LSD radix sort for $n \ge 128$, insertion sort for $n < 128$).
 * `sortF64(xs: f64[]): f64[]` — deterministic total-order float sort (`-0.0 < +0.0`, `NaN` last).
 * `sortString(xs: string[]): string[]` — lexicographic UTF-8 sort.
 * `isSortedBy<T>(xs: T[], cmp: (a: T, b: T) => i32): bool` — verifies sortedness under `cmp`.
 * `reverse<T>(xs: T[]): T[]`, `reverseInPlace<T>(xs: T[]): void` — copy-reversing and in-place reversing.
-* `indexOf<T extends Eq<T>>(xs: T[], target: T): i32` — first matching index or `-1`.
-* `includes<T extends Eq<T>>(xs: T[], target: T): bool` — membership test.
+* `indexOf<T extends Eq<T>>(xs: T[], target: T): i32` — first matching index or `-1` (uses `Eq<T>`, so `f32`/`f64` follow SameValueZero and match `NaN`).
+* `includes<T extends Eq<T>>(xs: T[], target: T): bool` — membership test (uses `Eq<T>`).
 * `find<T>(xs: T[], pred: (x: T) => bool): T | null`, `findIndex<T>(xs: T[], pred: (x: T) => bool): i32`.
 * `join(xs: string[], sep: string): string` — joins strings with separator `sep`.
 * `fill<T>(value: T, count: i32): T[]` — creates an array of `count` copies of `value`.
 * `flatMap<T, U>(xs: T[], f: (x: T) => U[]): U[]` — maps and flattens one level.
+
+### Practical fuel costs (`std/array`)
+
+Measured against the default runtime budget (`Limits::fuel_per_call = 10_000_000` wasmi fuel):
+
+| Operation | Measured fuel / element | Practical limit at 10M default fuel |
+|---|---|---|
+| `sortI32` / `sortU32` ($n \ge 2048$, full 32-bit) | ~700–750 fuel / elem ($O(n)$) | ~13,500 elements (~10,000 with caller build+verify) |
+| `sortBy` ($n = 10{,}000$, closure comparator) | ~2,480 fuel / elem ($O(n \log n)$) | ~4,300 elements |
+| `sortF64` ($n = 10{,}000$, total order) | ~3,270 fuel / elem ($O(n \log n)$) | ~3,400 elements |
+
+Larger arrays require raising `Limits::fuel_per_call` (e.g. sorting 30,000 `i32` elements uses ~21M fuel for `sortI32` alone, ~25.7M including array construction and `isSortedBy`).
 
 ```oxs
 import { sortI32, reverse, indexOf, includes, find, join } from "std/array";
@@ -275,7 +287,18 @@ Deterministic open-addressing hash collections (`Map<K, V>` and `Set<T>`) with e
 * `interface Eq<T> { equals(other: T): bool; }`
 * `interface HashEq<T> extends Hash, Eq<T> {}`
 * `hashCombine(seed: u64, value: u64): u64` — mixes two 64-bit hashes for composite structs/classes.
-* All primitive numeric types (`i8..u64`, `f32`, `f64`), `bool`, and `string` natively provide `.hash(): u64` and `.equals(other): bool` satisfying `HashEq<Self>` (with `-0.0` canonicalised to `+0.0` and NaN canonicalised, consistent with `===`, asserted by laws in `std/collections.oxs`).
+* All primitive numeric types (`i8..u64`, `f32`, `f64`), `bool`, and `string` natively provide `.hash(): u64` and `.equals(other): bool` satisfying `HashEq<Self>`:
+  * Integers, `bool`, and `string`: `.equals(other)` matches `===`, and `.hash()` is consistent with `===`.
+  * Floats (`f32`, `f64`): `.equals(other)` uses **SameValueZero** (matching JS `Map`/`Set`: `NaN.equals(NaN)` is `true` for all NaN bit patterns, and `(-0.0).equals(0.0)` is `true`). `.hash()` canonicalises `-0.0` to `+0.0` and all NaNs to the canonical quiet NaN bit pattern, so `a.equals(b)` always implies `a.hash() === b.hash()` (asserted by laws in `std/collections.oxs`).
+
+### Practical fuel costs, HashDoS, and reference cycles (`std/collections`)
+
+* **Practical fuel costs (default `Limits::fuel_per_call = 10_000_000`):**
+  * `Map<i32, i32>`: ~1,300 fuel per `set`/`get` operation (~2,600 per `set`+`get` pair including rehashing); ~3,800 `set`+`get` pairs (~7,500 individual ops) fit within the default 10M fuel budget.
+  * `Set<i32>`: ~1,060 fuel per `add`/`has` operation (~2,130 per `add`+`has` pair including rehashing); ~4,700 `add`+`has` pairs (~9,400 individual ops) fit within the default 10M fuel budget.
+  * Larger maps/sets or heavy churn (e.g. 20k–50k operations) require raising `Limits::fuel_per_call`.
+* **Unseeded hashes (not DoS-resistant):** built-in `.hash()` uses deterministic unseeded SplitMix64 (scalars) and unseeded FNV-1a 64-bit (strings) so iteration and hashing are identical across targets. `Map` and `Set` are **not** resistant to hash-flooding (HashDoS) attacks: adversarial untrusted keys with colliding hashes degrade linear probing to $O(n^2)$ and can exhaust call fuel. Do not insert unbounded untrusted keys without an application-level bound or keyed hash wrapper.
+* **Reference cycles:** `Map` and `Set` hold strong references to their entries. Acyclic graphs using `Map`/`Set` are freed immediately by reference counting (`0` live objects at `deinit`). Reference cycles passing through a `Map` or `Set` (for example, a class instance storing a reference to itself or a peer inside a `Map`) are **not** freed by reference counting alone; they are reclaimed only by the cycle collector (or by calling `.clear()` / `.remove()` explicitly to break the cycle).
 
 ### `MapEntry<K, V>` and `Map<K extends HashEq<K>, V>`
 

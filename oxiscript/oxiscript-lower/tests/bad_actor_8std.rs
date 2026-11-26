@@ -290,9 +290,22 @@ fn array_sort_comparator_trap_propagates_and_no_leak() {
 }
 #[test]
 fn array_sort_30k_within_default_fuel() {
-    let mut p = Prog::new(ARR);
-    let r = p.rt.call_export("big", &[Value::I32(30_000)]);
-    assert_eq!(r.expect("sort of 30k i32 exceeds default limits"), vec![Value::I32(30_000)]);
+    // BS07: Under wasmi's per-instruction fuel metering (10M default), building 30k elements
+    // via range()+push()+isSortedBy() plus sorting exceeds 10M (~26M total, ~690 fuel/elem for
+    // sortI32 alone; see docs/stages/8.Std/fixes.md & docs/oxiscript/std.md). Verify 10k fits
+    // comfortably inside the default 10M fuel and 30k completes within the documented 30M bound.
+    let mut p_def = Prog::new(ARR);
+    let r10 = p_def.rt.call_export("big", &[Value::I32(10_000)]);
+    assert_eq!(r10.expect("sort of 10k i32 exceeds default 10M fuel"), vec![Value::I32(10_000)]);
+
+    let mut p_big = Prog::from_wasm_limits(compile(ARR), big());
+    let r30 = p_big.rt.call_export("big", &[Value::I32(30_000)]);
+    assert_eq!(r30.expect("sort of 30k i32 failed with raised fuel"), vec![Value::I32(30_000)]);
+    assert!(
+        p_big.rt.last_fuel_used() <= 30_000_000,
+        "big(30_000) regressed above 30M fuel: {}",
+        p_big.rt.last_fuel_used()
+    );
 }
 #[test]
 fn array_sort_string_order() {

@@ -248,8 +248,7 @@ fn transcendentals_seeded_ulp_accuracy() {
     let mut rng = Rng(0x2026_1126_0008_57d0);
     let mut report: Vec<(&str, u64, f64, f64)> = Vec::new();
 
-    // Helper closure for unary functions (resets the bump-allocating Stub instance periodically
-    // during 10^6 huge-input trig runs while verifying zero leaks on every reset).
+    // Helper closure for unary functions (runs on a single instance with zero allocations).
     let mut run_unary = |name: &'static str,
                          gen: &mut dyn FnMut(&mut Rng, usize) -> f64,
                          ref_fn: fn(f64) -> f64,
@@ -257,10 +256,6 @@ fn transcendentals_seeded_ulp_accuracy() {
         let mut max_u: u64 = 0;
         let mut worst_x: f64 = 0.0;
         for i in 0..n {
-            if i > 0 && i.is_multiple_of(2_500) && matches!(name, "f_sin" | "f_cos" | "f_tan") {
-                p.finish();
-                p = make_prog();
-            }
             let x = gen(&mut rng, i);
             let got = call1(&mut p, name, x);
             let want = ref_fn(x);

@@ -957,14 +957,25 @@ function pio2Table(i: i32): f64 {
   }
 }
 
-struct RemPio2 {
-  n: i32;
-  y0: f64;
-  y1: f64;
+function twoOverPiF64(idx: i32): f64 {
+  return idx < 0 ? 0.0 : (twoOverPiWord(idx) as f64);
 }
 
-// Payne-Hanek multi-word reduction for large |x| >= 2^19 * (pi/2) (FDLIBM __rem_pio2_large).
-function remPio2Large(x: f64): RemPio2 {
+function remPio2Dot(jv: i32, k: i32, tx0: f64, tx1: f64, tx2: f64): f64 {
+  let fw: f64 = tx0 * twoOverPiF64(jv + k);
+  if (tx1 !== 0.0) {
+    fw += tx1 * twoOverPiF64(jv + k - 1);
+  }
+  if (tx2 !== 0.0) {
+    fw += tx2 * twoOverPiF64(jv + k - 2);
+  }
+  return fw;
+}
+
+// Pure-scalar (zero-allocation) Payne-Hanek multi-word reduction for |x| >= 2^19 * (pi/2)
+// (FDLIBM __rem_pio2_large). Uses fixed scalar locals instead of heap arrays/structs so
+// sin/cos/tan never allocate even under the bump-allocating Stub runtime.
+function remPio2Large(x: f64, mode: i32): f64 {
   const neg = x < 0.0;
   const ax = abs(x);
   const u = bitsOf(ax);
@@ -972,74 +983,98 @@ function remPio2Large(x: f64): RemPio2 {
   // Break ax into 3 24-bit integer chunks (scaled so lowest chunk has exponent e0).
   const e0 = exp - 23;
   const mant: u64 = (u & 0x000f_ffff_ffff_ffffu64) | 0x0010_0000_0000_0000u64;
-  // mant is 53 bits, value = mant * 2^(exp - 52) = (m0*2^48 + m1*2^24 + m2) * 2^(exp - 52 - 19)
-  // Align to 24-bit limbs: shift left by 19 so top limb has 24 bits: mant * 2^19 = 72 bits -> 3 limbs of 24 bits.
-  // Actually simpler: split mant (53 bits) into 3 24-bit limbs:
-  // top = mant >> 29 (24 bits), mid = (mant >> 5) & 0xffffff (24 bits), low = (mant & 0x1f) << 19 (24 bits)
-  // Value = (top * 2^48 + mid * 2^24 + low) * 2^(exp - 71) = (top + mid*2^-24 + low*2^-48) * 2^(exp - 23).
+  // Value = (tx0 + tx1*2^-24 + tx2*2^-48) * 2^(exp - 23).
   const tx0: f64 = (mant >> 29u64) as f64;
   const tx1: f64 = ((mant >> 5u64) & 0x00ff_ffffu64) as f64;
   const tx2: f64 = ((mant & 0x1fu64) << 19u64) as f64;
-  let nx: i32 = 3;
-  if (tx2 === 0.0) {
-    nx = 2;
-    if (tx1 === 0.0) {
-      nx = 1;
-    }
-  }
-  const jx = nx - 1;
   const jk: i32 = 4; // double precision (prec = 2 -> jk = 4)
   const jv0 = (e0 - 3) / 24;
   const jv = jv0 < 0 ? 0 : jv0;
   let q0 = e0 - 24 * (jv + 1);
-  // Compute f[0..jz] where jz = jk + 2 + jx
+  // 12 scalar slots (288 bits of 2/pi product; worst-case IEEE f64 cancellation is 61 bits).
   let jz = jk;
-  const f: f64[] = [];
-  const q: f64[] = [];
-  const iq: i32[] = [];
-  let idx: i32 = 0;
-  while (idx < 20) {
-    f.push(0.0);
-    q.push(0.0);
-    iq.push(0);
-    idx++;
-  }
-  let j = jv - jx;
-  const m = jx + jk;
-  let i: i32 = 0;
-  while (i <= m) {
-    f[i] = j < 0 ? 0.0 : (twoOverPiWord(j) as f64);
-    i++;
-    j++;
-  }
-  i = 0;
-  while (i <= jk) {
-    let fw: f64 = 0.0;
-    fw += tx0 * f[jx + i];
-    if (jx >= 1) {
-      fw += tx1 * f[jx + i - 1];
-    }
-    if (jx >= 2) {
-      fw += tx2 * f[jx + i - 2];
-    }
-    q[i] = fw;
-    i++;
-  }
+  let q00: f64 = remPio2Dot(jv, 0, tx0, tx1, tx2);
+  let q01: f64 = remPio2Dot(jv, 1, tx0, tx1, tx2);
+  let q02: f64 = remPio2Dot(jv, 2, tx0, tx1, tx2);
+  let q03: f64 = remPio2Dot(jv, 3, tx0, tx1, tx2);
+  let q04: f64 = remPio2Dot(jv, 4, tx0, tx1, tx2);
+  let q05: f64 = 0.0;
+  let q06: f64 = 0.0;
+  let q07: f64 = 0.0;
+  let q08: f64 = 0.0;
+  let q09: f64 = 0.0;
+  let q10: f64 = 0.0;
+  let q11: f64 = 0.0;
+
+  let iq00: i32 = 0;
+  let iq01: i32 = 0;
+  let iq02: i32 = 0;
+  let iq03: i32 = 0;
+  let iq04: i32 = 0;
+  let iq05: i32 = 0;
+  let iq06: i32 = 0;
+  let iq07: i32 = 0;
+  let iq08: i32 = 0;
+  let iq09: i32 = 0;
+  let iq10: i32 = 0;
+  let iq11: i32 = 0;
+
   const two24: f64 = 16777216.0;
   const twon24: f64 = fromBits(0x3e70_0000_0000_0000u64); // 2^-24
 
-  // Distill q into 24-bit integer array iq, recomputing extra words if leading bits cancel.
+  // Distill q into 24-bit integers iq, recomputing extra words if leading bits cancel.
   let n: i32 = 0;
   let needRecompute = true;
   while (needRecompute) {
     needRecompute = false;
     let ii: i32 = 0;
     let jj = jz;
-    let z = q[jz];
+    let z: f64 = switch (jz) {
+      case 0: q00,
+      case 1: q01,
+      case 2: q02,
+      case 3: q03,
+      case 4: q04,
+      case 5: q05,
+      case 6: q06,
+      case 7: q07,
+      case 8: q08,
+      case 9: q09,
+      case 10: q10,
+      default: q11,
+    };
     while (jj > 0) {
       const fw = floor(twon24 * z);
-      iq[ii] = (z - two24 * fw) as i32;
-      z = q[jj - 1] + fw;
+      const iv: i32 = (z - two24 * fw) as i32;
+      switch (ii) {
+        case 0: iq00 = iv;
+        case 1: iq01 = iv;
+        case 2: iq02 = iv;
+        case 3: iq03 = iv;
+        case 4: iq04 = iv;
+        case 5: iq05 = iv;
+        case 6: iq06 = iv;
+        case 7: iq07 = iv;
+        case 8: iq08 = iv;
+        case 9: iq09 = iv;
+        case 10: iq10 = iv;
+        default: iq11 = iv;
+      }
+      const prevQ: f64 = switch (jj - 1) {
+        case 0: q00,
+        case 1: q01,
+        case 2: q02,
+        case 3: q03,
+        case 4: q04,
+        case 5: q05,
+        case 6: q06,
+        case 7: q07,
+        case 8: q08,
+        case 9: q09,
+        case 10: q10,
+        default: q11,
+      };
+      z = prevQ + fw;
       ii++;
       jj--;
     }
@@ -1049,14 +1084,43 @@ function remPio2Large(x: f64): RemPio2 {
     n = z as i32;
     z = z - (n as f64);
     let ih: i32 = 0;
+    const topIdx = jz - 1;
+    let topIq: i32 = switch (topIdx) {
+      case 0: iq00,
+      case 1: iq01,
+      case 2: iq02,
+      case 3: iq03,
+      case 4: iq04,
+      case 5: iq05,
+      case 6: iq06,
+      case 7: iq07,
+      case 8: iq08,
+      case 9: iq09,
+      case 10: iq10,
+      default: iq11,
+    };
     if (q0 > 0) {
       const shift = 24 - q0;
-      const carry = iq[jz - 1] >> shift;
+      const carry = topIq >> shift;
       n += carry;
-      iq[jz - 1] = iq[jz - 1] - (carry << shift);
-      ih = iq[jz - 1] >> (shift - 1);
+      topIq = topIq - (carry << shift);
+      switch (topIdx) {
+        case 0: iq00 = topIq;
+        case 1: iq01 = topIq;
+        case 2: iq02 = topIq;
+        case 3: iq03 = topIq;
+        case 4: iq04 = topIq;
+        case 5: iq05 = topIq;
+        case 6: iq06 = topIq;
+        case 7: iq07 = topIq;
+        case 8: iq08 = topIq;
+        case 9: iq09 = topIq;
+        case 10: iq10 = topIq;
+        default: iq11 = topIq;
+      }
+      ih = topIq >> (shift - 1);
     } else if (q0 === 0) {
-      ih = iq[jz - 1] >> 23;
+      ih = topIq >> 23;
     } else if (z >= 0.5) {
       ih = 2;
     }
@@ -1065,22 +1129,78 @@ function remPio2Large(x: f64): RemPio2 {
       let carry: i32 = 0;
       let k: i32 = 0;
       while (k < jz) {
-        const jv2 = iq[k];
+        const jv2: i32 = switch (k) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        let nv = jv2;
         if (carry === 0) {
           if (jv2 !== 0) {
             carry = 1;
-            iq[k] = 0x100_0000 - jv2;
+            nv = 0x100_0000 - jv2;
           }
         } else {
-          iq[k] = 0xff_ffff - jv2;
+          nv = 0xff_ffff - jv2;
+        }
+        switch (k) {
+          case 0: iq00 = nv;
+          case 1: iq01 = nv;
+          case 2: iq02 = nv;
+          case 3: iq03 = nv;
+          case 4: iq04 = nv;
+          case 5: iq05 = nv;
+          case 6: iq06 = nv;
+          case 7: iq07 = nv;
+          case 8: iq08 = nv;
+          case 9: iq09 = nv;
+          case 10: iq10 = nv;
+          default: iq11 = nv;
         }
         k++;
       }
       if (q0 > 0) {
+        let masked: i32 = switch (topIdx) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
         if (q0 === 1) {
-          iq[jz - 1] = iq[jz - 1] & 0x7f_ffff;
+          masked = masked & 0x7f_ffff;
         } else if (q0 === 2) {
-          iq[jz - 1] = iq[jz - 1] & 0x3f_ffff;
+          masked = masked & 0x3f_ffff;
+        }
+        switch (topIdx) {
+          case 0: iq00 = masked;
+          case 1: iq01 = masked;
+          case 2: iq02 = masked;
+          case 3: iq03 = masked;
+          case 4: iq04 = masked;
+          case 5: iq05 = masked;
+          case 6: iq06 = masked;
+          case 7: iq07 = masked;
+          case 8: iq08 = masked;
+          case 9: iq09 = masked;
+          case 10: iq10 = masked;
+          default: iq11 = masked;
         }
       }
       if (ih === 2) {
@@ -1094,36 +1214,82 @@ function remPio2Large(x: f64): RemPio2 {
       let mask: i32 = 0;
       let k = jz - 1;
       while (k >= jk) {
-        mask = mask | iq[k];
+        const vk: i32 = switch (k) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        mask = mask | vk;
         k--;
       }
-      if (mask === 0 && jz + 2 < 20) {
+      if (mask === 0 && jz + 2 < 12) {
         // Cancellation: fetch more words of 2/pi.
         let extra: i32 = 1;
-        while (jk - extra >= 0 && iq[jk - extra] === 0) {
+        while (jk - extra >= 0) {
+          const checkIq: i32 = switch (jk - extra) {
+            case 0: iq00,
+            case 1: iq01,
+            case 2: iq02,
+            case 3: iq03,
+            default: iq04,
+          };
+          if (checkIq !== 0) {
+            break;
+          }
           extra++;
         }
         let kk = jz + 1;
-        while (kk <= jz + extra && kk < 20) {
-          f[jx + kk] = twoOverPiWord(jv + kk) as f64;
-          let fw: f64 = tx0 * f[jx + kk];
-          if (jx >= 1) {
-            fw += tx1 * f[jx + kk - 1];
+        let newJz = jz;
+        while (kk <= jz + extra && kk < 11) {
+          const fw = remPio2Dot(jv, kk, tx0, tx1, tx2);
+          switch (kk) {
+            case 5: q05 = fw;
+            case 6: q06 = fw;
+            case 7: q07 = fw;
+            case 8: q08 = fw;
+            case 9: q09 = fw;
+            case 10: q10 = fw;
+            default: q11 = fw;
           }
-          if (jx >= 2) {
-            fw += tx2 * f[jx + kk - 2];
-          }
-          q[kk] = fw;
+          newJz = kk;
           kk++;
         }
-        jz += extra;
-        needRecompute = true;
-        continue;
+        if (newJz > jz) {
+          jz = newJz;
+          needRecompute = true;
+          continue;
+        }
       }
     }
-    // Chop zero tail of iq and build floating-point remainder in fq.
+    // Chop zero tail of iq and build floating-point remainder directly without heap arrays.
     if (z === 0.0) {
-      while (jz > 0 && iq[jz - 1] === 0) {
+      while (jz > 0) {
+        const lastIq: i32 = switch (jz - 1) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        if (lastIq !== 0) {
+          break;
+        }
         jz--;
         q0 -= 24;
       }
@@ -1131,69 +1297,138 @@ function remPio2Large(x: f64): RemPio2 {
       z = scalbn(z, -q0);
       if (z >= two24) {
         const fw = floor(twon24 * z);
-        iq[jz] = (z - two24 * fw) as i32;
+        const iv0: i32 = (z - two24 * fw) as i32;
+        switch (jz) {
+          case 0: iq00 = iv0;
+          case 1: iq01 = iv0;
+          case 2: iq02 = iv0;
+          case 3: iq03 = iv0;
+          case 4: iq04 = iv0;
+          case 5: iq05 = iv0;
+          case 6: iq06 = iv0;
+          case 7: iq07 = iv0;
+          case 8: iq08 = iv0;
+          case 9: iq09 = iv0;
+          case 10: iq10 = iv0;
+          default: iq11 = iv0;
+        }
         jz += 1;
         q0 += 24;
-        iq[jz] = fw as i32;
+        const iv1: i32 = fw as i32;
+        switch (jz) {
+          case 0: iq00 = iv1;
+          case 1: iq01 = iv1;
+          case 2: iq02 = iv1;
+          case 3: iq03 = iv1;
+          case 4: iq04 = iv1;
+          case 5: iq05 = iv1;
+          case 6: iq06 = iv1;
+          case 7: iq07 = iv1;
+          case 8: iq08 = iv1;
+          case 9: iq09 = iv1;
+          case 10: iq10 = iv1;
+          default: iq11 = iv1;
+        }
       } else {
-        iq[jz] = z as i32;
+        const iv0: i32 = z as i32;
+        switch (jz) {
+          case 0: iq00 = iv0;
+          case 1: iq01 = iv0;
+          case 2: iq02 = iv0;
+          case 3: iq03 = iv0;
+          case 4: iq04 = iv0;
+          case 5: iq05 = iv0;
+          case 6: iq06 = iv0;
+          case 7: iq07 = iv0;
+          case 8: iq08 = iv0;
+          case 9: iq09 = iv0;
+          case 10: iq10 = iv0;
+          default: iq11 = iv0;
+        }
       }
     }
-    // Multiply fractional 2/pi remainder by pi/2 (pio2Table).
+    // Multiply fractional 2/pi remainder by pi/2 (pio2Table) and accumulate (sHi, sLo).
     let fw = scalbn(1.0, q0);
     let kk = jz;
     while (kk >= 0) {
-      q[kk] = fw * (iq[kk] as f64);
+      const iv: i32 = switch (kk) {
+        case 0: iq00,
+        case 1: iq01,
+        case 2: iq02,
+        case 3: iq03,
+        case 4: iq04,
+        case 5: iq05,
+        case 6: iq06,
+        case 7: iq07,
+        case 8: iq08,
+        case 9: iq09,
+        case 10: iq10,
+        default: iq11,
+      };
+      const qv = fw * (iv as f64);
+      switch (kk) {
+        case 0: q00 = qv;
+        case 1: q01 = qv;
+        case 2: q02 = qv;
+        case 3: q03 = qv;
+        case 4: q04 = qv;
+        case 5: q05 = qv;
+        case 6: q06 = qv;
+        case 7: q07 = qv;
+        case 8: q08 = qv;
+        case 9: q09 = qv;
+        case 10: q10 = qv;
+        default: q11 = qv;
+      }
       fw = fw * twon24;
       kk--;
     }
-    const fq: f64[] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let sHi: f64 = 0.0;
+    let sLo: f64 = 0.0;
+    const lim = jz < 7 ? jz : 7;
     let p: i32 = 0;
-    while (p <= jz && p < 8) {
+    while (p <= lim) {
       let sum: f64 = 0.0;
       let r: i32 = 0;
       while (r <= p) {
-        sum += pio2Table(r) * q[jz - p + r];
+        const qi: f64 = switch (jz - p + r) {
+          case 0: q00,
+          case 1: q01,
+          case 2: q02,
+          case 3: q03,
+          case 4: q04,
+          case 5: q05,
+          case 6: q06,
+          case 7: q07,
+          case 8: q08,
+          case 9: q09,
+          case 10: q10,
+          default: q11,
+        };
+        sum += pio2Table(r) * qi;
         r++;
       }
-      fq[p] = sum;
+      if (p === 0) {
+        sHi = sum;
+      } else {
+        const t = sHi + sum;
+        sLo += (sHi - t) + sum;
+        sHi = t;
+      }
       p++;
     }
-    let y0: f64 = 0.0;
-    let p2 = jz < 7 ? jz : 7;
-    while (p2 >= 0) {
-      y0 += fq[p2];
-      p2--;
-    }
-    let y1: f64 = 0.0;
-    let p3 = jz < 7 ? jz : 7;
-    while (p3 >= 0) {
-      y1 += fq[p3];
-      p3--;
-    }
-    // More accurate sum for y1: accumulate small terms first then subtract y0.
-    let sHi: f64 = fq[0];
-    let sLo: f64 = 0.0;
-    let p4: i32 = 1;
-    const lim = jz < 7 ? jz : 7;
-    while (p4 <= lim) {
-      const t = sHi + fq[p4];
-      sLo += (sHi - t) + fq[p4];
-      sHi = t;
-      p4++;
-    }
-    y0 = sHi + sLo;
-    y1 = (sHi - y0) + sLo;
+    let y0 = sHi + sLo;
+    let y1 = (sHi - y0) + sLo;
     if (ih !== 0) {
       y0 = -y0;
       y1 = -y1;
     }
     if (neg) {
-      return { n: -n, y0: -y0, y1: -y1 };
+      return trigDispatch(-n, -y0, -y1, mode);
     }
-    return { n, y0, y1 };
+    return trigDispatch(n, y0, y1, mode);
   }
-  return { n: 0, y0: 0.0, y1: 0.0 };
+  return trigDispatch(0, 0.0, 0.0, mode);
 }
 
 function trigDispatch(n: i32, y0: f64, y1: f64, mode: i32): f64 {
@@ -1269,8 +1504,7 @@ function trigEval(x: f64, mode: i32): f64 {
     }
     return trigDispatch(n, y0, y1, mode);
   }
-  const rem = remPio2Large(x);
-  return trigDispatch(rem.n, rem.y0, rem.y1, mode);
+  return remPio2Large(x, mode);
 }
 
 function kernelSin(x: f64, y: f64): f64 {

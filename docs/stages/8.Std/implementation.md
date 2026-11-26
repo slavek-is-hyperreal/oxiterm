@@ -26,8 +26,11 @@
 ## Step 4: `std/collections` (`Map<K, V>`, `Set<T>`, `Hash`, `Eq`, `HashEq`) — done
 - Added builtin `.hash(): u64` (SplitMix64 for scalars, canonicalising `-0.0 -> +0.0` and canonical NaN for floats; FNV-1a 64-bit for strings) and `.equals(other: Self): bool` on all primitive numeric types, `bool`, and `string` in `oxiscript-check` (`builtins.rs`, `typeexpr.rs::find_method_sig`) and `oxiscript-lower` (`helpers.rs`, `call.rs` for both direct calls and monomorphised interface-bound calls).
 - Implemented `oxiscript/std/collections.oxs`: interfaces `Hash`, `Eq<T>`, `HashEq<T>`, `hashCombine`, `MapEntry<K, V>`, `Map<K extends HashEq<K>, V>`, `Set<T extends HashEq<T>>` using open addressing (linear probing) over compact insertion-ordered entry arrays with automatic rehashing & compaction. Note: removal method is named `remove` because `delete` is a reserved keyword in OxiScript (`OXS-E0900`).
-- Added 7 `law` declarations in `std/collections.oxs` asserting hash/equality consistency with `===` for `i32`, `i64`, `u32`, `u64`, `f64`, `bool`, and `string`.
-- Verified in `oxiscript-lower/tests/std_collections.rs` including a 2,000-step differential fuzz test against Rust `HashMap` + insertion-order model (both `Map<i32, i32>`, `Map<string, i32>`, and `Set<i32>`) with zero leaks.
+- Added 9 `law` declarations in `std/collections.oxs` asserting hash/equality consistency (`===` for integers/bool/string; SameValueZero for `f32`/`f64`).
+- Verified in `oxiscript-lower/tests/std_collections.rs` including a 2,000-step differential fuzz test against Rust `HashMap` + insertion-order model (both `Map<i32, i32>`, `Map<string, i32>`, and `Set<i32>`) with zero acyclic leaks (reference cycles through `Map`/`Set` are reclaimed only by the cycle collector).
+
+## Step 7: BAD ACTOR fixes (BS01–BS08) — done
+- See `docs/stages/8.Std/fixes.md` for full details of the fixes for findings BS01–BS08.
 
 ## Step 5: Deterministic transcendental functions in `std/math` — done
 - Ported Sun Microsystems FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence, cited in `oxiscript/std/math.oxs`) into pure OxiScript for all 14 transcendental functions (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `log2`, `log10`, `pow`, `cbrt`, `hypot`) plus `scalbn`.
