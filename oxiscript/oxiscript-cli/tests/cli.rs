@@ -246,7 +246,7 @@ fn machine_applicable_fixes_apply_together_and_clear_their_codes() {
         let f = d.join(format!("c{i}.oxs"));
         std::fs::write(&f, c).unwrap();
         let before = json(&oxi(&["check", "--json", f.to_str().unwrap()], &d, None));
-        assert!(!codes(&before).is_empty(), "case {i} should fail: {c}");
+        assert_ne!(codes(&before).len(), 0, "case {i} should fail: {c}");
         // 1: all machine-applicable edits of one run apply as one set without overlap
         let mut edits: Vec<(usize, usize, String)> = Vec::new();
         for dg in before["diagnostics"].as_array().unwrap() {
@@ -370,7 +370,7 @@ fn fmt_check_and_stdin() {
     assert_eq!(String::from_utf8(o.stdout).unwrap(), "let x = 1;\n");
     let o = oxi(&["fmt", "--stdin"], &d, Some("let x = ;"));
     assert_eq!(o.status.code(), Some(1));
-    assert!(o.stdout.is_empty());
+    assert_eq!(o.stdout.len(), 0);
     let o = oxi(&["fmt", "a.oxs"], &d, None);
     assert_eq!(o.status.code(), Some(0));
     assert_eq!(std::fs::read_to_string(d.join("a.oxs")).unwrap(), "let x = 1;\n");
@@ -539,6 +539,45 @@ fn build_writes_a_wasm_module() {
     assert!(w.join("out/x.wasm").exists());
     std::fs::write(w.join("main.oxs"), "export function f(a: i32): bool { return a == 1; }\n").unwrap();
     assert_eq!(oxi(&["build"], &w, None).status.code(), Some(1));
+}
+
+#[test]
+fn targets_build_run_check() {
+    let w = tmp("targets");
+    std::fs::write(w.join("main.oxs"), HELLO).unwrap();
+    let manifest_of = |f: &str| -> String {
+        let b = std::fs::read(w.join(f)).unwrap();
+        let t = String::from_utf8_lossy(&b).into_owned();
+        t.lines().filter(|l| l.starts_with("target ")).collect::<Vec<_>>().join(",")
+    };
+    // default = device: no target line, stderr says so
+    let o = oxi(&["build", "-o", "d.wasm"], &w, None);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(text(&o).contains("target device"), "{}", text(&o));
+    assert_eq!(manifest_of("d.wasm"), "");
+    for t in ["web", "server"] {
+        let f = format!("{t}.wasm");
+        let o = oxi(&["build", "--target", t, "-o", &f], &w, None);
+        assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+        assert_eq!(manifest_of(&f), format!("target {t}"));
+        assert_eq!(oxi(&["run", "--target", t], &w, None).status.code(), Some(0));
+    }
+    // an unknown target is a usage error
+    assert_eq!(oxi(&["build", "--target", "moon"], &w, None).status.code(), Some(2));
+    // check --json reports the target; the diagnostics do not depend on it
+    let j = |args: &[&str]| -> Value { serde_json::from_slice(&oxi(args, &w, None).stdout).unwrap() };
+    assert_eq!(j(&["check", "--json"])["target"], "device");
+    assert_eq!(j(&["check", "--json", "--target", "web"])["target"], "web");
+    // oxi.toml default, overridden by the flag
+    std::fs::write(w.join("oxi.toml"), "[package]\nname = \"t\"\nversion = \"0.1.0\"\ntarget = \"web\"\nneeds = [\"host:log@1\"]\n").unwrap();
+    assert_eq!(oxi(&["build"], &w, None).status.code(), Some(0));
+    assert_eq!(manifest_of("t.wasm"), "target web");
+    assert_eq!(j(&["check", "--json"])["target"], "web");
+    assert_eq!(oxi(&["build", "--target", "device", "-o", "t.wasm"], &w, None).status.code(), Some(0));
+    assert_eq!(manifest_of("t.wasm"), "");
+    // a bad value in oxi.toml is a configuration error
+    std::fs::write(w.join("oxi.toml"), "[package]\nname = \"t\"\nversion = \"0.1.0\"\ntarget = \"moon\"\n").unwrap();
+    assert_eq!(oxi(&["build"], &w, None).status.code(), Some(2));
 }
 
 // ---------------------------------------------------------------- docs: every ```oxs block passes

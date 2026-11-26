@@ -421,7 +421,7 @@ fn fuzz_short_seeded() {
     let (n, fails) = campaign(0..200, 1);
     eprintln!("generated functions: {n} (x2 variants), failures: {}", fails.len());
     for f in fails.iter().take(2) { eprintln!("{f}"); }
-    assert!(fails.is_empty(), "{} failing programs (first shown above)", fails.len());
+    assert_eq!(fails.len(), 0, "{} failing programs (first shown above)", fails.len());
 }
 
 #[test]
@@ -431,7 +431,7 @@ fn fuzz_long_seeded() {
     eprintln!("generated functions: {n} (x2 variants), failures: {}", fails.len());
     for f in fails.iter() { eprintln!("{}", f.lines().next().unwrap_or("")); }
     if let Some(f) = fails.first() { std::fs::write("/tmp/claude-1000/-vectorlegis-ssd-pool-oxiterm-oxiterm/6830e8c3-c411-43eb-ad3c-c468305978e8/scratchpad/badactor-8l/first_fail.txt", f).ok(); }
-    assert!(fails.is_empty(), "{} failing programs", fails.len());
+    assert_eq!(fails.len(), 0, "{} failing programs", fails.len());
 }
 
 /// The host log caps a line at 1024 bytes (char boundary): treat a capped line as equal to its model.

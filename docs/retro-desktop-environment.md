@@ -73,6 +73,8 @@ OxiTerm's architecture provides an ideal foundation for a retro desktop environm
 
 ### 3.1 Styling & Layout Engine (`oxiterm-proto`, `oxiterm-renderer`)
 
+> **Status (2026-11-26):** items 1 to 3 below (absolute/fixed positioning, z-index, window dragging) shipped in OxiTerm 0.6.0 (`CHANGELOG.md`); the "current limitation" lines describe the code before that. Item 4 (focus manager, `Alt+Tab`, launcher key) is not implemented: it belongs to stage U.OxiDE in [roadmap/oxiui.md](roadmap/oxiui.md). The blueprint as a whole is rewritten against 7.2b and U.OxiDE in that stage.
+
 1. **Absolute & Fixed Positioning (`position: absolute / fixed`):**
    - *Current limitation:* All containers are standard Flexbox flow. There is no `position: absolute`, `position: fixed`, or explicit `top`, `bottom`, `left`, `right`.
    - *Required change:* Extend `oxiterm_proto::style::ComputedStyle` with `position: PositionType` and offsets. Pass `Position::Absolute` to Taffy tree nodes. This allows floating windows, dropdown menus, context menus, tooltips, and taskbars to be anchored precisely.
@@ -124,8 +126,8 @@ Currently, OxiTerm requires either an external terminal emulator connected via S
    - *Required change:* Replace TCP network sockets with a local Unix Domain Socket (e.g., `/run/user/$UID/oxide.sock`) for microsecond-latency local IPC.
 
 2. **Event-Driven Sleep vs. Busy Polling:**
-   - *Current limitation:* The session event loop sleeps for 5ms when idle, generating 200 wakeups per second. On battery-powered vintage laptops (e.g., ThinkPad T40/X60), this wastes battery and prevents deep CPU C-states.
-   - *Required change:* Replace the 5ms timeout with pure event-driven blocking (`select!` on input channels and timers), waking up only when hardware input arrives or an active animation ticks.
+   - *Current limitation:* The event loop ticks every 16 ms while an animation, drag or media is active and once per 1000 ms when idle (`EventLoop::next_deadline` never returns `None` yet), so an idle session still wakes once a second. On battery-powered vintage laptops (e.g., ThinkPad T40/X60), this wastes battery and prevents deep CPU C-states.
+   - *Required change (stage U.Idle):* Replace the 1000 ms idle timeout with pure event-driven blocking (`select!` on input channels and timers), waking up only when hardware input arrives or an active animation ticks.
 
 3. **Process Supervision & Application Launcher:**
    - Add an XDG `.desktop` entry scanner to build the application menu from `/usr/share/applications/`.
@@ -255,6 +257,8 @@ Below is a working reference implementation demonstrating a Cinnamon/Windows-sty
 ---
 
 ## 5. Development Roadmap
+
+> **Status (2026-11-26):** the phase numbers below are the blueprint's own and are retired (they collided with the OxiUI phases). Mapping to the roadmap ids in [roadmap/oxiui.md](roadmap/oxiui.md): Phase 1 runner = 7.2b; Phase 2 = shipped (0.6.0); Phase 3 daemon and IPC = U.IPC and U.OxiDE; Phase 4 display drivers = the `oxiterm-fb` sink, merged as 7.2 (`/dev/fb0` and DRM behind a flag); Phase 5 supervision and D-Bus = U.OxiDE.
 
 | Phase | Target Deliverables | Expected Milestones |
 |---|---|---|

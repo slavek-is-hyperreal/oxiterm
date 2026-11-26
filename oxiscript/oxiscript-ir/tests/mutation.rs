@@ -205,7 +205,7 @@ fn deep_but_legal_types_round_trip() {
     let ty = format!("{}i32{}?", "[".repeat(depth), "]".repeat(depth));
     let src = format!("oxiir 1\nmodule \"d\"\n\nglobal @g: {ty}\n");
     let m = parse_module(&src).unwrap();
-    assert!(verify(&m).is_empty(), "{:?}", verify(&m));
+    assert_eq!(verify(&m).len(), 0, "{:?}", verify(&m));
     assert_eq!(parse_module(&print_module(&m)).unwrap(), m);
     let too_deep = format!(
         "oxiir 1\nmodule \"d\"\n\nglobal @g: {}i32{}?\n",
@@ -264,6 +264,6 @@ fn renumber_restores_canonical_numbering_after_insertions() {
         "non-canonical numbering must be rejected"
     );
     build::renumber(&mut m.funcs[0]);
-    assert!(verify(&m).is_empty(), "{:?}", verify(&m));
+    assert_eq!(verify(&m).len(), 0, "{:?}", verify(&m));
     assert_eq!(parse_module(&print_module(&m)).unwrap(), m);
 }

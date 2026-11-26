@@ -14,11 +14,15 @@ std = ["wasmi/std"]
 [dependencies]
 oxiscript-abi = { path = "../oxiscript-abi" }
 # `validate` = wasmparser validation (never run without it); `deterministic` =
-# canonical NaNs from float operations; default `wat`/`memory64` are not wanted.
-wasmi = { version = "2.0.3", default-features = false, features = ["validate", "deterministic", "stable", "auto-dispatch"] }
+# canonical NaNs from float operations; default `wat` is not wanted.
+# `simd` and `memory64` are compiled in ON PURPOSE (BAD ACTOR F1): only then do the
+# `wasm_simd`/`wasm_relaxed_simd`/`wasm_memory64` setters exist, so `Host::with_options` can
+# switch them OFF explicitly. Otherwise a sibling crate enabling them through Cargo feature
+# unification would silently turn them on for the host. They are never enabled at run time.
+wasmi = { version = "2.0.3", default-features = false, features = ["validate", "deterministic", "stable", "auto-dispatch", "simd", "memory64"] }
 
 # Export-section scan (re-exports of imports); the same version wasmi pulls in.
-wasmparser = { version = "0.228", default-features = false, features = ["std", "validate", "features"] }
+wasmparser = { version = "0.228", default-features = false, features = ["std", "validate", "features", "simd"] }
 
 [dev-dependencies]
 # Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; tests only.

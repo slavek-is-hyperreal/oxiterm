@@ -41,7 +41,7 @@ use oxiscript_syntax::*;
 
 fn check_valid(name: &str, src: &str) {
     let (m, d) = parse_module(src);
-    assert!(d.is_empty(), "{name}: unexpected diagnostics {d:#?}");
+    assert_eq!(d.len(), 0, "{name}: unexpected diagnostics {d:#?}");
     let once = format(src).unwrap_or_else(|e| panic!("{name}: {e}"));
     let twice = format(&once).unwrap_or_else(|e| panic!("{name}: reformat failed: {e}\n{once}"));
     assert_eq!(once, twice, "{name}: formatter is not idempotent");

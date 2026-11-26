@@ -781,7 +781,7 @@ fn f6b_mutation_fuzz_load_and_call() {
         }
     }
     eprintln!("F6b cases={n} loaded={loaded} exports_called={called} panics={panics:?}");
-    assert!(panics.is_empty(), "panic seeds {panics:?}");
+    assert_eq!(panics.len(), 0, "panic seeds {panics:?}");
 }
 
 // ---------------------------------------------------------------- misc probes

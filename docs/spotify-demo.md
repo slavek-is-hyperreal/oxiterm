@@ -162,6 +162,8 @@ examples/spotify/
 └── panel_mobile.thtml           # OxiTerm UI — mobile layout (48x30)
 ```
 
+`examples/spotify/` holds only the user interface of the Spotify OAuth 2.0 integration (`panel.thtml` and `panel_mobile.thtml`); the backend, the OAuth token handling and all communication with the Spotify API live in `spotify-app-server/app.py`.
+
 ---
 
 ## Modern UI & State Bindings (OxiTerm 0.6+)

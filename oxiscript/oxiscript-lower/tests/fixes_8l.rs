@@ -188,7 +188,7 @@ fn l03_no_compiler_panic_on_null_narrowed_shapes() {
             bad.push(c);
         }
     }
-    assert!(bad.is_empty(), "compiler panics: {bad:#?}");
+    assert_eq!(bad.len(), 0, "compiler panics: {bad:#?}");
 }
 
 // L06 budget isolation: with the DEFAULT fuel, build in one export and drop in another (fresh fuel per entry).

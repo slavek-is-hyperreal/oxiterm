@@ -51,7 +51,7 @@ struct Stats {
 
 fn check_module(m: &Module, rng: &mut Rng, st: &mut Stats, tag: &str) {
     let errs = verify(m);
-    assert!(errs.is_empty(), "{tag}: generated IR does not verify: {errs:#?}");
+    assert_eq!(errs.len(), 0, "{tag}: generated IR does not verify: {errs:#?}");
     let wasm = build(m);
     let h = host();
     let mut rt = instantiate(&h, &wasm);

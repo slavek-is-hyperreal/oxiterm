@@ -40,6 +40,7 @@ use crate::load::{self, val_ty};
 use oxiscript_abi::exports;
 use oxiscript_abi::idl::{IdlTy, Interface};
 use oxiscript_abi::layout::{ABI_VERSION, RESERVED_LOW_BYTES};
+use oxiscript_abi::target::{Feature, Target};
 use oxiscript_abi::trap::TrapKind;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -68,6 +69,8 @@ struct HostInner {
     entropy: Option<u64>,
     /// Monotonic microseconds; `None` disables every wall-clock feature.
     clock: Option<Clock>,
+    /// The largest compilation target this host runs (docs/oxiscript/abi.md 3.6).
+    max_target: Target,
 }
 
 /// A monotonic clock in microseconds, supplied by the embedder.
@@ -86,6 +89,10 @@ pub struct HostOptions {
     pub clock: Option<Clock>,
     /// Run with no clock at all (no wall-time pump cap, zero reload timing).
     pub no_clock: bool,
+    /// The largest compilation target this host accepts and configures its
+    /// engine for. Default `Device`: a module whose manifest says `web` or
+    /// `server` is refused with `OXS-E0411`.
+    pub max_target: Target,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -138,9 +145,17 @@ impl Host {
             .wasm_bulk_memory(true)
             .wasm_saturating_float_to_int(false)
             .wasm_reference_types(false)
-            .wasm_tail_call(false)
-            .wasm_extended_const(false)
+            // Target-dependent features: only those the engine can run
+            // (`load::ENGINE_FEATURES`: tail-call, extended-const) follow `max_target`.
+            .wasm_tail_call(opts.max_target.allows(Feature::TailCall))
+            .wasm_extended_const(opts.max_target.allows(Feature::ExtendedConst))
+            // Everything else is OFF explicitly, whatever wasmi's Cargo features (and so its
+            // defaults) are after feature unification (BAD ACTOR F1). The wasmi `simd` and
+            // `memory64` features are compiled in only so these setters exist.
             .wasm_multi_memory(false)
+            .wasm_simd(false)
+            .wasm_relaxed_simd(false)
+            .wasm_memory64(false)
             .wasm_custom_page_sizes(false)
             .wasm_wide_arithmetic(false)
             .allow_start_fn(false)
@@ -153,6 +168,7 @@ impl Host {
         Host {
             inner: Arc::new(HostInner {
                 config: c,
+                max_target: opts.max_target,
                 limits: Arc::new(limits),
                 providers: Mutex::new(Vec::new()),
                 live: AtomicUsize::new(0),
@@ -169,6 +185,11 @@ impl Host {
                 },
             }),
         }
+    }
+
+    /// The largest compilation target this host runs.
+    pub fn max_target(&self) -> Target {
+        self.inner.max_target
     }
 
     pub fn limits(&self) -> &Limits {
@@ -219,11 +240,18 @@ struct Guard(Arc<HostInner>);
 impl Guard {
     fn acquire(h: &Arc<HostInner>) -> Result<Guard> {
         let max = h.limits.max_instances;
-        h.live
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                (n < max).then_some(n + 1)
-            })
-            .map_err(|_| Error::Limit(format!("instance limit of {max} reached")))?;
+        // A compare-exchange loop rather than `fetch_update`, which Rust 1.100
+        // deprecates in favour of `try_update` (not available on older toolchains).
+        let mut n = h.live.load(Ordering::SeqCst);
+        loop {
+            if n >= max {
+                return Err(Error::Limit(format!("instance limit of {max} reached")));
+            }
+            match h.live.compare_exchange_weak(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => break,
+                Err(cur) => n = cur,
+            }
+        }
         Ok(Guard(Arc::clone(h)))
     }
 }
@@ -332,8 +360,10 @@ impl Instance {
         }
         let guard = Guard::acquire(host)?;
         let engine = Engine::new(&host.config);
-        // Own policy pre-scan first (re-exports, memory64/shared memory), so the
+        // Own policy pre-scan first (re-exports, memory64/table64/shared memory, non-function imports), so the
         // ABI rules do not depend on which wasmi features are compiled in.
+        // Target policy first (fail-closed validation of the whole module), then the ABI 1.0 pre-scan.
+        load::check_target(wasm, host.max_target, &host.limits)?;
         load::reject_reexports(wasm)?;
         // wasmi can still panic on some inputs it does not model (e.g. a tag
         // import that validation should have refused); a panic is a rejection.
@@ -1033,5 +1063,49 @@ impl Drop for Runtime {
         if self.anonymous {
             release_ns(&self.host, &self.namespace);
         }
+    }
+}
+
+#[cfg(test)]
+mod engine_config_tests {
+    //! The engine layer in isolation (BAD ACTOR F1d): `Module::new` against the config
+    //! `Host::with_options` builds must refuse every proposal the target policy does not provide,
+    //! whatever wasmi Cargo features are compiled in. Bypasses `load::check_target` on purpose.
+    use super::*;
+
+    fn refused(host: &Host, body: &str) -> bool {
+        let wasm = wat::parse_str(format!("(module {body})")).expect("wat");
+        let engine = Engine::new(&host.inner.config);
+        Module::new(&engine, &wasm[..]).is_err()
+    }
+
+    #[test]
+    fn engine_refuses_every_proposal_outside_the_target() {
+        let probes: &[(&str, &str)] = &[
+            ("simd", "(func (result i32) v128.const i64x2 0 0 i32x4.extract_lane 0)"),
+            ("relaxed-simd", "(func (result v128) v128.const i64x2 0 0 i32x4.relaxed_trunc_f32x4_s)"),
+            ("memory64", "(memory i64 1)"),
+            ("table64", "(table i64 1 funcref)"),
+            ("multi-memory", "(memory 1) (memory 1)"),
+            ("shared+atomics", "(memory 1 1 shared) (func (param i32) (result i32) local.get 0 i32.atomic.load)"),
+            ("externref", "(table 1 externref)"),
+            ("trunc_sat", "(func (param f32) (result i32) local.get 0 i32.trunc_sat_f32_s)"),
+            ("gc", "(type (struct (field i32)))"),
+        ];
+        for t in Target::ALL {
+            let host = Host::with_options(Limits::default(), HostOptions { max_target: t, ..HostOptions::default() });
+            for (name, body) in probes {
+                assert!(refused(&host, body), "engine for max_target {t} accepted {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn engine_follows_max_target_for_tail_call() {
+        let body = "(func $f return_call $f)";
+        let dev = Host::with_options(Limits::default(), HostOptions::default());
+        let web = Host::with_options(Limits::default(), HostOptions { max_target: Target::Web, ..HostOptions::default() });
+        assert!(refused(&dev, body), "device engine accepted return_call");
+        assert!(!refused(&web, body), "this test must reach the real config: web engine refused return_call");
     }
 }

@@ -44,7 +44,7 @@ fn plain_exports_have_no_abi_restriction() {
         "export function f<T>(x: T): i32 { return 1; }",
     ] {
         let src = format!("{decl}{MAIN}");
-        assert!(codes(&src).is_empty(), "{decl}\n{}", show(&src));
+        assert_eq!(codes(&src).len(), 0, "{decl}\n{}", show(&src));
     }
 }
 
@@ -58,13 +58,13 @@ fn fitting_host_functions_are_accepted() {
     let src = format!(
         "enum Color {{ Red, Green }}\n@host export function a(x: i32, y: f64, b: bool): i64 {{ return 1i64; }}\n@host export function b(s: string): void {{}}\n@host export function c(d: u8[], e: Color): Color {{ return e; }}\n@host @export_name(\"init\") export function d(): void {{}}{MAIN}"
     );
-    assert!(codes(&src).is_empty(), "{}", show(&src));
+    assert_eq!(codes(&src).len(), 0, "{}", show(&src));
 }
 
 #[test]
 fn non_exported_functions_are_unconstrained() {
     let src = format!("struct P {{ x: i32; }}\nfunction f(p: P): P {{ return p; }}{MAIN}");
-    assert!(codes(&src).is_empty(), "{}", show(&src));
+    assert_eq!(codes(&src).len(), 0, "{}", show(&src));
 }
 
 // ---- `@host` misuse: exactly one E0121 each ----
@@ -101,7 +101,7 @@ fn export_name_requires_host() {
     let src = format!("@export_name(\"x\") export function f(): void {{}}{MAIN}");
     assert_eq!(count(&src, "OXS-E0123"), 1, "{}", show(&src));
     let ok = format!("@host @export_name(\"x\") export function f(): void {{}}{MAIN}");
-    assert!(codes(&ok).is_empty(), "{}", show(&ok));
+    assert_eq!(codes(&ok).len(), 0, "{}", show(&ok));
 }
 
 #[test]
@@ -121,6 +121,6 @@ fn reserved_export_names_are_rejected() {
     }
     for n in ["step", "init", "oxi", "heap_base", "mainx"] {
         let src = format!("@host @export_name(\"{n}\") export function f(): void {{}}{MAIN}");
-        assert!(codes(&src).is_empty(), "{n}: {}", show(&src));
+        assert_eq!(codes(&src).len(), 0, "{n}: {}", show(&src));
     }
 }

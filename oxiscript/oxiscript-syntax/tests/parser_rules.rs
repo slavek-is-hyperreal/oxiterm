@@ -90,7 +90,7 @@ fn shift_tokens_are_split_in_type_arguments() {
     let (_, d) = parse_module(
         "let a: Array<Array<i32>>= x;\nlet c: Array<i32>= z;\nlet e: Array<Array<Array<i32>>>= w;",
     );
-    assert!(d.is_empty(), "{d:?}");
+    assert_eq!(d.len(), 0, "{d:?}");
     assert_eq!(init_sx("a >> b"), "(>> a b)");
     assert_eq!(init_sx("a >= b"), "(>= a b)");
 }
@@ -146,7 +146,7 @@ fn must_parenthesise_table() {
     assert_eq!(codes("const x = a === b !== c;"), ["OXS-E0001"]);
     assert_eq!(codes("const x = a as u8 | 1;"), ["OXS-E0010"]);
     // exempt: parenthesised operands and repeated operators
-    assert!(codes("const x = (a & b) === c; const y = a & b & c; const z = a + b + c; const w = (a ?? b) || c;").is_empty());
+    assert_eq!(codes("const x = (a & b) === c; const y = a & b & c; const z = a + b + c; const w = (a ?? b) || c;").len(), 0);
     assert!(codes("const x = a * b << c; const y = a < b == false;")
         .iter()
         .all(|c| *c != "OXS-E0008"));
@@ -195,14 +195,14 @@ fn fixes_insert_parentheses_around_the_tighter_pair() {
     );
     // after applying a fix the code parses cleanly
     for s in &outs {
-        assert!(parse_module(s).1.is_empty(), "{s}");
+        assert_eq!(parse_module(s).1.len(), 0, "{s}");
     }
 }
 
 #[test]
 fn switch_statement_versus_expression() {
     let (m, d) = parse_module("function f(x: i32): i32 {\n switch (x) { case 1: return 1; default: return 2; }\n}\nconst y = switch (1) { case 1: 2, default: 3, };");
-    assert!(d.is_empty(), "{d:?}");
+    assert_eq!(d.len(), 0, "{d:?}");
     let ItemKind::Fn(f) = &m.items[0].kind else {
         panic!()
     };
@@ -217,7 +217,7 @@ fn switch_statement_versus_expression() {
     // stacked labels share one clause
     let (m, d) =
         parse_module("function f(x: i32): void { switch (x) { case 1: case 2: default: g(); } }");
-    assert!(d.is_empty());
+    assert_eq!(d.len(), 0);
     let ItemKind::Fn(f) = &m.items[0].kind else {
         panic!()
     };
@@ -232,7 +232,7 @@ fn switch_statement_versus_expression() {
         codes("const y = switch (x) { case a ? b : c: 1, default: 2 };"),
         ["OXS-E0001"]
     );
-    assert!(codes("const y = switch (x) { case (a ? b : c): 1, default: 2 };").is_empty());
+    assert_eq!(codes("const y = switch (x) { case (a ? b : c): 1, default: 2 };").len(), 0);
     // `case x => v` is not an arrow function
     assert_eq!(
         codes("const y = switch (x) { case a => 1, default: 2 };"),
@@ -242,9 +242,9 @@ fn switch_statement_versus_expression() {
 
 #[test]
 fn contextual_keywords_are_identifiers_elsewhere() {
-    assert!(
-        codes("const type = 1; const law = type + 1; type A = i32; law l(x: i32) { x === x }")
-            .is_empty()
+    assert_eq!(
+        codes("const type = 1; const law = type + 1; type A = i32; law l(x: i32) { x === x }").len(),
+        0
     );
     let (m, _) = parse_module("type = 5;");
     assert!(m.items.is_empty() || !matches!(m.items[0].kind, ItemKind::TypeAlias(_)));
@@ -253,9 +253,9 @@ fn contextual_keywords_are_identifiers_elsewhere() {
 #[test]
 fn doc_comments_attach_to_items_and_members() {
     let (m, d) = parse_module("/// one\n/// two\nfunction f(): void {}\n// plain\nstruct S {\n  /// field doc\n  x: i32;\n}\n");
-    assert!(d.is_empty());
+    assert_eq!(d.len(), 0);
     assert_eq!(m.items[0].doc, ["one", "two"]);
-    assert!(m.items[1].doc.is_empty());
+    assert_eq!(m.items[1].doc.len(), 0);
     let ItemKind::Record(r) = &m.items[1].kind else {
         panic!()
     };
@@ -265,7 +265,7 @@ fn doc_comments_attach_to_items_and_members() {
 #[test]
 fn laws_have_tail_expressions_only_in_law_blocks() {
     let (m, d) = parse_module("law l(a: i32) { const b = a; b === a }");
-    assert!(d.is_empty(), "{d:?}");
+    assert_eq!(d.len(), 0, "{d:?}");
     let ItemKind::Law(l) = &m.items[0].kind else {
         panic!()
     };
@@ -293,7 +293,7 @@ fn reserved_syntax_has_ast_slots() {
 fn spans_and_ids() {
     let src = "function f(a: i32): i32 {\n  return a + 1;\n}\n";
     let (m, d) = parse_module(src);
-    assert!(d.is_empty());
+    assert_eq!(d.len(), 0);
     assert_eq!(
         &src[m.items[0].span.lo as usize..m.items[0].span.hi as usize],
         src.trim_end()
@@ -351,7 +351,7 @@ fn depth_limit_is_reported_not_crashed() {
     let (_, d) = parse_module(&chain);
     assert!(d.iter().any(|x| x.code == "OXS-E0011"));
     let ok = format!("const a = 1{};", " + 1".repeat(900));
-    assert!(parse_module(&ok).1.is_empty());
+    assert_eq!(parse_module(&ok).1.len(), 0);
 }
 
 #[test]

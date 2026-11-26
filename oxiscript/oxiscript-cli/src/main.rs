@@ -56,6 +56,9 @@ enum Cmd {
         /// --stdin the fixed source is written to stdout.
         #[arg(long, value_name = "KIND", value_parser = ["semicolons"], conflicts_with_all = ["fix", "json"])]
         fix_only: Option<String>,
+        /// Compilation target: device (default), web or server. A build setting, not a language construct; `oxi.toml` `[package] target` sets the default.
+        #[arg(long, value_name = "TARGET", value_parser = ["device", "web", "server"])]
+        target: Option<String>,
     },
     /// Format files in the canonical style (no options).
     Fmt {
@@ -82,6 +85,9 @@ enum Cmd {
         /// Instruction budget for the whole run (default 10000000; 0 means the default, as in the browser); running out ends the program with exit 4.
         #[arg(long, value_name = "N")]
         fuel: Option<u64>,
+        /// Compilation target: device (default), web or server. A build setting, not a language construct; `oxi.toml` `[package] target` sets the default.
+        #[arg(long, value_name = "TARGET", value_parser = ["device", "web", "server"])]
+        target: Option<String>,
     },
     /// Compile a program to a Wasm module (default entry: main.oxs; default output: <name>.wasm).
     Build {
@@ -89,18 +95,21 @@ enum Cmd {
         /// Output file.
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
+        /// Compilation target: device (default), web or server. A build setting, not a language construct; `oxi.toml` `[package] target` sets the default.
+        #[arg(long, value_name = "TARGET", value_parser = ["device", "web", "server"])]
+        target: Option<String>,
     },
 }
 
 fn main() {
     let cli = Cli::parse();
     let code = match cli.cmd {
-        Cmd::Check { paths, json, stdin, stdin_path, fix, fix_only } => check::run(&check::Args { paths, json, stdin, stdin_path, fix, fix_only }),
+        Cmd::Check { paths, json, stdin, stdin_path, fix, fix_only, target } => check::run(&check::Args { paths, json, stdin, stdin_path, fix, fix_only, target }),
         Cmd::Fmt { paths, check, stdin } => fmtcmd::run(&fmtcmd::Args { paths, check, stdin }),
         Cmd::Explain { code } => explain::run(&code),
         Cmd::New { name, template } => newcmd::run(&name, &template),
-        Cmd::Run { file, fuel } => runcmd::run(&runcmd::Args { file, fuel, output: None, build: false }),
-        Cmd::Build { file, output } => runcmd::run(&runcmd::Args { file, fuel: None, output, build: true }),
+        Cmd::Run { file, fuel, target } => runcmd::run(&runcmd::Args { file, fuel, output: None, build: false, target }),
+        Cmd::Build { file, output, target } => runcmd::run(&runcmd::Args { file, fuel: None, output, build: true, target }),
     };
     std::process::exit(code);
 }

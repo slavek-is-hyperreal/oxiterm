@@ -31,5 +31,5 @@ fn every_valid_program_type_checks() {
             failures.push_str(&format!("{name}:{}: {} {}\n", li.line(d.span.lo), d.code, d.message));
         }
     }
-    assert!(failures.is_empty(), "\n{failures}");
+    assert_eq!(failures.len(), 0, "\n{failures}");
 }

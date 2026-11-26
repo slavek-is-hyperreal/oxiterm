@@ -240,7 +240,7 @@ mod tests {
             assert!(!c.iter().any(|x| x == code), "{code}: fixed example still emits it: {c:?}\n{good}");
             // the fixed form must not be wrong in other ways, except the deliberate placeholders
             if !matches!(*code, "OXS-E0302") {
-                assert!(c.is_empty(), "{code}: fixed example has diagnostics {c:?}\n{good}");
+                assert_eq!(c.len(), 0, "{code}: fixed example has diagnostics {c:?}\n{good}");
             }
         }
     }

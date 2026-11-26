@@ -31,7 +31,7 @@ Your App Server **must** verify this header with a constant-time comparison (e.g
 If `OXITERM_APP_TOKEN` is **unset or empty**, OxiTerm disables the inbound push endpoint entirely — all `POST /sessions/{id}/patch` requests receive `404 Not Found`. Setting a non-empty token enables it. This is a **circuit breaker**, not optional hardening.
 
 > [!IMPORTANT]
-> All five code examples below include the `Authorization: Bearer` check. An App Server that skips this check allows any caller on the network to inject arbitrary state into any active user session.
+> All five examples below (five frameworks in three languages: Flask and FastAPI, Express and Hono, Axum) include the `Authorization: Bearer` check. An App Server that skips this check allows any caller on the network to inject arbitrary state into any active user session.
 
 ---
 
@@ -109,6 +109,8 @@ Content-Type: application/json
 | `401` | Token missing or wrong |
 | `404` | Endpoint disabled (empty token) **or** session does not exist |
 | `400` | `{id}` is not a valid integer |
+
+**Patch limits** (the same for a patch in an `/events` response and for a pushed one, enforced in `SessionState::apply_patch_keys`): at most 100 keys per patch (a larger patch is ignored as a whole), keys at most 256 characters, strings at most 64 KiB, lists at most 1000 items (each item at most 64 KiB), keys starting with `_` are reserved and skipped; a push body is limited to 64 KiB. The `state` that OxiTerm sends with an event holds the keys bound on the current page (`bind-state`, `bind-value`, `bind-show`, ...), not the whole session state. Keep that in mind when an action needs a value the page does not bind.
 
 > [!NOTE]
 > The mapping from `session_id` to a user identity belongs to your App Server. **Never send that mapping back** to OxiTerm in a state patch — it would become visible to the client.
@@ -300,16 +302,17 @@ export default { port: 3000, fetch: app.fetch }
 ```toml
 [dependencies]
 axum       = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio      = { version = "1", features = ["full"] }
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 ```
 
 ```rust
-use axum::{
-    Router, Json, extract::TypedHeader,
+use axum::{Router, Json, response::IntoResponse, http::StatusCode, routing::post};
+use axum_extra::{
+    TypedHeader,
     headers::{Authorization, authorization::Bearer},
-    response::IntoResponse, http::StatusCode, routing::post,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, env};

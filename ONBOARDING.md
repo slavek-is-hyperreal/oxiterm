@@ -5,7 +5,7 @@
 | Someone new to the project | [README.md](README.md) |
 | An AI agent writing OxiScript (`.oxs`) | [AGENTS.md](AGENTS.md) and the skill `.claude/skills/oxiscript-authoring/` |
 | An AI agent writing THTML/TCSS or an App Server | the skills `.claude/skills/thtml-tcss-authoring/` and `.claude/skills/oxiterm-app-integration/` ([index](.claude/skills/README.md)) |
-| Taking over as lead | [docs/HANDOFF.md](docs/HANDOFF.md), then the plan [docs/oxi-ui.md](docs/oxi-ui.md) |
+| Taking over as lead | [docs/HANDOFF.md](docs/HANDOFF.md), then the roadmaps [docs/roadmap/](docs/roadmap/README.md) |
 | Changing the OxiScript compiler | [docs/oxiscript/contracts.md](docs/oxiscript/contracts.md) (what each compiler stage may rely on), then the crate's own docs |
 
 Rules that hold everywhere:

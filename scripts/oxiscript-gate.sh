@@ -4,7 +4,9 @@
 #   merge  - quick + one unified run (same Cargo feature unification as CI)
 #            + release build with OXI_FULL_FUZZ=1 (full fuzz counts)
 #            + the long #[ignore]d fuzz campaigns with fixed seeds
-#   nightly- merge, with seeds taken from the date (new inputs every night)
+#   nightly- merge, with seeds taken from the date (new inputs every night),
+#            plus, with OXI_NIGHTLY_IGNORED=1 (set in the GitHub nightly workflow),
+#            every #[ignore]d heavy test in release
 # Usage: scripts/oxiscript-gate.sh [quick|merge|nightly]
 # Exit code is non-zero if anything fails. A summary is printed at the end.
 set -u
@@ -32,6 +34,10 @@ step version-check scripts/oxiscript-version.sh --check
 for c in "${CRATES[@]}"; do
   step "test-$c" cargo test -p "$c" --no-fail-fast
 done
+# Compilation targets: the loops above run the program suites for `device` (the default). Run the
+# same suites compiled for `web` and executed on a Web-configured host (OXI_TARGET is read by the
+# wasm/lower test helpers); identical results are required (docs/oxiscript/abi.md 3.6).
+step targets-web env OXI_TARGET=web cargo test -p oxiscript-wasm -p oxiscript-lower --no-fail-fast
 PKGS=(); for c in "${CRATES[@]}"; do PKGS+=(-p "$c"); done
 step clippy cargo clippy "${PKGS[@]}" --all-targets -- -D warnings
 
@@ -59,6 +65,16 @@ if [ "$LEVEL" != quick ]; then
     else
       echo "known $name still red (open 8.P finding) -> $TMPDIR/gate-known-$name.log"
     fi
+  done
+fi
+
+if [ "$LEVEL" = nightly ] && [ "${OXI_NIGHTLY_IGNORED:-0}" = 1 ]; then
+  # --- nightly only: every #[ignore]d heavy test (large differential campaigns,
+  # 100k+ iteration fuzzers, long probes) in release with full fuzz counts.
+  # Rule: a test that takes more than a few seconds in debug is #[ignore]d with a
+  # reason and runs here, so the day gates stay short.
+  for c in "${CRATES[@]}"; do
+    step "nightly-ignored-$c" env OXI_FULL_FUZZ=1 BA_SEED="$SEED" cargo test --release -p "$c" --no-fail-fast -- --ignored
   done
 fi
 

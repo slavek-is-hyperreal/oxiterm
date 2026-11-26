@@ -345,7 +345,7 @@ pub fn check_program(
     }
     let prelude_idx = n;
     let prelude = parse(PRELUDE_SRC, FileId(prelude_idx as u32));
-    debug_assert!(prelude.diagnostics.is_empty());
+    debug_assert_eq!(prelude.diagnostics.len(), 0, "prelude must parse cleanly");
     let mut ck = Checker::new(opts, &srcs, PRELUDE_SRC);
     let mut asts: Vec<&Module> = parsed.iter().map(|p| &p.module).collect();
     asts.push(&prelude.module);

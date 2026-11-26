@@ -21,4 +21,4 @@ dlmalloc = "0.2.14"
 
 [dev-dependencies]
 oxiscript-abi = { path = "../oxiscript-abi" }
-wasmi = "2.0.3"
+wasmi = { version = "2.0.3", default-features = false, features = ["std", "validate", "stable", "auto-dispatch"] }

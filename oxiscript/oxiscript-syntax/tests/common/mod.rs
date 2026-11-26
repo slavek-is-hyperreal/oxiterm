@@ -186,7 +186,7 @@ pub fn sx(e: &Expr) -> String {
 pub fn init_sx(src: &str) -> String {
     let text = format!("const x = {src};");
     let (m, d) = parse_module(&text);
-    assert!(d.is_empty(), "{src}: {d:#?}");
+    assert_eq!(d.len(), 0, "{src}: {d:#?}");
     match &m.items[0].kind {
         ItemKind::Var(v) => sx(v.init.as_ref().unwrap()),
         _ => panic!(),

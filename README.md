@@ -8,12 +8,12 @@ One repository, three layers:
 | Layer | What it is | State |
 |---|---|---|
 | **OxiTerm** | Build terminal UIs like a website: THTML/TCSS (HTML/CSS-like) rendered on the server and streamed to SSH terminals and the browser; app logic in an "App Server" in any language. | Working; the base everything else builds on |
-| **OxiUI** | The same pages as a real GUI: a display list (fills, borders, paths, glyph runs) to a browser canvas, or the portable `oxiterm-core` running on the device (browser WASM without a server, Linux framebuffer "OxiDE", later Android and a native GPU window). | Phases 0–6 and 7.1–7.2 done, see [docs/oxi-ui.md](docs/oxi-ui.md) |
+| **OxiUI** | The same pages as a real GUI: a display list (fills, borders, paths, glyph runs) to a browser canvas, or the portable `oxiterm-core` running on the device (browser WASM without a server, Linux framebuffer "OxiDE", later Android and a native GPU window). | Phases 0–6, 7.1, 7.2, 7.6 and the headless GPU sink (5.2) done; native window, Android and OxiDE shell are planned, see [docs/roadmap/oxiui.md](docs/roadmap/oxiui.md) |
 | **OxiScript** | A general-purpose, statically typed language that a TypeScript developer reads without learning, compiled to WebAssembly, with OxiUI as its first host. Integers and floats, `Result` instead of exceptions, capabilities instead of ambient authority, laws (property tests in the language). | **0.0.x: the compiler works end to end** (`.oxs` → type check → OxiIR → Wasm → wasmi). Nothing is guaranteed before 1.0.0, see [docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md) |
 
 Websites: [slavekm.pl](https://slavekm.pl) · [oxiui.slavekm.pl](https://oxiui.slavekm.pl) · [oxiscript.slavekm.pl](https://oxiscript.slavekm.pl) (built from [sites/](sites/), deployed by hand, see [sites/DEPLOY.md](sites/DEPLOY.md)).
 
-How it is built: by AI agents under one owner's supervision. Every stage is attacked by a separate adversarial agent ("BAD ACTOR") before it is merged; its findings become regression tests. The plan, the decisions and a measured log of every stage are in [docs/oxi-ui.md](docs/oxi-ui.md).
+How it is built: by AI agents under one owner's supervision. Every stage is attacked by a separate adversarial agent ("BAD ACTOR") before it is merged; its findings become regression tests. The plans, the decisions and a measured log of every stage are in [docs/roadmap/](docs/roadmap/README.md) ([OxiUI](docs/roadmap/oxiui.md), [OxiScript](docs/roadmap/oxiscript.md)).
 
 ## OxiTerm / OxiUI quick start
 
@@ -72,7 +72,7 @@ export function main(log: Log): void {
 - What differs from TypeScript, for people and for AI agents: [AGENTS.md](AGENTS.md) (every example in it is compiled by the test suite).
 - Spec: [grammar](docs/oxiscript/grammar.md) · [IR](docs/oxiscript/ir.md) · [ABI](docs/oxiscript/abi.md) · [contracts between compiler stages](docs/oxiscript/contracts.md).
 - VS Code extension: [editors/vscode-oxiscript](editors/vscode-oxiscript/) (diagnostics, quick fixes, format and semicolons on save).
-- Browser playground: on [oxiscript.slavekm.pl](https://oxiscript.slavekm.pl) (check and format now, run next).
+- Browser playground: on [oxiscript.slavekm.pl](https://oxiscript.slavekm.pl) (check, format and run).
 
 ## Repository layout
 
@@ -83,11 +83,13 @@ export function main(log: Log): void {
 | `oxiterm-server`, `oxiterm-cli` | SSH and WebSocket server, App Server dispatch; the `oxiterm` binary |
 | `oxiterm-web` | Browser client (Rust → Wasm): cell canvas, GUI display-list painter, local mode |
 | `oxiterm-fb` | OxiDE software rasterizer (PNG, `/dev/fb0`, DRM) |
+| `oxiterm-gpu` | Headless GPU sink on wgpu (SDF fills and borders, glyph atlas, clips; PNG goldens), the base of the native window |
 | `oxiterm-a11y` | Accessibility tree, linear screen-reader output, ARIA mirror |
 | `oxiscript/*` | The OxiScript toolchain: `syntax` (parser, formatter), `check` (types), `lower` (→ OxiIR), `ir`, `wasm` (→ Wasm), `abi`, `rc` (memory runtime), `runtime` (wasmi host), `cli` (`oxi`), `playground` (compiler in the browser) |
 | `editors/`, `sites/` | VS Code extension; the three websites |
-| `examples/`, `apps/`, `spotify-app-server/` | THTML examples, an e-book reader app, a full App Server demo |
-| `docs/` | Plan, references, research, [stage records](docs/stages/) |
+| `examples/`, `apps/`, `spotify-app-server/` | THTML examples, a web reader app (web, Hacker News, Wikipedia, RSS; `apps/oxiterm-reader`), a full App Server demo |
+| `deploy/`, `scripts/` | systemd unit for the server; gate, version, screenshot and BAD ACTOR scripts |
+| `docs/` | [Roadmaps](docs/roadmap/README.md), references, research, [stage records](docs/stages/), [history](docs/history/) |
 
 ## Contributing and checks
 

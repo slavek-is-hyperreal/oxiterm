@@ -737,7 +737,7 @@ mod tests {
         // write(self, level: u8, msg: str)
         assert_eq!(imports[0].name, "write");
         assert_eq!(imports[0].params, vec![I32, I32, I32, I32]);
-        assert!(imports[0].results.is_empty());
+        assert_eq!(imports[0].results.len(), 0);
     }
 
     #[test]

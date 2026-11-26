@@ -1,6 +1,6 @@
 # OxiScript 0.0.1 release preparation
 
-Status: prepared, not tagged. The lead reviews, merges, then tags and pushes.
+Status: released. The annotated tag `oxiscript-v0.0.1` exists (merge `eed8d35`). Originally written as "prepared, not tagged; the lead reviews, merges, then tags and pushes".
 
 ## What changed
 

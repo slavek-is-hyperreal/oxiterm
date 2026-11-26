@@ -23,7 +23,7 @@ fn module_with_import(line: &str) -> Module {
 fn host_program_imports_match_the_idl() {
     let m = parse_module(include_str!("programs/host.oxir")).unwrap();
     let errs = verify_with_interfaces(&m, VerifyOptions::default(), &interfaces());
-    assert!(errs.is_empty(), "{errs:#?}");
+    assert_eq!(errs.len(), 0, "{errs:#?}");
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn forged_flat_signatures_verify_plainly_but_fail_the_boundary_check() {
     for line in forged {
         let m = module_with_import(line);
         // Plain verification cannot know the interface: legal parameter kinds pass.
-        assert!(verify(&m).is_empty(), "{line}: {:?}", verify(&m));
+        assert_eq!(verify(&m).len(), 0, "{line}: {:?}", verify(&m));
         // The boundary check rejects every one of them.
         let errs = verify_imports(&m, &interfaces());
         assert_eq!(errs.len(), 1, "{line}: {errs:?}");

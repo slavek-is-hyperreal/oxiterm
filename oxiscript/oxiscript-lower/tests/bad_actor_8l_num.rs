@@ -213,5 +213,5 @@ fn numerics_table() {
         }
     }
     eprintln!("numeric cases: {n}, mismatches: {}", bad.len());
-    assert!(bad.is_empty(), "{} of {n} numeric cases differ:\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{} of {n} numeric cases differ:\n{}", bad.len(), bad.join("\n"));
 }

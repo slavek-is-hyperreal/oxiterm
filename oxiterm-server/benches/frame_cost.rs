@@ -397,7 +397,7 @@ fn main() {
     let with_video = std::env::var("FRAME_COST_VIDEO").is_ok();
 
     // The frozen monospace copy of `examples/` (the demo pages are proportional in GUI mode now):
-    // keeps the aggregate comparable with the numbers in docs/oxi-ui.md. The live pages are
+    // keeps the aggregate comparable with the numbers in docs/history/oxi-ui-plan-history.md. The live pages are
     // reported as fixtures below.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/traces/pages/examples_mono");
     let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");

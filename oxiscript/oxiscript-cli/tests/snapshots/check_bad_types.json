@@ -75,6 +75,7 @@
     "errors": 1,
     "warnings": 0
   },
+  "target": "device",
   "tool": "oxi",
   "version": "0.0.1"
 }

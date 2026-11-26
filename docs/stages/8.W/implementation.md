@@ -12,7 +12,7 @@ Status: step 1 built and gated (see "Gate"). Three sites + playground crate + bu
 - Languages: PL + EN published; Latin written but excluded by default (`SITES_LANGS=pl,en` default; `pl,en,la` enables). Dedication/Latin-note widgets are skipped while `la` is off. `en` is the site root (`/`), others `/pl/`, `/la/`.
 - Every page has "view this page in OxiUI": generated THTML (+ `_mobile`, 36 columns) from the same i18n blocks; static copy of the 7.1 web client (`oxiterm-server/assets/index.html`) with local mode forced and URLs rewritten to `./pages.json`; no WebSocket fallback; Google Fonts link removed.
 - Live demos are click-to-start iframes (the 3.6 MB wasm is not loaded until asked).
-- Roadmap/wave log parsed from docs/oxi-ui.md at build time (status derived from the wave log; if the table format changes, the build fails loudly).
+- Roadmap/wave log parsed at build time (originally from docs/history/oxi-ui-plan-history.md, now from docs/roadmap/oxiui.md and oxiscript.md) (status derived from the wave log; if the table format changes, the build fails loudly).
 - Home page text is placeholders in `[PLACEHOLDER]` / `[DO UZUPEŁNIENIA]` form; no biography facts, no name, no dedication text invented. Dedication is quiet (serif, no animation, no emoji).
 
 ## Latin (DRAFT, awaiting review; not published)

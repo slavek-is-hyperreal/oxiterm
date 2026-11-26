@@ -100,7 +100,7 @@ fn diag_json(src: &str, li: &LineIndex, d: &Diagnostic) -> Value {
     json!({
         "code": d.code,
         "severity": severity,
-        "title": def.as_ref().map(|c| c.title.clone()).unwrap_or_default(),
+        "title": def.as_ref().map_or_else(String::new, |c| c.title.clone()),
         "message": d.message,
         "start": utf16_at(src, lo), "end": utf16_at(src, hi),
         "line": line, "col": col, "endLine": end_line, "endCol": end_col,
@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(v["ok"], false, "{v}");
         let d = &v["diagnostics"][0];
         assert!(d["code"].as_str().unwrap().starts_with("OXS-E"));
-        assert!(!d["title"].as_str().unwrap().is_empty());
+        assert_ne!(d["title"].as_str().unwrap(), "");
         let start = d["start"].as_u64().unwrap() as usize;
         let units: Vec<u16> = src.encode_utf16().collect();
         let tail = String::from_utf16(&units[start..]).unwrap();

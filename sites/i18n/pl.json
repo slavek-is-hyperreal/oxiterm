@@ -26,12 +26,11 @@
     "demoWeight": "Nic nie jest nigdzie wysyłane: stronę rysuje WebAssembly na Twoim urządzeniu.",
     "demoTitle": "Demo OxiUI na żywo",
     "showSource": "Pokaż źródło THTML",
-    "roadmapSource": "Generowane podczas budowania z docs/oxi-ui.md w repozytorium; status wynika z dziennika fal.",
+    "roadmapSource": "Generowane podczas budowania z docs/roadmap/ w repozytorium (tabele statusu planów OxiUI i OxiScript); dziennik fal to sekcja 11 planu OxiScript.",
     "roadmapEnglishOnly": "Sam plan jest napisany wyłącznie po angielsku.",
-    "phases": "Fazy",
-    "stages7": "Etapy fazy 7",
-    "slices8": "Plasterki OxiScript (faza 8)",
-    "colSlice": "Plasterek",
+    "groups": "Grupy",
+    "stages": "Etapy",
+    "colSlice": "Etap",
     "colStatus": "Status",
     "colWhat": "Co",
     "waveLog": "Dziennik fal",
@@ -284,7 +283,7 @@
             "items": [
               {
                 "label": "Notatki o architekturze w repozytorium",
-                "href": "repo:docs/oxi-ui.md"
+                "href": "repo:docs/ARCHITECTURE.md"
               }
             ]
           }

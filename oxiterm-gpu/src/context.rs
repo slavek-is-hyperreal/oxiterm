@@ -1,6 +1,6 @@
 //! Shared headless `wgpu` context (`Instance`, `Adapter`, `Device`, `Queue`).
 //!
-//! Per `OxiUI`'s "one device, several users" rule (`docs/oxi-ui.md`), [`GpuContext`] is owned
+//! Per `OxiUI`'s "one device, several users" rule (`docs/history/oxi-ui-plan-history.md`), [`GpuContext`] is owned
 //! separately from [`crate::GpuSink`] (typically behind an `Arc<GpuContext>`) so that the
 //! `DisplayList` renderer (Stage 5.2+), future `OxiScript` GPU kernels (Stage 8.3b), and 3D
 //! rendering (Stage 9.3) all share one device and queue without CPU round-trips.

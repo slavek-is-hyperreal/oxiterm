@@ -26,6 +26,7 @@ fn golden_dumps() {
             &CompileOptions {
                 runtime: RuntimeMode::Import,
                 allow_raw_exports: true, // the IR corpus exports raw `ref` signatures
+                target: oxiscript_wasm::Target::Device, // code shape and manifest text are pinned for device
                 ..opts()
             },
         )

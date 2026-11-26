@@ -322,7 +322,7 @@ fn on_stack<R: Send + 'static>(kb: usize, f: impl FnOnce() -> R + Send + 'static
 fn k1_parse_30_nested_parens_on_64kb_stack() {
     on_stack(64, || {
         let p = parse(&nest_paren(30), FileId(0));
-        assert!(p.diagnostics.is_empty());
+        assert_eq!(p.diagnostics.len(), 0);
         std::mem::forget(p);
     });
 }
@@ -334,7 +334,7 @@ fn k1_parse_30_nested_parens_on_64kb_stack() {
 fn k2_drop_of_900_term_chain_on_32kb_stack() {
     let src = format!("let x = a{};", " + a".repeat(900));
     let p = parse(&src, FileId(0));
-    assert!(p.diagnostics.is_empty());
+    assert_eq!(p.diagnostics.len(), 0);
     on_stack(32, move || drop(p));
 }
 
@@ -370,7 +370,7 @@ fn k4_no_thread_fallback_100_nested_parens_on_256kb_stack() {
     if std::env::var("BA_STACK_CHILD").is_ok() {
         on_stack(256, || {
             let p = parse(&nest_paren(DEFAULT_MAX_DEPTH - 3), FileId(0));
-            assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics.first());
+            assert_eq!(p.diagnostics.len(), 0, "{:?}", p.diagnostics.first());
             let q = parse(&nest_paren(DEFAULT_MAX_DEPTH + 40), FileId(0));
             assert!(q.diagnostics.iter().any(|d| d.code == "OXS-E0011"));
             let r = parse(&nest_paren(5000), FileId(0));

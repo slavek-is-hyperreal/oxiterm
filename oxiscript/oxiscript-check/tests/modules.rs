@@ -53,7 +53,7 @@ fn errors_in_imported_modules_are_reported() {
 fn syntax_errors_stop_checking() {
     let c = check("function f( {", &[]);
     assert!(!c.ok());
-    assert!(c.modules.is_empty(), "a program with syntax errors is not checked");
+    assert_eq!(c.modules.len(), 0, "a program with syntax errors is not checked");
 }
 
 #[test]

@@ -1,3 +1,5 @@
+> Historical concept document, superseded by [docs/roadmap/](../roadmap/README.md).
+
 # **Amendment do Specyfikacji OxiTerm: Rozwiązania Architektoniczne dla Systemów Thin Client**
 
 ## **Wprowadzenie do Zrewidowanej Architektury Systemu**

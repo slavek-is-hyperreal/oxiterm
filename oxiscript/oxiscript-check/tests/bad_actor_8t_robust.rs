@@ -108,7 +108,7 @@ fn determinism_same_input_same_output() {
         }
         bad
     });
-    assert!(bad.is_empty(), "nondeterministic on {} programs, first:\n{}", bad.len(), bad.first().unwrap());
+    assert_eq!(bad.len(), 0, "nondeterministic on {} programs, first:\n{}", bad.len(), bad.first().unwrap());
 }
 
 struct Inv<'c> {
@@ -296,7 +296,7 @@ fn invariants_over_pool() {
         (n_ok, bad)
     });
     eprintln!("accepted {n_ok}");
-    assert!(bad.is_empty(), "{} violations:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n\n"));
+    assert_eq!(bad.len(), 0, "{} violations:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n\n"));
 }
 
 struct Rng(u64);
@@ -386,7 +386,7 @@ fn mutation_fuzz_invariants() {
         (n, acc, bad)
     });
     eprintln!("mutations {total}, accepted {acc}");
-    assert!(bad.is_empty(), "{} violations:\n{}", bad.len(), bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n\n"));
+    assert_eq!(bad.len(), 0, "{} violations:\n{}", bad.len(), bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n\n"));
 }
 
 /// Replace identifiers/literals with other plausible ones, keeping the program mostly well-formed
@@ -456,5 +456,5 @@ fn swap_fuzz_invariants() {
         (acc, bad)
     });
     eprintln!("swap mutations {n}, accepted distinct {acc}");
-    assert!(bad.is_empty(), "{} violations:\n{}", bad.len(), bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n\n"));
+    assert_eq!(bad.len(), 0, "{} violations:\n{}", bad.len(), bad.iter().take(8).cloned().collect::<Vec<_>>().join("\n\n"));
 }

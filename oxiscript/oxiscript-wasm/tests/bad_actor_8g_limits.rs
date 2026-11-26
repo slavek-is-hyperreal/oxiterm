@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 
 fn rt_for(src: &str) -> (oxiscript_runtime::Host, Vec<u8>) {
     let m = parse_module(src).unwrap();
-    assert!(verify(&m).is_empty(), "{:?}", verify(&m));
+    assert_eq!(verify(&m).len(), 0, "{:?}", verify(&m));
     (host(), build(&m))
 }
 

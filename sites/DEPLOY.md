@@ -1,6 +1,6 @@
-# Deploying the three sites to Cloudflare Pages
+# Deploying the three sites to Cloudflare (Workers with static assets)
 
-Three static sites, three Cloudflare Pages projects. Nothing here needs a server.
+Three static sites, three Cloudflare **Workers with static assets** (not Pages projects; see "How the sites are deployed" below). Nothing here needs a server of ours. The lead deploys with `wrangler` after the build and the checks; the owner's gates are listed in the next section. Stage U.Sites in [../docs/roadmap/oxiui.md](../docs/roadmap/oxiui.md) tracks what is still open (header semantics under Workers, Lighthouse numbers, the home deploy).
 
 | Site | Output directory | Custom domains | Content |
 |---|---|---|---|
@@ -36,28 +36,23 @@ node sites/check.mjs           # link/i18n/HTML checks alone (also run by build.
 
 Preview note: links between the three sites point to the real domains (they are absolute). To keep them local, build with `ORIGIN_HOME=http://localhost:8081 ORIGIN_OXIUI=http://localhost:8082 ORIGIN_OXISCRIPT=http://localhost:8083 node sites/build.mjs`.
 
-## Cloudflare steps (what the owner must click)
+## Cloudflare setup (once per domain)
 
-Do this once per site. Use **Direct Upload** (no Git integration needed):
-
-1. Cloudflare dashboard, **Workers & Pages**, **Create**, **Pages**, **Upload assets**. Project name `slavekm-home`, `oxiui` or `oxiscript`. Upload the matching `sites/dist/<site>` folder (drag the folder; the `_headers` file inside is picked up automatically).
-   Command line alternative, with `npm i -g wrangler` and `wrangler login`:
-   `wrangler pages deploy sites/dist/oxiui --project-name oxiui` (same for the others).
-   Note: a project created by Direct Upload cannot later be switched to Git integration; create a new project if you want that.
+1. **Deploy** with wrangler (section "How the sites are deployed" below): the first deploy of each Worker creates it; the `routes` entry of `sites/deploy/<site>.wrangler.jsonc` with `custom_domain: true` attaches `oxiui.slavekm.pl`, `oxiscript.slavekm.pl` or `slavekm.pl` (home: `slavekm.pl`; `www.slavekm.pl` is the optional redirect of step 4) and makes Cloudflare create the DNS record and the certificate (a few minutes). Wait until the domain is active before testing.
 2. **Remove the dead redirect first.** The domain `slavekm.pl` currently has a redirect rule and possibly a conflicting DNS record. Before adding the custom domains, check ALL of these places for anything that touches `slavekm.pl`, `www`, `oxiui` or `oxiscript` (a leftover one keeps winning over Pages and the site "does not deploy"):
    - zone **Rules, Redirect Rules**: delete the rule that redirects these hosts to the dead demo;
    - **Bulk Redirects**: these live at the **account** level (Account home, Bulk Redirects), not in the zone: open the lists and the Bulk Redirect rules and remove entries for these hosts;
    - **Page Rules** (older accounts; zone, Rules, Page Rules): delete forwarding rules for these hosts;
-   - **Workers & Pages, Workers**: any Worker **route** (zone, Workers Routes) or Worker custom domain on these hostnames: remove it;
+   - **Workers & Pages, Workers**: any Worker **route** (zone, Workers Routes) or Worker custom domain on these hostnames other than the ones in `sites/deploy/*.wrangler.jsonc`: remove it;
    - zone **Rules, Origin Rules / Configuration Rules / Transform Rules**: nothing there may rewrite or redirect these hosts.
    Then **DNS**:
    - **Delete only** the `A`, `AAAA` and `CNAME` records for `@`, `www`, `oxiui`, `oxiscript` (the old Mikrus host).
    - **Keep everything else.** In particular keep: **`MX`** (mail), **`TXT`** (SPF `v=spf1 ...`, DKIM selectors such as `*._domainkey`, DMARC `_dmarc`, and any domain-verification records such as Google/Search Console, GitHub, Microsoft), **`CAA`** (an existing CAA that does not allow the CA Cloudflare uses, for example `letsencrypt.org`, `pki.goog`, `digicert.com`, `ssl.com`, blocks the Pages certificate; if issuance fails, add those CAA records or remove the restrictive one deliberately), `NS`, `SRV`, and any record that is not a web record for the four names above.
-3. In each Pages project, **Custom domains**, **Set up a custom domain**: `oxiui.slavekm.pl` for the OxiUI project, `oxiscript.slavekm.pl` for OxiScript, and for the home project both `slavekm.pl` and `www.slavekm.pl`. Cloudflare creates the DNS records and the certificate (a few minutes). The **apex** `slavekm.pl` works because the zone's DNS is on Cloudflare: add it in the Pages project exactly like the subdomains (Pages creates a proxied `CNAME` for `@` pointing at `<project>.pages.dev`; Cloudflare's **CNAME flattening** serves it as an apex record). Do not create an `A` record or a redirect for the apex by hand. Wait until the domain shows **Active** before testing.
-4. Optional: in the home project, a redirect `www.slavekm.pl` to `slavekm.pl` (Rules, Redirect Rules, `www` host, 301) so there is one canonical address; the pages already declare `<link rel="canonical">` to the bare domain.
-5. Keep the "no trackers" promise true: in the zone leave **Web Analytics** off (it injects a beacon script), keep **Email Address Obfuscation** and **Rocket Loader** off (both inject scripts), and do not enable Cloudflare "Browser Insights" for the Pages projects.
+3. The **apex** `slavekm.pl` works because the zone's DNS is on Cloudflare (CNAME flattening); do not create an `A` record or a redirect for the apex by hand. The custom-domain route fails if an old `A`/`AAAA`/`CNAME` for that name still exists: delete only that record (see step 2).
+4. Optional: a redirect `www.slavekm.pl` to `slavekm.pl` (Rules, Redirect Rules, `www` host, 301) so there is one canonical address; the pages already declare `<link rel="canonical">` to the bare domain.
+5. Keep the "no trackers" promise true: in the zone leave **Web Analytics** off (it injects a beacon script), keep **Email Address Obfuscation** and **Rocket Loader** off (both inject scripts), and do not enable Cloudflare "Browser Insights" for the Workers.
 
-## How the sites are actually deployed (2026-11-26)
+## How the sites are deployed (2026-11-26)
 
 They run as **Cloudflare Workers with static assets** (not Pages projects): `oxiscript` (created from the dashboard), `oxiui` and later `slavekm-home` (created by wrangler). Configs: `sites/deploy/<site>.wrangler.jsonc` (assets directory, `404-page` handling, custom domain route). After `sites/build.sh`, one command per site (the owner logs in once with `npx wrangler@4 login`):
 
@@ -75,7 +70,7 @@ The custom domain route makes Cloudflare create the DNS record and certificate; 
 - `/assets/<hash>/*`, `/app/<hash>/*` and `/play/<hash>/*` are content-hashed and `immutable` for a year; HTML is `max-age=0, must-revalidate`, so a new deploy shows up at once and old wasm is never mixed with new JS.
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that denies camera, microphone, geolocation, sensors, payment, USB and display capture.
 - **Content-Security-Policy**, strict and without `'unsafe-inline'`: own origin only (`default-src 'self'`), no inline script or style, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'self'` (the pages can only be framed by themselves, e.g. the demo iframe). `'wasm-unsafe-eval'` is granted only to `/app/*` (the OxiUI client) and to the OxiScript playground page (`/` and `/pl/` of oxiscript). The copied 7.1 client keeps its script and style in hashed files under `/app/<hash>/`, so it uses the same strict policy plus `blob:` for media and workers.
-- **Cloudflare Pages merges the headers of every matching `_headers` rule** (same header name from several rules is joined, not replaced; recalled, not re-verified), so a path must match exactly one rule that sets `Cache-Control` (hashed directories get one explicit rule each, HTML pages their own revalidate rule; `check.mjs` enforces it); two different CSPs on one path would both be enforced (their intersection). So the CSP is attached to explicit, non-overlapping paths (one rule per HTML page plus `/app/`), never to `/*`. `sites/check.mjs` fails if two different policies apply to a path. If you add a page, rebuild: `_headers` is generated.
+- **The `_headers` rules were written for Cloudflare Pages semantics, which merge the headers of every matching rule** (same header name from several rules is joined, not replaced; recalled, not re-verified; **not yet verified under Workers static assets**, stage U.Sites), so a path must match exactly one rule that sets `Cache-Control` (hashed directories get one explicit rule each, HTML pages their own revalidate rule; `check.mjs` enforces it); two different CSPs on one path would both be enforced (their intersection). So the CSP is attached to explicit, non-overlapping paths (one rule per HTML page plus `/app/`), never to `/*`. `sites/check.mjs` fails if two different policies apply to a path. If you add a page, rebuild: `_headers` is generated.
 - `sites/test/csp_browser.mjs` serves `dist/` with these rules applied and opens every page, the live demo and the playground in headless Chromium (needs `playwright-core`, set `PLAYWRIGHT_CORE`); it fails on any CSP violation or console error.
 
 ### HSTS (one switch in Cloudflare, after the sites work over HTTPS)
