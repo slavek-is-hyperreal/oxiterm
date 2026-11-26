@@ -57,6 +57,18 @@ Do this once per site. Use **Direct Upload** (no Git integration needed):
 4. Optional: in the home project, a redirect `www.slavekm.pl` to `slavekm.pl` (Rules, Redirect Rules, `www` host, 301) so there is one canonical address; the pages already declare `<link rel="canonical">` to the bare domain.
 5. Keep the "no trackers" promise true: in the zone leave **Web Analytics** off (it injects a beacon script), keep **Email Address Obfuscation** and **Rocket Loader** off (both inject scripts), and do not enable Cloudflare "Browser Insights" for the Pages projects.
 
+## How the sites are actually deployed (2026-11-26)
+
+They run as **Cloudflare Workers with static assets** (not Pages projects): `oxiscript` (created from the dashboard), `oxiui` and later `slavekm-home` (created by wrangler). Configs: `sites/deploy/<site>.wrangler.jsonc` (assets directory, `404-page` handling, custom domain route). After `sites/build.sh`, one command per site (the owner logs in once with `npx wrangler@4 login`):
+
+```
+npx wrangler@4.86.0 deploy --config sites/deploy/oxiui.wrangler.jsonc
+npx wrangler@4.86.0 deploy --config sites/deploy/oxiscript.wrangler.jsonc
+npx wrangler@4.86.0 deploy --config sites/deploy/home.wrangler.jsonc
+```
+
+The custom domain route makes Cloudflare create the DNS record and certificate; it fails if an old `A`/`AAAA`/`CNAME` for that name still exists (delete only that record). `_headers` works the same for Workers static assets.
+
 ## Headers, MIME and caching (already in each `_headers`)
 
 - `*.wasm` is served as `application/wasm` (needed for streaming compilation).
