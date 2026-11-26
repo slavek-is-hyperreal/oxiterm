@@ -177,7 +177,7 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.Rel | done | 2026-11-26, eed8d35 |
 | 8.2a | done | 2026-11-26, d8fb0f8 |
 | 8.M-link | in-progress | — |
-| 8.Std | in-progress | — |
+| 8.Std | done | 2026-11-26, fd7bf41 |
 | 8.Perf | todo | — |
 | 8.Lab | todo | — |
 | 8.Fix | todo | — |
@@ -337,6 +337,7 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 #### 8.Perf RC elision and allocation fast path (todo)
 
 - Scope: as in the owner-approved plan row of 2026-11-26: (1) ownership/borrow inference and retain/release elision on OxiIR (Perceus, Lean 4 borrowed parameters); (2) reuse analysis and in-place update for unique values; (3) drop specialisation; (4) allocation fast path inlined by codegen (size-class free-list pop), allocation folding; (5) escape analysis turning non-escaping objects into locals, scalar replacement of COW structs and nullable scalars (contracts decision 10) [R3-59, R3-62, R3-66]; array literal and template-string lowering without repeated reallocation. Input: [research/oxiscript-memory-performance.md](../research/oxiscript-memory-performance.md) and its verification [research/oxiscript-memory-performance-verification.md](../research/oxiscript-memory-performance-verification.md) (Opus, 2026-11-26: 114 claims, 13 wrong). Key verified fact: wasmi charges a region's whole static operator count on entry (regions start at function entry, `loop`, `if`/`else`), and LLVM-compiled dlmalloc `malloc` is one 1651-operator region, so each allocation costs about 1700 fuel whatever path runs; allocation plus final release are about 95% of the BL06 `new class` row, call overhead a few percent. Order of work (verification section A): (a) size-class free lists / slabs in the runtime with the backing allocator out of line, empty slabs returned; (b) free leaf objects directly on last release; (c) move rare paths out of the always-charged regions; (d) format integers straight into a string, array literals as one allocation; (e) inline `is_unique`, `retain`, non-final `release` in generated code, with a debug mode keeping the calls for `stale_object`; (f) the elision passes listed above, with an RC-balance verifier; collector headroom goes to 8.Mem. Elision must preserve RC balance (the 8.M balance checker) and the "unprotected borrow" rule [R3-65]. Also owns the optimised-versus-unoptimised IR differential [R3-211, R2-116] and the BL06/BL07/BL01 numbers.
+- Also: sorting 30k `i32` with `std/array` within the default 10M fuel (BS07: needs ~21M on 2026-11-26).
 - Gate: fuel per operation within 1.5x of the bump stub on the BL06 table and on the 8.S5 programs, **and wall time measured next to fuel on wasmi and on w2c2** (fuel alone rewards code layout, verification finding); percentage of retain/release removed reported per corpus; Stub-versus-Linked and optimised-versus-unoptimised differential runs identical; leak tests and the `stale_object` check stay green; BAD ACTOR attacks use-after-free through wrong borrow inference.
 - Depends on: 8.M-link merged (memres document verified and merged to `main` 2026-11-26, d8cb3b7). Status: todo.
 

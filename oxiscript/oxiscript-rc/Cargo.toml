@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-rc"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript memory runtime: reference counting with a cycle collector (Phase 8)."
