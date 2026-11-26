@@ -9,7 +9,8 @@ use crate::check::{project_for, HostCache, EXIT_FATAL, EXIT_FINDINGS};
 use crate::needs;
 use crate::project::{self, Entry};
 use crate::report;
-use oxiscript_playground::run::{run_wasm, DEFAULT_FUEL};
+use oxiscript_abi::target::Target;
+use oxiscript_playground::run::{run_wasm_on, DEFAULT_FUEL};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -21,6 +22,7 @@ pub struct Args {
     pub fuel: Option<u64>,
     pub output: Option<PathBuf>,
     pub build: bool,
+    pub target: Option<String>,
 }
 
 /// Plain-English reason for a stop id from the runtime.
@@ -93,6 +95,7 @@ pub fn run(a: &Args) -> i32 {
             return EXIT_FATAL;
         }
     };
+    let target = a.target.as_deref().and_then(Target::parse).or_else(|| prj.manifest.as_ref().and_then(|m| m.target)).unwrap_or_default();
     let ent = Entry { path: &entry, src };
     let checked = project::check_entry(&ent, &prj.opts);
     let mut diags = report::collect(&checked);
@@ -109,7 +112,7 @@ pub fn run(a: &Args) -> i32 {
         errln!("oxi {cmd}: not {}: the program has errors", if a.build { "built" } else { "run" });
         return EXIT_FINDINGS;
     }
-    let wasm = match project::compile_entry(&ent, &prj.opts) {
+    let wasm = match project::compile_entry(&ent, &prj.opts, target) {
         Ok(w) => w,
         Err(ds) => {
             for d in &ds.0 {
@@ -134,14 +137,14 @@ pub fn run(a: &Args) -> i32 {
             errln!("error: {}: {e}", out.display());
             return EXIT_FATAL;
         }
-        errln!("oxi build: wrote {} ({} bytes)", out.display(), wasm.len());
+        errln!("oxi build: wrote {} ({} bytes, target {target})", out.display(), wasm.len());
         return 0;
     }
     let fuel = match a.fuel {
         None | Some(0) => DEFAULT_FUEL,
         Some(n) => n,
     };
-    let report = run_wasm(&wasm, fuel);
+    let report = run_wasm_on(&wasm, fuel, target);
     let mut pipe_closed = false;
     for l in &report.lines {
         let r = if l.level >= 3 { emit(true, &format!("{}: {}", if l.level == 3 { "warn" } else { "error" }, l.msg)) } else { emit(false, &l.msg) };

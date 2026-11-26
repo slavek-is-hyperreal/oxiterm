@@ -11,6 +11,19 @@ use oxiscript_runtime::{
 };
 use std::sync::{Arc, Mutex};
 
+/// The target the program test suites compile for and run on: `OXI_TARGET=device|web|server`
+/// (default device). `scripts/oxiscript-gate.sh` runs the suites for device and web.
+pub fn test_target() -> oxiscript_abi::target::Target {
+    match std::env::var("OXI_TARGET") {
+        Ok(s) => oxiscript_abi::target::Target::parse(&s).unwrap_or_else(|| panic!("OXI_TARGET={s}: expected device, web or server")),
+        Err(_) => oxiscript_abi::target::Target::Device,
+    }
+}
+
+pub fn test_host_options() -> oxiscript_runtime::HostOptions {
+    oxiscript_runtime::HostOptions { max_target: test_target(), ..Default::default() }
+}
+
 pub const TICKER_IDL: &str = r#"
 interface Ticker "host:ticker" @1 {
     callback OnTick(n: i32, label: str);
@@ -38,11 +51,11 @@ pub fn show_diags(d: &oxiscript_lower::Diagnostics) -> String {
 }
 
 pub fn compile(src: &str) -> Vec<u8> {
-    compile_source(src, &interfaces(), &Options::default()).unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
+    compile_source(src, &interfaces(), &Options { target: test_target(), ..Options::default() }).unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
 }
 
 pub fn compile_full(src: &str) -> CompileOutput {
-    compile_program("", src, &mut oxiscript_check::NoLoader, &interfaces(), &Options::default())
+    compile_program("", src, &mut oxiscript_check::NoLoader, &interfaces(), &Options { target: test_target(), ..Options::default() })
         .unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
 }
 
@@ -149,7 +162,7 @@ pub fn env() -> Env {
 }
 
 pub fn env_with_limits(l: Limits) -> Env {
-    let host = Host::new(l);
+    let host = Host::with_options(l, test_host_options());
     let sink = LogSink::new(4096);
     let store = StateStore::new(StateLimits::default());
     let ticker = Arc::new(Mutex::new(TickerState::default()));

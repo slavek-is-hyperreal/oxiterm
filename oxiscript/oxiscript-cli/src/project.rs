@@ -26,7 +26,12 @@ pub struct Manifest {
     pub version: String,
     /// `host:` interfaces `main` receives, in parameter order (`host:log@1`).
     pub needs: Vec<String>,
+    /// Optional default compilation target (`[package] target = "web"`); `--target` overrides it.
+    pub target: Option<oxiscript_abi::target::Target>,
 }
+
+/// Keys `[package]` understands (`edition` is accepted for the templates, not yet used).
+const KNOWN_PACKAGE_KEYS: &[&str] = &["name", "version", "edition", "needs", "target"];
 
 pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
     let t: toml::Table = text.parse().map_err(|e| format!("{e}"))?;
@@ -34,6 +39,16 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
         .get("package")
         .and_then(toml::Value::as_table)
         .ok_or("missing [package] table")?;
+    // Unknown keys are ignored but reported (a wrong-case `Target` must not pass silently).
+    for k in t.keys().filter(|k| k.as_str() != "package") {
+        note(format!("{MANIFEST}: unknown table `[{k}]` is ignored"));
+    }
+    for k in pkg.keys().filter(|k| !KNOWN_PACKAGE_KEYS.contains(&k.as_str())) {
+        note(format!(
+            "{MANIFEST}: unknown key `{k}` in [package] is ignored (known: {})",
+            KNOWN_PACKAGE_KEYS.join(", ")
+        ));
+    }
     let get = |k: &str| -> Result<String, String> {
         pkg.get(k)
             .and_then(toml::Value::as_str)
@@ -51,10 +66,18 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
             );
         }
     }
+    let target = match pkg.get("target") {
+        None => None,
+        Some(v) => {
+            let s = v.as_str().ok_or("[package] `target` must be a string")?;
+            Some(oxiscript_abi::target::Target::parse(s).ok_or(format!("[package] `target` is `{s}`, expected device, web or server"))?)
+        }
+    };
     Ok(Manifest {
         name: get("name")?,
         version: get("version")?,
         needs,
+        target,
     })
 }
 
@@ -444,9 +467,9 @@ fn entry_loader(entry: &Entry<'_>) -> (FsLoader, String) {
 
 /// Check, lower and compile one entry file with its imports to a Wasm module (`oxi run` / `oxi build`).
 /// Call it only after [`check_entry`] was clean; errors come back as lowering diagnostics.
-pub fn compile_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Result<Vec<u8>, oxiscript_lower::Diagnostics> {
+pub fn compile_entry(entry: &Entry<'_>, opts: &CheckOptions, target: oxiscript_abi::target::Target) -> Result<Vec<u8>, oxiscript_lower::Diagnostics> {
     let (mut loader, name) = entry_loader(entry);
-    oxiscript_lower::compile_program(&name, &entry.src, &mut loader, &opts.hosts, &oxiscript_lower::Options::default()).map(|o| o.wasm)
+    oxiscript_lower::compile_program(&name, &entry.src, &mut loader, &opts.hosts, &oxiscript_lower::Options { target, ..oxiscript_lower::Options::default() }).map(|o| o.wasm)
 }
 
 /// Check one entry file with its imports. `hosts` come from [`load_hosts`].

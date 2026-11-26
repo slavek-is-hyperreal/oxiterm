@@ -106,6 +106,22 @@ pub fn toggle_half_block_image(width: u32, height: u32, bits: usize) -> std::syn
     img
 }
 
+/// Pixel budget for the terminal-graphics (Kitty/Sixel) raster of the toggle. The widget is a
+/// smooth shape, so above this size it is rasterised smaller and scaled up: a viewport-sized widget
+/// (up to 500 x 200 cells = ~5000 x 4000 px) would otherwise cost seconds per state change.
+pub const TERM_RASTER_BUDGET_PX: u64 = 2_000_000;
+
+/// The toggle at `w` x `h` pixels with at most [`TERM_RASTER_BUDGET_PX`] rasterised pixels.
+pub fn toggle_image_capped(w: u32, h: u32, bits: usize) -> RgbaImage {
+    let area = u64::from(w) * u64::from(h);
+    if area <= TERM_RASTER_BUDGET_PX {
+        return toggle_image(w, h, bits);
+    }
+    let f = (TERM_RASTER_BUDGET_PX as f64 / area as f64).sqrt();
+    let (rw, rh) = (((f64::from(w) * f) as u32).max(1), ((f64::from(h) * f) as u32).max(1));
+    image::imageops::resize(&toggle_image(rw, rh, bits), w, h, image::imageops::FilterType::Triangle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

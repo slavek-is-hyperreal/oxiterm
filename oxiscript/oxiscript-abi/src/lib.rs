@@ -12,6 +12,7 @@
 //! * [`idl`]: the host interface definition language, its parser and its
 //!   mapping to plain Wasm imports.
 //! * [`manifest`]: the `oxi.manifest` custom section.
+//! * [`target`]: compilation targets (`device|web|server`) and their Wasm features.
 //! * [`trap`]: trap kinds.
 //! * [`codes`]: the reason-code registry (diagnostics, placement, laws).
 //!
@@ -23,6 +24,7 @@ pub mod exports;
 pub mod idl;
 pub mod layout;
 pub mod manifest;
+pub mod target;
 pub mod trap;
 
 /// The Core Wasm value types the ABI uses. `V128` (SIMD) is reserved: adding

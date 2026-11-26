@@ -424,6 +424,7 @@ impl<'a> Cx<'a> {
         );
         module.section(&ds);
         let mut mf = Manifest::new(edition(self.m), profile(self.m));
+        mf.target = self.opts.target;
         mf.needs = self.needs.clone();
         let text = mf.print();
         module.section(&CustomSection {

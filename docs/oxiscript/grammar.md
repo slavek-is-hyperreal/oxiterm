@@ -441,6 +441,10 @@ function parsePort(text: string): Result<u16, string> {
 }
 ```
 
+### Compilation targets are not a language construct
+
+`oxi build --target device|web|server` (and `oxi.toml` `[package] target`) is a build setting. The language, the type system and every program's observable behaviour are **identical on every target**: there is no `#if target`, no target-specific syntax or standard library, and `oxi check` gives the same diagnostics for all targets. A target only changes which Wasm features the code generator may use (`abi.md` 3.6). Profiles (`realtime`, `safety`, `kernel`) are a different axis: they restrict programs.
+
 ---
 
 ## 7. Decisions for the owner to look at
