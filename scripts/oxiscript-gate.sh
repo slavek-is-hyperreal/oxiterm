@@ -4,7 +4,9 @@
 #   merge  - quick + one unified run (same Cargo feature unification as CI)
 #            + release build with OXI_FULL_FUZZ=1 (full fuzz counts)
 #            + the long #[ignore]d fuzz campaigns with fixed seeds
-#   nightly- merge, with seeds taken from the date (new inputs every night)
+#   nightly- merge, with seeds taken from the date (new inputs every night),
+#            plus, with OXI_NIGHTLY_IGNORED=1 (local night run by the lead),
+#            every #[ignore]d heavy test in release
 # Usage: scripts/oxiscript-gate.sh [quick|merge|nightly]
 # Exit code is non-zero if anything fails. A summary is printed at the end.
 set -u
@@ -63,6 +65,16 @@ if [ "$LEVEL" != quick ]; then
     else
       echo "known $name still red (open 8.P finding) -> $TMPDIR/gate-known-$name.log"
     fi
+  done
+fi
+
+if [ "$LEVEL" = nightly ] && [ "${OXI_NIGHTLY_IGNORED:-0}" = 1 ]; then
+  # --- nightly only: every #[ignore]d heavy test (large differential campaigns,
+  # 100k+ iteration fuzzers, long probes) in release with full fuzz counts.
+  # Rule: a test that takes more than a few seconds in debug is #[ignore]d with a
+  # reason and runs here, so the day gates stay short.
+  for c in "${CRATES[@]}"; do
+    step "nightly-ignored-$c" env OXI_FULL_FUZZ=1 BA_SEED="$SEED" cargo test --release -p "$c" --no-fail-fast -- --ignored
   done
 fi
 
