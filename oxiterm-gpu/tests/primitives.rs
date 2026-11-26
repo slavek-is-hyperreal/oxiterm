@@ -1,7 +1,9 @@
 //! Primitive-level and robustness tests for [`oxiterm_gpu::GpuSink`].
 //!
 //! Every GPU test skips cleanly (passing with a printed note) when no `wgpu` adapter is available,
-//! so CI environments without a GPU or software Vulkan driver stay green.
+//! unless `OXI_GPU_REQUIRED=1` is set (CI), when a missing adapter fails instead.
+
+mod common;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -23,15 +25,8 @@ const GREEN_RGB: [u8; 3] = [0, 255, 0];
 
 fn shared_ctx() -> Option<Arc<GpuContext>> {
     static CTX: OnceLock<Option<Arc<GpuContext>>> = OnceLock::new();
-    CTX.get_or_init(|| match GpuContext::new_headless() {
-        Ok(ctx) => Some(Arc::new(ctx)),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP oxiterm-gpu tests: no GPU adapter available ({msg})");
-            None
-        }
-        Err(other) => {
-            panic!("oxiterm-gpu tests: GPU context initialization failed unexpectedly: {other}");
-        }
+    CTX.get_or_init(|| {
+        common::ctx_or_skip("oxiterm-gpu tests", GpuContext::new_headless()).map(Arc::new)
     })
     .clone()
 }
@@ -525,14 +520,13 @@ fn context_options_constructs_shared_context() {
         power_preference: wgpu::PowerPreference::LowPower,
         ..GpuContextOptions::default()
     };
-    let ctx = match GpuContext::new_headless_with_options(&opts) {
-        Ok(c) => Arc::new(c),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP context_options_constructs_shared_context: {msg}");
-            return;
-        }
-        Err(other) => panic!("GpuContext::new_headless_with_options failed: {other}"),
+    let Some(ctx) = common::ctx_or_skip(
+        "context_options_constructs_shared_context",
+        GpuContext::new_headless_with_options(&opts),
+    ) else {
+        return;
     };
+    let ctx = Arc::new(ctx);
     let mut sink = GpuSink::try_new(ctx, 1.0).expect("try_new");
     let img = sink
         .render_cells(&DisplayList { items: vec![fill(RectF::new(0.0, 0.0, 2.0, 1.0), 0.0, RED)] }, 4, 2)
@@ -542,14 +536,13 @@ fn context_options_constructs_shared_context() {
 
 #[test]
 fn try_new_and_render_on_lost_device_return_device_lost() {
-    let ctx = match GpuContext::new_headless() {
-        Ok(c) => Arc::new(c),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP try_new_and_render_on_lost_device_return_device_lost: {msg}");
-            return;
-        }
-        Err(other) => panic!("GpuContext init failed: {other}"),
+    let Some(ctx) = common::ctx_or_skip(
+        "try_new_and_render_on_lost_device_return_device_lost",
+        GpuContext::new_headless(),
+    ) else {
+        return;
     };
+    let ctx = Arc::new(ctx);
     let mut sink = GpuSink::try_new(Arc::clone(&ctx), 1.0).expect("try_new");
     let list = DisplayList { items: vec![fill(RectF::new(0.0, 0.0, 2.0, 1.0), 0.0, RED)] };
     let _ = sink.render_cells(&list, 4, 2).expect("initial render");
@@ -576,14 +569,12 @@ fn try_new_and_render_on_lost_device_return_device_lost() {
 
 #[test]
 fn error_scopes_isolate_destroyed_target_from_foreign_scope_and_handler() {
-    let ctx = match GpuContext::new_headless() {
-        Ok(c) => Arc::new(c),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP error_scopes_isolate_destroyed_target: {msg}");
-            return;
-        }
-        Err(other) => panic!("GpuContext init failed: {other}"),
+    let Some(ctx) =
+        common::ctx_or_skip("error_scopes_isolate_destroyed_target", GpuContext::new_headless())
+    else {
+        return;
     };
+    let ctx = Arc::new(ctx);
     let handler_count = Arc::new(AtomicUsize::new(0));
     let hc = Arc::clone(&handler_count);
     ctx.device().on_uncaptured_error(Arc::new(move |_err| {

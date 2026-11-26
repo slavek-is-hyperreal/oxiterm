@@ -66,6 +66,53 @@ jobs:
         cargo test -p oxiterm-renderer --no-default-features --features text-shaping
         --test text_shaping --test wasm_pipeline --target wasm32-wasip1
 
+  # Stage 5.2: the oxiterm-gpu tests really run here, on Mesa lavapipe (software Vulkan).
+  # OXI_GPU_REQUIRED=1 turns "no adapter" from a silent SKIP into a failure, so green means the
+  # GPU code ran. No wasm bundle needed: oxiterm-gpu does not depend on oxiterm-server.
+  gpu:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WGPU_BACKEND: vulkan
+      OXI_GPU_REQUIRED: "1"
+    steps:
+    - uses: actions/checkout@v7
+    - uses: Swatinem/rust-cache@v2.9.3
+      with:
+        shared-key: gpu-release
+    - name: Install Mesa software Vulkan driver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+        icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1)
+        if [ -z "$icd" ]; then
+          echo "::error::lavapipe ICD json not found under /usr/share/vulkan/icd.d"
+          ls -la /usr/share/vulkan/icd.d || true
+          exit 1
+        fi
+        echo "Using ICD: $icd"
+        echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+        echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+        dpkg -l mesa-vulkan-drivers 'libllvm*' | grep '^ii' || true
+    - name: oxiterm-gpu tests (lavapipe, no skipping allowed)
+      run: cargo test --release -p oxiterm-gpu -- --test-threads=1 --nocapture
+    # The goldens are blessed on one llvmpipe build and skip (loudly) on another. Run them once
+    # more with the version gate off so a runner drift shows the actual pixel diff (and the
+    # .new.png artifact) without failing the job.
+    - name: Goldens on any llvmpipe version (advisory)
+      continue-on-error: true
+      env:
+        OXI_GPU_GOLDEN_ANY_LLVM: "1"
+      run: cargo test --release -p oxiterm-gpu --test golden -- --test-threads=1 --nocapture
+    - name: Upload rendered images
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: gpu-new-pngs
+        path: oxiterm-gpu/tests/golden/*.new.png
+        if-no-files-found: ignore
+
   audit:
     if: github.event_name != 'workflow_dispatch' || !inputs.coverage
     runs-on: ubuntu-latest

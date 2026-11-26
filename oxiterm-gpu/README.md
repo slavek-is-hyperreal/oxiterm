@@ -57,4 +57,11 @@ OXI_BLESS_GPU=1 cargo test -p oxiterm-gpu --test golden
 ```
 
 - When a golden PNG is missing or differs beyond tolerance (`CHANNEL_TOLERANCE = 2`, `MAX_DIFF_PERCENT = 0.25%`), the test writes `<name>.new.png` next to the golden path and fails with instructions.
-- When no `wgpu` adapter is available (headless CI without Vulkan/lavapipe), GPU tests skip cleanly with a printed note so CI stays green.
+- When no `wgpu` adapter is available, GPU tests skip with a printed note (developer machines without a GPU). With `OXI_GPU_REQUIRED=1` a missing adapter is a hard failure; the CI `gpu` job sets it and runs everything on Mesa lavapipe. Goldens compare only on llvmpipe LLVM 20 / Mesa 25.2 (the blessed build) and skip with a note on another llvmpipe build (`OXI_GPU_GOLDEN_ANY_LLVM=1` forces the comparison). Details: `docs/stages/5.2/ci.md`.
+
+Local run exactly like CI (software driver only):
+
+```bash
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json WGPU_BACKEND=vulkan OXI_GPU_REQUIRED=1 \
+  cargo test --release -p oxiterm-gpu -- --test-threads=1
+```

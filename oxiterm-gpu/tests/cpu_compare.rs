@@ -1,13 +1,15 @@
 //! Differential correctness tests comparing [`oxiterm_gpu::GpuSink`] output against the
 //! CPU reference software rasterizer (`oxiterm_fb::Rasterizer`) on the exact same `DisplayList`.
 //!
-//! Skips cleanly with a printed note when no `wgpu` adapter is available.
+//! Skips with a printed note when no `wgpu` adapter is available, unless `OXI_GPU_REQUIRED=1` (CI).
+
+mod common;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use oxiterm_fb::Rasterizer;
-use oxiterm_gpu::{diff_rgba, page, GpuContext, GpuError, GpuSink};
+use oxiterm_gpu::{diff_rgba, page, GpuContext, GpuSink};
 use oxiterm_proto::dom::NodeId;
 use oxiterm_proto::style::{AnsiColor, BorderChars};
 use oxiterm_renderer::render::display_list::{
@@ -23,17 +25,8 @@ const MAX_DIFF_PERCENT: f64 = 0.5;
 
 fn shared_ctx() -> Option<Arc<GpuContext>> {
     static CTX: OnceLock<Option<Arc<GpuContext>>> = OnceLock::new();
-    CTX.get_or_init(|| match GpuContext::new_headless() {
-        Ok(ctx) => Some(Arc::new(ctx)),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP cpu_compare: no GPU adapter available ({msg})");
-            None
-        }
-        Err(other) => {
-            panic!("cpu_compare: GPU context initialization failed unexpectedly: {other}");
-        }
-    })
-    .clone()
+    CTX.get_or_init(|| common::ctx_or_skip("cpu_compare", GpuContext::new_headless()).map(Arc::new))
+        .clone()
 }
 
 fn repo_root() -> PathBuf {
