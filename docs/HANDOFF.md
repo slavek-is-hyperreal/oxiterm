@@ -37,6 +37,6 @@ Old 4-core box, about 12 GB free RAM: at most 3 concurrent agents, `CARGO_BUILD_
 - **Click-miss debugging:** three historical causes: ambiguous-width glyphs in labels, SSH emitter cursor desync, web canvas pixel↔cell mapping.
 
 ## 6. First steps for the next lead
-1. Read this file, then [roadmap/README.md](roadmap/README.md) and the roadmap of the product you work on, then [../AGENTS.md](../AGENTS.md).
+1. Read this file, then [roadmap/README.md](roadmap/README.md) and the roadmap of the product you work on, then [../AGENTS.md](../AGENTS.md), then [../creator_persona.md](../creator_persona.md) (how to explain things to the owner and teach during the work) and [owner-questions.md](owner-questions.md) (open owner questions with suggestions, in Polish).
 2. `gh run list -L 5`: is `main` green? If not, that is the first job.
 3. `git worktree list`: unmerged agent worktrees under `.claude/worktrees/` may hold work (the roadmaps say which).
