@@ -337,7 +337,7 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 <a id="s-8-perf"></a>
 #### 8.Perf RC elision and allocation fast path (todo)
 
-- Scope: as in the owner-approved plan row of 2026-11-26: (1) ownership/borrow inference and retain/release elision on OxiIR (Perceus, Lean 4 borrowed parameters); (2) reuse analysis and in-place update for unique values; (3) drop specialisation; (4) allocation fast path inlined by codegen (size-class free-list pop), allocation folding; (5) escape analysis turning non-escaping objects into locals, scalar replacement of COW structs and nullable scalars (contracts decision 10) [R3-59, R3-62, R3-66]; array literal and template-string lowering without repeated reallocation. Input: `docs/research/oxiscript-memory-performance.md` (committed on `gemini-memres`, unverified; allocator, collector-without-headroom and codegen proposals are the draft's, to be verified by Opus before adoption). Also owns the optimised-versus-unoptimised IR differential [R3-211, R2-116] and the BL06/BL07/BL01 numbers.
+- Scope: as in the owner-approved plan row of 2026-11-26: (1) ownership/borrow inference and retain/release elision on OxiIR (Perceus, Lean 4 borrowed parameters); (2) reuse analysis and in-place update for unique values; (3) drop specialisation; (4) allocation fast path inlined by codegen (size-class free-list pop), allocation folding; (5) escape analysis turning non-escaping objects into locals, scalar replacement of COW structs and nullable scalars (contracts decision 10) [R3-59, R3-62, R3-66]; array literal and template-string lowering without repeated reallocation. Input: `docs/research/oxiscript-memory-performance.md` (committed on `gemini-memres`, unverified; allocator, collector-without-headroom and codegen proposals are the draft's, to be verified by Opus before adoption). Elision must preserve RC balance (the 8.M balance checker) and the "unprotected borrow" rule [R3-65]. Also owns the optimised-versus-unoptimised IR differential [R3-211, R2-116] and the BL06/BL07/BL01 numbers.
 - Gate: fuel per operation within 1.5x of the bump stub on the BL06 table and on the 8.S5 programs; percentage of retain/release removed reported per corpus; Stub-versus-Linked and optimised-versus-unoptimised differential runs identical; leak tests and the `stale_object` check stay green; BAD ACTOR attacks use-after-free through wrong borrow inference.
 - Depends on: 8.M-link merged, memres document verified and merged to `main`. Status: todo.
 
@@ -346,7 +346,7 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 <a id="s-8-s1"></a>
 #### 8.S1 First visible slice: `<script lang="oxs">` in OxiUI pages (todo; end of the critical path)
 
-- Scope: OxiScript in THTML pages: event handlers and state, server-driven and browser-local (WASM local mode). The language side: the `host:ui` (or equivalent) IDL replacing today's placeholder UI IDL, `@host` handlers per [D-17](#d-17), hot reload by instance swap with host-managed state kept ([D-9](#d-9), [P-8](#p-8)); module-local `let` resets, the host drops old callbacks [R3-26, R3-44, R3-76]; the host (server, wasm32 core) runs `oxiscript-runtime` and collects cycles between events (BL08). The OxiUI side (parsing the element, wiring the script into the event loop, sandboxed state keys) is `U.S1` and the "needs from OxiUI" list in [oxiui.md](oxiui.md#s-u-s1). This is the only stage allowed to add an `oxiscript-*` -> `oxiterm-*` dependency (crate direction rule [R3-51], [D-7](#d-7)).
+- Scope: OxiScript in THTML pages: event handlers and state, server-driven and browser-local (WASM local mode). The language side: the `host:ui` (or equivalent) IDL replacing today's placeholder UI IDL, `@host` handlers per [D-17](#d-17), hot reload by instance swap with host-managed state kept ([D-9](#d-9), [P-8](#p-8)); module-local `let` resets, the host drops old callbacks; schema-versioned persistent state needs explicit migration functions on schema change (not specified anywhere yet) and an atomic accept-or-reject reload that keeps the old instance on failure [R3-26, R3-44, R3-76, R3-157]; timers and animation callbacks on top of the host clock `oxi_tick` [R3-39]; the host (server, wasm32 core) runs `oxiscript-runtime` and collects cycles between events (BL08). The OxiUI side (parsing the element, wiring the script into the event loop, sandboxed state keys) is `U.S1` and the "needs from OxiUI" list in [oxiui.md](oxiui.md#s-u-s1). This is the only stage allowed to add an `oxiscript-*` -> `oxiterm-*` dependency (crate direction rule [R3-51], [D-7](#d-7)).
 - Gate: a demo page scripted in both modes; in local mode it works with the server stopped; a reload keeps host state; a script cannot reach anything not passed in through `main`; BAD ACTOR on capability escape and on reload during an event.
 - Depends on: [8.M-link](#s-8-m-link), 8.L, 8.R, [7.1](oxiui.md#s-7-1) (done). Status: todo (no `script lang` code). Sources: [R2-62, R4-55].
 
@@ -408,7 +408,7 @@ Scope of the owner-approved row ([D-11](#d-11), [D-15](#d-15), [D-16](#d-16)), s
 #### 8.2b AOT release path (todo)
 
 - Scope: Wasmtime/Cranelift AOT on 64-bit hosts; wasm to C (w2c2, MIT) plus the target C compiler for 32-bit boards and the likely safety route; Binaryen `wasm-opt` step adopted or rejected after measurement (the research recommended it; no stage owned it) [R3-105]; compiler-inserted budget checks at loop back-edges and calls for engines without fuel (wasm2c, browsers, ESP32 AOT) [R3-166]; differential testing interpreter against AOT as in [D-7](#d-7) and an engine feature matrix in CI [R3-154, R3-108]; `memory64` target for `server` with the ABI bump and parametrised address sites (`Mem::I32`) [D-13, R2-85, R2-108, R3-36]; the ESP32 release-engine question (P-7 wasmi or w2c2) settled with [8.Mem](#s-8-mem) and [8.0](#s-8-0) numbers [R3-46]; a Component Model adapter generated from the IDL stays an idea ([Ideas](#s-ideas)).
-- Gate: the corpus gives identical results and trap kinds interpreted and AOT; a w2c2 build runs on the owner's Raspberry Pi 1 B+ ([8.Mem](#s-8-mem)); a budget check traps a runaway loop within a stated bound without wasmi fuel; a memory64 module is refused or accepted per target as the manifest says.
+- Gate: the corpus gives identical results and trap kinds interpreted and AOT; a w2c2 build runs on the owner's Raspberry Pi 1 B+ ([8.Mem](#s-8-mem)); a budget check traps a runaway loop within a stated bound without wasmi fuel; a memory64 module is refused or accepted per target as the manifest says. A small backend trait over the maintained engines (wasmi, Wasmtime, w2c2, browser) keeps the matrix honest [R3-164].
 - Depends on: [8.M-link](#s-8-m-link), better after [8.Perf](#s-8-perf). Status: todo.
 
 ### 5.5 Data parallelism: SIMD, auto-vectoriser, GPU (8.3a-e)
@@ -419,6 +419,7 @@ Design: `docs/research/oxiscript-simd-gpu-design.md` and its verification ledger
 #### 8.3a Explicit SIMD (todo)
 
 - Scope: builtin 128-bit `Simd<T,N>` types and `SimdMask`, vector IR ops (`Ty::Vec`), `lower_simd_to_scalar`, v128 emission on `web`/`server` targets, scalar fallback with identical semantics on `device`; ABI 1.1 `features simd128` and `WasmTy::V128` ([Q-SIMD-7](#q-simd)); wasmi `simd` on with `relaxed_simd` forced off and tested (a `relaxed_madd` module is rejected), Wasmtime `relaxed_simd_deterministic` and NaN canonicalisation; integer vectors forbid plain `+ - *` (`+% +|`, `E0110` with fix) per [Q-SIMD-1](#q-simd); dedicated code for a dynamic lane index [R4-01, R4-07, R4-08, R4-09, R4-19, R4-18, R3-34].
+- Rule for the first user of any Wasm feature: it names the minimum target, emits only when the target allows, and ships a `device` lowering with identical semantics; suites run on `device` and `web` [R3-56, R3-34, R3-35].
 - Gate: 10 types compile to simd128 and scalar and validate; at least 5000-case differential fuzz bit-identical across wasmi SIMD, wasmi scalar and Wasmtime; at least 2.5x on f32x4 SAXPY/matmul in Wasmtime/browser; no regression on non-SIMD code in wasmi; BAD ACTOR.
 - Depends on: [8.Bench](#s-8-bench), 8.L, [8.2a](#s-8-2a), [8.Fix](#s-8-fix) (local reuse). Housekeeping inside: file the wasmi `relaxed_madd` upstream issue ([Q-SIMD-10](#q-simd)); correct the Safari relaxed-SIMD claim in `oxiscript-language.md` ([Q-SIMD-11](#q-simd)). Status: todo.
 
@@ -519,7 +520,7 @@ Design: `docs/research/oxiscript-simd-gpu-design.md` and its verification ledger
 #### 8.5 Safety profile (todo)
 
 - Scope: laws level 2 (SMT, Z3 MIT or cvc5 BSD, not Why3 LGPL linked) and level 3 (written lemmas) in the `safety` profile; `requires/ensures/invariant` contracts as runtime assertions in debug, erased in release; `no_panic` proofs; the evidence package (designed to be qualifiable, never "certified"), SBOM (`oxi sbom`), hermetic builds, signed releases; first standard and the IEC 62443 mapping [R3-169, R3-163, R3-167, R3-171, R3-124]. Questions: [Q-SAFE-1..4](#q-safe).
-- Gate: an unproven law in `safety` is a compile error; a sample component with proven laws; evidence report generated. Depends on: [8.2c](#s-8-2c), [8.S4a](#s-8-s4). Status: todo.
+- The safety build drops the DX tools (reload, simulator, REPL), has no `eval`, logging is a capability and the panic policy is a host/profile setting [R3-173]. Gate: an unproven law in `safety` is a compile error; a sample component with proven laws; evidence report generated. Depends on: [8.2c](#s-8-2c), [8.S4a](#s-8-s4). Status: todo.
 
 <a id="s-8-6"></a>
 #### 8.6 Wasm exception handling (idea; nice to have)
@@ -546,7 +547,8 @@ Nothing here has an owning stage today. Each can be promoted by the owner; the s
 
 | Idea | Source ids |
 |---|---|
-| Unicode identifiers (needs an edition bump, lexer-only) | R3-02, R3-202 |
+| Unicode identifiers (needs an edition bump, lexer-only; homoglyph policy UAX#31 + NFC + UTS#39 if ever) | R3-02, R3-102, R3-202 |
+| Host-to-guest bulk data above 4096 bytes (chunking, ABI 1.1) | R3-41 |
 | Array destructuring, tuples, fixed arrays `[T; N]` (reserved syntax) | R3-04, R3-05 |
 | Interfaces as value types (`dyn`, dynamic dispatch) | R3-06, R3-101, R3-142 |
 | Derived structural equality on structs | R3-07 |
@@ -680,3 +682,56 @@ Rules that hold for every stage of this roadmap (sources: `docs/HANDOFF.md`, `ON
 - **Deploy.** Sites are Cloudflare Workers static assets deployed by the lead with wrangler after the gate; dev blog authorship per [D-22](#d-22); TMPDIR and scratch on `/vectorlegis_ssd_pool/oxiterm/scratch`, never `/tmp` (the root disk is nearly full).
 - **Doc sync.** The core block of `AGENTS.md` is copied from `oxiscript-cli/templates/common/AGENTS.md` by `tools/sync_docs.py`; edit there.
 
+## 9. Coverage ledger and risks
+
+Every inventory item whose product is OxiScript or both is either a stage scope above, an idea in section 5.7, a question in section 7, a decision in section 2, a done row in section 3, or one of the lines below. Items that belong to the OxiUI half are in [oxiui.md](oxiui.md); items that are document fixes are in [consistency.md](consistency.md). The mechanical check (extract the ids from the four inventories, grep them in this file, `oxiui.md` and `consistency.md`) was run on 2026-11-26 and is repeated in the report to the lead.
+
+Invariants and specs in force, no task: cyclic imports are an error, no `export default`/re-export/namespaces, default parameters may not reference other parameters [R3-27, R3-28, R3-29]; non-trapping `trunc_sat` not allowed on any target [R3-35]; host never re-enters the guest during an import, bulk payloads at most 4096 bytes [R3-41, R3-42]; checker bounds list (32 type levels, 400k types, 64 union variants, expression depth 120, 100 errors) [R3-54]; extension-point table of `contracts.md` (each row is owned by the stage named in it: kernel and SIMD by 8.3, threads and isolates by 8.4, AOT by 8.2b, EH by 8.6, contracts/SMT by 8.5, placement and `@expect` by 8.S4b/8.2c) [R3-55]; the agent-guidance gaps found by the agent test were folded into `AGENTS.md` [R3-84]; every `oxs` block is compiled by `cargo test -p oxiscript-cli` [R3-87]; MVP grammar implemented [R3-01]; OxiIR plus Core Wasm as primary backend, wasmi as live engine, closure layout `{fn_index, env}`, `as` split into numeric `as` and `downcast`, drop list of TypeScript features, written evaluation order and defined overflow [R3-104, R3-106, R3-118, R3-139, R3-146, R3-160]; licence policy ([P-11](#p-11)) [R3-120]; domain-free core and the rocket test ([P-1](#p-1)) [R3-156]; "avoid early" list of the founding research: the two violated items are the LSP ([8.S2](#s-8-s2)) and RC elision ([8.Perf](#s-8-perf)) [R3-119]; persona DX is partial until 8.S2, 8.D1, 8.S3 land [R3-116]; SIMD research layers 0-2 are [8.3a](#s-8-3a), [8.3b](#s-8-3b), [8.4](#s-8-4) [R3-109]; out of scope initially: Component Model, WasmGC backend, own native backend, blocks editor, refinement types, auto-offload heuristics [R3-178]; "faster than tsc" is not a differentiator [R3-251]; the P1-P3 safety framing (host safety, guest memory safety under re-entry, determinism) governs any native binding [R3-280].
+
+Document-only items: HANDOFF and plan status lines stale [R2-159, R2-165]; README says "run next" while Run is live [R1-111]: see [consistency.md](consistency.md).
+
+Risks (from the founding research, still valid): scope; memory model wrong (mitigated by [8.0](#s-8-0), [8.Perf](#s-8-perf)); wasmi translation latency; wasm-in-wasm slowness in the browser; SIMD semantics leaking into the language (mitigated by the identical-results gate); "feels like TS" erosion (measured by [8.S5](#s-8-s5)); licence taint; safety-claim overreach (never claim certification); compiler size inside the core (the checker builds for wasm32); agent-written code with no human maintainer ([Q-SAFE-4](#q-safe)); usage-limit stops (WIP snapshot commits) [R3-179].
+
+Covered by content in the sections above without an inline id (the item is the stage, decision or rule it names): plan header status, execution order, delegation and process rules, shared GPU context, Run/identity stages, owner goals, principles, decisions 1-13, critical path, parallel schedule, wave log, risks, [R2-01, R2-09, R2-10, R2-21, R2-31, R2-51, R2-52, R2-53, R2-76, R2-78, R2-80, R2-81, R2-87, R2-156, R4-39, R4-67, R4-68, R4-71, R1-30, R1-37, R1-40, R1-26]; stage rows [R2-61, R2-66, R2-71, R2-72, R2-90, R2-161, R4-53, R4-54, R4-56, R4-58, R4-59, R4-60, R4-61, R4-62]; reuse table [R2-79, R4-65] in section 10; OxiScript facts of the README and CHANGELOG [R1-32, R1-33, R1-34, R1-35, R1-36, R1-42, R1-50, R1-56, R1-98] in sections 3 and 5; versioning split [R3-74] in section 8.
+## 10. Reuse before writing (owner, 2026-11-25)
+
+Solved engineering problems are taken from existing permissive crates; the language and its semantics stay ours. Each crate is checked at adoption (licence, size, wasm32 build). Light dependencies may enter the core (live compiler in the browser/device); heavy ones stay in the developer toolchain. Every dependency is an SBOM entry (CRA / IEC 62443). Additions from the SIMD/GPU report: `naga` (CI validator only), w2c2 with SIMDe, `half`, `rayon` (8.4), esp-dsp/esp-nn (ideas). The memres draft proposes `rlsf` or `talc` for the allocator ([8.Perf](#s-8-perf)).
+
+| Need | Reuse | Slice | Where |
+|---|---|---|---|
+| Type inference (unification) | `ena` (rustc's union-find): not used, 8.T has no inference variables (reason in `docs/stages/8.T/implementation.md`) | 8.T | core |
+| Incremental queries shared by compiler and LSP | `salsa` (rust-analyzer) — evaluate first | 8.T / 8.S2 | toolchain |
+| Diagnostic rendering | `ariadne` or `codespan-reporting` | 8.T+ | toolchain |
+| Language server | `lsp-server` + `lsp-types` | 8.S2 | toolchain |
+| Wasm emission and validation | `wasm-encoder` + `wasmparser` | 8.G | core |
+| Wasm transforms / module merging | `walrus` | 8.G / 8.L | toolchain |
+| Release optimisation | Binaryen `wasm-opt` | 8.2b | toolchain |
+| Guest allocator | `dlmalloc` or `talc` compiled to Wasm, under our RC + cycle collector | 8.M, 8.Perf | module |
+| Adversarial testing | `wasm-smith`, `arbitrary` | all BAD ACTOR passes | dev only |
+| E-graph optimisation | `egg` / `egglog` (after 8.3b v0, idea) | 8.3b+ | toolchain |
+| Bug-shape matching (graph queries over OxiIR) | Datalog in Rust: `ascent` / `crepe` / `datafrog`, or `egglog` shared with 8.3 — evaluate | 8.S4c | toolchain |
+| Rust library bindings (proc-macro codegen) and linking | `syn` + `quote` + `proc-macro2`; `wasm-ld` (LLVM, Apache-2.0 with LLVM exception) or `walrus` for linking | 8.N | toolchain |
+| SMT for laws level 2 | `z3` / `cvc5` | 8.5 | toolchain |
+
+Not reusable as code: the cycle collector for RC in Wasm linear memory (algorithms from Nim ORC and Koka Perceus) and the type system itself.
+
+## 11. Wave log (history, measured; wall-clock excludes usage-limit pauses)
+
+Kept from the old plan because the timings are measured and exist nowhere else; used to re-estimate OxiScript from measured throughput. Rows for 7.1 and 7.2 are shared with [oxiui.md](oxiui.md). Rows missing from the old log (8.2a targets, 8.Run, 8.Id, showcase, 8.Rel, 5.2, 7.6) were not timed.
+
+| Slice | Implementation | BAD ACTOR | Fixes | Findings | Merged |
+|---|---|---|---|---|---|
+| 8.C Contracts | 31 min (+3 min lead amendment) | ~15 min | 21 min | 28 (verifier crash, pointer forging, RC use-after-free in the spec, grammar ambiguities) | 2026-11-25, `2ba1aa0` |
+| 7.1 WASM local mode | 41 min | ~17 min | ~29 min | 8 (incl. a pre-existing server abort via a 65535×65535 resize) | 2026-11-25, `77f9002` |
+| 7.2 OxiDE sink | 30 min | ~10 min | ~1 h incl. 200k-case fuzz run | 21 (NaN/size crashes, f32-counter hangs, uncapped memory, device-guard bypass) + 1 found during fixes | 2026-11-25, `78fcdb5` |
+| 8.P Parser + formatter | ~45 min | ~20 min | (not logged) | 16 (formatter changes meaning/breaks code with comments, ~3 KB stack per nesting level, Trojan-Source escapes, quadratic comments) | 2026-11-25, `13b5987` |
+| 8.R Runtime | ~26 min | ~25 min | (not logged) | 7, no sandbox escape (sticky revocation, pump budget, subscription scan DoS, guessable handles, shared-store quota, log injection) | 2026-11-25, `d007c74` |
+| 8.T Type checker | (not logged) | (not logged) | 2 agents: first stopped by usage limit, resume ~35 min | 22 (17 severe: uninitialised globals/statics, `never` falling off, private bypass, law purity bypass, polymorphic recursion, lossy fix texts) + 7 catalogue | 2026-11-25, `3cbf1b4` |
+| 8.G Codegen | (not logged) | (not logged) | agent stopped by usage limit after F1–F6; lead finished verify + clippy | 6 (NaN not canonicalised at exports, quadratic IR verifier, locals limit above engine, ptr_count truncation, raw-ref exports, loop limit), 0 miscompilations | 2026-11-25, `bad1e94` |
+| 8.M Memory | (not logged) | (not logged) | (not logged) | see docs/stages (notes not archived) | 2026-11-25, `5a5929d` |
+| 8.L Lowering | ~2 h incl. a usage-limit stop | ~16 min | ~40 min | 10 (2 RC leaks, per-iteration loop bindings vs TS, null narrowing, deep-drop recursion, limits); 0 miscompilations in ~19.6k differential programs | 2026-11-26, `c792b4f` |
+| 8.D DevKit v0 | ~29 min | ~22 min | ~17 min | 17 (import root escape, write through symlink, /dev/zero and FIFO DoS, `needs` not enforced, workspace-controlled binary path) | 2026-11-26, `148b8e8` |
+| 8.W Websites step 1 | ~25 min + usage-limit stop | ~7 min | ~18 min | 12 (no CSP, stale-fix index, placeholder text published, DNS keep-list, contrast) | 2026-11-25, `0df8681` |
+
+
+Wave 1 (7.1, 7.2, 8.C) closed 2026-11-25. Usage limits, not agent speed, set the pace: two pauses (2h10 and about 4h) in the first nine hours of wall-clock time.
