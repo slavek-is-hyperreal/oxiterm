@@ -24,6 +24,7 @@ The version is `x.y.c`.
 - `scripts/oxiscript-version.sh` prints the next version. It finds the last `oxiscript-v*` tag, sums added + deleted lines of `oxiscript/oxiscript-*/src/**` since it (`git diff --numstat`, the same sum as `--shortstat`), adds the tag's `carry`, and raises `c` by `total / 5555`. The new carry (`total % 5555`) is printed for the next tag message. If less than one step has accumulated it prints "no release due" and exits 3. With no tag yet it prints `0.0.1` (earlier history is not counted).
 - `scripts/oxiscript-version.sh --check` fails if the crates' `Cargo.toml`, the extension's `package.json` and `package-lock.json` disagree. It runs in `scripts/oxiscript-gate.sh` (all levels). The playground page reads the version from `oxiscript-cli/Cargo.toml` when the site is built, so it has no separate copy.
 - Raising `x` or `y` by hand: edit all manifests to the new version (`c` = 0) and tag with that name; the carry still goes in the tag message.
+- Release checklist: bump every manifest (above), `cargo update -w`, the `"version"` line of the JSON snapshots in `oxiscript/oxiscript-cli/tests/snapshots/`, the CHANGELOG entry; run `scripts/oxiscript-gate.sh quick` before tagging.
 - `oxi --version` prints `oxi X.Y.C` and a line saying nothing is guaranteed before 1.0.0.
 
 ## Why 5555
