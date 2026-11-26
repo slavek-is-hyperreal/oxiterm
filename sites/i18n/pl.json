@@ -21,7 +21,7 @@
     "supportButton": "Postaw mi kawę",
     "repo": "Kod źródłowy na GitHubie",
     "footerFine": "Bez śledzenia, bez ciasteczek, bez skryptów firm trzecich, nic nie jest zapisywane w Twojej przeglądarce. Kod na licencji MIT lub Apache-2.0.",
-    "demoHint": "To uruchamia OxiUI w Twojej przeglądarce, bez serwera. Pobiera około 1,5 MB.",
+    "demoHint": "To uruchamia OxiUI w Twojej przeglądarce, bez serwera. Pobiera około 2 MB.",
     "runDemo": "Uruchom demo na żywo",
     "demoWeight": "Nic nie jest nigdzie wysyłane: stronę rysuje WebAssembly na Twoim urządzeniu.",
     "demoTitle": "Demo OxiUI na żywo",
@@ -50,7 +50,8 @@
       "title": "Nie znaleziono",
       "lead": "Tej strony nie ma.",
       "home": "Start"
-    }
+    },
+    "mascotAlt": "Oxi, aksolotl, maskotka projektu"
   },
   "home": {
     "nav": {
@@ -135,6 +136,15 @@
       "text": "[DO UZUPEŁNIENIA: dedykacja, własnymi słowami właściciela]",
       "name": "[DO UZUPEŁNIENIA: imię i nazwisko nauczyciela]",
       "note": "[DO UZUPEŁNIENIA: opcjonalna linijka]"
+    },
+    "showcase": {
+      "hint": "Kliknij kartę projektu, aby ją otworzyć, kliknij ponownie, aby zamknąć.",
+      "tag": {
+        "oxiui": "Interfejs dla terminali, przeglądarek i WebAssembly",
+        "oxiscript": "Typowany język kompilowany do WebAssembly"
+      },
+      "closed": "otwórz",
+      "opened": "zamknij"
     }
   },
   "oxiui": {
@@ -480,19 +490,53 @@
         "desc": "Kilka możliwości na jednej stronie."
       }
     },
-    "demo": {
-      "heading": "demo na żywo",
-      "intro": "Ta strona działa w Twojej przeglądarce. Klikaj przyciski.",
-      "counter": "Licznik: stan żyje w stronie.",
-      "toggle": "Pokaż i ukryj: węzeł związany ze stanem.",
-      "toggleButton": "Pokaż lub ukryj wiadomość",
-      "revealed": "Witaj. Ten tekst pojawia się, gdy stan na to pozwala.",
-      "mode": "Wybierz tryb: napis w stanie.",
-      "modeA": "cichy",
-      "modeB": "jasny",
-      "modeC": "głośny",
-      "modeIs": "Tryb:",
-      "footer": "[Tab] zmiana fokusu  [Enter] naciśnij"
+    "showcase": {
+      "desktop": {
+        "title": "Mały pulpit",
+        "intro": "Przeciągnij okno za pasek tytułu, kliknij okno, aby wyciągnąć je na wierzch. Wszystko to zwykły THTML i TCSS, bez skryptu.",
+        "introPhone": "Klikaj przyciski. Na szerokim ekranie okna można przeciągać.",
+        "winCounter": "Licznik",
+        "winToggle": "Przełącznik",
+        "winDash": "Panel",
+        "counterLabel": "Stan żyje w stronie:",
+        "toggleLabel": "Element powiązany ze stanem:",
+        "toggleBtn": "Przełącz",
+        "toggleOn": "Włączone. Ten tekst widać, gdy stan jest prawdziwy.",
+        "dashNote": "Liczby pokazowe, nie prawdziwa maszyna. Paski płyną sprężyście.",
+        "cpu": "Procesor",
+        "mem": "Pamięć",
+        "disk": "Dysk",
+        "quiet": "Spokój",
+        "busy": "Praca",
+        "spike": "Skok"
+      },
+      "fx": {
+        "title": "Galeria efektów",
+        "intro": "Ramki, kolor, grafika wektorowa, animacja i mały widżet. Ta sama strona pokazuje je w każdym trybie.",
+        "borders": "Ramki",
+        "single": "pojedyncza",
+        "double": "podwójna",
+        "rounded": "zaokrąglona",
+        "colors": "Kolor",
+        "text": "Tekst",
+        "bold": "pogrubiony",
+        "italic": "pochylony",
+        "plain": "zwykły",
+        "svg": "Obraz SVG",
+        "svgAlt": "Oxi, aksolotl, jako obraz wektorowy",
+        "lottie": "Animacja Lottie",
+        "lottieAlt": "Dzwoniący dzwonek, animacja Lottie",
+        "lottieHint": "Gra sama.",
+        "rive": "Przełącznik proceduralny (miejsce na Rive)",
+        "riveAlt": "Przełącznik rysowany proceduralnie przez silnik; plik .riv to tymczasowy zalążek, nie prawdziwa grafika Rive",
+        "riveHint": "Kliknij przełącznik."
+      },
+      "ssh": {
+        "title": "Ta sama strona przez SSH",
+        "p1": "Ta strona jest zbudowana z THTML i plików multimedialnych (obrazy, animacja Lottie, diagram). Tę samą stronę można serwować przez SSH do terminala poleceniem oxiterm-cli serve, jak poniżej. Na tej stronie przeglądarka uruchamia rdzeń OxiUI lokalnie, jako WebAssembly.",
+        "cmd": "oxiterm-cli serve your-page.thtml",
+        "p2": "Publiczny serwer SSH jeszcze nie działa. Uruchom go na własnym komputerze."
+      }
     }
   },
   "oxiscript": {
@@ -891,6 +935,79 @@
           "text": "wydajność i pierwsza sztuczna inteligencja: perceptron, rozpoznawanie cyfr uczone na żywo, malutki model językowy."
         }
       ]
+    },
+    "showcase": {
+      "pipeline": {
+        "title": "Od źródła do działającego programu",
+        "intro": "Plik .oxs przechodzi pięć kroków. Wszystko do Wasm to kompilator. wasmi, mały interpreter WebAssembly, uruchamia wynik.",
+        "alt": "Potok",
+        "nodes": {
+          "src": "Źródło .oxs",
+          "parse": "Parsowanie",
+          "check": "Sprawdzanie typów",
+          "ir": "OxiIR",
+          "wasm": "Wasm",
+          "run": "wasmi"
+        }
+      },
+      "status": {
+        "title": "Co działa dziś, a co nie",
+        "worksTitle": "Działa dziś",
+        "works": [
+          "Parser i formater",
+          "Sprawdzanie typów ze stałymi kodami błędów",
+          "Mechaniczne poprawki typowych pomyłek",
+          "Uruchamianie w przeglądarce, z limitem paliwa",
+          "Możliwości hosta: log i state"
+        ],
+        "notyetTitle": "Jeszcze nie",
+        "notyet": [
+          "Biblioteka standardowa i pakiety",
+          "Serwer języka",
+          "Wypisywanie f64 jako tekstu",
+          "Urządzenia, np. ESP32"
+        ]
+      },
+      "tabs": {
+        "title": "Trzy małe programy",
+        "hint": "Kliknij kartę. To prawdziwe przykłady z placu zabaw.",
+        "names": [
+          "Witaj",
+          "Błędy",
+          "Kształty"
+        ],
+        "captions": [
+          "Możliwości wchodzą przez main: log to interfejs hosta.",
+          "Błędy są wartościami: Result i switch, bez wyjątków.",
+          "Unia kształtów i wyczerpujący switch."
+        ]
+      },
+      "diff": {
+        "title": "Czym różni się od TypeScript",
+        "hint": "Kliknij wiersz, aby go otworzyć lub zamknąć.",
+        "items": [
+          {
+            "head": "Liczby: nie ma typu number",
+            "body": "Liczby całkowite to i8 do u64, zmiennoprzecinkowe to f32 i f64. Nigdy nie mieszają się same: zamieniaj przez as. Przepełnienie liczby całkowitej kończy się trapem."
+          },
+          {
+            "head": "Równość: tylko ===",
+            "body": "== jest błędem, a sprawdzanie typów podpowiada poprawkę. === nie jest zdefiniowane dla struktur, tablic i unii: porównuj pola."
+          },
+          {
+            "head": "Błędy są wartościami, nie wyjątkami",
+            "body": "Bez throw, try i catch. Funkcja, która może zawieść, zwraca Result z T i E, a przyrostek ? przekazuje błąd wyżej."
+          },
+          {
+            "head": "struct to wartość, class to referencja",
+            "body": "Struct jest kopiowany przy przypisaniu. Wspólna, zmienna tożsamość wymaga class. Nie ma extends: używaj interfejsów i kompozycji."
+          },
+          {
+            "head": "Nic nie jest globalne: możliwości wchodzą przez main",
+            "body": "Nie ma console, fetch ani Math. Program sięga do świata tylko przez interfejsy hosta, które dostaje jego funkcja main."
+          }
+        ]
+      }
     }
   }
 }

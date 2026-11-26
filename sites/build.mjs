@@ -15,12 +15,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { demoThtml as demoTemplate } from './demo-thtml.mjs';
-import { asciiHtml, asciiThtml } from './shared/brand/oxi-ascii.mjs';
+import { showcaseBody } from './showcase-thtml.mjs';
+import { asciiHtml } from './shared/brand/oxi-ascii.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
-const DIST = path.join(HERE, 'dist');
+const DIST = process.env.SITES_DIST || path.join(HERE, 'dist'); // SITES_DIST / SITES_I18N_DIR: test hooks (sites/test/pipeline_label.mjs)
 const ALL_LANGS = ['en', 'pl', 'la']; // la = Latin: draft, written but NOT published until the owner enables it
 // Published languages. Default pl,en. Enable Latin later with SITES_LANGS=pl,en,la. `en` is always built (site root).
 const LANGS = ALL_LANGS.filter((l) => l === 'en' || (process.env.SITES_LANGS || 'pl,en').split(',').map((x) => x.trim()).includes(l));
@@ -56,7 +56,7 @@ const BRAND_FILES = ['oxi-cell-home.svg', 'oxi-cell-oxiui.svg', 'oxi-cell-oxiscr
 
 // ---------------------------------------------------------------- i18n
 const I18N = {};
-for (const l of ALL_LANGS) I18N[l] = JSON.parse(read(path.join(HERE, 'i18n', `${l}.json`)));
+for (const l of ALL_LANGS) I18N[l] = JSON.parse(read(path.join(process.env.SITES_I18N_DIR || path.join(HERE, 'i18n'), `${l}.json`)));
 const missing = new Set();
 const dig = (o, key) => key.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
 function T(lang, key) {
@@ -229,7 +229,7 @@ function roadmapHtml(site, lang) {
 
 function widget(site, lang, id, b, ctx) {
   switch (id) {
-    case 'demo': return iframeStarter(site, lang, `${lang}/demo.thtml`, 'common.demoTitle');
+    case 'demo': return iframeStarter(site, lang, `${lang}/index.thtml`, 'common.demoTitle');
     case 'gallery':
       return GALLERY.map((g) => `<article class="card gallery-item" id="ex-${g}"><h3>${esc(T(lang, `oxiui.gallery.${g}.title`))}</h3><p>${esc(T(lang, `oxiui.gallery.${g}.desc`))}</p>${iframeStarter(site, lang, `demos/${g}.thtml`, `oxiui.gallery.${g}.title`)}<details><summary>${esc(T(lang, 'common.showSource'))}</summary>${pre(demoSource(g), 'thtml')}</details></article>`).join('');
     case 'roadmap': return roadmapHtml(site, lang);
@@ -356,40 +356,53 @@ ${ctx.extraScript || ''}
 // ---------------------------------------------------------------- THTML (view this page in OxiUI)
 const tx = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function thtmlPage(site, lang, id, page, mobile) {
-  const W = mobile ? 36 : 100;
+function thtmlPage(site, lang, id, page, mobile, media) {
+  // 80 columns: the live-demo iframe on the HTML pages is 960 px wide, which is an 84 column grid (a 1200 px window: 98 columns);
+  // a wider page is clipped on the right. Phones get the 36 column _mobile file (client threshold innerWidth < 800).
+  const W = mobile ? 36 : 80;
   const pal = PALETTE[site];
   const t = (k) => T(lang, k);
   const out = [];
   const textL = (cls, s) => out.push(`  <text class="${cls}">${tx(s)}</text>`);
-  const btn = (label, target) => out.push(`  <box class="btn" event-htmx="${tx(target)}"><text style="height: 1;">${tx(label)}</text></box>`);
+  const btn = (label, target) => out.push(`  <box style="flex-direction: row;"><box class="btn" event-htmx="${tx(target)}"><text style="height: 1;">${tx(label)}</text></box></box>`);
+  // A list row: a marker column and wrapping text (replaces the old "- item" text lines).
+  const li = (marker, s) => out.push(`  <box style="flex-direction: row; margin-top: 1;"><text class="mk">${tx(marker)}</text><text class="li" style="flex: 1;">${tx(s)}</text></box>`);
   const navRow = SITES[site].pages.length > 1
     ? SITES[site].pages.map((p) => `<text class="navi${p === id ? ' cur' : ''}" event-htmx="${p}.thtml"> ${tx(t(`${site}.nav.${p}`))} </text>`).join('')
     : '';
+  // The index page of every site is a showcase (sites/showcase-thtml.mjs); the other pages are generated from the same blocks as the HTML.
+  const sc = id === 'index'
+    ? showcaseBody({ site, lang, mobile, W, t, pal, tx, plain, media, page, readExample, urlOf: (s) => `${ORIGIN[s]}${pagePath(lang, 'index')}`, blockOn, latinOn: LATIN_ON })
+    : null;
   out.push(`<style>
 text { fg: ${pal.fg}; }
 .brand { fg: ${pal.acc}; height: 1; margin-right: 3; }
-.h1 { fg: ${pal.acc}; wrap: word; margin-top: 1; }
-.h2 { fg: ${pal.pat}; wrap: word; margin-top: 1; }
+.h1 { fg: ${pal.acc}; wrap: word; margin-top: 1; font-weight: bold; }
+.h2 { fg: ${pal.pat}; wrap: word; margin-top: 1; font-weight: bold; }
 .p { fg: ${pal.fg}; wrap: word; margin-top: 1; }
 .dim { fg: ${pal.muted}; wrap: word; margin-top: 1; }
 .navi { fg: ${pal.muted}; height: 1; margin-right: 2; }
-.cur { fg: ${pal.acc}; }
+.cur { fg: ${pal.acc}; font-weight: bold; }
 .card { border-style: rounded; border-color: ${pal.line}; padding-left: 1; padding-right: 1; flex-direction: column; margin-top: 1; }
 .btn { border-style: single; border-color: ${pal.acc}; fg: ${pal.acc}; padding-left: 1; padding-right: 1; height: 3; align-items: center; margin-top: 1; }
 .code { fg: ${pal.pat}; height: 1; }
+.mk { fg: ${pal.pat}; height: 1; width: 3; }
+.li { fg: ${pal.fg}; wrap: word; }
 .ox-g { fg: ${pal.acc}; height: 1; }
 .ox-b { fg: ${pal.coral}; height: 1; }
 @media (render: gui) { .page-sans { font-family: sans-serif; } }
 .mono { font-family: monospace; }
-</style>
+${sc ? sc.css : ''}</style>
 <box class="page-sans" style="flex-direction: column; width: ${W}; bg: ${pal.bg}; padding: 1;">`);
   out.push(`  <box style="flex-direction: ${mobile ? 'column' : 'row'};${mobile ? '' : ' height: 1;'}"><text class="brand">${tx(t(`common.sites.${site}`))}  </text>${navRow}</box>`);
-  if (id === 'index') out.push(`  <box style="flex-direction: column; margin-top: 1; width: 34;">\n${asciiThtml()}\n  </box>`);
-  const hero = page.hero;
-  textL('h1', hero ? hero.title : page.h1 || page.title);
-  if (hero) textL('p', plain(hero.lead));
-  else if (page.lead) textL('p', plain(page.lead));
+  if (sc) {
+    out.push(sc.body);
+  } else {
+    const hero = page.hero;
+    textL('h1', hero ? hero.title : page.h1 || page.title);
+    if (hero) textL('p', plain(hero.lead));
+    else if (page.lead) textL('p', plain(page.lead));
+  }
   if (isDraft(lang)) textL('dim', t('common.draft'));
   const codeLines = (src) => {
     out.push(`  <box class="card mono">`);
@@ -399,11 +412,11 @@ text { fg: ${pal.fg}; }
     }
     out.push('  </box>');
   };
-  for (const b of (page.blocks || []).filter(blockOn)) {
+  for (const b of (page.blocks || []).filter(blockOn).filter((x) => !sc || sc.keep(x))) {
     switch (b.t) {
       case 'h2': case 'h3': textL('h2', plain(b.x)); break;
       case 'p': case 'note': textL('p', plain(b.x)); break;
-      case 'ul': case 'ol': b.items.forEach((i, n) => textL('p', `${b.t === 'ol' ? n + 1 + '.' : '-'} ${plain(i)}`)); break;
+      case 'ul': case 'ol': b.items.forEach((i, n) => li(b.t === 'ol' ? `${n + 1}.` : '*', plain(i))); break;
       case 'table':
         b.rows.forEach((r) => textL('p', r.map(plain).join(' | ')));
         break;
@@ -420,14 +433,14 @@ text { fg: ${pal.fg}; }
   }
   function thtmlWidget(wid) {
     switch (wid) {
-      case 'demo': btn(t('common.runDemo'), 'demo.thtml'); break;
+      case 'demo': btn(t('common.runDemo'), 'index.thtml'); break;
       case 'gallery': for (const g of GALLERY) { textL('h2', t(`oxiui.gallery.${g}.title`)); textL('dim', t(`oxiui.gallery.${g}.desc`)); btn(t('common.runDemo'), `../demos/${g}.thtml`); } break;
       case 'roadmap':
         textL('dim', t('common.roadmapSource'));
         textL('h2', t('common.slices8'));
-        for (const s of ROADMAP.slices) textL('p', `[${stateLabel(lang, s.state)}] ${s.id} ${s.name}`);
+        for (const s of ROADMAP.slices) li('*', `[${stateLabel(lang, s.state)}] ${s.id} ${s.name}`);
         textL('h2', t('common.waveLog'));
-        for (const r of ROADMAP.wave.rows) textL('p', `${r[0]}: ${r[5]}`);
+        for (const r of ROADMAP.wave.rows) li('*', `${r[0]}: ${r[5]}`);
         break;
       case 'projectcards':
         for (const s of ['oxiui', 'oxiscript']) { textL('h2', t(`common.sites.${s}`)); textL('p', t(`home.cards.${s}.text`)); btn(t(`home.cards.${s}.cta`), `open:${ORIGIN[s]}${pagePath(lang, 'index')}`); }
@@ -437,26 +450,30 @@ text { fg: ${pal.fg}; }
         textL('h2', t('home.dedication.title')); textL('p', t('home.dedication.text')); textL('p', t('home.dedication.name')); textL('dim', t('home.dedication.note'));
         break;
       case 'playground': textL('p', t('oxiscript.playground.thtmlNote')); btn(t('common.backToHtml'), `open:${ORIGIN[site]}${pagePath(lang, id)}`); break;
-      case 'course': T(lang, 'oxiscript.course.levels').forEach((l) => textL('p', `${l.name}: ${l.text}`)); break;
+      case 'course': T(lang, 'oxiscript.course.levels').forEach((l) => li('*', `${l.name}: ${l.text}`)); break;
     }
   }
   btn(t('common.backToHtml'), `open:${ORIGIN[site]}${pagePath(lang, id)}`);
-  btn(t('common.supportButton'), `open:${SUPPORT_URL}`);
+  if (!(page.blocks || []).some((b) => b.t === 'links' && b.items.some((i) => i.href === SUPPORT_URL))) btn(t('common.supportButton'), `open:${SUPPORT_URL}`);
   textL('dim', t('common.honest').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'));
   out.push('</box>');
   return out.join('\n') + '\n';
 }
 
 // ---------------------------------------------------------------- app (local-mode client) + assets
-function patchClient() {
+function patchClient(mediaDir) {
   let h = read(path.join(REPO, 'oxiterm-server/assets/index.html'));
   const must = (from, to) => { if (!h.includes(from)) throw new Error(`app client: pattern not found: ${from}`); h = h.split(from).join(to); };
   must("const wantLocal = pageParams.get('local') === '1';", 'const wantLocal = true; // static site: local mode only, no WebSocket fallback');
   must("'/oxiui/local/pages.json'", "'./pages.json'");
-  must("'/oxiui/local/asset/'", "'./asset/'");
+  // Media (SVG, Lottie JSON, .mmd) live in the content-hashed directory /app/<mediaDir>/ (the page src is `../<mediaDir>/file`, so the
+  // relative path the core asks for already starts with that directory): fetch it from the app root, not from /oxiui/local/asset/.
+  must("'/oxiui/local/asset/'", "'./'");
+  // lottie-web "light" (MIT, SVG renderer), vendored in oxiterm-server/assets/vendor and copied beside the media: same origin, no CDN.
+  must("'oxiui/vendor/lottie_light.min.js'", `'./${mediaDir}/lottie_light.min.js'`);
   must('/*__OXITERM_WEB_TEST_HOOK__*/', '');
   h = h.replace('<title>OxiTerm Console</title>', '<title>OxiUI</title><link rel="icon" href="data:,">').replace(/OxiTerm Console/g, 'OxiUI');
-  // No third-party requests: the Lottie CDN script is only needed for Lottie media, which no site page uses.
+  // No third-party requests: drop the Lottie CDN script tag (the player is vendored, see above).
   h = h.replace(/\s*<script src="https:\/\/cdnjs[^>]*><\/script>/g, '');
   if (/https?:\/\/(?!localhost)[^"' )]*\.(js|css)/.test(h.replace(/<script type="module">[\s\S]*$/, ''))) throw new Error('app client: external resource remains');
   // Fonts come from the embedded faces in local mode; drop the third-party font request (no trackers).
@@ -475,23 +492,46 @@ function patchClient() {
 }
 const hashOf = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 10);
 
-const demoThtml = (site, lang, mobile) => demoTemplate({ site, mobile, t: (k) => T(lang, k), pal: PALETTE[site], tx });
-function buildPagesJson(site, extraPages) {
+/** Mermaid source of the OxiScript pipeline diagram, generated per language from i18n (labels are copy). `dir`: TD (a 6 node LR chain is 113 columns wide; the page is 96). */
+function pipelineMmd(lang, dir) {
+  const n = (k) => T(lang, `oxiscript.showcase.pipeline.nodes.${k}`);
+  if (/[\[\](){}"|;<>\x00-\x1f\x7f\u2028\u2029]/.test(['src', 'parse', 'check', 'ir', 'wasm', 'run'].map(n).join(''))) throw new Error('pipeline diagram: label contains Mermaid syntax characters');
+  return `flowchart ${dir}\n    A[${n('src')}] --> B[${n('parse')}]\n    B --> C[${n('check')}]\n    C --> D[${n('ir')}]\n    D --> E[${n('wasm')}]\n    E --> F[${n('run')}]\n`;
+}
+
+/** Media of the OxiUI pages of one site (SVG, Lottie JSON, Mermaid text, the Lottie player): ONE content-hashed directory
+ *  /app/<hash>/, so the existing `/app/<hash>/*` immutable rule covers it. Pages reference it as `../<hash>/<file>` (relative to
+ *  the page, inside the app base: the 7.6 rule); the patched client fetches it from the app root. */
+function buildMedia(site, out) {
+  const files = {};
+  const brandDir = path.join(HERE, 'shared/brand');
+  for (const f of ['oxi-axolotl.svg', 'oxi-axolotl-small.svg']) files[f] = fs.readFileSync(path.join(brandDir, f));
+  if (site === 'oxiui') {
+    for (const f of ['bell.json', 'toggle.riv']) files[f] = fs.readFileSync(path.join(HERE, 'shared/showcase', f));
+    // the vendored Lottie player (MIT) and its licence, from the server client's vendor directory
+    for (const f of ['lottie_light.min.js', 'LICENSE-lottie-web.txt']) files[f] = fs.readFileSync(path.join(REPO, 'oxiterm-server/assets/vendor', f));
+  }
+  if (site === 'oxiscript') {
+    for (const l of LANGS) files[`pipeline-td.${l}.mmd`] = Buffer.from(pipelineMmd(l, 'TD'));
+  }
+  const names = Object.keys(files).sort();
+  const dir = hashOf(Buffer.concat(names.flatMap((n) => [Buffer.from(n + '\0'), files[n]])));
+  for (const n of names) write(path.join(out, 'app', dir, n), files[n]);
+  return { dir, src: (f) => `../${dir}/${f}` };
+}
+
+function buildPagesJson(site, extraPages, media) {
   const pages = {};
   const dirs = new Set(['demos', ...LANGS]);
   for (const lang of LANGS) {
     for (const id of SITES[site].pages) {
       const page = T(lang, `${site}.pages.${id}`);
-      pages[`${lang}/${id}.thtml`] = thtmlPage(site, lang, id, page, false);
-      pages[`${lang}/${id}_mobile.thtml`] = thtmlPage(site, lang, id, page, true);
-    }
-    if (site === 'oxiui') {
-      pages[`${lang}/demo.thtml`] = demoThtml(site, lang, false);
-      pages[`${lang}/demo_mobile.thtml`] = demoThtml(site, lang, true);
+      pages[`${lang}/${id}.thtml`] = thtmlPage(site, lang, id, page, false, media);
+      pages[`${lang}/${id}_mobile.thtml`] = thtmlPage(site, lang, id, page, true, media);
     }
   }
   Object.assign(pages, extraPages);
-  return JSON.stringify({ start: `en/${site === 'oxiui' ? 'demo' : 'index'}.thtml`, actions: false, truncated: false, dirs: [...dirs], pages });
+  return JSON.stringify({ start: 'en/index.thtml', actions: false, truncated: false, dirs: [...dirs], pages });
 }
 
 function copyBundle(pkgDir, outDir, names) {
@@ -526,7 +566,8 @@ function buildSite(site) {
   const localPkg = process.env.OXI_LOCAL_PKG || path.join(HERE, '.build/pkg_local');
   if (localPkg) {
     const hash = copyBundle(localPkg, path.join(out, 'app'), ['oxiterm_local.js', 'oxiterm_local_bg.wasm']);
-    const pc = patchClient();
+    const media = buildMedia(site, out);
+    const pc = patchClient(media.dir);
     // the client script lives in /app/<content hash>/ and imports the wasm bundle from its own hashed directory
     if (!pc.js.includes("'./oxiterm_local.js'")) throw new Error('app client: bundle import not found');
     const cjs = pc.js.replace("'./oxiterm_local.js'", `'../${hash}/oxiterm_local.js'`);
@@ -541,7 +582,7 @@ function buildSite(site) {
       const m = path.join(REPO, 'examples/demos', `${g}_mobile.thtml`);
       if (fs.existsSync(m)) extra[`demos/${g}_mobile.thtml`] = stripBack(read(m));
     }
-    write(path.join(out, 'app/pages.json'), buildPagesJson(site, extra));
+    write(path.join(out, 'app/pages.json'), buildPagesJson(site, extra, media));
     for (const f of ['NotoSans-OFL.txt', 'NotoSansMono-OFL.txt']) copy(path.join(REPO, 'oxiterm-renderer/assets/fonts', f), path.join(out, 'app/licenses', f));
   }
   if (site === 'oxiscript') {
