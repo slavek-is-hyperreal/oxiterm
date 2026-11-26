@@ -3035,9 +3035,12 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "etagere",
+ "oxiterm-fb",
+ "oxiterm-proto",
  "oxiterm-renderer",
  "png",
  "pollster",
+ "swash",
  "wgpu",
 ]
 

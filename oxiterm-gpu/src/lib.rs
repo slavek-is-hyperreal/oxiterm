@@ -1,14 +1,33 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! `OxiUI` headless GPU sink on `wgpu` (Phase 5.2).
+//!
+//! Renders an `OxiUI` [`oxiterm_renderer::render::display_list::DisplayList`] into an RGBA8
+//! [`FrameImage`] (and PNG) using a custom GLES 3.0 / WebGL2-level pipeline (instanced SDF
+//! rounded-rect / border quads, instanced `etagere` glyph-atlas quads, and hardware scissor
+//! clips; vertex + fragment shaders only, no compute shaders).
+//!
+//! The `wgpu` instance, adapter, device, and queue live in a separate shared [`GpuContext`] so
+//! future `OxiScript` GPU kernels (Stage 8.3b), 3D rendering (Stage 9.3), and window surfaces
+//! (Stage 5.3) share one GPU device without CPU round-trips.
+//!
+//! ```no_run
+//! use std::sync::Arc;
+//! use oxiterm_gpu::{page, GpuContext, GpuSink};
+//!
+//! let ctx = Arc::new(GpuContext::new_headless().expect("GPU adapter"));
+//! let list = page::display_list("<box><text>Hello GPU</text></box>", None, None, 80, 24).unwrap();
+//! let mut sink = GpuSink::new(ctx, 1.0);
+//! let frame = sink.render_cells(&list, 80, 24).unwrap();
+//! frame.save_png("out.png".as_ref()).unwrap();
+//! ```
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod atlas;
+pub mod color;
+pub mod context;
+pub mod image;
+pub mod page;
+pub mod sink;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use atlas::GlyphAtlas;
+pub use context::{GpuContext, GpuError};
+pub use image::{diff_rgba, FrameImage, ImageDiff};
+pub use sink::{FrameStats, GpuSink, TARGET_FORMAT};
