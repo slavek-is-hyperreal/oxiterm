@@ -2,7 +2,7 @@
 
 Status: contract of slice 8.C (2026-11-25), ABI version **1.0**. Rust constants and parsers: `oxiscript/oxiscript-abi` (`layout.rs`, `exports.rs`, `idl.rs`, `manifest.rs`, `trap.rs`, `codes.rs`, `registry/codes.txt`, `idl/*.idl`). This document is the human spec; where the two disagree the Rust constants win and this file is a bug.
 
-Scope: how OxiScript values sit in Wasm linear memory, what a conforming `.wasm` module exports and imports, how a host declares capabilities (IDL), and how diagnostics are identified. By default (target `device`, section 3.6) everything is **Core WebAssembly** (MVP + multi-value + bulk-memory + sign-extension + exported mutable globals, needed for `oxi_trap_kind`; SIMD128 and tail calls reserved; non-trapping float-to-int `trunc_sat` is **not** allowed, so codegen must emit trapping or explicit-saturating sequences): no GC, threads, exception-handling or reference-types proposals. The host enforces exactly this set (plus whatever the *targets* `web` and `server` add, section 3.6, when it is configured for them) and also refuses a start section, imported memories/tables/globals and a second memory (8.R, `OXS-E0405`/`E0408`).
+Scope: how OxiScript values sit in Wasm linear memory, what a conforming `.wasm` module exports and imports, how a host declares capabilities (IDL), and how diagnostics are identified. By default (target `device`, section 3.6) everything is **Core WebAssembly** (MVP + multi-value + bulk-memory + sign-extension + exported mutable globals, needed for `oxi_trap_kind`; SIMD128 and tail calls reserved; non-trapping float-to-int `trunc_sat` is **not** allowed, so codegen must emit trapping or explicit-saturating sequences): no GC, threads, exception-handling or reference-types proposals. The host enforces exactly this set (plus whatever the *targets* `web` and `server` add, section 3.6, when it is configured for them) and also refuses a start section, imported memories/tables/globals/tags (`OXS-E0405`), a second memory, memory64, table64 and shared memories (8.R, `OXS-E0408`).
 
 One module = compiler output **statically linked** with the runtime-support code (slice 8.M). "Runtime exports" below are functions of that one module.
 
@@ -98,6 +98,24 @@ A trap executes Wasm `unreachable` after `oxi_trap(kind)` stored the code in `ox
 * **Capability versions** are part of the import module name; a host can offer `host:state@1` and `host:state@2` side by side.
 * **Text/IR versions** are separate (`oxiir 1`, `oxi-manifest 1`).
 * **Reason codes** are never reused (section 6).
+
+### 3.6 Compilation targets and host `max_target`
+
+A **target** is a build setting, not a language construct and not a profile: it selects which Wasm features the code generator *may* emit and the host *must* provide. The language and its semantics are identical on every target and no code path emits a new feature, so all targets produce the same code; only the manifest differs (`target`/`features` lines, 3.3). Spec of the sets: `oxiscript_abi::target`.
+
+| target | features beyond the Device base set |
+|---|---|
+| `device` (default) | none: MVP + multi-value + bulk-memory + sign-extension + mutable globals |
+| `web` | `simd128`, `exceptions` (exnref), `tail-call`, `extended-const` |
+| `server` | `web` plus `memory64` |
+
+Targets are ordered `device < web < server`; each set contains the previous one. GC, relaxed-SIMD, threads, `trunc_sat`, wide-arithmetic, custom page sizes and reference-types instructions are in **no** target. `multi-memory` is in no target either: ABI 1.0 has exactly one linear memory (section 1), so the feature was removed until an ABI bump (BAD ACTOR F2); `features multi-memory` is an unknown feature (`OXS-E0402`). `memory64` is *declarable* on `server`, but ABI 1.0 requires a 32-bit memory and the engine has it off, so a module using it is refused (`OXS-E0411` when it declares it, `OXS-E0408` when it does not): it needs an ABI bump too.
+
+**Host side.** `HostOptions::max_target` (default `device`) is the largest target the host runs. A host *provides* a feature when `max_target` allows it **and** its engine has it (`load::ENGINE_FEATURES` = `tail-call`, `extended-const`: the wasmi build has no exception handling, and SIMD/memory64 are switched off). `Host::with_options` switches every other proposal off explicitly (`wasm_simd`, `wasm_relaxed_simd`, `wasm_memory64`, `wasm_multi_memory`, reference types, ...), whatever the wasmi Cargo features or their defaults are after feature unification.
+
+**`OXS-E0411` (module needs more than this host provides).** Raised before the engine sees the module when the manifest names a target above `max_target`, declares a feature that `max_target` does not allow or the engine lacks, or declares features but the code uses more than it declared (the manifest lies: a `device` module containing `return_call` is refused even by a `web` host).
+
+**The fail-closed rule.** The bytes of every module are validated (all proposals known to the validator) against *Device base + declared features*, whatever the manifest says (a missing or unreadable manifest counts as Device with no features; `check` then reports it as `E0402`). A module that needs anything else is refused by the host itself, `E0411` if the host could run it with its full set, otherwise `E0408`; it is never passed on with "the engine will refuse it". Before and independently of the engine the host also scans the module: a non-function import (memory, table, global, tag: `E0405`), memory64, table64 or shared memories (`E0408`). The manifest section is size-checked (`MAX_MANIFEST_BYTES`, 4096) before it is parsed, and manifest tokens are separated by ASCII space or tab only.
 
 ## 4. Instance lifecycle and reload
 

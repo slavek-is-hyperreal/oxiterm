@@ -30,12 +30,25 @@ pub struct Manifest {
     pub target: Option<oxiscript_abi::target::Target>,
 }
 
+/// Keys `[package]` understands (`edition` is accepted for the templates, not yet used).
+const KNOWN_PACKAGE_KEYS: &[&str] = &["name", "version", "edition", "needs", "target"];
+
 pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
     let t: toml::Table = text.parse().map_err(|e| format!("{e}"))?;
     let pkg = t
         .get("package")
         .and_then(toml::Value::as_table)
         .ok_or("missing [package] table")?;
+    // Unknown keys are ignored but reported (a wrong-case `Target` must not pass silently).
+    for k in t.keys().filter(|k| k.as_str() != "package") {
+        note(format!("{MANIFEST}: unknown table `[{k}]` is ignored"));
+    }
+    for k in pkg.keys().filter(|k| !KNOWN_PACKAGE_KEYS.contains(&k.as_str())) {
+        note(format!(
+            "{MANIFEST}: unknown key `{k}` in [package] is ignored (known: {})",
+            KNOWN_PACKAGE_KEYS.join(", ")
+        ));
+    }
     let get = |k: &str| -> Result<String, String> {
         pkg.get(k)
             .and_then(toml::Value::as_str)

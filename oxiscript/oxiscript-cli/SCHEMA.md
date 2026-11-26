@@ -98,7 +98,7 @@ needs = ["host:log@1", "host:state@1"]   # host interfaces main receives, in par
 target = "device"                          # optional default compilation target: device | web | server
 ```
 
-`--target device|web|server` (on `check`, `build` and `run`) overrides `[package] target`; the default is `device`. A target is a build setting: the checker's diagnostics do not depend on it, `build` writes it into the module's manifest and `run` runs on a host configured for it (`docs/oxiscript/abi.md` 3.6). `check --json` has an additive field `"target"` (the target of `--target`, else of the first file's `oxi.toml`, else `"device"`); schema stays 1.
+`--target device|web|server` (on `check`, `build` and `run`) overrides `[package] target`; the default is `device`. A target is a build setting: the checker's diagnostics do not depend on it, `build` writes it into the module's manifest and `run` runs on a host configured for it (`docs/oxiscript/abi.md` 3.6). `check --json` has an additive field `"target"`: the target of `--target`, else the one of the files' project `oxi.toml`, else `"device"`. When the files belong to projects with different targets, `"target"` is the string `"mixed"` and an additive object `"file_targets"` maps each checked file to its target (the value never depends on file order). Schema stays 1. Unknown `oxi.toml` keys (a wrong-case `Target`, a typo) and unknown tables are ignored but reported as `note:` lines (stderr and the JSON `notes` field), never as an error; `[package]` knows `name`, `version`, `edition`, `needs`, `target`.
 
 ## `oxi run [file] [--fuel N]`, `oxi build [file] [-o out.wasm]`
 

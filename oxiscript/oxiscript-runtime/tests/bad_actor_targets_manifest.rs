@@ -70,8 +70,9 @@ fn manifest_variants_matrix() {
         ("target web", format!("{b}target web\n"), ["E0411", "ok", "ok"]),
         ("target server", format!("{b}target server\n"), ["E0411", "E0411", "ok"]),
         ("target device explicit", format!("{b}target device\n"), ["ok", "ok", "ok"]),
-        ("nbsp separator", format!("{b}target\u{00A0}web\n"), ["E0411", "ok", "ok"]),
-        ("ideographic space", format!("{b}target\u{3000}web\n"), ["E0411", "ok", "ok"]),
+        // F6 fixed: only ASCII space/tab separate manifest tokens (was: any Unicode whitespace).
+        ("nbsp separator", format!("{b}target\u{00A0}web\n"), ["E0402", "E0402", "E0402"]),
+        ("ideographic space", format!("{b}target\u{3000}web\n"), ["E0402", "E0402", "E0402"]),
         ("tab", format!("{b}target\tweb\n"), ["E0411", "ok", "ok"]),
         ("Web", format!("{b}target Web\n"), ["E0402", "E0402", "E0402"]),
         ("WEB", format!("{b}target WEB\n"), ["E0402", "E0402", "E0402"]),
@@ -94,7 +95,8 @@ fn manifest_variants_matrix() {
         ("exceptions declared (engine lacks)", format!("{b}target web\nfeatures exceptions\n"), ["E0411", "E0411", "E0411"]),
         ("memory64 declared server", format!("{b}target server\nfeatures memory64\n"), ["E0411", "E0411", "E0411"]),
         ("tail-call honest web", format!("{b}target web\nfeatures tail-call\n"), ["E0411", "ok", "ok"]),
-        ("multi-memory honest server (code has 1 memory)", format!("{b}target server\nfeatures multi-memory\n"), ["E0411", "E0411", "ok"]),
+        // F2 fixed: `multi-memory` is no longer a feature (ABI 1.0: one memory), unknown feature = E0402.
+        ("multi-memory honest server (code has 1 memory)", format!("{b}target server\nfeatures multi-memory\n"), ["E0402", "E0402", "E0402"]),
         ("CRLF", b.replace('\n', "\r\n") + "target web\r\n", ["E0411", "ok", "ok"]),
         ("lone CR target", format!("{b}target device\rtarget web\n"), ["E0402", "E0402", "E0402"]),
         ("BOM", format!("\u{FEFF}{b}target web\n"), ["E0402", "E0402", "E0402"]),

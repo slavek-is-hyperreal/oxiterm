@@ -180,6 +180,7 @@ pub fn run(a: &Args) -> i32 {
         stats = Some(st);
     }
 
+    let mut file_targets: Vec<(String, oxiscript_abi::target::Target)> = Vec::new();
     let mut seen: HashSet<(String, u32, u32, String)> = HashSet::new();
     let mut sources: HashMap<String, String> = HashMap::new();
     for (path, src) in &entries {
@@ -192,6 +193,14 @@ pub fn run(a: &Args) -> i32 {
             sources.entry(f.display.clone()).or_insert_with(|| f.src.clone());
         }
         names.push(run.files[0].display.clone());
+        file_targets.push((
+            run.files[0].display.clone(),
+            a.target
+                .as_deref()
+                .and_then(oxiscript_abi::target::Target::parse)
+                .or_else(|| prj.manifest.as_ref().and_then(|m| m.target))
+                .unwrap_or_default(),
+        ));
         let mut found = report::collect(&run);
         if let Some(m) = &prj.manifest {
             found.extend(needs::check(&run, m, &prj.opts.hosts));
@@ -210,11 +219,22 @@ pub fn run(a: &Args) -> i32 {
             serde_json::json!({"applied": s.applied, "capped": s.capped, "reverted": s.reverted, "round_limit": s.round_limit})
         });
         // The checker is target-independent (the language is identical on every target); the field
-        // reports the target the files would be built for: --target, else the first file's `oxi.toml`.
-        let target = a.target.as_deref().and_then(oxiscript_abi::target::Target::parse).or_else(|| {
-            entries.first().and_then(|(p, _)| project_for(&mut cache, p).ok()).and_then(|pr| pr.manifest.as_ref().and_then(|m| m.target))
-        });
-        let doc = report::document(&names, &diags, None, &project::notes(), fix, Some(target.unwrap_or_default().name()));
+        // reports the target the files would be built for: --target, else each file's project
+        // `oxi.toml`. Files of projects with different targets: `"target": "mixed"` plus a
+        // `file_targets` object (file -> target); never the first file's target for all.
+        let first = file_targets.first().map(|(_, t)| *t).unwrap_or_default();
+        let mixed = file_targets.iter().any(|(_, t)| *t != first);
+        let (target, per_file) = if mixed {
+            let m: serde_json::Map<String, serde_json::Value> =
+                file_targets.iter().map(|(f, t)| (f.clone(), serde_json::json!(t.name()))).collect();
+            ("mixed", Some(serde_json::Value::Object(m)))
+        } else {
+            (first.name(), None)
+        };
+        let mut doc = report::document(&names, &diags, None, &project::notes(), fix, Some(target));
+        if let (Some(o), Some(m)) = (doc.as_object_mut(), per_file) {
+            o.insert("file_targets".to_string(), m);
+        }
         println!("{}", serde_json::to_string_pretty(&doc).unwrap_or_default());
     } else {
         let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();

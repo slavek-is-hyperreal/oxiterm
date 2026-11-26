@@ -8,7 +8,7 @@
 //! behaviour (GC, relaxed-simd, threads) belongs to no target.
 //!
 //! Targets are totally ordered: `Device < Web < Server`; each one's feature
-//! set contains the previous one's. Spec: `docs/oxiscript/abi.md` 3.4.
+//! set contains the previous one's. Spec: `docs/oxiscript/abi.md` 3.6.
 
 use std::fmt;
 
@@ -23,17 +23,15 @@ pub enum Feature {
     TailCall,
     ExtendedConst,
     Memory64,
-    MultiMemory,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 6] = [
+    pub const ALL: [Feature; 5] = [
         Feature::Simd128,
         Feature::Exceptions,
         Feature::TailCall,
         Feature::ExtendedConst,
         Feature::Memory64,
-        Feature::MultiMemory,
     ];
 
     /// The name used in the manifest `features` line.
@@ -44,7 +42,6 @@ impl Feature {
             Feature::TailCall => "tail-call",
             Feature::ExtendedConst => "extended-const",
             Feature::Memory64 => "memory64",
-            Feature::MultiMemory => "multi-memory",
         }
     }
 
@@ -58,7 +55,7 @@ impl Feature {
             Feature::Simd128 | Feature::Exceptions | Feature::TailCall | Feature::ExtendedConst => {
                 Target::Web
             }
-            Feature::Memory64 | Feature::MultiMemory => Target::Server,
+            Feature::Memory64 => Target::Server,
         }
     }
 }
@@ -122,7 +119,7 @@ mod tests {
     fn sets_are_nested_and_named() {
         assert!(Target::Device.features().is_empty());
         assert_eq!(Target::Web.features().len(), 4);
-        assert_eq!(Target::Server.features().len(), 6);
+        assert_eq!(Target::Server.features().len(), 5);
         for t in Target::ALL {
             assert_eq!(Target::parse(t.name()), Some(t));
         }

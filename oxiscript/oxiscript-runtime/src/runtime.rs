@@ -10,7 +10,7 @@
 //!   succeeded.
 //! * **Trap policy.** Any trap (fuel, stack, bounds, `unreachable`, host trap,
 //!   guest `oxi_trap`) *poisons* the instance: every later call returns
-//!   [`Error::Poisoned`] (abi.md 3.6: a trapped instance is only discarded).
+//!   [`Error::Poisoned`] (abi.md 3.4: a trapped instance is only discarded).
 //!   The runtime object stays usable: [`Runtime::restart`] rebuilds the same
 //!   module from scratch (module state resets, host-held state survives) and
 //!   [`Runtime::reload`] swaps in new code; both work on a poisoned runtime.
@@ -145,12 +145,17 @@ impl Host {
             .wasm_bulk_memory(true)
             .wasm_saturating_float_to_int(false)
             .wasm_reference_types(false)
-            // Target-dependent features (only those this wasmi build has; simd,
-            // exception handling and memory64 are not compiled in, see
-            // `load::ENGINE_FEATURES`). Device keeps all of them off.
+            // Target-dependent features: only those the engine can run
+            // (`load::ENGINE_FEATURES`: tail-call, extended-const) follow `max_target`.
             .wasm_tail_call(opts.max_target.allows(Feature::TailCall))
             .wasm_extended_const(opts.max_target.allows(Feature::ExtendedConst))
-            .wasm_multi_memory(opts.max_target.allows(Feature::MultiMemory))
+            // Everything else is OFF explicitly, whatever wasmi's Cargo features (and so its
+            // defaults) are after feature unification (BAD ACTOR F1). The wasmi `simd` and
+            // `memory64` features are compiled in only so these setters exist.
+            .wasm_multi_memory(false)
+            .wasm_simd(false)
+            .wasm_relaxed_simd(false)
+            .wasm_memory64(false)
             .wasm_custom_page_sizes(false)
             .wasm_wide_arithmetic(false)
             .allow_start_fn(false)
@@ -348,10 +353,11 @@ impl Instance {
         }
         let guard = Guard::acquire(host)?;
         let engine = Engine::new(&host.config);
-        // Own policy pre-scan first (re-exports, memory64/shared memory), so the
+        // Own policy pre-scan first (re-exports, memory64/table64/shared memory, non-function imports), so the
         // ABI rules do not depend on which wasmi features are compiled in.
+        // Target policy first (fail-closed validation of the whole module), then the ABI 1.0 pre-scan.
+        load::check_target(wasm, host.max_target, &host.limits)?;
         load::reject_reexports(wasm)?;
-        load::check_target(wasm, host.max_target)?;
         // wasmi can still panic on some inputs it does not model (e.g. a tag
         // import that validation should have refused); a panic is a rejection.
         let module = catch_unwind(AssertUnwindSafe(|| Module::new(&engine, wasm)))
@@ -1050,5 +1056,49 @@ impl Drop for Runtime {
         if self.anonymous {
             release_ns(&self.host, &self.namespace);
         }
+    }
+}
+
+#[cfg(test)]
+mod engine_config_tests {
+    //! The engine layer in isolation (BAD ACTOR F1d): `Module::new` against the config
+    //! `Host::with_options` builds must refuse every proposal the target policy does not provide,
+    //! whatever wasmi Cargo features are compiled in. Bypasses `load::check_target` on purpose.
+    use super::*;
+
+    fn refused(host: &Host, body: &str) -> bool {
+        let wasm = wat::parse_str(format!("(module {body})")).expect("wat");
+        let engine = Engine::new(&host.inner.config);
+        Module::new(&engine, &wasm[..]).is_err()
+    }
+
+    #[test]
+    fn engine_refuses_every_proposal_outside_the_target() {
+        let probes: &[(&str, &str)] = &[
+            ("simd", "(func (result i32) v128.const i64x2 0 0 i32x4.extract_lane 0)"),
+            ("relaxed-simd", "(func (result v128) v128.const i64x2 0 0 i32x4.relaxed_trunc_f32x4_s)"),
+            ("memory64", "(memory i64 1)"),
+            ("table64", "(table i64 1 funcref)"),
+            ("multi-memory", "(memory 1) (memory 1)"),
+            ("shared+atomics", "(memory 1 1 shared) (func (param i32) (result i32) local.get 0 i32.atomic.load)"),
+            ("externref", "(table 1 externref)"),
+            ("trunc_sat", "(func (param f32) (result i32) local.get 0 i32.trunc_sat_f32_s)"),
+            ("gc", "(type (struct (field i32)))"),
+        ];
+        for t in Target::ALL {
+            let host = Host::with_options(Limits::default(), HostOptions { max_target: t, ..HostOptions::default() });
+            for (name, body) in probes {
+                assert!(refused(&host, body), "engine for max_target {t} accepted {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn engine_follows_max_target_for_tail_call() {
+        let body = "(func $f return_call $f)";
+        let dev = Host::with_options(Limits::default(), HostOptions::default());
+        let web = Host::with_options(Limits::default(), HostOptions { max_target: Target::Web, ..HostOptions::default() });
+        assert!(refused(&dev, body), "device engine accepted return_call");
+        assert!(!refused(&web, body), "this test must reach the real config: web engine refused return_call");
     }
 }

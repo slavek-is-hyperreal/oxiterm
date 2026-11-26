@@ -214,7 +214,7 @@ pub fn allowed_features() -> WasmFeatures {
 /// Web adds SIMD128, exception handling with `exnref` (which needs the
 /// reference-types *type* machinery; the generator emits no table or
 /// reference instructions), tail calls and extended constants; Server adds
-/// memory64 and multi-memory. GC, relaxed-simd and threads are in no target.
+/// memory64 (declarable, but ABI 1.0 and the engine do not run it yet). GC, relaxed-simd and threads are in no target.
 pub fn features_for(target: Target) -> WasmFeatures {
     let mut f = WasmFeatures::WASM1
         | WasmFeatures::MULTI_VALUE
@@ -227,7 +227,6 @@ pub fn features_for(target: Target) -> WasmFeatures {
             Feature::TailCall => WasmFeatures::TAIL_CALL,
             Feature::ExtendedConst => WasmFeatures::EXTENDED_CONST,
             Feature::Memory64 => WasmFeatures::MEMORY64,
-            Feature::MultiMemory => WasmFeatures::MULTI_MEMORY,
         };
     }
     f

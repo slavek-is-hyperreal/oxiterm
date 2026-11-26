@@ -125,7 +125,7 @@ impl Manifest {
         let e = |m: String| Err(ManifestError(m));
         let mut lines = text
             .lines()
-            .map(str::trim)
+            .map(|l| l.trim_matches(|c| c == ' ' || c == '\t'))
             .filter(|l| !l.is_empty() && !l.starts_with('#'));
         match lines.next() {
             Some(l) if l == format!("oxi-manifest {MANIFEST_FORMAT}") => {}
@@ -140,7 +140,7 @@ impl Manifest {
         let mut features: Option<Vec<Feature>> = None;
         let mut needs: Vec<Need> = Vec::new();
         for l in lines {
-            let parts: Vec<&str> = l.split_whitespace().collect();
+            let parts: Vec<&str> = l.split([' ', '\t']).filter(|t| !t.is_empty()).collect();
             match parts.as_slice() {
                 ["abi", v] => {
                     let bad = || ManifestError(format!("bad abi `{v}`"));

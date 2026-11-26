@@ -163,8 +163,11 @@ fn f1_device_host_runs_simd_and_table64_under_feature_unification() {
     assert!(ran.is_empty(), "a Device host ran code outside the Device feature set:\n{}", ran.join("\n"));
 }
 
-/// Server advertises multi-memory (Target::Server, ENGINE_FEATURES) but the engine's strict limits
-/// allow one memory: a module that honestly declares it is refused as E0408 by the engine.
+/// F2 (fixed by REMOVING multi-memory: ABI 1.0 has one memory, abi.md 3.6): the policy table and the
+/// behaviour must agree. A module declaring `multi-memory` is refused by the manifest/policy layer
+/// (E0402/E0411), never advertised-then-refused by the engine (E0408 "exceeds the limit of 1 memories").
+/// The original test asserted acceptance; with the feature gone from the table that is no longer the
+/// safe behaviour, the assertion now is "refused before the engine, with a policy code".
 #[test]
 fn f2_server_multi_memory_is_advertised_but_unusable() {
     use common::Fixture;
@@ -172,7 +175,10 @@ fn f2_server_multi_memory_is_advertised_but_unusable() {
     f.manifest = Some(format!("{}target server\nfeatures multi-memory\n", mf("")));
     let r = host_for(Target::Server).instantiate(&f.bytes(), Grants::all());
     let code = match &r { Ok(_) => "ok".to_string(), Err(e) => format!("{} {}", e.code(), e) };
-    assert!(r.is_ok(), "Server host refuses an honest multi-memory module: {code}");
+    assert!(
+        matches!(&r, Err(e) if matches!(e.code(), "OXS-E0402" | "OXS-E0411")),
+        "multi-memory must be refused by the policy layer, not advertised: {code}"
+    );
 }
 
 /// Differential fuzz: wasm-smith modules (all proposals) x random honest/dishonest manifests x hosts.
@@ -186,14 +192,13 @@ fn f3_smith_differential_policy_oracle() {
     use oxiscript_abi::target::Feature;
     use wasmparser::{Validator, WasmFeatures};
     let n: u64 = std::env::var("BA_SMITH_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(if cfg!(debug_assertions) { 3_000 } else { 60_000 });
-    let engine = [Feature::TailCall, Feature::ExtendedConst, Feature::MultiMemory];
+    let engine = [Feature::TailCall, Feature::ExtendedConst];
     let flags = |f: Feature| match f {
         Feature::Simd128 => WasmFeatures::SIMD,
         Feature::Exceptions => WasmFeatures::EXCEPTIONS | WasmFeatures::REFERENCE_TYPES,
         Feature::TailCall => WasmFeatures::TAIL_CALL,
         Feature::ExtendedConst => WasmFeatures::EXTENDED_CONST,
         Feature::Memory64 => WasmFeatures::MEMORY64,
-        Feature::MultiMemory => WasmFeatures::MULTI_MEMORY,
     };
     let mut rng = 0x1234_5678_9ABC_DEF1u64;
     let mut next = move || {

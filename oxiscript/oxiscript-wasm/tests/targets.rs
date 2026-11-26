@@ -78,7 +78,8 @@ fn validator_uses_the_target_feature_set() {
     case("exceptions", &eh, false, true, true);
     case("extended-const", &ext, false, true, true);
     case("memory64", &mem64, false, false, true);
-    case("multi-memory", &two_mem, false, false, true);
+    // one memory only in every target (ABI 1.0; BAD ACTOR F2)
+    case("multi-memory", &two_mem, false, false, false);
     // never in any target: trunc_sat (ABI rule) and GC types
     case("trunc_sat", &sat, false, false, false);
     case("gc", &gc, false, false, false);
