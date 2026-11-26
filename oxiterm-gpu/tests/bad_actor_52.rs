@@ -7,6 +7,8 @@
 
 #![allow(clippy::all, clippy::pedantic)]
 
+mod common;
+
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,13 +25,7 @@ use oxiterm_renderer::render::display_list::{
 // ---------------------------------------------------------------- helpers
 
 fn ctx() -> Option<Arc<GpuContext>> {
-    match GpuContext::new_headless() {
-        Ok(c) => Some(Arc::new(c)),
-        Err(e) => {
-            eprintln!("SKIP: {e}");
-            None
-        }
-    }
+    common::ctx_or_skip("bad_actor_52", GpuContext::new_headless()).map(Arc::new)
 }
 
 fn rss_kb() -> u64 {

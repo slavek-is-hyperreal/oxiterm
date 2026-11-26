@@ -6,40 +6,102 @@
 //!   fails with a clear message so the lead can inspect and bless it.
 //! - When a golden exists, decoded RGBA pixels are compared with per-channel tolerance
 //!   (`CHANNEL_TOLERANCE`) and percentage-of-differing-pixels tolerance (`MAX_DIFF_PERCENT`).
-//! - When no `wgpu` adapter is available (e.g. headless CI without Vulkan/lavapipe), tests skip
-//!   cleanly with a printed note.
+//! - When no `wgpu` adapter is available, or the adapter is not the llvmpipe build the goldens were
+//!   blessed on, tests skip with a printed note. With `OXI_GPU_REQUIRED=1` (CI) a missing adapter
+//!   or a non-llvmpipe adapter is a hard failure; a different llvmpipe version still skips (see
+//!   `docs/stages/5.2/ci.md`).
+
+mod common;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use oxiterm_gpu::{page, FrameImage, GpuContext, GpuError, GpuSink};
+use oxiterm_gpu::{page, FrameImage, GpuContext, GpuSink};
 
 /// Allowed absolute per-channel difference (out of 255) before a pixel counts as differing.
 const CHANNEL_TOLERANCE: u8 = 2;
 /// Allowed percentage of pixels exceeding `CHANNEL_TOLERANCE` across drivers/lavapipe versions.
 const MAX_DIFF_PERCENT: f64 = 0.25;
 
+/// Blessed driver identity: the goldens were produced on Mesa llvmpipe (lavapipe) with this
+/// LLVM major and Mesa major.minor. SRU patch bumps (25.2.8 -> 25.2.9) do not change the gate.
+const BLESSED_LLVM_MAJOR: u32 = 20;
+const BLESSED_MESA: (u32, u32) = (25, 2);
+
+#[derive(Debug, PartialEq, Eq)]
+enum Gate {
+    Run,
+    Skip(String),
+    Fail(String),
+}
+
+/// First integer that follows `marker` in `s` (`"LLVM 20.1.2"` with `"LLVM "` gives 20).
+fn number_after(s: &str, marker: &str) -> Option<u32> {
+    let rest = &s[s.find(marker)? + marker.len()..];
+    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+/// `"Mesa 25.2.8-0ubuntu0.24.04.5"` gives `(25, 2)`.
+fn mesa_major_minor(driver_info: &str) -> Option<(u32, u32)> {
+    let major = number_after(driver_info, "Mesa ")?;
+    let tail = &driver_info[driver_info.find("Mesa ")? + 5..];
+    let minor = number_after(tail, &format!("{major}."))?;
+    Some((major, minor))
+}
+
+/// Decide whether the PNG comparison may run on this adapter. Pure, so it is unit-tested below.
+/// `any_version` is the `OXI_GPU_GOLDEN_ANY_LLVM=1` override (force the comparison on a
+/// different llvmpipe build, for inspection).
+fn golden_gate(name: &str, driver_info: &str, required: bool, any_version: bool) -> Gate {
+    if !name.to_ascii_lowercase().contains("llvmpipe") {
+        let why = format!(
+            "goldens are blessed on llvmpipe, this adapter is {name:?} (driver {driver_info:?})"
+        );
+        return if required { Gate::Fail(why) } else { Gate::Skip(why) };
+    }
+    let llvm = number_after(name, "LLVM ");
+    let mesa = mesa_major_minor(driver_info);
+    if any_version || (llvm == Some(BLESSED_LLVM_MAJOR) && mesa == Some(BLESSED_MESA)) {
+        return Gate::Run;
+    }
+    Gate::Skip(format!(
+        "goldens are blessed on llvmpipe LLVM {BLESSED_LLVM_MAJOR} / Mesa {}.{}; this is {name:?} \
+         (driver {driver_info:?}). Set OXI_GPU_GOLDEN_ANY_LLVM=1 to compare anyway. The \
+         CPU-vs-GPU differential tests still ran.",
+        BLESSED_MESA.0, BLESSED_MESA.1
+    ))
+}
+
 fn shared_ctx() -> Option<Arc<GpuContext>> {
     static CTX: OnceLock<Option<Arc<GpuContext>>> = OnceLock::new();
-    CTX.get_or_init(|| match GpuContext::new_headless() {
-        // The goldens were blessed on Mesa llvmpipe (lavapipe). Pixel output of other drivers
-        // (real GPUs, GL backends) legitimately differs at anti-aliased edges, so the golden
-        // comparison runs only on llvmpipe; the CPU-vs-GPU differential tests cover the rest.
-        Ok(ctx) if !ctx.adapter_info().name.to_ascii_lowercase().contains("llvmpipe") => {
-            eprintln!(
-                "SKIP golden tests: goldens are blessed on llvmpipe, this adapter is {:?} ({:?})",
-                ctx.adapter_info().name,
-                ctx.adapter_info().backend
-            );
-            None
-        }
-        Ok(ctx) => Some(Arc::new(ctx)),
-        Err(GpuError::NoAdapter(msg)) => {
-            eprintln!("SKIP golden tests: no GPU adapter available ({msg})");
-            None
-        }
-        Err(other) => {
-            panic!("golden tests: GPU context initialization failed unexpectedly: {other}");
+    CTX.get_or_init(|| {
+        let ctx = common::ctx_or_skip("golden tests", GpuContext::new_headless())?;
+        let info = ctx.adapter_info();
+        eprintln!(
+            "golden tests adapter: name={:?} driver={:?} driver_info={:?} backend={:?}",
+            info.name, info.driver, info.driver_info, info.backend
+        );
+        let any = std::env::var("OXI_GPU_GOLDEN_ANY_LLVM").as_deref() == Ok("1");
+        let gate = golden_gate(
+            &info.name,
+            &format!("{} {}", info.driver, info.driver_info),
+            common::gpu_required(),
+            any,
+        );
+        match gate {
+            Gate::Run => Some(Arc::new(ctx)),
+            Gate::Skip(why) => {
+                eprintln!("SKIP golden tests: {why}");
+                if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
+                    use std::io::Write;
+                    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(path) {
+                        let _ = writeln!(f, "**oxiterm-gpu goldens SKIPPED:** {why}\n");
+                    }
+                }
+                None
+            }
+            Gate::Fail(why) => panic!("golden tests: {why}; OXI_GPU_REQUIRED is set"),
         }
     })
     .clone()
@@ -59,7 +121,7 @@ fn should_bless() -> bool {
 
 fn check_golden_page(name: &str, rel_page: &str) {
     let Some(ctx) = shared_ctx() else {
-        eprintln!("SKIP golden {name}: no GPU adapter available");
+        eprintln!("SKIP golden {name}: see the earlier note (no adapter, or goldens gated off)");
         return;
     };
 
@@ -148,4 +210,47 @@ fn golden_styles() {
 #[test]
 fn golden_input() {
     check_golden_page("input", "examples/demos/input.thtml");
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    const LP: &str = "llvmpipe (LLVM 20.1.2, 256 bits)";
+    const MESA: &str = "Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)";
+
+    #[test]
+    fn blessed_llvmpipe_runs_and_patch_bumps_do_not_change_it() {
+        assert_eq!(golden_gate(LP, MESA, true, false), Gate::Run);
+        assert_eq!(golden_gate("llvmpipe (LLVM 20.1.8, 256 bits)", "Mesa 25.2.9-1", true, false), Gate::Run);
+    }
+
+    #[test]
+    fn other_llvmpipe_version_skips_even_when_required() {
+        assert!(matches!(golden_gate("llvmpipe (LLVM 19.1.1, 256 bits)", MESA, true, false), Gate::Skip(_)));
+        assert!(matches!(golden_gate(LP, "Mesa 25.0.7-0ubuntu0.24.04.2", true, false), Gate::Skip(_)));
+        assert!(matches!(golden_gate(LP, "unparsable", false, false), Gate::Skip(_)));
+    }
+
+    #[test]
+    fn any_version_override_forces_the_comparison() {
+        assert_eq!(golden_gate("llvmpipe (LLVM 19.1.1, 256 bits)", "Mesa 25.0.7", true, true), Gate::Run);
+    }
+
+    #[test]
+    fn non_llvmpipe_adapter_skips_by_default_and_fails_when_required() {
+        let name = "AMD Radeon RX 7900 XTX (RADV NAVI31)";
+        assert!(matches!(golden_gate(name, "Mesa 25.2.8", false, false), Gate::Skip(_)));
+        assert!(matches!(golden_gate(name, "Mesa 25.2.8", true, false), Gate::Fail(_)));
+        assert!(matches!(golden_gate(name, "Mesa 25.2.8", true, true), Gate::Fail(_)));
+    }
+
+    #[test]
+    fn required_switch_parsing() {
+        assert!(common::required_from(Some("1")));
+        assert!(common::required_from(Some("TRUE")));
+        assert!(!common::required_from(Some("0")));
+        assert!(!common::required_from(Some("")));
+        assert!(!common::required_from(None));
+    }
 }
