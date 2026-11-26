@@ -240,11 +240,18 @@ struct Guard(Arc<HostInner>);
 impl Guard {
     fn acquire(h: &Arc<HostInner>) -> Result<Guard> {
         let max = h.limits.max_instances;
-        h.live
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                (n < max).then_some(n + 1)
-            })
-            .map_err(|_| Error::Limit(format!("instance limit of {max} reached")))?;
+        // A compare-exchange loop rather than `fetch_update`, which Rust 1.100
+        // deprecates in favour of `try_update` (not available on older toolchains).
+        let mut n = h.live.load(Ordering::SeqCst);
+        loop {
+            if n >= max {
+                return Err(Error::Limit(format!("instance limit of {max} reached")));
+            }
+            match h.live.compare_exchange_weak(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => break,
+                Err(cur) => n = cur,
+            }
+        }
         Ok(Guard(Arc::clone(h)))
     }
 }
