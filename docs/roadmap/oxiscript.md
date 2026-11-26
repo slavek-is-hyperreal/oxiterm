@@ -61,28 +61,18 @@ Notes (no change of meaning; conflicts go to the lists named):
 
 ### 2.3 Owner decisions 1-13 (2026-11-24, D-13: 2026-11-25; D-7 revised 2026-11-26)
 
-<a id="d-1"></a>**D-1.** **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
 
-<a id="d-2"></a>**D-2.** **Grammar:** our own grammar, files `.oxs`, designed so that a TypeScript developer simply *reads* it without learning it (same keywords, braces, arrow functions, `import`/`export`, type annotations after `:`; differences only where soundness requires them, and then with familiar spellings). Real TypeScript is not parsed (no accepting syntax we then reject).
-
-<a id="d-3"></a>**D-3.** **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted.
-
-<a id="d-4"></a>**D-4.** **GPU in v1:** no, and the `kernel` profile is not in the MVP either. But the language must be designed so that adding it later is easy, not hard: no feature in the MVP may make data-parallel kernels or device buffers awkward to add (the GPU backend comes in 8.3d).
-
-<a id="d-5"></a>**D-5.** **Tools in v1:** web flasher (WebSerial) yes; blocks editor later.
-
-<a id="d-6"></a>**D-6.** **First standards target:** IEC 62443 and the EU CRA (the business model); IEC 61508 as the first functional-safety standard, later.
-
-<a id="d-7"></a>**D-7.** **Ownership and method:** the OxiUI project owns the compiler, in this repository (`oxiscript-*` crates) **for now** (*revised by the owner 2026-11-26: OxiScript, and possibly the websites, will move to their own repositories, preserving history (`git filter-repo`), probably under a shared GitHub organisation. **The earliest possible time is after 8.S1**, when the OxiUI-OxiScript interface (`<script lang="oxs">`) has settled; it is not scheduled right after 8.S1 and happens only when the owner decides. Until then: keep the two halves separable inside this repo (no new `oxiscript-*` -> `oxiterm-*` dependency except the 8.S1 host interface, separate CI workflows, changelogs and docs directories, separate release tags `oxiscript-v*` / `v*`)*), with the same workflow as the rest (owner decides, agents implement, lead reviews). **After every finished stage a BAD ACTOR agent runs** whose only goal is to break it: escape the sandbox, exhaust resources, crash the compiler or runtime, make it miscompile, defeat the type system. Fuzzing (compiler front end, IR, Wasm output, runtime host API), differential testing (interpreter vs AOT) and adversarial programs are part of admitting a commit, not an afterthought; whatever the bad actor finds becomes a regression test.
-
-<a id="d-8"></a>**D-8.** **npm:** the idea, not compatibility: naming and semver conventions and a `package.json`-like manifest; npm packages are not promised to run.
-
-<a id="d-9"></a>**D-9.** **Hot reload state:** module-local state resets on reload; persistent state lives in the host's StateManager.
-
-<a id="d-10"></a>**D-10.** **No plan B bytecode:** WebAssembly is the only IR backend and distribution format.
-
-<a id="d-11"></a>**D-11.** **Laws (inspired by Bend 2's `LAWS.bend`, without its dependent types).** A `law` is a first-class declaration of a property the code must satisfy, written in ordinary OxiScript and readable by a TS developer:
-
+- <a id="d-1"></a>**D-1.** **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
+- <a id="d-2"></a>**D-2.** **Grammar:** our own grammar, files `.oxs`, designed so that a TypeScript developer simply *reads* it without learning it (same keywords, braces, arrow functions, `import`/`export`, type annotations after `:`; differences only where soundness requires them, and then with familiar spellings). Real TypeScript is not parsed (no accepting syntax we then reject).
+- <a id="d-3"></a>**D-3.** **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted.
+- <a id="d-4"></a>**D-4.** **GPU in v1:** no, and the `kernel` profile is not in the MVP either. But the language must be designed so that adding it later is easy, not hard: no feature in the MVP may make data-parallel kernels or device buffers awkward to add (the GPU backend comes in 8.3d).
+- <a id="d-5"></a>**D-5.** **Tools in v1:** web flasher (WebSerial) yes; blocks editor later.
+- <a id="d-6"></a>**D-6.** **First standards target:** IEC 62443 and the EU CRA (the business model); IEC 61508 as the first functional-safety standard, later.
+- <a id="d-7"></a>**D-7.** **Ownership and method:** the OxiUI project owns the compiler, in this repository (`oxiscript-*` crates) **for now** (*revised by the owner 2026-11-26: OxiScript, and possibly the websites, will move to their own repositories, preserving history (`git filter-repo`), probably under a shared GitHub organisation. **The earliest possible time is after 8.S1**, when the OxiUI-OxiScript interface (`<script lang="oxs">`) has settled; it is not scheduled right after 8.S1 and happens only when the owner decides. Until then: keep the two halves separable inside this repo (no new `oxiscript-*` -> `oxiterm-*` dependency except the 8.S1 host interface, separate CI workflows, changelogs and docs directories, separate release tags `oxiscript-v*` / `v*`)*), with the same workflow as the rest (owner decides, agents implement, lead reviews). **After every finished stage a BAD ACTOR agent runs** whose only goal is to break it: escape the sandbox, exhaust resources, crash the compiler or runtime, make it miscompile, defeat the type system. Fuzzing (compiler front end, IR, Wasm output, runtime host API), differential testing (interpreter vs AOT) and adversarial programs are part of admitting a commit, not an afterthought; whatever the bad actor finds becomes a regression test.
+- <a id="d-8"></a>**D-8.** **npm:** the idea, not compatibility: naming and semver conventions and a `package.json`-like manifest; npm packages are not promised to run.
+- <a id="d-9"></a>**D-9.** **Hot reload state:** module-local state resets on reload; persistent state lives in the host's StateManager.
+- <a id="d-10"></a>**D-10.** **No plan B bytecode:** WebAssembly is the only IR backend and distribution format.
+- <a id="d-11"></a>**D-11.** **Laws (inspired by Bend 2's `LAWS.bend`, without its dependent types).** A `law` is a first-class declaration of a property the code must satisfy, written in ordinary OxiScript and readable by a TS developer:
     ```ts
     law sorted_stays_sorted(xs: i32[]) {
       isSorted(sort(xs))
@@ -92,10 +82,11 @@ Notes (no change of meaning; conflicts go to the lists named):
     1. **Tested (default, every build in dev):** the compiler generates many inputs from the parameter types and searches for a counterexample (QuickCheck/Hypothesis-style property testing, shrinking the failing case). Cheap and immediate; also the BAD ACTOR agent's fuel.
     2. **Proven automatically (`safety` profile):** an SMT solver (Z3, MIT, or cvc5, BSD) tries to prove the law without hand-written proofs, as SPARK, Dafny and Verus do.
     3. **Proofs written by AI or a human, only when the solver cannot:** lemmas and hints are added next to the law. In the `safety` profile an unproven law is a compile error (the Bend 2 mechanism, as the last resort rather than the norm).
-    Lesson from Bend 2 kept in mind: laws only protect what is written down (an under-specified law let its demo agent change the game rules), so law review is part of code review. Full dependent types are rejected: they would break "a TS developer simply reads it" and slow compilation.
-<a id="d-12"></a>**D-12.** **AI-friendliness as a design goal:** an unambiguous grammar; error messages with stable reason codes and a suggested fix, readable by people and models; a stable specification with model-oriented docs (`llms.txt`); the placement report and `@expect`; laws as machine-checkable targets for agents; a deterministic compiler, so an agent can rely on its own experiments.
 
-<a id="d-13"></a>**D-13.** **Pointer width is a target parameter (owner question, 2026-11-25).** v1 targets wasm32: 32-bit addresses and lengths in the ABI (4 GiB of linear memory per module), while `i64`/`f64` arithmetic is native 64-bit. Release builds are still native 64-bit machine code on 64-bit hosts (Wasmtime AOT, or wasm→C then the native compiler); only the per-module heap is 32-bit addressed, which is also what ESP32-class 32-bit MCUs need. Programs that need more than 4 GiB get a later `memory64` target (part of Wasm 3.0): pointer width stays a codegen/ABI parameter, never a deep assumption, and the switch is an ABI version bump, not a language change.
+    Lesson from Bend 2 kept in mind: laws only protect what is written down (an under-specified law let its demo agent change the game rules), so law review is part of code review. Full dependent types are rejected: they would break "a TS developer simply reads it" and slow compilation.
+- <a id="d-12"></a>**D-12.** **AI-friendliness as a design goal:** an unambiguous grammar; error messages with stable reason codes and a suggested fix, readable by people and models; a stable specification with model-oriented docs (`llms.txt`); the placement report and `@expect`; laws as machine-checkable targets for agents; a deterministic compiler, so an agent can rely on its own experiments.
+
+- <a id="d-13"></a>**D-13.** **Pointer width is a target parameter (owner question, 2026-11-25).** v1 targets wasm32: 32-bit addresses and lengths in the ABI (4 GiB of linear memory per module), while `i64`/`f64` arithmetic is native 64-bit. Release builds are still native 64-bit machine code on 64-bit hosts (Wasmtime AOT, or wasm→C then the native compiler); only the per-module heap is 32-bit addressed, which is also what ESP32-class 32-bit MCUs need. Programs that need more than 4 GiB get a later `memory64` target (part of Wasm 3.0): pointer width stays a codegen/ABI parameter, never a deep assumption, and the switch is an ABI version bump, not a language change.
 
 
 Notes:
@@ -240,15 +231,17 @@ BAD ACTOR findings of 8.M-link, condensed (from the branch file, for tracing int
 
 ## 5. Roadmap
 
-Ids follow the old plan; existing ids are reused. Renames: old `8.2` (AOT release path, profiles v0 and compilation targets in one row) -> `8.2a` targets (done), `8.2b` AOT, `8.2c` profiles; old `Stage 8.0` -> `8.0` (kept; the "RC overhead with elision" part moved to `8.Perf`); old `8.W` -> `8.W1` (done), `8.W2`, `8.W3`, `8.Blog`; old `8.D` v0/v1/v2 -> `8.D0` (done), `8.D1`, `8.D2`; `8.S4` stays as an umbrella with parts `8.S4a/b/c`; stage directories `run`, `identity`, `host-export`, `targets`, `0.0.1` got ids `8.Run`, `8.Id`, `8.HX`, `8.2a`, `8.Rel`. New ids (no old row): `8.M-link`, `8.Fix`, `8.Spec`, `8.Sec`, `8.Bench`, `8.S3w`, `8.OB`, `8.Pub`, `8.4a`, `8.Repo`. Cross-links to OxiUI stages use `oxiui.md#s-<id>` (dots become hyphens).
+Ids follow the old plan; existing ids are reused. Renames: old `8.2` (AOT release path, profiles v0 and compilation targets in one row) -> `8.2a` targets (done), `8.2b` AOT, `8.2c` profiles; old `Stage 8.0` -> `8.0` (kept; the "RC overhead with elision" part moved to `8.Perf`); old `8.W` -> `8.W1` (done), `8.W2`, `8.W3`, `8.Blog`; old `8.D` v0/v1/v2 -> `8.D0` (done), `8.D1`, `8.D2`; `8.S4` stays as an umbrella with parts `8.S4a/b/c`; stage directories `run`, `identity`, `host-export`, `targets`, `0.0.1` got ids `8.Run`, `8.Id`, `8.HX`, `8.2a`, `8.Rel`. New ids (no old row): `8.M-link`, `8.Fix`, `8.Spec`, `8.Sec`, `8.Bench`, `8.S3w`, `8.OB`, `8.Pub`, `8.4a`, `8.Repo`. Cross-links to OxiUI stages have the form `oxiui.md#s-5-3` (dots become hyphens).
 
 Gate rule for the catch-all stages `8.Fix`, `8.Spec`, `8.Sec`: every source id listed in the stage is closed by a regression test or by a commit that changes the named document, and the closure list is committed as `docs/stages/<stage>/closed.md` with one line per id.
 
 ### 5.1 Order, dependencies and the critical path
 
-Critical path to the first visible result (the old path 8.C -> 8.P -> 8.T -> 8.L -> 8.S1, now with the missing link):
+Critical path to the first visible result (the old path 8.C -> 8.P -> 8.T -> 8.L -> 8.S1, now with the missing link and the OxiUI side named):
 
-`8.L (done)` -> **`8.M-link`** (in progress) -> **`8.S1`** -> `8.Repo` (owner decides) / `8.S3` (needs hardware, after 2026-12-10).
+`8.L (done)` -> **`8.M-link`** (in progress) + [U.S1](oxiui.md#s-u-s1) (OxiUI side of the script element) -> **`8.S1`** -> `8.Repo` (owner decides) / `8.S3` (needs hardware, after 2026-12-10).
+
+Gate legend: for stages that had an owner row in the old plan (8.S1-8.S5, 8.D, 8.W, 8.Std, 8.Dom, 8.Mem, 8.N, 8.Perf, 8.3a-e) the gate is the owner's text, with amendments marked (8.S4c); gates of stages that are new in this roadmap (8.M-link, 8.Fix, 8.Spec, 8.Sec, 8.0, 8.Bench, 8.2b, 8.2c, 8.S3w, 8.4a, 8.Pub, 8.Repo) and added dependencies (for example 8.N -> 8.Std) are proposals for owner approval.
 
 Parallel to it, in order of unblocking value:
 
@@ -267,7 +260,7 @@ Parallel to it, in order of unblocking value:
 ```
 
 Waves (suggested, three agents at most, per the working rules in section 8):
-- Wave A, now: finish 8.M-link, 8.Std, verify memres; start 8.Fix, 8.Spec, 8.Sec, 8.S2.
+- Wave A, now: finish 8.M-link, 8.Std, verify memres; start 8.Fix (checker, parser and formatter items only), 8.Spec, 8.Sec, 8.S2.
 - Wave B, after 8.M-link merges: 8.S1, 8.Perf, 8.N, 8.S4a, 8.Bench, 8.W2.
 - Wave C: 8.2c, 8.3a, 8.3c, 8.S4b, 8.D1, 8.0 host measurements.
 - Wave D: 8.3b, 8.2b, 8.Mem, 8.S5, 8.4a; board work (8.S3) when the hardware arrives.
@@ -298,7 +291,7 @@ Closes known, owned-by-nobody defects of the merged stages. Each id below is clo
 - Parser and formatter (8.P/8.D): comment re-attachment bug (trailing `// two` moves, `/* b */` jumps over `+`), the E0006 no-op fix oracle, multi-seed run of both 8.P oracles [R2-55, R2-133, R2-163, R3-204]; the E0004 continuation-hazard (`a\n[1]`) reported by the parser with the previous-line range, not only in CLI `hints.rs` [R2-121]; source size, token count and identifier length caps and numeric/escape edge cases (`1e999`, `\u{110000}`) as tests [R3-207, R3-208].
 - Lowering and codegen (8.L/8.G): Wasm local reuse (liveness free list) so a function may exceed about 6000 simple statements (limit 12000 locals, `E0603`/`E0704`) [R3-32, R2-108, R2-113, R4-17, R3-61]; tag-check elision for `bad_cast` [R2-108]; the "40 average bytes per function" strict-engine rule and the 1000-tiny-exports `E0408` mismatch resolved by relaxing in 8.R or padding in codegen [R2-109]; float `%` and `x?.f` on `this` in constructors (`E0700`) [R3-31]; dropping 120k nodes exceeds default fuel as `OutOfFuel`: decision on `fuel_per_call` or a bounded drop step [R2-115]; instantiation budget `E0701` becomes a profile knob with counts in the report ([8.2c](#s-8-2c)) [R3-142].
 - Gate: closure list `docs/stages/8.Fix/closed.md` complete; checker, lower and wasm suites green on `device` and `web`; no existing code renumbered.
-- Depends on: none (can start now; local reuse should land before [8.3a](#s-8-3a), which can expand a v128 into 16 locals [R4-17]). Status: todo.
+- Depends on: none for the checker, parser and formatter items (start now). The lowering and codegen items (local reuse, tag-check elision, float `%`, drop fuel) touch `oxiscript-ir`, `oxiscript-lower` and `oxiscript-wasm`, which `gemini-rtlink` is editing (24 uncommitted files), so they wait for [8.M-link](#s-8-m-link) to merge; local reuse must land before [8.3a](#s-8-3a), which can expand a v128 into 16 locals [R4-17]. Status: todo.
 
 <a id="s-8-spec"></a>
 #### 8.Spec Specification and agent-doc repair (todo)
@@ -310,6 +303,7 @@ Documentation and spec decisions that the merged stages left inconsistent. Doc f
 - `ir.md`: effect vocabulary (`alloc, panic, loops, recursion`) versus the checker's `EffectSummary`: say which are computed now and which wait for [8.2c](#s-8-2c); `str.from_f64` status after 8.M-link [R3 inconsistency 11; R3-161].
 - Agent-facing copies: `oxi run`/`oxi build` "not available" removed from `templates/common/AGENTS.md` and `SKILL.md` and then `sync_docs.py` run; `llms.txt` code list generated by a stated rule (all emitted codes, including `E0400`/`E0402`; `E0500` listed only when emitted); skill error table synced [R3 inconsistencies 9, 10, 23; R3-47, R3-234].
 - Research documents marked superseded where the plan overtook them (sync-callbacks premise, dev-experience status column, founding research phases, OxiBench `[u8]` -> `u8[]`, `unknown` and `int/float` alias rejections recorded) [R3 inconsistencies 16-20; R3-128, R3-138].
+- `oxi build`/`oxi run` decisions to confirm: default `oxi build` output is relative to the cwd, not the project root; the truncation marker is English [R2-137].
 - Release process: first real use of the version script carry arithmetic and the two JSON snapshots per release (candidate 0.0.2) [R2-96]; `docs/stages` notes made current (0.0.1 tagged, 5.2 blessed) [R2 stale list]; the research document `oxiscript-known-attacks.md` gets a status column per attack (test exists or not) [R3 stale].
 - Gate: closure list complete; `cargo test -p oxiscript-cli` compiles every `oxs` block; `python3 -I oxiscript/oxiscript-cli/tools/sync_docs.py` leaves no diff. Depends on: none (reasonably after [8.M-link](#s-8-m-link) for the ir/abi notes). Status: todo.
 
@@ -687,6 +681,8 @@ Rules that hold for every stage of this roadmap (sources: `docs/HANDOFF.md`, `ON
 Every inventory item whose product is OxiScript or both is either a stage scope above, an idea in section 5.7, a question in section 7, a decision in section 2, a done row in section 3, or one of the lines below. Items that belong to the OxiUI half are in [oxiui.md](oxiui.md); items that are document fixes are in [consistency.md](consistency.md). The mechanical check (extract the ids from the four inventories, grep them in this file, `oxiui.md` and `consistency.md`) was run on 2026-11-26 and is repeated in the report to the lead.
 
 Invariants and specs in force, no task: cyclic imports are an error, no `export default`/re-export/namespaces, default parameters may not reference other parameters [R3-27, R3-28, R3-29]; non-trapping `trunc_sat` not allowed on any target [R3-35]; host never re-enters the guest during an import, bulk payloads at most 4096 bytes [R3-41, R3-42]; checker bounds list (32 type levels, 400k types, 64 union variants, expression depth 120, 100 errors) [R3-54]; extension-point table of `contracts.md` (each row is owned by the stage named in it: kernel and SIMD by 8.3, threads and isolates by 8.4, AOT by 8.2b, EH by 8.6, contracts/SMT by 8.5, placement and `@expect` by 8.S4b/8.2c) [R3-55]; the agent-guidance gaps found by the agent test were folded into `AGENTS.md` [R3-84]; every `oxs` block is compiled by `cargo test -p oxiscript-cli` [R3-87]; MVP grammar implemented [R3-01]; OxiIR plus Core Wasm as primary backend, wasmi as live engine, closure layout `{fn_index, env}`, `as` split into numeric `as` and `downcast`, drop list of TypeScript features, written evaluation order and defined overflow [R3-104, R3-106, R3-118, R3-139, R3-146, R3-160]; licence policy ([P-11](#p-11)) [R3-120]; domain-free core and the rocket test ([P-1](#p-1)) [R3-156]; "avoid early" list of the founding research: the two violated items are the LSP ([8.S2](#s-8-s2)) and RC elision ([8.Perf](#s-8-perf)) [R3-119]; persona DX is partial until 8.S2, 8.D1, 8.S3 land [R3-116]; SIMD research layers 0-2 are [8.3a](#s-8-3a), [8.3b](#s-8-3b), [8.4](#s-8-4) [R3-109]; out of scope initially: Component Model, WasmGC backend, own native backend, blocks editor, refinement types, auto-offload heuristics [R3-178]; "faster than tsc" is not a differentiator [R3-251]; the P1-P3 safety framing (host safety, guest memory safety under re-entry, determinism) governs any native binding [R3-280].
+
+Items owned by the OxiUI half and cited there by content or id (R2-95 CI tag trigger, R2-135 flaky CSP test, R2-142 site vendoring, the 5.x/6.x/7.x stage notes, R1 App Server and reader items) are not repeated here; the id-level check over all four files lists 61 inventory ids that appear in none of the three roadmap files, all OxiUI-owned and reported to W-UI.
 
 Document-only items: HANDOFF and plan status lines stale [R2-159, R2-165]; README says "run next" while Run is live [R1-111]: see [consistency.md](consistency.md).
 
