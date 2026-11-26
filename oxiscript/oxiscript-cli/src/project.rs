@@ -26,6 +26,8 @@ pub struct Manifest {
     pub version: String,
     /// `host:` interfaces `main` receives, in parameter order (`host:log@1`).
     pub needs: Vec<String>,
+    /// Optional default compilation target (`[package] target = "web"`); `--target` overrides it.
+    pub target: Option<oxiscript_abi::target::Target>,
 }
 
 pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
@@ -51,10 +53,18 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
             );
         }
     }
+    let target = match pkg.get("target") {
+        None => None,
+        Some(v) => {
+            let s = v.as_str().ok_or("[package] `target` must be a string")?;
+            Some(oxiscript_abi::target::Target::parse(s).ok_or(format!("[package] `target` is `{s}`, expected device, web or server"))?)
+        }
+    };
     Ok(Manifest {
         name: get("name")?,
         version: get("version")?,
         needs,
+        target,
     })
 }
 
@@ -444,9 +454,9 @@ fn entry_loader(entry: &Entry<'_>) -> (FsLoader, String) {
 
 /// Check, lower and compile one entry file with its imports to a Wasm module (`oxi run` / `oxi build`).
 /// Call it only after [`check_entry`] was clean; errors come back as lowering diagnostics.
-pub fn compile_entry(entry: &Entry<'_>, opts: &CheckOptions) -> Result<Vec<u8>, oxiscript_lower::Diagnostics> {
+pub fn compile_entry(entry: &Entry<'_>, opts: &CheckOptions, target: oxiscript_abi::target::Target) -> Result<Vec<u8>, oxiscript_lower::Diagnostics> {
     let (mut loader, name) = entry_loader(entry);
-    oxiscript_lower::compile_program(&name, &entry.src, &mut loader, &opts.hosts, &oxiscript_lower::Options::default()).map(|o| o.wasm)
+    oxiscript_lower::compile_program(&name, &entry.src, &mut loader, &opts.hosts, &oxiscript_lower::Options { target, ..oxiscript_lower::Options::default() }).map(|o| o.wasm)
 }
 
 /// Check one entry file with its imports. `hosts` come from [`load_hosts`].

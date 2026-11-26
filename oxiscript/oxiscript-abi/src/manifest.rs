@@ -8,9 +8,18 @@
 //! abi 1.0
 //! edition 2026
 //! profile default
+//! target device
+//! features simd128 tail-call
 //! needs host:log@1 Log
 //! needs host:state@1 State
 //! ```
+//!
+//! `target` is optional (absent = `device`, so older modules stay valid);
+//! `features` is optional (absent = none) and lists the Wasm features beyond
+//! the Device base set the module needs; each must be allowed by `target`.
+//! The printer omits `target`/`features` for a plain device module with no
+//! features, so such a module's manifest is byte-identical to format 1 before
+//! targets existed.
 //!
 //! One directive per line; blank lines and `#` comments are ignored; unknown
 //! directives are an error (so a newer module is refused rather than
@@ -19,6 +28,7 @@
 //! here and nothing else (the runtime rejects a module that imports more:
 //! that is the "no ambient authority" check at link time).
 
+use crate::target::{Feature, Target};
 use std::fmt::{self, Write};
 
 pub const MANIFEST_SECTION: &str = "oxi.manifest";
@@ -62,6 +72,10 @@ pub struct Manifest {
     pub edition: u32,
     /// Profile the module was compiled under: `default`, `realtime`, `safety`, `kernel`.
     pub profile: String,
+    /// Compilation target (`device` when the line is absent).
+    pub target: Target,
+    /// Wasm features beyond the Device base set that the module needs, sorted, unique.
+    pub features: Vec<Feature>,
     pub needs: Vec<Need>,
 }
 
@@ -83,6 +97,8 @@ impl Manifest {
             abi_minor: crate::layout::ABI_MINOR,
             edition,
             profile: profile.to_string(),
+            target: Target::Device,
+            features: vec![],
             needs: vec![],
         }
     }
@@ -92,6 +108,13 @@ impl Manifest {
             "oxi-manifest {MANIFEST_FORMAT}\nabi {}.{}\nedition {}\nprofile {}\n",
             self.abi_major, self.abi_minor, self.edition, self.profile
         );
+        if self.target != Target::Device {
+            let _ = writeln!(s, "target {}", self.target);
+        }
+        if !self.features.is_empty() {
+            let names: Vec<&str> = self.features.iter().map(|f| f.name()).collect();
+            let _ = writeln!(s, "features {}", names.join(" "));
+        }
         for n in &self.needs {
             let _ = writeln!(s, "needs {}@{} {}", n.module, n.version, n.interface);
         }
@@ -113,6 +136,8 @@ impl Manifest {
             }
         }
         let (mut abi, mut edition, mut profile) = (None, None, None);
+        let mut target: Option<Target> = None;
+        let mut features: Option<Vec<Feature>> = None;
         let mut needs: Vec<Need> = Vec::new();
         for l in lines {
             let parts: Vec<&str> = l.split_whitespace().collect();
@@ -141,6 +166,33 @@ impl Manifest {
                     }
                     if profile.replace((*v).to_string()).is_some() {
                         return e("duplicate `profile`".into());
+                    }
+                }
+                ["target", v] => {
+                    let t = Target::parse(v).ok_or_else(|| {
+                        ManifestError(format!(
+                            "unknown target `{v}` (expected device, web or server)"
+                        ))
+                    })?;
+                    if target.replace(t).is_some() {
+                        return e("duplicate `target`".into());
+                    }
+                }
+                ["features", names @ ..] => {
+                    if names.is_empty() {
+                        return e("`features` needs at least one feature".into());
+                    }
+                    let mut v: Vec<Feature> = Vec::new();
+                    for n in names {
+                        let f = Feature::parse(n)
+                            .ok_or_else(|| ManifestError(format!("unknown feature `{n}`")))?;
+                        if v.contains(&f) {
+                            return e(format!("duplicate feature `{n}`"));
+                        }
+                        v.push(f);
+                    }
+                    if features.replace(v).is_some() {
+                        return e("duplicate `features`".into());
                     }
                 }
                 ["needs", m, i] => {
@@ -175,12 +227,23 @@ impl Manifest {
                 _ => return e(format!("unknown or malformed directive `{l}`")),
             }
         }
+        let target = target.unwrap_or_default();
+        let mut features = features.unwrap_or_default();
+        features.sort();
+        if let Some(f) = features.iter().find(|f| !target.allows(**f)) {
+            return e(format!(
+                "feature `{f}` is not part of target `{target}` (it needs `{}`)",
+                f.min_target()
+            ));
+        }
         let (abi_major, abi_minor) = abi.ok_or_else(|| ManifestError("missing `abi`".into()))?;
         Ok(Manifest {
             abi_major,
             abi_minor,
             edition: edition.ok_or_else(|| ManifestError("missing `edition`".into()))?,
             profile: profile.ok_or_else(|| ManifestError("missing `profile`".into()))?,
+            target,
+            features,
             needs,
         })
     }
@@ -225,6 +288,34 @@ mod tests {
             "oxi-manifest 1\nabi 1.0\nedition 2026\nprofile x\nneeds fs:x@1 X\n"
         )
         .is_err());
+    }
+
+    #[test]
+    fn target_and_features() {
+        // absent target = device; a device module prints no target line
+        let old = "oxi-manifest 1\nabi 1.0\nedition 2026\nprofile default\n";
+        let m = Manifest::parse(old).unwrap();
+        assert_eq!(m.target, Target::Device);
+        assert_eq!(m.print(), old);
+        let mut w = Manifest::new(2026, "default");
+        w.target = Target::Web;
+        w.features = vec![Feature::Simd128, Feature::TailCall];
+        let t = w.print();
+        assert!(t.contains("target web\nfeatures simd128 tail-call\n"));
+        assert_eq!(Manifest::parse(&t).unwrap().print(), t);
+        let back = Manifest::parse(&t).unwrap();
+        assert_eq!(back.target, Target::Web);
+        assert_eq!(back.features.len(), 2);
+        let bad = |extra: &str| {
+            Manifest::parse(&format!("{old}{extra}")).unwrap_err().0
+        };
+        assert!(bad("target moon\n").contains("unknown target"));
+        assert!(bad("target web\ntarget web\n").contains("duplicate"));
+        assert!(bad("features simd128\n").contains("not part of target"));
+        assert!(bad("target web\nfeatures memory64\n").contains("server"));
+        assert!(bad("target web\nfeatures bogus\n").contains("unknown feature"));
+        assert!(bad("target web\nfeatures simd128 simd128\n").contains("duplicate"));
+        assert!(bad("target web\nfeatures\n").contains("at least one"));
     }
 
     #[test]

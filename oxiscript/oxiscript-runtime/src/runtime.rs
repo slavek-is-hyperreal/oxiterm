@@ -10,7 +10,7 @@
 //!   succeeded.
 //! * **Trap policy.** Any trap (fuel, stack, bounds, `unreachable`, host trap,
 //!   guest `oxi_trap`) *poisons* the instance: every later call returns
-//!   [`Error::Poisoned`] (abi.md 3.4: a trapped instance is only discarded).
+//!   [`Error::Poisoned`] (abi.md 3.6: a trapped instance is only discarded).
 //!   The runtime object stays usable: [`Runtime::restart`] rebuilds the same
 //!   module from scratch (module state resets, host-held state survives) and
 //!   [`Runtime::reload`] swaps in new code; both work on a poisoned runtime.
@@ -40,6 +40,7 @@ use crate::load::{self, val_ty};
 use oxiscript_abi::exports;
 use oxiscript_abi::idl::{IdlTy, Interface};
 use oxiscript_abi::layout::{ABI_VERSION, RESERVED_LOW_BYTES};
+use oxiscript_abi::target::{Feature, Target};
 use oxiscript_abi::trap::TrapKind;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -68,6 +69,8 @@ struct HostInner {
     entropy: Option<u64>,
     /// Monotonic microseconds; `None` disables every wall-clock feature.
     clock: Option<Clock>,
+    /// The largest compilation target this host runs (docs/oxiscript/abi.md 3.6).
+    max_target: Target,
 }
 
 /// A monotonic clock in microseconds, supplied by the embedder.
@@ -86,6 +89,10 @@ pub struct HostOptions {
     pub clock: Option<Clock>,
     /// Run with no clock at all (no wall-time pump cap, zero reload timing).
     pub no_clock: bool,
+    /// The largest compilation target this host accepts and configures its
+    /// engine for. Default `Device`: a module whose manifest says `web` or
+    /// `server` is refused with `OXS-E0411`.
+    pub max_target: Target,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -138,9 +145,12 @@ impl Host {
             .wasm_bulk_memory(true)
             .wasm_saturating_float_to_int(false)
             .wasm_reference_types(false)
-            .wasm_tail_call(false)
-            .wasm_extended_const(false)
-            .wasm_multi_memory(false)
+            // Target-dependent features (only those this wasmi build has; simd,
+            // exception handling and memory64 are not compiled in, see
+            // `load::ENGINE_FEATURES`). Device keeps all of them off.
+            .wasm_tail_call(opts.max_target.allows(Feature::TailCall))
+            .wasm_extended_const(opts.max_target.allows(Feature::ExtendedConst))
+            .wasm_multi_memory(opts.max_target.allows(Feature::MultiMemory))
             .wasm_custom_page_sizes(false)
             .wasm_wide_arithmetic(false)
             .allow_start_fn(false)
@@ -153,6 +163,7 @@ impl Host {
         Host {
             inner: Arc::new(HostInner {
                 config: c,
+                max_target: opts.max_target,
                 limits: Arc::new(limits),
                 providers: Mutex::new(Vec::new()),
                 live: AtomicUsize::new(0),
@@ -169,6 +180,11 @@ impl Host {
                 },
             }),
         }
+    }
+
+    /// The largest compilation target this host runs.
+    pub fn max_target(&self) -> Target {
+        self.inner.max_target
     }
 
     pub fn limits(&self) -> &Limits {
@@ -335,6 +351,7 @@ impl Instance {
         // Own policy pre-scan first (re-exports, memory64/shared memory), so the
         // ABI rules do not depend on which wasmi features are compiled in.
         load::reject_reexports(wasm)?;
+        load::check_target(wasm, host.max_target)?;
         // wasmi can still panic on some inputs it does not model (e.g. a tag
         // import that validation should have refused); a panic is a rejection.
         let module = catch_unwind(AssertUnwindSafe(|| Module::new(&engine, wasm)))

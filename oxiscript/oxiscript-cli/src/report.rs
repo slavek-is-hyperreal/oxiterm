@@ -206,7 +206,7 @@ pub fn diag_json(d: &Diag) -> Value {
 }
 
 /// The whole `oxi check --json` document.
-pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>, notes: &[String], fix: Option<Value>) -> Value {
+pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>, notes: &[String], fix: Option<Value>, target: Option<&str>) -> Value {
     let errors = diags.iter().filter(|d| d.severity == "error" || d.severity == "internal").count();
     let warnings = diags.iter().filter(|d| d.severity == "warning").count();
     let mut doc = json!({
@@ -223,6 +223,9 @@ pub fn document(files: &[String], diags: &[Diag], fatal: Option<&str>, notes: &[
     if let Some(o) = doc.as_object_mut() {
         if !notes.is_empty() {
             o.insert("notes".to_string(), json!(notes));
+        }
+        if let Some(t) = target {
+            o.insert("target".to_string(), json!(t));
         }
         if let Some(f) = fix {
             o.insert("fix".to_string(), f);

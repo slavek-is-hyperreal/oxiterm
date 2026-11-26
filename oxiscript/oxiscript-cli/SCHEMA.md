@@ -95,7 +95,10 @@ name = "demo"
 version = "0.1.0"
 edition = "2026"
 needs = ["host:log@1", "host:state@1"]   # host interfaces main receives, in parameter order
+target = "device"                          # optional default compilation target: device | web | server
 ```
+
+`--target device|web|server` (on `check`, `build` and `run`) overrides `[package] target`; the default is `device`. A target is a build setting: the checker's diagnostics do not depend on it, `build` writes it into the module's manifest and `run` runs on a host configured for it (`docs/oxiscript/abi.md` 3.6). `check --json` has an additive field `"target"` (the target of `--target`, else of the first file's `oxi.toml`, else `"device"`); schema stays 1.
 
 ## `oxi run [file] [--fuel N]`, `oxi build [file] [-o out.wasm]`
 
