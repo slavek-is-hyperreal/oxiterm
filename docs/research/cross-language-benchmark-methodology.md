@@ -4,6 +4,9 @@
 **Scope:** Performance benchmarking of **OxiScript** (`wasmi` interpreter, `w2c2` + C AOT, Wasmtime AOT, and browser Wasm engines) against other languages and runtimes (TypeScript/JavaScript on V8 and in browsers, AssemblyScript, Rust native and Rust → Wasm, C, Go/TinyGo, Python/MicroPython, Lua/LuaJIT).  
 **Naming boundary:** **OxiPerf** is the *performance* benchmark; **[OxiBench](oxibench-methodology.md)** is the *AI-agent usability* benchmark. The two share methodological discipline and selected harness utilities, never metrics or reports (Section 7).
 
+> **Corrected by Claude (Opus), 2026-11-26:** verified claim by claim and judged as a methodology; the ledger and the judgment are in [cross-language-benchmark-methodology-verification.md](cross-language-benchmark-methodology-verification.md) (92 claims: 64 confirmed, 23 partly, 3 wrong, 2 unverifiable). The five changes that matter most: fix the 8.Lab regression gate (A1), use upstream AWFY ports instead of self-written competitor code (A2), headline only the AWFY subset (A3), derive run counts from a dimensioning run as Kalibera & Jones do (A4), and forbid FP contraction in C/w2c2 builds (A6).
+
+
 ---
 
 ## Executive Summary
@@ -11,6 +14,9 @@
 **OxiPerf** is OxiScript's methodology and harness (Stage `8.Bench`, crate `oxiscript-bench` in [../roadmap/oxiscript.md](../roadmap/oxiscript.md#s-8-bench)) for measuring OxiScript across its own execution tiers (`wasmi` 2.0 interpreter, `w2c2` + C compiler AOT, Wasmtime AOT, and browser Wasm engines) and comparing it honestly against external languages and runtimes (TypeScript/JavaScript on V8 and browsers, AssemblyScript, Rust native and Rust → Wasm, C, Go/TinyGo, Python/MicroPython, and Lua/LuaJIT). It serves four roadmap consumers: **8.Perf** (RC elision and allocator fast paths), **8.Mem** (the [D-20](../roadmap/oxiscript.md#d-20) "megabytes, not gigabytes" claim on Raspberry Pi 1 Model B+ and x86), **8.Lab** ([D-29](../roadmap/oxiscript.md#d-29) weekly Speedup Lab promotion gates), and **8.3a–e** (SIMD/GPU acceleration).
 
 Cross-language benchmarks routinely fail peer scrutiny because of hidden measurement bias, unreached JIT steady states, algorithmic divergence disguised as language differences, and cherry-picked reporting (van der Kouwe et al. found an average of 5 benchmarking flaws across 50 top-tier systems papers, with only 1 of 50 flaw-free; Barrett et al. found at most 43.5% of ⟨VM, benchmark⟩ pairs reliably reach a peak steady state). OxiPerf neutralises these failures through six non-negotiable pillars:
+
+> **Corrected by Claude (Opus), 2026-11-26:** van der Kouwe et al.'s "average of 5" applies to **tier-1** papers; the abstract: "only a single paper in our sample" had no crimes (ledger B3).
+
 
 1. **Dual-track fairness (SPEC Base/Peak + AWFY discipline):** Every benchmark runs in an **Identical-Algorithm (`base`) track**—same algorithm, same data structures, same arithmetic semantics where possible, same inputs, mandatory output verification, uniform compiler flags—and optionally in a clearly separated **Idiomatic/Optimised (`peak`) track**. No cross-language claim may mix tracks or pit an expert-tuned OxiScript program against a naive competitor.
 2. **Multi-axis reporting, never wall-time-only:** Every run records **startup/cold time** separately from **steady-state time**, alongside **memory footprint** (RSS, PSS, peak linear-memory pages, peak heap/live bytes, MCU SRAM/PSRAM/Flash), **code size** (`.wasm` raw/gzip, stripped native binary, flash delta), **compile latency**, and **correctness checksums**. On `wasmi`, **fuel** is reported strictly as a deterministic metering budget and internal regression signal—**never** as a cross-language speed proxy—because `wasmi` 2.0 charges static region totals on entry rather than executed instructions ([oxiscript-memory-performance-verification.md](oxiscript-memory-performance-verification.md), Finding A1).
@@ -28,6 +34,9 @@ Cross-language performance evaluation has a 40-year literature documenting how w
 ### 1.1 Benchmarking Crimes and Flaw Taxonomies
 - **van der Kouwe, Heiser, Andriesse, Bos, and Giuffrida (2019), *"SoK: Benchmarking Flaws in Systems Security"*** (IEEE EuroS&P 2019, pp. 310–325, DOI: [10.1109/EuroSP.2019.00031](https://doi.org/10.1109/EuroSP.2019.00031); earlier arXiv preprint *"Benchmarking Crimes: An Emerging Threat in Systems Security"*, [arXiv:1801.02381](https://arxiv.org/abs/1801.02381); building on Gernot Heiser's living checklist [Systems Benchmarking Crimes](https://gernot-heiser.org/benchmarking-crimes.html)):
   - Catalogues **22 recurring benchmarking flaws** in five groups: (1) *selective benchmarking* (subsetting suites or inputs to hide overheads), (2) *improper handling of results* (microbenchmarks-only, arithmetic mean of ratios, ignoring latency/tail, no statistical significance), (3) *wrong benchmarks* (unrealistic workloads, calibrating on the evaluation set), (4) *improper comparison* (weak/stale baselines, self-comparison, handicapping competitors), and (5) *missing information* (omitting hardware, flags, sub-benchmark breakdowns, or absolute numbers).
+
+> **Corrected by Claude (Opus), 2026-11-26:** 22 flaws is right; the five-group list is Gernot Heiser's page (18 crimes); the SoK adds a security-specific category (ledger B2).
+
   - Double-independent audit of **50 tier-1 defense papers** found an **average of 5 flaws per paper**, with **only 1 of 50** flaw-free.
   - *OxiPerf mitigation:* Rules R01–R04 (fixed suite, no post-hoc subsetting), R16–R18 (absolute + relative numbers, geometric mean with per-benchmark breakdown, statistical significance + effect-size thresholds), R19–R21 (mandatory negative results, full disclosure, preregistration freeze).
 - **Hoefler and Belli (2015), *"Scientific Benchmarking of Parallel Computing Systems: Twelve Ways to Tell the Masses when Reporting Performance Results"*** (SC15, DOI: [10.1145/2807591.2807644](https://doi.org/10.1145/2807591.2807644)):
@@ -37,13 +46,22 @@ Cross-language performance evaluation has a 40-year literature documenting how w
 
 ### 1.2 Statistical Rigour, Hierarchical Variance, and Warmup Pathology
 - **Georges, Buytaert, and Eeckhout (2007), *"Statistically Rigorous Java Performance Evaluation"*** (ACM OOPSLA '07, DOI: [10.1145/1297846.1297881](https://doi.org/10.1145/1297846.1297881)):
+
+> **Corrected by Claude (Opus), 2026-11-26:** the DOI is wrong: `10.1145/1297846.1297881` is "The JastAdd extensible Java compiler". Georges et al. is [10.1145/1297027.1297033](https://doi.org/10.1145/1297027.1297033), OOPSLA'07 pp. 57-76 (ledger A9).
+
   - Demonstrated that JIT compilation, timer-driven profiling, GC heuristics, and OS scheduling introduce severe non-determinism in managed VMs. Ad-hoc practices (single runs, min/max cherry-picking, or iterating only inside a single VM invocation) yield **contradictory conclusions**.
   - Mandated separating **startup performance** (cold invocation including VM boot, loading, and initial compilation) from **steady-state performance**, executing **multiple independent VM invocations**, and reporting **confidence intervals** rather than point estimates.
 - **Kalibera and Jones (2013), *"Rigorous Benchmarking in Reasonable Time"*** (ACM ISMM '13, pp. 63–74, DOI: [10.1145/2464157.2464160](https://doi.org/10.1145/2464157.2464160)):
   - Showed that benchmark observations have **nested (hierarchical) variance**: across builds/binaries, across fresh VM invocations, and across iterations within an invocation. Pooling iterations across invocations as if they were i.i.d. produces falsely narrow confidence intervals and high false-positive rates.
   - Introduced **hierarchical random resampling (hierarchical bootstrap)** to compute non-parametric confidence intervals for the **ratio of means** (or medians), and an analytical method to allocate run budget where variance is highest (more invocations when between-invocation variance dominates, fewer wasted inner iterations).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the ISMM'13 paper's summarising method is parametric (analysis of variance, effect-size CI); the hierarchical bootstrap for the ratio is in the companion report, Kalibera & Jones, "Quantifying performance changes with effect size confidence intervals", TR 4-12, Univ. of Kent, 2012 ([arXiv:2007.10899](https://arxiv.org/abs/2007.10899)) (ledger B10).
+
 - **Barrett, Bolz-Tereick, Killick, Mount, and Tratt (2017), *"Virtual Machine Warmup Blows Hot and Cold"*** (PACMPL / OOPSLA '17, DOI: [10.1145/3133876](https://doi.org/10.1145/3133876), [arXiv:1602.00602](https://arxiv.org/abs/1602.00602)):
   - Applied automated **changepoint analysis** to long-running microbenchmarks across widely used VMs (HotSpot, V8, PyPy, LuaJIT, Truffle, CPython, etc.) on controlled hardware.
+
+> **Corrected by Claude (Opus), 2026-11-26:** CPython was **not** studied. The systems were GCC 4.9.3, Graal 0.18, HHVM 3.15.3, JRuby+Truffle 9.1.2.0, HotSpot 8u112b15, LuaJIT 2.0.4, PyPy 5.6.0 and V8 5.4.500.43, with series of 2 000 in-process iterations (ledger A8, A5).
+
   - Refuted the textbook assumption that JIT benchmarks reliably warm up to a flat peak plateau: **at most 43.5%** of ⟨VM, benchmark⟩ pairs consistently reached a steady state of peak performance; many never stabilized, oscillated across deoptimizations, or slowed down over time.
   - *OxiPerf mitigation:* Never blindly discard a fixed `N` warmup iterations and declare "steady state". Record every iteration trace, run automated warmup/drift classification (stable steady state, non-converging/oscillating, or slowing), and report **both** fixed-window steady state and warmup status (Rule R09, R20).
 
@@ -57,6 +75,9 @@ Cross-language performance evaluation has a 40-year literature documenting how w
 
 ### 1.4 Existing Cross-Language Suites, Standards, and Energy Critiques
 - **The Computer Language Benchmarks Game (CLBG)** ([benchmarksgame-team.pages.debian.net/benchmarksgame](https://benchmarksgame-team.pages.debian.net/benchmarksgame/)):
+
+> **Corrected by Claude (Opus), 2026-11-26:** these criticisms are opinion without a source; CLBG documents its own caveats (crowd-sourced, self-selected contributors; isolated unloaded host; lowest of 12 runs), and library use is open per benchmark. CLBG measures on an i5-3330, the same generation as the owner's i5-3450, which makes it a useful sanity check (ledger B21).
+
   - Useful as a compiler stress test, but widely criticised as a cross-language ranking because: (1) community submissions evolve into heavily **unidiomatic C-transplants** using `unsafe`, manual pools, inline SIMD intrinsics, or custom allocators; (2) interpreted languages often delegate core work to **C libraries** (PCRE, GMP, OpenSSL), measuring FFI bindings rather than the language; (3) concurrency models diverge arbitrarily across submissions; and (4) entries suffer uneven author optimization effort across languages.
 - **Rosetta Code and Chrestomathy-Style Comparisons** ([rosettacode.org](https://rosettacode.org/)):
   - Snippet collections written by different volunteer authors for didactic clarity rather than performance parity suffer extreme **author-skill and idiom confounding** (e.g., comparing an expert's hand-tuned C loop against a casual naive Python/JS snippet, or tiny `<50`-line toy loops that fit entirely in L1 cache and trigger dead-code elimination).
@@ -68,6 +89,9 @@ Cross-language performance evaluation has a 40-year literature documenting how w
 - **Energy Efficiency Studies and Critiques** — Pereira et al. (2017), *"Energy Efficiency across Programming Languages: How Do Energy, Time, and Memory Relate?"* (ACM SLE '17, DOI: [10.1145/3136014.3136031](https://doi.org/10.1145/3136014.3136031)) and Pereira et al. (2021), *"Ranking programming languages by energy efficiency"* (Science of Computer Programming 205:102609, DOI: [10.1016/j.scico.2021.102609](https://doi.org/10.1016/j.scico.2021.102609)), critiqued by **van Kempen, Kwon, Nguyen, and Berger (2024)**, *"It's Not Easy Being Green: On the Energy Efficiency of Programming Languages"* ([arXiv:2410.05460](https://arxiv.org/abs/2410.05460), DOI: [10.48550/arXiv.2410.05460](https://doi.org/10.48550/arXiv.2410.05460)):
   - Pereira et al. ranked 27 languages using CLBG/Rosetta snippets and Intel x86 RAPL counters, inheriting CLBG's micro-benchmark bias, conflating language specifications with specific runtimes (e.g., CPython vs. PyPy, treating TypeScript as a runtime distinct from V8), and relying on Intel-only RAPL estimates that omit peripherals and non-x86 architectures.
   - van Kempen et al. (2024) showed via causal analysis that once execution time, JIT warmup, GC, active core count, cache misses, and native FFI libraries are controlled, **language choice has no statistically significant intrinsic effect on energy beyond execution time** ($E = P \times t$).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the paper is to appear at ASE 2025 (arXiv v4, 2025-10-03). Its abstract names language vs implementation, application implementations, number of active cores and memory activity as confounders; "JIT warmup, GC, cache misses, FFI" are additions of this draft (ledger B29, B30).
+
   - *OxiPerf takeaway:* OxiPerf **never** claims "OxiScript is greener than language X" by extrapolating from wall time or x86 RAPL alone. If battery/power measurements are ever added on ESP32-S3 or Raspberry Pi, they must be measured directly at the power rail (e.g., INA219/USB power meter) alongside active-vs-sleep duty cycle, and attributed to the *runtime/implementation*, never the abstract language.
 
 ---
@@ -81,16 +105,25 @@ Every OxiPerf run used for internal gating (`8.Perf`, `8.Lab`, `8.Mem`) or exter
 - **R02 — Optional Idiomatic/Optimised (`peak`) Track, Strictly Separated:** If a language has a strongly idiomatic alternative (e.g., Rust iterators/slices, JS `TypedArray` vs. boxed array, C manual arena, OxiScript `Simd<T,N>` or `rust:` crate), it may be entered in a separate `peak` track. `base` and `peak` results are **never** plotted on the same axis without explicit track labels, and a `peak` entry in OxiScript is never compared against a `base` entry in another language.
 - **R03 — No Unlisted Shortcuts or Native FFI Smuggling in `base`:** In `base`, programs may not call out to native C/C++/Rust FFI libraries (`ctypes`, NumPy, `rust:<crate>`, Node native addons, regex engines backed by PCRE) to perform the benchmarked kernel. Standard-library data structures (`Map`, `Set`, `sort`) are allowed *only* on workloads explicitly designated to test standard libraries (Section 4), and any native/C backing must be explicitly tagged in the result table.
 - **R04 — Semantic Parity Disclosure:** OxiScript enforces trapping integer overflow, array bounds checks, non-null soundness, and deterministic IEEE-754 floats ([P-9](../roadmap/oxiscript.md#p-9)). Where a competitor omits these checks by default (e.g., C `-O3` UB on signed overflow, Rust `--release` wrapping integer arithmetic, JS `f64` numbers instead of `i32`), OxiPerf **records the semantic delta explicitly in the table footnote** and, for Rust/C ceiling runs, optionally runs a paired checked variant (e.g., Rust `overflow-checks = true`, C `-ftrapv` or explicit bounds checks) so readers can separate compiler quality from safety-check cost.
+
+> **Corrected by Claude (Opus), 2026-11-26:** for exact-bit float parity (R06) every C, C++ and w2c2 build must use `-ffp-contract=off` (GCC defaults to `fast` in GNU dialects and fuses `a*b+c` where FMA exists), never `-ffast-math`; JS ports of `f32` workloads (P07, P11, P12) need `Math.fround` on every operation (ledger A6).
+
 - **R05 — Identical Inputs & Deterministic Seeds:** Every language receives byte-identical input files or generates identical inputs from the same documented PRNG (e.g., splitmix64/xorshift32 with a fixed seed specified in the benchmark's `spec.toml`). Inputs must not be hard-coded constants that allow constant folding at compile time; inputs are loaded from an external buffer/file or passed across an opaque boundary (e.g., CLI arg / host import / `black_box` barrier).
 - **R06 — Mandatory Correctness Verification on Every Run:** Every benchmark computes a deterministic digest (e.g., FNV-1a 64-bit hash or exact expected scalar/string checksum) over its full output and returns/prints it **outside** the timed region (or uses it as a data-dependent sink preventing dead-code elimination). The harness checks this digest against the golden reference on **every invocation**; any mismatch invalidates the entire measurement and halts the run.
 
 ### Toolchain, Configuration & Execution Hygiene
 - **R07 — Pinned, Uniform Flags and Full Disclosure:** Every compiler, interpreter, runtime, libc, and OS kernel version is pinned (exact version string + git hash for OxiScript and `w2c2`) and emitted into the run manifest. Following SPEC Base rules, all `base` benchmarks for a given ⟨language, target⟩ pair must share **one uniform flag set** (e.g., `clang -O2`, `rustc -C opt-level=3`, `oxi build --target server`). Per-benchmark flags are permitted only in `peak` and must be disclosed verbatim.
+
+> **Corrected by Claude (Opus), 2026-11-26:** `-O2` is a reference, not a ceiling: label the C `base` row "C reference (-O2)" and keep "ceiling" for the `-O3` peak row, or use `-O3` uniformly (ledger C7).
+
 - **R08 — Separate Startup (Cold) and Steady-State (Warm) Metrics:** Never conflate cold start with steady state (Georges et al. 2007). Every benchmark reports:
   1. **Compile/build time** (source → executable/Wasm artifact, offline or on-the-fly);
   2. **Cold invocation time** (process/VM boot + module load/instantiate + first execution of the workload);
   3. **Steady-state iteration time** (in-process repeated execution after warmup, with warmup status classified).
 - **R09 — Warmup Verification, Not Blind Discard:** For JIT engines (V8, SpiderMonkey, JSC, Wasmtime JIT, LuaJIT, PyPy), execute a minimum warmup window (default: at least `max(50 iterations, 2 s)` or benchmark-specific count) **and** record the full per-iteration time series. Run an automated stability check (sliding-window drift + changepoint test inspired by Barrett et al. 2017): tag every ⟨runtime, benchmark⟩ series as `steady`, `slowdown`, `oscillating`, or `no_steady_state`. Non-steady series are **flagged visibly** in tables and excluded from unqualified "steady-state speedup" headlines.
+
+> **Corrected by Claude (Opus), 2026-11-26:** about 80 points cannot be classified the way Barrett et al. did with 2 000-iteration series. For JIT rows run one long series (≥ 1 000 iterations, a few executions) per benchmark to choose and freeze the warmup length; report the classification from that series (ledger A5).
+
 - **R10 — Mandatory Memory & GC/RC Reporting:** Execution time is meaningless if one runtime cheats by leaking memory (`--runtime stub`, `-gc=leaking`) or hoarding 10× RAM to avoid GC cycles. Every run records:
   - Peak OS **RSS** (and Linux **PSS/USS** where measurable via `/proc/<pid>/smaps_rollup`),
   - Runtime heap metrics where exposed (OxiScript peak Wasm linear-memory pages × 64 KiB, `oxi_live_objects()` / `oxi_live_bytes()` after `oxi_collect_cycles()` to verify zero leaks; V8 `heapUsed`/`rss`; MCU static `.bss`/`.data` + heap high-water mark),
@@ -99,15 +132,27 @@ Every OxiPerf run used for internal gating (`8.Perf`, `8.Lab`, `8.Mem`) or exter
   - Fuel is a **100% deterministic resource-metering metric** ideal for CI regression alerts and sandbox budgeting,
   - Fuel **must never** be used to compare OxiScript against another language or even to declare an OxiScript optimisation a "speedup" on its own (since reshaping `br_if` into `if` cuts fuel without reducing real work),
   - Every `wasmi` benchmark reports **three** numbers: `fuel`, `wall_ns`, and (in diagnostic mode) `executed_ops` (if instrumented) or AOT `w2c2`/`wasmtime` `wall_ns`.
+
+> **Corrected by Claude (Opus), 2026-11-26:** also report wasmi wall time with fuel metering **off**; otherwise the interpreter row includes the metering tax (ledger C11).
+
 - **R12 — Cold vs. Warm Hardware Caches Explicitly Controlled:** Distinguish cold-cache (first run after binary load / flash XIP cold on ESP32-S3 / Linux page-cache drop for startup benchmarks) from warm-cache steady-state runs. On ESP32-S3, explicitly record whether code runs from Flash XIP cache (`QIO`/`OPI`, cache size) or internal SRAM (`IRAM_ATTR`), and whether heap resides in internal 512 KB SRAM or external Octal PSRAM.
 - **R13 — CPU Frequency Scaling, Thermal Stability, and Core Pinning:** On Linux hosts (`x86_64` dev box, Raspberry Pi 1):
   - Lock CPU governor to `performance` (`scaling_governor=performance`) and disable Intel Turbo Boost (`/sys/devices/system/cpu/intel_pstate/no_turbo=1`) during wall-time runs; record actual frequency and CPU temperature before and after the run. If root access is unavailable (e.g., shared CI runner), record `uncontrolled_dvfs = true` and **forbid** publishing those wall-time numbers externally.
   - Pin single-threaded benchmarks to a fixed isolated/quiet core (`taskset -c <core>`), and verify host load average `< 0.2` before starting.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the Pi 1 is single-core, so `taskset` does nothing there; stop services and record `vcgencmd get_throttled` before and after (the owner's board is corroded, under-voltage throttling is a real risk). The dev box runs concurrent agent sessions, so "load < 0.2" needs a scheduled quiet window (ledger A10, C13).
+
   - Interleave languages/configurations across invocations (round-robin or randomised order: `A, B, C, A, B, C...`) rather than running all `A` then all `B`, so thermal drift or background cron activity cannot systematically favour one language.
 - **R14 — Mitigating Layout Bias (Mytkowicz et al. 2009):** Across independent process invocations on Linux, vary an unused environment variable `OXIPERF_ENV_PAD` across a deterministic pseudo-random set of lengths (e.g., 0 to 4096 bytes) so accidental stack-alignment anomalies convert from hidden bias into observable variance captured by confidence intervals. Record ASLR status (`/proc/sys/kernel/randomize_va_space`).
 
+> **Corrected by Claude (Opus), 2026-11-26:** environment padding covers stack alignment only; link-order and code-layout bias (what Stabilizer randomises) remain and should be named as residual bias (ledger C14).
+
+
 ### Sample Size, Statistics, Outliers & Decision Thresholds
 - **R15 — Hierarchical Sample Sizes (Minimum Run Counts):**
+
+> **Corrected by Claude (Opus), 2026-11-26:** fixed counts contradict the cited method: Kalibera & Jones derive the repetitions at each level from a measured dimensioning run. Do one per ⟨engine, benchmark, machine⟩, compute the counts, freeze them; treat 10 invocations (Barrett et al.'s recommendation) as a floor. A bootstrap with 10 top-level units has poor coverage (ledger A4).
+
   - **Release / Publishable Report (Linux x86_64 / RPi):** At least **10 independent process/VM invocations** (`I >= 10`) × at least **30 measured steady-state iterations** per invocation (`N >= 30`, after warmup), with each single timed iteration lasting at least **10 ms** (via an explicit outer repeat count `inner_reps` chosen per benchmark so timer quantization is `< 0.1%`, and `< 1%` even under browser 100 µs coarsened timers). For startup benchmarks, at least **30 independent cold process invocations**.
   - **Microcontroller (ESP32-S3):** At least **5 cold resets/boots** (for startup/cold-cache) × **30 measured iterations** using `esp_timer_get_time()` or `esp_cpu_get_cycle_count()`, with FreeRTOS task pinning and Wi-Fi/BLE disabled during compute measurements (and separately enabled if measuring connected-device jitter).
   - **PR / CI Regression Check (`8.Lab` / `8.Perf` fast gate):** At least **3 invocations × 15 iterations** for wall time (flagged `ci_tier`, never publishable), plus exact deterministic `wasmi` fuel (1 invocation is exact).
@@ -119,6 +164,9 @@ Every OxiPerf run used for internal gating (`8.Perf`, `8.Lab`, `8.Mem`) or exter
   - Report **all** measured post-warmup iterations in the raw JSON and in `p95`/`max`.
   - If an external system fault occurs (e.g., thermal throttle flag tripped, OOM kill, SSH disconnect, host load spike `> 1.0`), the **entire invocation** is marked `invalid` with an automated reason code and logged in the manifest—never cherry-picked iteration-by-iteration.
 - **R18 — What Counts as a "Win" (Significance + Effect Size):** A comparison (`A` vs `B`) may be called faster/slower **only** if all four conditions hold:
+
+> **Corrected by Claude (Opus), 2026-11-26:** add multiple-comparison control: with dozens of ⟨benchmark, competitor, target⟩ comparisons, about 1 in 20 null comparisons excludes 1.0 by chance. Pre-register the headline comparisons and use Holm-adjusted or simultaneous intervals for anything claimed from the family (ledger C18).
+
   1. Correctness digests match 100%;
   2. Warmup check did not flag severe `no_steady_state` without explicit caveat;
   3. The 95% hierarchical bootstrap CI for `ratio = A / B` **excludes `1.0`**;
@@ -177,6 +225,9 @@ Because OxiScript's core positioning is **"GUI and scripting for devices with me
 | **Python & MicroPython** | Exact CPython 3.x (and optional PyPy 3.x) on Linux; exact MicroPython firmware version on ESP32-S3. | (1) Calling NumPy/C-extensions in `base` (measuring C/BLAS instead of Python). (2) Comparing CPython interpreter against OxiScript AOT while hiding PyPy, or vice versa. | Pure Python in `base` (R03); NumPy/C-backed libraries allowed only in `peak` with explicit `C-FFI` badge. On ESP32-S3, MicroPython bytecode is the primary `base` MCU scripting peer; `@micropython.native` / `@micropython.viper` go in `peak` (disclosing viper's dropped safety/dynamic checks). |
 | **Lua & LuaJIT** | Exact Lua 5.4.x (`device`, `server`, `micro`) and LuaJIT 2.1 (`server`, x86_64). | Claiming Lua is slow by testing only PUC-Rio Lua 5.4 on x86_64 without noting LuaJIT, or assuming LuaJIT exists on ARMv6/ESP32-S3. | Report PUC-Rio Lua 5.4 everywhere (including ESP32-S3 and RPi 1—a direct embedded peer for `wasmi` and `w2c2`), and LuaJIT 2.1 on x86_64 with standard warmup verification (R09). Explicitly note platform availability (LuaJIT does not target Xtensa ESP32-S3). |
 
+> **Corrected by Claude (Opus), 2026-11-26:** TS/JS row: the upstream AWFY JavaScript ports use plain `Array` (e.g. `sieve.js`), so "reuse AWFY ports" and "`Int32Array` in `base`" are mutually exclusive; decide once (ledger D11). Node.js on the Pi 1 exists only as unofficial armv6l builds with "minimal or no testing" (D12). Go/TinyGo row: TinyGo's Wasm default GC is `precise` (`wasm.json`), Xtensa/ESP32-S3 is `conservative`; TinyGo has an `esp32s3-n16r8-devkit` target (D16). Lua row: **LuaJIT supports 32-bit ARM from ARMv5**, so it runs on the Pi 1 B+ and belongs in the `device` roster; it does not target Xtensa (ledger A7). Lua 5.4 on the ESP32-S3 needs a self-built port (D19).
+
+
 ---
 
 ## 4. OxiPerf Concrete Benchmark Suite Proposal (v0.1)
@@ -184,6 +235,9 @@ Because OxiScript's core positioning is **"GUI and scripting for devices with me
 To avoid the "toy problem" trap of Rosetta Code and the bloat of unmaintainable 50-program suites, **OxiPerf v0.1** starts with **12 self-contained programs**: **6 adapted from Are We Fast Yet (AWFY)** ([Marr et al. 2016](https://doi.org/10.1145/2989225.2989232), [github.com/smarr/are-we-fast-yet](https://github.com/smarr/are-we-fast-yet)) for academic comparability and compiler coverage, plus **6 UI- and OxiScript-specific workloads** covering page layout, string/template rendering, deterministic sorting, hash collections, 2D physics, and neural-network inference (directly unifying the `8.Bench`, `8.Perf`, `8.Mem`, and `8.Lab` pipelines in [../roadmap/oxiscript.md](../roadmap/oxiscript.md)).
 
 Each program ships with **three problem-size profiles** (`micro` for ESP32-S3, `device` for RPi 1 B+, `server` for x86_64/browser) so every benchmark runs in the 10–500 ms per-iteration sweet spot without OOMing 512 KB SRAM or taking hours on ARMv6. Cross-hardware ratios are computed only within the same size profile.
+
+> **Corrected by Claude (Opus), 2026-11-26:** 10-500 ms per iteration cannot hold for every row at one fixed size (C vs CPython or wasmi differ 50-100×); state the expected range per row. Freeze sizes and `inner_reps` before the first measured run (ledger E10, A3).
+
 
 ### 4.1 OxiPerf v0.1 Core Suite (12 Programs)
 
@@ -202,10 +256,16 @@ Each program ships with **three problem-size profiles** (`micro` for ESP32-S3, `
 | **P11** | **`physics_2d_step`** | OxiScript (`8.Bench` particles) | `f32` vector math, AoS vs. SoA memory bandwidth, spatial-hash or $O(n^2)$ pairwise collision impulse, integer-to-float conversions. | $P$ 2D particles in a bounded box updated for $S$ ticks with semi-implicit Euler integration, wall bounce, and pairwise elastic collision using a uniform grid cell hash. Maps directly to `8.Bench`'s `particles` workload; scalar in `base`, `Simd<f32, 4>` / GPU in `peak` ([8.3a–d](../roadmap/oxiscript.md#s-8-3a)). | `P = 128, S = 50` / `P = 512, S = 100` / `P = 2,048, S = 100` | Checksum of quantized final positions & total kinetic energy (within `1e-5` on GPU/f32-relaxed `peak`; exact bits on deterministic `base`). |
 | **P12** | **`tiny_mlp_layer`** | OxiScript (`8.Bench` MLP / `8.W3` L5) | Dense `f32` matrix-vector/matrix-matrix multiply-accumulate, ReLU activation, softmax (`exp` determinism per [8.Std](../roadmap/oxiscript.md#s-8-std)), contiguous array indexing. | 2-layer MLP forward pass (`784 → 128 → 10` for `device`/`server`; `64 → 32 → 10` for `micro` SRAM) over deterministic pseudo-random weights and batch of $B$ inputs. Directly connects to `8.Bench` `MLP` and Course Level 5 MNIST ([8.3e](../roadmap/oxiscript.md#s-8-3e)); scalar loops in `base`, SIMD128 / WebGPU / BLAS only in `peak`. | `64→32→10, B=8` / `784→128→10, B=16` / `784→128→10, B=64` | Argmax vector + sum of logits within `1e-5` relative error (exact bit hash on CPU deterministic `base`). |
 
+> **Corrected by Claude (Opus), 2026-11-26:** suite table: AWFY golden values exist only for its own sizes (Mandelbrot 500 → 191, NBody 250 000 steps → -0.1690859889909308, Storage depth 7 → 5461, Sieve 5000 → 669); every other profile needs new goldens (Storage depth 5 → 341, depth 6 → 1 365). AWFY Json parses one fixed embedded document, so 8/64/512 KB fixtures are a new benchmark. Headline cross-language claims only on P01-P06; P07-P12 are our own choice and must be labelled "home workloads" with a separate geomean (ledger A3, E2-E6).
+
+
 ### 4.2 Planned Roadmap Extensions (Not Blocking v0.1)
 
 To preserve full continuity with `docs/roadmap/oxiscript.md` without overloading v0.1:
 - **v0.2 Data-Parallel Extension (Stage `8.3a–d`):** Adds `gemm_f32` (tiled dense matrix multiply) and `image_filter_3x3` (RGBA8 convolution) from `8.Bench`'s original four SIMD/GPU workloads, measuring both **GPU-resident** and **CPU↔GPU round-trip** latency plus `placement.json` `@expect` verification ([P-5](../roadmap/oxiscript.md#p-5)).
+
+> **Corrected by Claude (Opus), 2026-11-26:** roadmap 8.Bench owns GEMM and the image filter and its gate blocks 8.3a, 8.3b and 8.3d; deferring them is fine only if 8.Bench keeps them in its SIMD/GPU part (ledger E9).
+
 - **v0.2 Embedded UI Frame Extension (Stage `8.Mem` / `8.S1`):** Adds end-to-end OxiUI `<script lang="oxs">` frame-time & RSS benchmarks (full redraw vs. damage-rect diff on Raspberry Pi 1 framebuffer and browser local mode).
 - **Internal-Only RC Micro-Suite (`8.Perf`):** Keeps the existing OxiScript-internal micro-probes (`B1–B9` from [oxiscript-memory-performance.md §6.1](oxiscript-memory-performance.md#61-proposed-microbenchmark--macrobenchmark-suite-oxiscript-bench--oxiscript-rc--oxiscript-wasm), e.g., `new class`, `[1,2,3]`, cycle headroom at 90% heap) inside `oxiscript-bench --suite internal-rc`; these drive `8.Perf` engineering and are **never** marketed as cross-language benchmarks.
 
@@ -213,6 +273,9 @@ To preserve full continuity with `docs/roadmap/oxiscript.md` without overloading
 
 Before any language's implementation of `P01..P12` enters a frozen OxiPerf release:
 1. **Spec conformance review:** A second reviewer (human or separate agent instance, mirroring [OxiBench Role R2](oxibench-methodology.md#1-principle-nobody-grades-their-own-work)) audits the `base` implementation against `spec.toml` to verify identical algorithm, no native FFI smuggling, no missing bounds/work, and idiomatic quality within the shared subset (no deliberately crippled competitor code—a classic benchmarking crime!).
+
+> **Corrected by Claude (Opus), 2026-11-26:** a second agent from the same pipeline is not independent. Use upstream AWFY ports verbatim where they exist (JS, Lua, Python, C++, Java, Ruby, ...; there are none for C, Rust or Go), publish new ports for comment before the freeze, and hold the OxiScript port to the same "idiomatic within the shared subset" rule (ledger A2).
+
 2. **Cross-language oracle parity:** Every language must reproduce the exact golden checksum on `micro`, `device`, and `server` inputs.
 3. **Zero-leak verification:** Managed runtimes verify bounded steady-state memory across 100 iterations; OxiScript explicitly asserts `oxi_live_objects() == 0` after `oxi_deinit()` / `oxi_collect_cycles()`.
 
@@ -330,7 +393,13 @@ Every run writes an immutable `manifest.json` before measurements begin (analogo
 
 - **Stage `8.Perf` (RC elision & allocator fast path):** Runs `oxiperf --suite internal-rc` plus `P04`–`P10` across `wasmi` (reporting **both** fuel and wall time, per [Finding A1](oxiscript-memory-performance-verification.md)), `w2c2`+GCC, and `RuntimeMode::Stub` vs. `Linked`, verifying zero leaks and identical differential outputs between unoptimised and optimised OxiIR.
 - **Stage `8.Mem` (Raspberry Pi 1 B+ positioning):** Uses `oxiperf` over `rpi_ssh` to compare OxiScript `wasmi` vs. `w2c2`+GCC and competitor baselines on `size = device`, capturing RSS/PSS/binary size/startup/frame time for the [D-20](../roadmap/oxiscript.md#d-20) gate table.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the w2c2 rows need Stage 8.2b first; cross-builds for the Pi need the Raspberry Pi OS sysroot (a stock Debian/Ubuntu `armhf` sysroot is ARMv7) or static musl builds with `-march=armv6zk -mfpu=vfp -mfloat-abi=hard` (ledger A10).
+
 - **Stage `8.Lab` (Weekly Speedup Lab, [D-29](../roadmap/oxiscript.md#d-29)):** Every candidate `--unstable-opt=<name>` runs `oxiperf compare` in interleaved A/B mode across `wasmi`, `w2c2`, and `wasmtime`. Automated promotion gate checks: (1) 100% identical outputs/traps/float bits across the corpus and fuzzers, (2) at least one target achieves a statistically significant `>= 5%` wall-time win (95% CI excludes `1.0`), and (3) no target regresses by `>= 5%` (95% CI wholly above `1.05`). Fuel-only gains without wall-time improvement are flagged as metering artifacts, not speedups.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the regression test is asymmetric: a noisy run never has its CI "wholly above 1.05", so an under-measured candidate is promoted by default. Use non-inferiority on every target: block unless the **upper** bound of the 95% CI of `candidate / baseline` is below 1.02 (or another stated margin), with release-tier run counts on the gating targets (ledger A1).
+
 
 ---
 
@@ -384,6 +453,9 @@ Following the roadmap convention ([../roadmap/oxiscript.md §7](../roadmap/oxisc
 
 1. **`Q-OP-1` (Methodology approval & freeze gate):** Approve this methodology (v0.1) as the governing spec for Stage `8.Bench` (`oxiscript-bench`), requiring a freeze commit before any cross-language numbers are published on the sites.
 2. **`Q-OP-2` (Mandatory v0.1 competitor roster):** Confirm the minimum set of comparison languages required for the first frozen OxiPerf v0.1 release vs. deferred to v0.2:
+
+> **Corrected by Claude (Opus), 2026-11-26:** recommended v0.1 scope: dev box only, AWFY subset P01-P06 with upstream ports (JS, Lua, Python, C++ as native reference) plus OxiScript on wasmi and Rust; the Pi 1 rows (C, wasmi, LuaJIT, Lua, CPython; w2c2 after 8.2b) as the 8.Mem part; ESP32-S3 after 8.S3 and 8.2b with C, w2c2 and MicroPython first (verification section H).
+
    - *Proposed v0.1 Linux (`server`/`device`):* OxiScript (`wasmi`, `w2c2`+GCC, Wasmtime), TypeScript/JS (Node.js/V8), AssemblyScript (`--runtime incremental`), Rust (native + `wasm32`), C (`gcc -O2`), CPython 3.x, Lua 5.4.
    - *Proposed v0.1 Browser (`web`):* OxiScript native Wasm (plus separate playground `wasmi`-in-Wasm row), Browser JS, Rust `wasm32`, AssemblyScript.
    - *Proposed v0.1 MCU (`micro`, after `8.S3` hardware arrives):* OxiScript (`w2c2` + ESP-IDF GCC), C (ESP-IDF GCC), MicroPython, Lua 5.4, TinyGo (`-gc=conservative`).

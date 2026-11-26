@@ -4,6 +4,9 @@
 > **Target hardware:** Raspberry Pi 1 Model B+ V1.2 (BCM2835: single-core ARM1176JZF-S ARMv6 @ 700 MHz, 512 MB shared LPDDR2 RAM, VideoCore IV GPU with 12 QPUs @ 250 MHz).
 > **Evidence rules:** External claims carry direct links; unverified or secondary figures are explicitly marked `[unverified]`. Notes from `/home/slavekm/Dokumenty/Uruchomienie DSI_CSI Raspberry Pi B+.md` were not readable due to workspace access policy and are noted in Open Questions.
 
+> **Corrected by Claude (Opus), 2026-11-26:** verified claim by claim; the ledger is in [videocore-iv-acceleration-verification.md](videocore-iv-acceleration-verification.md) (86 claims: 54 confirmed, 20 partly, 5 wrong, 7 unverifiable). The owner's notes were read in the verification: **no display or camera is bought yet**; candidates are the original 7" Touch Display (800×480, firmware- or KMS-driven) and Touch Display 2 (720×1280, KMS only); the board shows oxidation on GPIO/HDMI/A/V and needs cleaning and a power check first (ledger A1).
+
+
 ---
 
 ## Executive Summary
@@ -16,13 +19,22 @@
 | **4. Can we run AI (small neural networks) on the QPUs?** | **Yes — technically proven, with major caveats** | Prior art (Idein, Pete Warden, `GPU_FFT`, `VC4CL`) achieves **~8 GFLOPS SGEMM** and **~95–120 ms/frame MobileNet v1/v2 (224×224, FP32)** on the same BCM2835 silicon (~10×–49× over the 700 MHz ARM1176 CPU, which has no NEON). |
 | **5. Should we build a general OxiScript QPU compiler backend?** | **No — use a tiny host-kernel shim (`host:qpu`) for a demo instead** | Direct QPU compute requires **root**, has **no IOMMU** (a bug corrupts kernel RAM), **conflicts with `vc4-kms-v3d`** (needed by modern DSI displays), violates strict `P-9` float determinism (FTZ/non-IEEE rounding), and targets discontinued Pi 0–3 silicon. An isolated, host-owned SGEMM/GEMV capability (`host:qpu`) gives the full "AI on a 2014 Pi GPU in OxiScript" demo in ~1–2 weeks without polluting OxiScript's core compiler. |
 
+> **Corrected by Claude (Opus), 2026-11-26:** three things in this table are off. (1) The ARM1176 **peak** is about 1.4 GFLOPS at 700 MHz (Idein: 2 GFLOPS at 1 GHz), so the peak asymmetry is about **17×**, not ~100× (A6). (2) Idein's MobileNet numbers (95 ms V2, 120 ms V1) are confirmed, but on a **Pi Zero with V3D at 300 MHz** (Pi 1 B+: 250 MHz) and with Idein's **private** libraries; "~49×" has no source (A5, A7). (3) The Pi 1 B+ is **not discontinued**: in production until at least January 2030 (A3).
+
+
 **Bottom line:** VideoCore IV is a genuine 24 GFLOPS SIMD co-processor bolted next to a slow scalar 0.1–0.3 GFLOPS ARMv6 CPU. For **OxiUI**, stay on the CPU software sink (`oxiterm-fb`) backed by `vc4` DRM/KMS + HVS planes and add `U.Damage` if `8.Mem` shows full redraws are too slow (confirming owner decision [O-5](../roadmap/oxiui.md#o-5)). For **AI in OxiScript**, VideoCore IV *can* run real small neural networks (MLPs, tiny CNNs, keyword spotting, MobileNet-tiny, tiny LMs) dramatically faster than the ARM11 CPU, but only via a privileged, `@approx`, pre-assembled host capability (`host:qpu`)—never as an untrusted guest shader or a core 8.3d compiler target.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the KMS conflict is real for py-videocore and VC4CL (their own README and issues), but it depends on the display: the original 7" display also runs on the legacy firmware path with `/dev/fb0`, which leaves V3D free for mailbox QPU work; Touch Display 2 needs full KMS (A2, A4).
+
 
 ---
 
 ## 1. What VideoCore IV Offers (BCM2835 Hardware & Driver Stack)
 
 The Raspberry Pi 1 Model B+ V1.2 uses the Broadcom **BCM2835** SoC: a single-core **ARM1176JZF-S** (ARMv6, 700 MHz, **VFPv2 scalar FPU, no NEON SIMD**) sharing 512 MB of 400 MHz LPDDR2 RAM with a **VideoCore IV** multimedia/GPU subsystem ([Raspberry Pi BCM2835 docs](https://www.raspberrypi.com/documentation/computers/processors.html#bcm2835); [Broadcom VideoCore IV 3D Architecture Reference Guide `VideoCoreIV-AG100-R`](https://docs.broadcom.com/doc/12358545)). Because the ARM1176 core achieves only roughly **0.1–0.3 GFLOPS** in scalar single-precision benchmarks (`[unverified]` exact Linpack on B+ @ 700 MHz; measure in `8.Mem`), the VideoCore IV 3D block represents a ~100× theoretical compute asymmetry on this board.
+
+> **Corrected by Claude (Opus), 2026-11-26:** "~100× theoretical" is wrong: peak against peak is about 17× (Idein's BCM2835 table); 0.1-0.3 GFLOPS is an unmeasured sustained estimate (ledger A6).
+
 
 ### 1.1 The 3D Block (V3D) and QPUs
 
@@ -35,12 +47,18 @@ Per Broadcom's `VideoCoreIV-AG100-R` ([Broadcom AG100-R](https://docs.broadcom.c
   (Up to 28.8 GFLOPS at 300 MHz; [Idein `py-videocore6` README comparison](https://github.com/Idein/py-videocore6)).
 * **Numeric precision & ALU quirks (critical for OxiScript `P-9`):**
   * **FP32 only (no FP64):** Single-precision 32-bit float on both ADD and MUL ALUs. **Not fully IEEE-754 compliant**: denormals/subnormals are flushed to zero (FTZ), NaN/Inf propagation is incomplete, and ALU rounding defaults to simplified/round-to-zero behavior rather than strict IEEE round-to-nearest-even across all paths ([Broadcom AG100-R](https://docs.broadcom.com/doc/12358545); [VC4CL `clinfo` capabilities report](https://github.com/doe300/VC4CL)).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the AG100 guide says nothing about IEEE compliance, denormals or rounding. Round-to-zero is confirmed by VC4CL's tests (`vc4cl_config.h`: `CL_FP_ROUND_TO_ZERO`, no `CL_FP_DENORM`, no `CL_FP_INF_NAN`); FTZ and NaN behaviour are implied by the missing flags, not documented (ledger B7). The P-9 conclusion stands.
+
   * **Integers:** 32-bit integer add/sub/bitwise/shifts on the ADD ALU, **24-bit integer multiply (`mul24`)** on the MUL ALU (no single-cycle 32×32→32 int multiply), and 8-bit saturating add/sub/mul helpers. **No native `int8×4` dot-product instruction.**
   * **Hardware pack/unpack on Regfile-A (and `r4`):** Free on-the-fly unpacking of 16-bit halves (`16a`/`16b`: **FP16→FP32** for float ops, signed `i16→i32` for int ops) and 8-bit bytes (`8a`–`8d`: unsigned `u8→[0.0, 1.0]` FP32 or `u8→u32`) as operands enter the ALU ([Broadcom AG100-R](https://docs.broadcom.com/doc/12358545)).
   * **Special Function Unit (SFU):** Shared per-slice `recip` ($1/x$), `recipsqrt` ($1/\sqrt{x}$), `exp2`, `log2` with a fixed 3-instruction pipeline latency into accumulator `r4` (hazard if `r4` is touched on instructions $N+1, N+2$; approximate graphics precision `[unverified exact ULP bound]`).
 * **On-chip memory & DMA:**
   * **Registers:** Two 32-entry 16-wide register files per QPU (`Regfile-A` and `Regfile-B`) plus 6 accumulators (`r0`–`r5`) — 4 KB of registers per QPU (48 KB across 12 QPUs).
   * **VPM (Vertex Pipe Memory):** **4 KB total** (64 rows × 16 columns × 32-bit) shared across all QPUs, backed by VCD/VDW DMA engines for 2D block transfers to/from main RAM.
+
+> **Corrected by Claude (Opus), 2026-11-26:** AG100: the VPM is at least 8 KB and up to 16 KB; 64×16×32-bit (4 KB) is the maximum QPU general-purpose window (ledger B13).
+
   * **TMU (Texture and Memory Lookup Unit):** 2 TMUs per slice with L2 texture cache; GPGPU kernels abuse TMU general-memory lookups for cached gather reads while using VPM DMA for coalesced writes ([Broadcom AG100-R](https://docs.broadcom.com/doc/12358545); [Pete Warden 2014 write-up](https://petewarden.com/2014/08/07/how-to-optimize-raspberry-pi-code-using-its-gpu/)).
 * **No IOMMU / MMU:** The V3D block accesses physical bus memory directly with **zero hardware memory protection** ([Linux kernel `vc4` DRM docs](https://docs.kernel.org/gpu/vc4.html)).
 
@@ -55,6 +73,9 @@ Per Broadcom's `VideoCoreIV-AG100-R` ([Broadcom AG100-R](https://docs.broadcom.c
 | **Compute Shaders (GL/VK)** | **No** | Linux `vc4` DRM explicitly rejects arbitrary compute shaders because VideoCore IV has no IOMMU; `vc4_validate_shaders.c` validates only graphics command lists (`DRM_IOCTL_VC4_SUBMIT_CL`) ([Linux kernel `vc4` docs](https://docs.kernel.org/gpu/vc4.html)). |
 | **OpenCL** | **No official / mainline support** | Only via third-party [`doe300/VC4CL`](https://github.com/doe300/VC4CL) (OpenCL 1.2 Embedded Profile), bypassing Mesa via mailbox/register access as root (Section 3). |
 
+> **Corrected by Claude (Opus), 2026-11-26:** OpenGL 2.1: Mesa truncates 4-byte index buffers to 2 bytes (wrong above 65535) rather than working around it; occlusion queries and line/point polygon modes are missing (ledger C2).
+
+
 ### 1.3 Other VideoCore IV Hardware Blocks and What Each Means for Us
 
 | Hardware Block | Capabilities on BCM2835 | Linux Interface | Relevance to OxiUI / OxiScript |
@@ -63,6 +84,9 @@ Per Broadcom's `VideoCoreIV-AG100-R` ([Broadcom AG100-R](https://docs.broadcom.c
 | **HVS** (Hardware Video Scaler) | Dedicated 2D display composition engine: fetches multiple memory layers (**DRM planes**), performs on-the-fly **scaling, alpha blending, cropping, and YUV↔RGB conversion**, and feeds Pixel Valves (HDMI, DSI, DPI) ([Linux kernel `vc4` docs](https://docs.kernel.org/gpu/vc4.html)). | Mainline DRM/KMS (`vc4-kms-v3d`, `/dev/dri/card0`). | **High value for OxiUI / OxiDE.** Free hardware compositing of UI planes, hardware cursor, hardware upscaling of lower-res UI buffers, and zero-copy camera overlay planes. |
 | **ISP** (Image Signal Processor) | Dedicated CSI-2 camera pipeline: debayering, auto-exposure/white-balance, color conversion, and **hardware downscaling** into multiple output streams simultaneously. | Mainline V4L2 (`bcm2835-isp`) + `libcamera` ([Raspberry Pi camera/V4L2 docs](https://www.raspberrypi.com/documentation/computers/camera_software.html)). | **High value for camera-AI demos.** Can deliver pre-scaled e.g. 96×96 or 224×224 RGB frames directly into CMA memory for an AI model without burning ARM11 CPU cycles on resize/demosaic. |
 | **H.264 Codec** | Hardware 1080p30 H.264 video decode and encode ([Raspberry Pi BCM2835 specs](https://www.raspberrypi.com/documentation/computers/processors.html#bcm2835)). | V4L2 M2M (`bcm2835-codec`). | **Low value for UI/AI.** Useful only if OxiUI plays back or streams H.264 video (`9.2` Tier-1 `<scene>` video client or camera streaming); cannot accelerate DisplayList rendering or neural nets. |
+
+> **Corrected by Claude (Opus), 2026-11-26:** ISP and H.264 rows: `bcm2835-isp` and `bcm2835-codec` are Raspberry Pi kernel drivers over the firmware VCHIQ/MMAL services, not mainline; they do not use V3D (ledger C10).
+
 
 ---
 
@@ -81,6 +105,9 @@ Falling back to software Vulkan (`lavapipe`) or software GL (`llvmpipe`) on a 70
 | **A. `oxiterm-fb` on `vc4` DRM/KMS + HVS** *(already exists in Stage 7.2)* | CPU rasterizes `DisplayList` into RGBA/XRGB buffer; `vc4` DRM/KMS scans out via dumb buffers + HVS planes (`oxiterm-fb/src/device/drm.rs`). | Already built and tested; zero Mesa/EGL RSS overhead (~2–15 MB target); works natively on DSI/HDMI under `vc4-kms-v3d`; deterministic pixels. | Full-screen CPU redraw + `tiny-skia` on ARMv6 without NEON can be slow at high resolutions unless paired with damage tracking and fast-path blitting. | **Recommended primary path.** |
 | **B. New dedicated GLES 2.0 sink (`glow` + `khronos-egl` + `gbm`)** | Hand-written GLSL ES 1.00 vertex/fragment shaders (SDF rects + glyph atlas quads, Alacritty-style), rendered straight onto GBM/DRM buffers via Mesa `vc4`. | Hardware-accelerated full-screen fills, alpha blending, smooth scrolling, and rounded borders at 60 FPS even at 1080p. | Separate shader pipeline to maintain (GLSL ES 1.00 lacks UBOs, integer bit-ops, and core instancing); pulls Mesa/EGL into RSS (~15–30 MB `[unverified]`); **cannot coexist with mailbox QPU AI** because Mesa `vc4` actively uses V3D. | **Do not build unless `8.Mem` proves Path A + `U.Damage` misses frame-time targets.** |
 
+> **Corrected by Claude (Opus), 2026-11-26:** path A: `drm.rs` today allocates one dumb buffer and calls `SETCRTC` on the primary plane; no overlay plane, atomic or page-flip API is used yet (ledger C15). Frame sizes depend on the display bought: Touch Display 2 is 720×1280 (3.69 MB per XRGB frame).
+
+
 ### 2.3 What Gives the Best UI Performance for OxiUI on This Board?
 
 Reading `oxiterm-fb/src/raster.rs:85-97` and `oxiterm-fb/src/device/drm.rs:331-372` reveals four concrete bottlenecks in the current Stage 7.2 implementation—and the exact optimizations that maximize Pi 1 B+ UI speed without writing a GLES 2.0 engine:
@@ -92,6 +119,9 @@ Reading `oxiterm-fb/src/raster.rs:85-97` and `oxiterm-fb/src/device/drm.rs:331-3
 4. **HVS DRM planes (hardware composition & scaling) + lightweight raster fast path:**
    * `vc4` exposes multiple hardware overlay planes through the HVS ([Linux kernel `vc4` docs](https://docs.kernel.org/gpu/vc4.html)). Putting a static UI layer on the primary plane, a hardware cursor or moving overlay on a second plane, and (for camera-AI demos) a zero-copy `bcm2835-isp` DMA-BUF preview on an underlay/overlay plane lets the HVS blend and scale them at 60 FPS with **0% ARM11 CPU**.
    * `oxiterm-fb/src/raster.rs` already uses exact integer blits for square fills and cached `swash` alpha glyphs, reserving `tiny-skia` for rounded corners, borders, and `Path` items. Because `tiny-skia` is 100–300% slower than Skia on ARM ([`tiny-skia` README](https://github.com/RazrFalcon/tiny-skia), cited in `vulkan-acceleration.md` §3.3) and ARMv6 lacks NEON, keeping `OxiDE` themes on Pi 1 mostly square/integer-filled (or caching static rounded panels) avoids `tiny-skia`'s per-frame overhead.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the tiny-skia README's "100-300% slower on ARM" refers to AArch64 with NEON; on ARMv6 tiny-skia runs scalar, so expect worse (ledger C20).
+
 
 ---
 
@@ -108,6 +138,9 @@ Consequently, **every real-world GPGPU project on VideoCore IV bypasses Mesa and
 3. **Root privilege required:** Direct physical memory mapping (`/dev/mem`) and unguarded QPU execution require **`root`** (or `CAP_SYS_RAWIO` / custom device permissions), because a single out-of-bounds VPM DMA write corrupts arbitrary physical RAM.
 4. **Hard conflict with `vc4-kms-v3d` (Full KMS):** When `dtoverlay=vc4-kms-v3d` is active in `/boot/firmware/config.txt` (the default on modern Raspberry Pi OS Bookworm+), the Linux kernel `vc4` DRM driver claims exclusive ownership of the V3D block and its power domain. Attempting mailbox QPU enable/execution simultaneously fails (`Unable to enable V3D/QPUs`) or causes kernel hangs/panics ([`GPU_FFT` / Raspberry Pi KMS conflict reports](https://github.com/raspberrypi/linux/issues); [`doe300/VC4CL` KMS notes](https://github.com/doe300/VC4CL)). Historically users resolved this by commenting out `dtoverlay=vc4-kms-v3d` (reverting to legacy firmware display / headless mode) or using deprecated `vc4-fkms-v3d`—**which directly clashes with modern KMS DSI panel drivers** (see Section 5.3).
 
+> **Corrected by Claude (Opus), 2026-11-26:** the cited sources (a generic issues page, the VC4CL README) do not say this. Primary evidence: py-videocore's README ("does not work with the CPU-side OpenGL graphics stack"; comment out **both** `vc4-kms-v3d` and `vc4-fkms-v3d`, so fkms is no workaround there) and VC4CL issues #60 and #100 ("not compatible with the 'full kms' OpenGL driver"). The real GPU_FFT error text is "Unable to enable V3D. Please check your firmware is up to date." GPU_FFT's guide says it runs alongside the old firmware OpenGL on Pi 1. The `vc4` kernel driver treats V3D as an optional component, so the `&v3d`-disabled experiment is plausible but untested (ledger A2, A4).
+
+
 ### 3.2 Prior-Art Projects Comparison
 
 Per OxiUI/OxiScript's permissive-only dependency rule ([O-14](../roadmap/oxiui.md#o-14), [P-11](../roadmap/oxiscript.md#p-11)), **only MIT / Apache-2.0 / BSD / Zlib projects** may be reused as code; GPL projects below are marked **reference only**.
@@ -123,6 +156,19 @@ Per OxiUI/OxiScript's permissive-only dependency rule ([O-14](../roadmap/oxiui.m
 | **Mesa `vc4` QPU compiler** ([Mesa `vc4` docs](https://docs.mesa3d.org/drivers/vc4.html), `src/gallium/drivers/vc4/vc4_qir*`, `vc4_qpu*`) | VideoCore IV (Pi 0–3) | Production NIR → QIR → QPU shader compiler + register allocator + instruction scheduler for OpenGL ES 2.0 graphics. | Kernel `DRM_IOCTL_VC4_SUBMIT_CL` + `vc4_validate_shaders.c` (unprivileged, safe, **graphics-only — no compute**). | **MIT** — **Usable** as permissive ISA/scheduling reference. | Actively maintained in Mesa. |
 | **`QPULib`** ([`mn416/QPULib`](https://github.com/mn416/QPULib)) & fork **`V3DLib`** ([`wimrijnders/V3DLib`](https://github.com/wimrijnders/V3DLib)) | VideoCore IV (`QPULib`); VC4 + VC6 (`V3DLib`) | C++ embedded DSL compiling vector kernels to QPU machine code at runtime (heat-map / convolution / math benchmarks; bounded by RAM bandwidth). | Mailbox `/dev/vcio` + V3D regs (VC4); requires **root**; **conflicts with `vc4-kms-v3d`**. | **MIT** — **Usable** (cleanest C++ reference for QPU codegen & mailbox runner). | `QPULib` explicitly **archived/unmaintained**; `V3DLib` legacy/low activity. |
 | **`VC4CL` / `VC4C` / `VC4CLStdLib`** ([`doe300/VC4CL`](https://github.com/doe300/VC4CL), [`doe300/VC4C`](https://github.com/doe300/VC4C)) | VideoCore IV (Pi 0–3 only) | Full **OpenCL 1.2 Embedded Profile** runtime + LLVM/SPIR-V→QPU compiler; strongly outperforms PoCL CPU on `float16` ALU benchmarks; real apps bottlenecked by shared LPDDR2 bandwidth. | Mailbox/V3D register pokes (`REGISTER_POKE_KERNELS`) + CMA/VCSM; requires **root**; **conflicts with Full KMS (`vc4-kms-v3d`)** in default register-poke mode. | **MIT** (`VC4CL`, `VC4C`, `VC4CLStdLib`) — **Usable** permissively, though heavy C++/LLVM dependency. | Legacy / minimal maintenance. |
+
+> **Corrected by Claude (Opus), 2026-11-26:** GPU_FFT: every number matches `gpu_fft.txt` (release 3.0, Pi 1, ms), but "~10×" holds from 1K points up; at 256 points, batch 1, it is 2.8× (ledger D3). The KMS conflict for GPU_FFT has no primary source (D6). GPU_FFT `dlopen`s `libbcm_host.so` from the archived legacy userland: check that the installed OS ships it.
+
+> **Corrected by Claude (Opus), 2026-11-26:** py-videocore: README "Achieved 8GFlops with sgemm", board and clock not stated (Idein measured overclocked at 400 MHz early on); "1/3 of peak, memory-bound" is an inference (ledger D8).
+
+> **Corrected by Claude (Opus), 2026-11-26:** Idein: `Idein/qmkl` is **BSD-3-Clause** (LICENSE: "Modified (3-Clause) BSD License"), usable under O-14 (ledger A8). The MobileNet results (95 ms V2, 120 ms V1 on Pi 0; FP32, "mathematically equivalent") are confirmed by the DLLab deck (https://speakerdeck.com/nineties/ideinfalseshao-jie-at-dllab-tui-lun-naito) and the IIJlab 2019 slides (https://seminar-materials.iijlab.net/iijlab-seminar/iijlab-seminar-20191015.pdf), but used Idein's private libraries; "~49×" is unsourced (A7).
+
+> **Corrected by Claude (Opus), 2026-11-26:** Pete Warden: DeepBeliefSDK README says about **5 s on a stock Pi**, 3 s only "with a boosted GPU clock rate"; the 500 ms vs 8 000 ms GEMM was "on my overclocked Pi". Licences BSD-3 confirmed (ledger D20-D22).
+
+> **Corrected by Claude (Opus), 2026-11-26:** QPULib is MIT except `Lib/VideoCore/Mailbox.cpp/.h` (Broadcom BSD-3); it is not archived on GitHub, the README says "no longer under development". V3DLib's MIT also excludes its mailbox files, `catch.hpp` and a vendored `mesa/` subtree (ledger D25, D26).
+
+> **Corrected by Claude (Opus), 2026-11-26:** VC4CL: the PoCL comparison has no source (D28); VC4CL needs root **or** the `video` group depending on the chosen interfaces (C7).
+
 
 ---
 
@@ -143,10 +189,16 @@ On the Pi 1 B+, the single-core **700 MHz ARM1176** has no NEON (~0.1–0.3 GFLO
 
 *(Note: Pi Zero runs the same BCM2835 V3D/QPU @ 250 MHz as Pi 1 B+, with ARM11 at 1 GHz vs Pi 1 B+'s 700 MHz—so QPU compute numbers transfer directly while Pi 1 B+ CPU-side overhead is ~1.4× slower than Pi Zero.)*
 
+> **Corrected by Claude (Opus), 2026-11-26:** **wrong**: by default Pi Zero runs V3D at 300 MHz and SDRAM at 450 MHz, Pi 1 B+ at 250 and 400 (`config.txt` defaults). Pi Zero QPU numbers are about 17% too optimistic for this board (ledger A5). Every row of the table above is an `[estimate]` (E2).
+
+
 ### 4.2 INT8 vs FP32 on VideoCore IV QPUs (Crucial Hardware Insight)
 
 Unlike modern NPUs or the ESP32-S3's Xtensa PIE (`ee.vmulas.s8.accx` in `oxiscript-simd-gpu-design.md` §1.3), **VideoCore IV QPUs do NOT have an `int8` dot-product or high-throughput `int8` MAC unit**:
 * Integer multiplication is **24-bit (`mul24`)** at the same 16-way issue rate as **FP32 `fmul`**, so computing in `int8` gives **zero ALU throughput gain** over `fp32`—and adds requantization overhead.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the MUL ALU does have 8-bit vector ops on 4 bytes per lane (`v8muld` etc.), but they treat bytes as [0, 1.0] colour values with no wide accumulator, so they do not help int8 dot products; the FP32-compute conclusion stands (ledger A10).
+
 * **Best strategy on VideoCore IV:**
   1. **Compute and accumulate in FP32** (gets full 24 GFLOPS dual-issue `fmul` + `fadd` throughput and zero quantization accuracy drop—exactly why Idein runs MobileNet in FP32!).
   2. **Optionally store weights in FP16 (2× smaller) or U8/INT8 (4× smaller)** for bandwidth-bound layers (GEMV / Tiny LM / large 1×1 convs), and use the QPU **Regfile-A hardware unpack (`16a`/`16b` FP16→FP32 or `8a`–`8d` U8→FP32)** to decompress weights into FP32 registers at zero extra ALU cost ([Broadcom AG100-R](https://docs.broadcom.com/doc/12358545)).
@@ -177,6 +229,9 @@ Our roadmap cleanly separates targets (`micro` < `device` < `web` < `server`, [D
 | **Option 2: Wrap `doe300/VC4CL` (MIT) via FFI** | Build `VC4C` + `VC4CL` (C++/LLVM) on/for Pi 1 and call OpenCL `clEnqueueNDRangeKernel` from a Rust `host:qpu` shim. | **~3–5 days** integration, but **high operational friction** (heavy C++/LLVM build, legacy maintenance, still requires root + no `vc4-kms-v3d`). | **Only useful for quick one-off benchmarking**, not for shipping a lightweight binary. |
 | **Option 3: Full OxiIR → QPU compiler backend (`oxiscript-vc4`)** | Register-bank A/B allocator, delay-slot & SFU scheduler, VPM 2D DMA tiler, TMU gather lowering, BAD ACTOR fuzzing. | **2–4+ months** | **Reject** — terrible ROI on obsolete Pi 0–3 silicon. |
 
+> **Corrected by Claude (Opus), 2026-11-26:** option 1 is an estimate that assumes new hand-written kernels. The smallest demo reuses audited BSD-3 kernels that already run on BCM2835 (GPU_FFT, pi-gemm). All of them need root: keep the OxiScript host unprivileged and put the QPU calls in a tiny privileged helper with a fixed command set, or evaluate the `vcio2` driver (ledger A9).
+
+
 ---
 
 ## 5. Recommended Path
@@ -195,6 +250,9 @@ Never touch `/dev/fb0`, `/dev/dri/*`, `/dev/vcio`, or `/boot/firmware/config.txt
 3. **Phase 2 — QPU probe (only with owner's explicit boot-config consent):**
    * First probe `/dev/vcio` `MBOX_TAG_ENABLE_QPU` under the current `config.txt` (expected to fail if `vc4-kms-v3d` owns V3D).
    * If blocked, test in an isolated reboot (or spare SD card) with either (i) `dtoverlay=vc4-kms-v3d` commented out (headless SSH) or (ii) a test DT overlay disabling only `&v3d { status = "disabled"; }` while keeping HVS/DSI under `vc4` (`[unverified]` — verify whether the Pi kernel cleanly probes KMS-only `vc4` without V3D!).
+
+> **Corrected by Claude (Opus), 2026-11-26:** use a spare SD card. Also record `vcgencmd get_throttled` (the board is corroded, under-voltage throttling is likely) and check that `libbcm_host.so` exists before running `hello_fft` (ledger F2, A9).
+
    * Run Andrew Holme's `hello_fft` (BSD-3) and a 256×256 / 512×512 SGEMM probe to record **true sustained GFLOPS** and **dispatch latency (µs)** on this exact Pi 1 B+.
 
 ### 5.2 (b) A Minimal Demo Worth Showing ("AI on a 2014 Raspberry Pi GPU, Written in OxiScript")
@@ -220,11 +278,17 @@ Never touch `/dev/fb0`, `/dev/dri/*`, `/dev/vcio`, or `/boot/firmware/config.txt
 | **4. Float determinism vs OxiScript `P-9`** | **High (spec compliance)** | VideoCore IV QPUs flush denormals to zero, lack full IEEE NaN/Inf handling, and use simplified/RTZ rounding on ALU paths—**incompatible with strict bit-identical `P-9` float semantics**. | Classify `host:qpu` strictly as **`@approx`** (matching WGSL GPU kernels in `oxiscript-simd-gpu-design.md` §4.5: differential test within `1e-4`–`1e-5` relative tolerance against CPU reference), **forbid in `safety` profile (`OXS-E0500`)**, never enable silently in `8.Lab`, and log `approx` in the placement report (`P-5`). |
 | **5. Dead-end hardware / maintenance drag** | **Medium** | VideoCore IV is 2012–2016 silicon (Pi 0–3); Pi 4/5 use VideoCore VI/VII (`v3dv` Vulkan → already covered by `wgpu`!). | Keep `oxiscript-qpu-vc4` strictly isolated as an optional experimental crate/capability outside `oxiscript-*` core crates; zero core compiler complexity. |
 
+> **Corrected by Claude (Opus), 2026-11-26:** risk 5: Pi 1 B+ and Pi Zero stay in production until at least January 2030; the maintenance argument against a general compiler backend stands, the "dead-end" argument does not (ledger A3). Risk 1: see A2 (display-dependent).
+
+
 ---
 
 ## 6. Open Questions for the Owner
 
 *(Note: `/home/slavekm/Dokumenty/Uruchomienie DSI_CSI Raspberry Pi B+.md` was outside this workspace's allowed read paths, so the board-specific questions below need the owner's input.)*
+
+> **Corrected by Claude (Opus), 2026-11-26:** answers from the notes: no display or camera bought yet; candidate displays are the original 7" (800×480) and Touch Display 2 (720×1280, KMS only; the 10.1" model does not work on B+); the notes recommend Raspberry Pi OS Lite 32-bit with `vc4-kms-v3d`. New question: if the QPU demo must show its output on DSI, buy the original 7" display (the legacy firmware path keeps V3D free).
+
 
 1. **Current Pi 1 B+ software & display/camera config:** Which OS release is installed (Raspberry Pi OS Bullseye / Bookworm / Trixie, 32-bit `armhf`)? Does the DSI display require `dtoverlay=vc4-kms-v3d`, what is its exact resolution/pixel format (e.g., 800×480 DSI?), and what is the current `gpu_mem` / CMA allocation alongside the CSI camera?
 2. **Simultaneous DSI + QPU vs headless QPU demo:** If `vc4-kms-v3d` cannot decouple `&v3d` from `vc4_dsi`, is an SSH-TUI / alternate-boot QPU benchmark acceptable, or do you specifically want the AI output painted live on the DSI screen at the same time?
