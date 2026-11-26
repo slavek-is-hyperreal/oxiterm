@@ -428,6 +428,13 @@ title Invalid ABI globals or scratch region
 message {detail}
 fix Export a valid scratch region and ABI version global.
 
+code OXS-E0411
+severity error
+phase link
+title Module target exceeds the host
+message module targets `{target}`{detail}, the host allows at most `{max}`
+fix Rebuild with `oxi build --target device` (or a target the host allows), or run on a host configured for this target.
+
 code OXS-E0420
 severity error
 phase runtime

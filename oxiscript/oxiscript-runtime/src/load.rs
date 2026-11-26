@@ -2,6 +2,9 @@
 //!
 //! Order (each step has its own reason code, see `registry/codes.txt`):
 //! 1. size (`E0409`), 2. engine validation/translation (`E0408`),
+//! 0. target: a manifest naming a target or Wasm features beyond the host's
+//!    `max_target` is refused first (`E0411`), before the engine would fail on
+//!    an unsupported instruction with a less helpful `E0408`,
 //! 3. manifest: exactly one well-formed section (`E0402`),
 //! 4. ABI/profile compatibility (`E0403`),
 //! 5. `needs` against the registered and granted capabilities (`E0400`/`E0401`),
@@ -24,9 +27,11 @@ use oxiscript_abi::exports::{self, ExportKind};
 use oxiscript_abi::idl::{IdlTy, Interface};
 use oxiscript_abi::layout::{ABI_MAJOR, ABI_MINOR};
 use oxiscript_abi::manifest::{Manifest, MANIFEST_SECTION};
+use oxiscript_abi::target::{Feature, Target};
 use oxiscript_abi::WasmTy;
 use std::collections::HashMap;
 use std::sync::Arc;
+use wasmparser::WasmFeatures;
 use wasmi::{ExternType, FuncType, Module, Mutability, ValType};
 
 /// Result of a successful check: what to instantiate and with what.
@@ -70,8 +75,31 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
         match payload.map_err(bad)? {
             Payload::ImportSection(r) => {
                 for imp in r {
-                    if matches!(imp.map_err(bad)?.ty, TypeRef::Func(_)) {
+                    let imp = imp.map_err(bad)?;
+                    if matches!(imp.ty, TypeRef::Func(_)) {
                         imported_funcs += 1;
+                    } else {
+                        // ABI 1.0 imports functions only (no memory, table, global or tag),
+                        // refused here independently of what the engine would accept.
+                        return Err(Error::reject(
+                            "OXS-E0405",
+                            format!(
+                                "import `{}`.`{}` is not a function",
+                                imp.module, imp.name
+                            ),
+                        ));
+                    }
+                }
+            }
+            // table64 is the table twin of memory64 (same ABI 1.0 rule).
+            Payload::TableSection(r) => {
+                for t in r {
+                    let t = t.map_err(bad)?;
+                    if t.ty.table64 || t.ty.shared {
+                        return Err(Error::reject(
+                            "OXS-E0408",
+                            "table64 and shared tables are not allowed (ABI 1.0)",
+                        ));
                     }
                 }
             }
@@ -103,6 +131,125 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Wasm features beyond the Device base set that this build of the engine can
+/// execute (docs/oxiscript/abi.md 3.6). A module may declare a feature only if
+/// its target allows it *and* the engine has it. SIMD, exception handling,
+/// memory64 and multi-memory are deliberately absent: the engine is configured
+/// with them off (`Host::with_options`), and ABI 1.0 has one 32-bit memory.
+pub(crate) const ENGINE_FEATURES: &[Feature] = &[Feature::TailCall, Feature::ExtendedConst];
+
+fn feature_flags(f: Feature) -> WasmFeatures {
+    match f {
+        Feature::Simd128 => WasmFeatures::SIMD,
+        Feature::Exceptions => WasmFeatures::EXCEPTIONS,
+        Feature::TailCall => WasmFeatures::TAIL_CALL,
+        Feature::ExtendedConst => WasmFeatures::EXTENDED_CONST,
+        Feature::Memory64 => WasmFeatures::MEMORY64,
+    }
+}
+
+fn device_base() -> WasmFeatures {
+    WasmFeatures::WASM1
+        | WasmFeatures::MULTI_VALUE
+        | WasmFeatures::BULK_MEMORY
+        | WasmFeatures::SIGN_EXTENSION
+}
+
+/// Target policy, FAIL-CLOSED (abi.md 3.6): the module's bytes must validate against the Device
+/// base plus the features its manifest declares AND this host provides; anything else is refused
+/// here, never left to "the engine will refuse it". A missing or malformed manifest is judged
+/// against the Device base only (`check` then reports it as `E0402`).
+pub(crate) fn check_target(wasm: &[u8], max_target: Target, limits: &Limits) -> Result<()> {
+    use wasmparser::{Parser, Payload};
+    let mut manifest: Option<Manifest> = None;
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(Payload::CustomSection(c)) = payload else {
+            continue;
+        };
+        if c.name() != MANIFEST_SECTION {
+            continue;
+        }
+        // Size cap before any parsing (a huge section is E0402 in `check` anyway).
+        if c.data().len() > limits.max_manifest_bytes {
+            return Err(Error::reject(
+                "OXS-E0402",
+                format!("manifest is larger than {} bytes", limits.max_manifest_bytes),
+            ));
+        }
+        // A manifest we cannot read is `E0402` (same as `check`), not a reason to guess a target.
+        let text = std::str::from_utf8(c.data())
+            .map_err(|_| Error::reject("OXS-E0402", "manifest is not valid UTF-8"))?;
+        manifest = Some(Manifest::parse(text).map_err(|e| Error::reject("OXS-E0402", e.to_string()))?);
+        break;
+    }
+    let mut allowed = device_base();
+    let mut declared = Vec::new();
+    if let Some(m) = &manifest {
+        if m.target > max_target {
+            return Err(Error::reject(
+                "OXS-E0411",
+                format!(
+                    "module targets `{}`, the host allows at most `{max_target}`",
+                    m.target
+                ),
+            ));
+        }
+        for f in &m.features {
+            if !max_target.allows(*f) || !ENGINE_FEATURES.contains(f) {
+                return Err(Error::reject(
+                    "OXS-E0411",
+                    format!(
+                        "module targets `{}` and needs feature `{f}`, which this host (max target `{max_target}`) does not provide",
+                        m.target
+                    ),
+                ));
+            }
+            allowed |= feature_flags(*f);
+        }
+        // exnref needs the reference-types machinery; granted only with a declared `exceptions`
+        // (which has already passed `max_target` and the engine check above).
+        if m.features.contains(&Feature::Exceptions) {
+            allowed |= WasmFeatures::REFERENCE_TYPES;
+        }
+        declared = m.features.iter().map(|f| f.name()).collect::<Vec<_>>();
+    }
+    // The claim must be true: the code may use nothing beyond the Device base set plus the
+    // *declared* features (a `device` module with `return_call` is refused even by a Web host,
+    // whose engine would run it).
+    if wasmparser::Validator::new_with_features(allowed)
+        .validate_all(wasm)
+        .is_ok()
+    {
+        return Ok(());
+    }
+    // It needs more than it declares. If this host could run it with its full set the manifest
+    // lies (E0411); otherwise it is outside what the host provides at all (E0408), or just
+    // malformed (the engine would say the same).
+    let mut host_set = device_base();
+    for f in ENGINE_FEATURES.iter().filter(|f| max_target.allows(**f)) {
+        host_set |= feature_flags(*f);
+    }
+    if declared_is_lie(wasm, host_set) {
+        return Err(Error::reject(
+            "OXS-E0411",
+            format!(
+                "module declares features [{}] but its code uses more (undeclared features are refused)",
+                declared.join(" ")
+            ),
+        ));
+    }
+    Err(Error::reject(
+        "OXS-E0408",
+        "module is malformed or uses Wasm features this host does not provide (Device base set + declared target features only)",
+    ))
+}
+
+fn declared_is_lie(wasm: &[u8], host_set: WasmFeatures) -> bool {
+    wasmparser::Validator::new_with_features(host_set)
+        .validate_all(wasm)
+        .is_ok()
 }
 
 pub(crate) fn check(

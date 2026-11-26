@@ -21,6 +21,8 @@ pub struct Options {
     /// Lower every non-generic function, method and constructor, not only what `main` and the
     /// exports reach (tests and tools that want all code verified).
     pub lower_all: bool,
+    /// Compilation target (docs/oxiscript/abi.md 3.6); recorded in the manifest.
+    pub target: oxiscript_wasm::Target,
 }
 
 impl Default for Options {
@@ -29,6 +31,7 @@ impl Default for Options {
             runtime: oxiscript_wasm::RuntimeMode::Stub,
             validate_output: true,
             lower_all: false,
+            target: oxiscript_wasm::Target::Device,
         }
     }
 }
@@ -617,6 +620,7 @@ pub fn compile_program(
         needs: Some(needs.clone()),
         runtime: opts.runtime,
         validate_output: opts.validate_output,
+        target: opts.target,
         ..oxiscript_wasm::CompileOptions::default()
     };
     let wasm = oxiscript_wasm::compile(&module, &copts).map_err(|d| convert_wasm(&d))?;

@@ -6,6 +6,7 @@
 //! terminated); the deterministic limit is fuel.
 
 use crate::{check_json, host_interfaces, utf16_at};
+use oxiscript_abi::target::Target;
 use oxiscript_lower::{compile_source_with_notes, Options};
 use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
 use oxiscript_runtime::caps::state::{StateLimits, StateProvider, StateStore};
@@ -77,8 +78,16 @@ fn classify(e: &Error) -> StopReason {
 /// Run a compiled module: `main` executes inside `oxi_init` with `fuel` instructions of budget.
 /// Capabilities: `host:log@1` and `host:state@1` (in memory, private to this run).
 pub fn run_wasm(wasm: &[u8], fuel: u64) -> RunReport {
+    run_wasm_on(wasm, fuel, PLAYGROUND_TARGET)
+}
+
+/// The playground compiles for `web` and runs on a Web-configured runtime (the browser is its host).
+pub const PLAYGROUND_TARGET: Target = Target::Web;
+
+/// Like [`run_wasm`] on a host that accepts modules up to `max_target`.
+pub fn run_wasm_on(wasm: &[u8], fuel: u64, max_target: Target) -> RunReport {
     let limits = Limits { fuel_per_call: fuel.max(1), ..Limits::default() };
-    let host = Host::with_options(limits, HostOptions { no_clock: true, ..HostOptions::default() });
+    let host = Host::with_options(limits, HostOptions { no_clock: true, max_target, ..HostOptions::default() });
     let sink = LogSink::new(MAX_LINES);
     let log_limits = LogLimits { max_line: MAX_LINE_BYTES + 4, max_lines_per_turn: MAX_LINES, max_bytes_per_turn: MAX_OUTPUT_BYTES };
     let store = StateStore::new(StateLimits::default());
@@ -124,7 +133,7 @@ pub fn compile(src: &str) -> Result<Vec<u8>, String> {
         v["stage"] = json!("check");
         return Err(v.to_string());
     }
-    match compile_source_with_notes(src, &host_interfaces(), &Options::default()) {
+    match compile_source_with_notes(src, &host_interfaces(), &Options { target: PLAYGROUND_TARGET, ..Options::default() }) {
         Ok((wasm, _)) => Ok(wasm),
         Err(ds) => {
             let li = LineIndex::new(src);

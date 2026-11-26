@@ -69,6 +69,7 @@ mod wrap;
 
 use oxiscript_abi::idl::Interface;
 use oxiscript_abi::manifest::Need;
+pub use oxiscript_abi::target::{Feature, Target};
 use oxiscript_ir::{Module, VerifyOptions};
 use std::fmt;
 use wasmparser::{Validator, WasmFeatures};
@@ -169,6 +170,10 @@ pub struct CompileOptions {
     /// `str`/`[u8]` result. ABI 1.0 (abi.md 3.1/5.1) only lets the host see
     /// scalars and `str`/`[u8]` parameters, so the default rejects them (E0601).
     pub allow_raw_exports: bool,
+    /// Compilation target: which Wasm features the output may use (and the
+    /// validator allows). No code path emits a non-Device feature today, so
+    /// every target yields the same code; only the manifest differs.
+    pub target: Target,
 }
 
 impl Default for CompileOptions {
@@ -180,6 +185,7 @@ impl Default for CompileOptions {
             runtime: RuntimeMode::Stub,
             validate_output: true,
             allow_raw_exports: false,
+            target: Target::Device,
         }
     }
 }
@@ -201,15 +207,39 @@ pub struct Output {
 /// sign extension, mutable globals. Everything else (`trunc_sat`, reference
 /// types, tail calls, SIMD, multi-memory, memory64, ...) is off.
 pub fn allowed_features() -> WasmFeatures {
-    WasmFeatures::WASM1
-        | WasmFeatures::MULTI_VALUE
-        | WasmFeatures::BULK_MEMORY
-        | WasmFeatures::SIGN_EXTENSION
+    features_for(Target::Device)
 }
 
-/// Validate `wasm` against [`allowed_features`].
+/// The Wasm feature set of a compilation target (docs/oxiscript/abi.md 3.6).
+/// Web adds SIMD128, exception handling with `exnref` (which needs the
+/// reference-types *type* machinery; the generator emits no table or
+/// reference instructions), tail calls and extended constants; Server adds
+/// memory64 (declarable, but ABI 1.0 and the engine do not run it yet). GC, relaxed-simd and threads are in no target.
+pub fn features_for(target: Target) -> WasmFeatures {
+    let mut f = WasmFeatures::WASM1
+        | WasmFeatures::MULTI_VALUE
+        | WasmFeatures::BULK_MEMORY
+        | WasmFeatures::SIGN_EXTENSION;
+    for x in target.features() {
+        f |= match x {
+            Feature::Simd128 => WasmFeatures::SIMD,
+            Feature::Exceptions => WasmFeatures::EXCEPTIONS | WasmFeatures::REFERENCE_TYPES,
+            Feature::TailCall => WasmFeatures::TAIL_CALL,
+            Feature::ExtendedConst => WasmFeatures::EXTENDED_CONST,
+            Feature::Memory64 => WasmFeatures::MEMORY64,
+        };
+    }
+    f
+}
+
+/// Validate `wasm` against [`allowed_features`] (the Device set).
 pub fn validate(wasm: &[u8]) -> Result<(), String> {
-    Validator::new_with_features(allowed_features())
+    validate_for(wasm, Target::Device)
+}
+
+/// Validate `wasm` against the feature set of `target`.
+pub fn validate_for(wasm: &[u8], target: Target) -> Result<(), String> {
+    Validator::new_with_features(features_for(target))
         .validate_all(wasm)
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -252,7 +282,7 @@ fn compile_inner(m: &Module, opts: &CompileOptions) -> Result<Output, Diagnostic
     let functions = cx.defs.len();
     let wasm = cx.assemble(static_end)?;
     if opts.validate_output {
-        validate(&wasm).map_err(|e| {
+        validate_for(&wasm, opts.target).map_err(|e| {
             Diagnostic::new(I_INTERNAL, format!("generated module failed validation: {e}"), None)
         })?;
     }

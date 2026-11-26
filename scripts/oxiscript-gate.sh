@@ -32,6 +32,10 @@ step version-check scripts/oxiscript-version.sh --check
 for c in "${CRATES[@]}"; do
   step "test-$c" cargo test -p "$c" --no-fail-fast
 done
+# Compilation targets: the loops above run the program suites for `device` (the default). Run the
+# same suites compiled for `web` and executed on a Web-configured host (OXI_TARGET is read by the
+# wasm/lower test helpers); identical results are required (docs/oxiscript/abi.md 3.6).
+step targets-web env OXI_TARGET=web cargo test -p oxiscript-wasm -p oxiscript-lower --no-fail-fast
 PKGS=(); for c in "${CRATES[@]}"; do PKGS+=(-p "$c"); done
 step clippy cargo clippy "${PKGS[@]}" --all-targets -- -D warnings
 
