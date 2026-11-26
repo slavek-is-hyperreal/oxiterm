@@ -3,7 +3,7 @@
 //! Renders every `examples/**/*.thtml` page at fixed terminal sizes and compares the
 //! resulting `CellBuffer` (glyphs, colours, modifiers, wide-char skip cells) with the
 //! committed baseline in `tests/golden/`. This pins the TUI output so the renderer can be
-//! refactored (DisplayList, f32 geometry, see `docs/oxi-ui.md`) without visual regressions.
+//! refactored (DisplayList, f32 geometry, see `docs/history/oxi-ui-plan-history.md`) without visual regressions.
 //!
 //! Rendering is static, as in the web playground: no App Server state is injected, so
 //! `bind-*` values are their defaults. Media runs in web mode (`is_web`), which draws

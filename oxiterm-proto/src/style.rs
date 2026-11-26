@@ -94,7 +94,7 @@ pub struct ComputedStyle {
     pub font: FontDecl,
 }
 
-/// A face of the font bundle (Phase 6). Only these two exist; see `docs/oxi-ui.md`.
+/// A face of the font bundle (Phase 6). Only these two exist; see `docs/history/oxi-ui-plan-history.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum FontFace {
     /// `oxi-mono` (Noto Sans Mono): the default, one cell per column.
