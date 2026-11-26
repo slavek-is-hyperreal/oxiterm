@@ -1,0 +1,13 @@
+// Cloudflare Worker with static assets for slavekm.pl. Deploy (after sites/build.sh):
+//   npx wrangler@4.86.0 deploy --config sites/deploy/home.wrangler.jsonc
+{
+  "name": "slavekm-home",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "../dist/home",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  "workers_dev": true,
+  "routes": [{ "pattern": "slavekm.pl", "custom_domain": true }]
+}
