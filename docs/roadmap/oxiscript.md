@@ -113,7 +113,7 @@ Each is stated in the plan rows, specs or commit messages of the date shown; wor
 | <a id="d-23"></a>D-23 | 2026-11-25 | Versioning: first public version 0.0.1, nothing guaranteed before 1.0.0; the patch number `c` grows by 1 per 5555 changed lines in `oxiscript-*/src`; x and y only by the owner for milestones; tag `oxiscript-vX.Y.C`. | `docs/oxiscript/VERSIONING.md`, commit 8dd11c1 |
 | <a id="d-24"></a>D-24 | 2026-11-25 | Wasm exception handling (`exnref`) is "nice to have, later": an opt-in ABI minor version, never required by the language, keeping a lowering without EH. | old plan "Later stages" |
 | <a id="d-25"></a>D-25 | 2026-11-26 | Implementation flow: Gemini may write a stage, Sonnet with the advisor reviews it, then BAD ACTOR, then the lead merges. (HANDOFF; pilot done with 5.2, rtlink, std, simd, memres.) Whether Gemini becomes the default implementer is still open ([Q-PROC-1](#q-proc)). | `docs/HANDOFF.md` |
-| <a id="d-26"></a>D-26 | 2026-11-25 | Sites in Polish and English first; Latin only after the owner reviews it (in memoriam of his Latin teacher); identity: rust orange + bronze patina, "Oxi cell" mark, mascot Oxi the axolotl. | old plan row 8.W |
+| <a id="d-26"></a>D-26 | 2026-11-25 | Sites in Polish and English first; Latin only after the owner reviews it (in memoriam of the owner's Latin teacher); identity: rust orange + bronze patina, "Oxi cell" mark, mascot Oxi the axolotl. | old plan row 8.W |
 
 ### 2.5 Superseded
 

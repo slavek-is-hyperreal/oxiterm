@@ -13,7 +13,7 @@ Two roadmaps replace every earlier plan of this repository (`docs/oxi-ui.md` as 
 - A stage id is unique across both files. Existing plan ids are kept (`5.3`, `7.2b`, `8.S1`, `8.3c`, ...). New stages use a prefix: `U.<Name>` in the OxiUI roadmap, `8.<Name>` in the OxiScript roadmap. Renamed ids are listed in section 5 of each file as "old -> new".
 - Every stage is a heading with an explicit anchor: `<a id="s-<id>"></a>`, id lowercased and "." replaced by "-". Link as `[8.S1](oxiscript.md#s-8-s1)` or `[5.3](oxiui.md#s-5-3)`.
 - Principles are `oxiscript.md#p-1`..`p-11`; OxiScript owner decisions are `oxiscript.md#d-1`..; OxiUI owner decisions are `oxiui.md#o-1`..; OxiUI open questions are `oxiui.md#q-1`..; OxiScript open questions are grouped by source in `oxiscript.md` (`#q-simd`, `#q-scb`, `#q-dx`, `#q-ob`, `#q-safe`, `#q-lang`, `#q-plan`, items `Q-OB-1`, `Q-PLAN-1`, ...). A question with an owner in the other roadmap is a one-line link there.
-- Each roadmap row ends with `Sources:`, ids of the reader inventories (`R1`..`R4` in `scratch/roadmap/`), so coverage can be checked with `grep -o 'R[1-4]-[0-9]*'`.
+- Each roadmap row ends with `Sources:`, ids of the reader inventories (`R1`..`R4`, archived in [docs/history/roadmap-inventories/](../history/roadmap-inventories/)), so coverage can be checked with `grep -o 'R[1-4]-[0-9]*'`.
 - Each shared item has exactly one owner roadmap and a link from the other.
 
 ## Shared items and their owner
