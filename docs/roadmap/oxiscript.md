@@ -395,7 +395,10 @@ Scope of the owner-approved row ([D-11](#d-11), [D-15](#d-15), [D-16](#d-16)), s
 - Depends on: 8.L, [8.M-link](#s-8-m-link), [8.Std](#s-8-std) (allocator contract and hashing interfaces). Status: todo.
 
 <a id="s-8-bench"></a>
-#### 8.Bench Benchmark harness `oxiscript-bench` (todo)
+#### 8.Bench OxiPerf: performance benchmark harness `oxiscript-bench` (todo)
+
+Named **OxiPerf** (owner 2026-11-26); the agent usability benchmark is **OxiBench** ([8.OB](#s-8-ob)). Both described with their state in [../bench/README.md](../bench/README.md); fair cross-language method in [../research/cross-language-benchmark-methodology.md](../research/cross-language-benchmark-methodology.md) (in progress).
+
 
 - Scope: harness over six targets (wasmi scalar and SIMD, Wasmtime scalar and SIMD, browser, GPU resident and round trip, native Rust baseline) and four workloads (GEMM, image filter, particles, MLP); median and p95 over at least 30 warm iterations, compile latency, `.wasm` size delta, RSS/VRAM; replaces the `[P]` estimates of the SIMD/GPU report with measurements; hosts the sort/regex/crossing benchmarks of the sync-callback research when kind-D bindings appear [R4-06, R3-292].
 - Gate: one command produces a table for the targets available on the machine and records the hardware (the dev box is i5-3450 with llvmpipe; real GPU hardware: [Q-SIMD-6](#q-simd)); numbers reproducible within a stated tolerance. Depends on: 8.L (done); better after [8.M-link](#s-8-m-link). Blocks 8.3a, 8.3b, 8.3d. OxiUI bench side: [U.Bench](oxiui.md#s-u-bench). Status: todo (no crate).
@@ -508,7 +511,7 @@ Design: `docs/research/oxiscript-simd-gpu-design.md` and its verification ledger
 - Gate: install from the marketplace on a clean profile; all quick fixes work in a real window. Depends on: [8.S2](#s-8-s2). Status: todo.
 
 <a id="s-8-ob"></a>
-#### 8.OB OxiBench (blocked on the owner)
+#### 8.OB OxiBench: agent usability benchmark (blocked on the owner)
 
 - Scope: `docs/research/oxibench-methodology.md` v0.1: five separated roles; at least 60 test tasks over 12+ categories, about 20 public dev tasks in `bench/dev/`, private set outside the repo with a canary GUID; conditions C0-C3 plus a TS twin; k = 5 samples with pinned model IDs; bootstrap statistics; the site quotes only frozen reports [R3-260..R3-270]. `oxi run` now exists, so C3 is feasible.
 - Method details kept from the methodology: five separated roles (author, auditor of a different instance or family, deterministic harness, subjects through the plain API only, script analyst) [R3-261]; task quality gates (reference passes, mutation score at least 80%, independent solver from the prompt, no leakage, determinism under fuel) [R3-263]; conditions C0 cold, C1 docs, C2 docs plus check loop (primary, at most 3 rounds), C3 plus own runs, TS twin with `tsc --noEmit` [R3-264]; k = 5 samples, pinned model IDs, toolchain and `AGENTS.md` hash, retries not counted as failures, exactly one fenced `oxs` block [R3-265]; bootstrap over tasks (10,000), paired comparison, no result dropped, headline pass@1 in C2 and the TS gap [R3-266]; the site may quote only numbers from a frozen report with version, date and model IDs, negative results published, the lead's own model family disclosed as a subject [R3-269].
@@ -630,7 +633,7 @@ Memory model prototype of both RC and GC [R3-103, R3-121] -> [D-1](#d-1) (RC cho
 - Q-SIMD-3 Placement report (8.S4b) before 8.3b, or a minimal `Remark` type early.
 - Q-SIMD-4 GPU out-of-bounds semantics: trap-free by construction for the auto path; `host:gpu` keeps zero/skip plus a debug flag.
 - Q-SIMD-5 Browser: `wgpu` against a thin JS WebGPU bridge (decided by a size spike at the start of 8.3c); also whether P-4's "SPIR-V/MSL via naga" tail stays.
-- Q-SIMD-6 Which real GPU hardware closes the 8.3d speedup gate (dev box: i5-3450 with llvmpipe).
+- Q-SIMD-6 Which real GPU hardware closes the 8.3d speedup gate. The dev box has an AMD Radeon R7 260X (Vulkan via RADV, discovered 2026-11-26), which also drives the owner's display: usable with the owner's consent.
 - Q-SIMD-7 Vector `trunc_sat` in ABI 1.1.
 - Q-SIMD-8 Multi-core isolate layer in 8.3 or 8.4 (this roadmap: 8.4).
 - Q-SIMD-9 ESP32-S3 SIMD default (scalar, provisional until the board is benchmarked).

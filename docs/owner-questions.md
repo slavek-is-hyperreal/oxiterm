@@ -38,7 +38,7 @@ SIMD: procesor liczy kilka liczb jedną instrukcją. GPU: karta graficzna liczy 
 - **Q-SIMD-3 Raport „co poszło gdzie” przed automatycznym wektoryzatorem czy minimalna wersja wcześniej.** **Sugestia:** minimalny typ „uwaga kompilatora” wcześniej, pełny raport w 8.S4b.
 - **Q-SIMD-4 Odczyt poza tablicą na GPU.** Na GPU nie ma „pułapki” jak na CPU. **Sugestia:** automatyczna ścieżka ma takich odczytów nie dopuszczać (sprawdzenie przy kompilacji); ręczne API GPU zwraca zero i ma tryb debug.
 - **Q-SIMD-5 Przeglądarka: biblioteka `wgpu` czy cienki most do WebGPU w JS; czy zostaje „SPIR-V/MSL przez naga” z zasady P-4.** **Sugestia:** rozstrzygnąć pomiarem rozmiaru na starcie 8.3c; SPIR-V/MSL usunąć z zasady (zweryfikowany raport generuje tylko WGSL, to wystarcza wszędzie).
-- **Q-SIMD-6 Na jakim prawdziwym GPU mierzyć przyspieszenia.** Ten komputer ma tylko programowe GPU. **Sugestia:** dowolna karta, którą masz albo pożyczysz; ewentualnie godzina wynajętego GPU w chmurze na sam pomiar (koszt podam przed wynajęciem).
+- **Q-SIMD-6 Na jakim prawdziwym GPU mierzyć przyspieszenia.** Twój komputer ma kartę AMD Radeon R7 260X (obsługuje Vulkan), ale ta sama karta wyświetla twój pulpit. **Sugestia:** mierzyć na niej, za twoją zgodą, krótkimi testami z limitem czasu, kiedy nie pracujesz.
 - **Q-SIMD-7 Wektorowe `trunc_sat` (bezpieczna zamiana float na int) w ABI 1.1.** **Sugestia:** tak, gdy będzie potrzebne.
 - **Q-SIMD-8 Wielordzeniowość w 8.3 czy 8.4.** **Sugestia:** 8.4 (tam są wątki i izolaty); 8.3 zostaje jednordzeniowe.
 - **Q-SIMD-9 Domyślnie bez SIMD na ESP32-S3**, dopóki nie zmierzymy. **Sugestia:** tak.
