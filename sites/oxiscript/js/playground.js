@@ -13,11 +13,15 @@ const btnCheck = $('pg-check'), btnFormat = $('pg-format'), btnRun = $('pg-run')
 const outputEl = $('pg-output'), outEl = $('pg-out'), outNote = $('pg-out-note');
 const FUEL = 0;                 // 0 = the runner's default budget (10 M instructions, the same default as `oxi run`)
 const TIMEOUT_MS = 5000;        // wall clock, counted from the moment the program starts
+const LOAD_TIMEOUT_MS = 20000;  // wall clock for downloading + compiling the runner (separate from TIMEOUT_MS)
+const MAX_PAINT_LINES = 10000;  // line numbers / error marks are drawn for at most this many lines (a huge paste must not freeze the tab)
 const MAX_SHOWN_LINES = 300;    // the runtime keeps at most 1000 lines; the page shows the first 300
 let seenProblems = false;      // the visitor has seen a check with diagnostics: the tip is no longer needed
 let wasm = null;
 let current = [];      // diagnostics of the last check, in the order the compiler returned them
 let timer = 0;
+const bigEl = $('pg-big');
+const lineCount = (t) => { let n = 1, i = -1; while ((i = t.indexOf('\n', i + 1)) !== -1) n++; return n; };
 
 for (const e of EXAMPLES) { const o = document.createElement('option'); o.value = e.id; o.textContent = e.id + '.oxs'; sel.appendChild(o); }
 const initial = (location.hash.match(/^#ex=([a-z0-9_-]+)$/) || [])[1];
@@ -69,7 +73,9 @@ function setText(next) {
 }
 
 function paintGutter() {
-  const n = src.value.split('\n').length;
+  const total = lineCount(src.value);
+  const n = Math.min(total, MAX_PAINT_LINES);
+  if (total > MAX_PAINT_LINES) { bigEl.textContent = L.bigInput.replace('{n}', MAX_PAINT_LINES); bigEl.hidden = false; } else bigEl.hidden = true;
   const lines = new Map();
   for (const d of current) { const k = d.severity === 'error' ? 'e' : 'w'; if (lines.get(d.line) !== 'e') lines.set(d.line, k); }
   let h = '';
@@ -79,6 +85,7 @@ function paintGutter() {
 
 function paintMirror() {
   const text = src.value;
+  if (lineCount(text) > MAX_PAINT_LINES) { mirror.textContent = ''; return; }
   const marks = current.filter((d) => d.end > d.start || d.start < text.length).map((d) => ({ s: d.start, e: Math.max(d.end, Math.min(d.start + 1, text.length)), k: d.severity === 'error' ? 'e' : 'w' })).sort((a, b) => a.s - b.s);
   let out = '', at = 0;
   for (const m of marks) {
@@ -225,14 +232,14 @@ btnCheck.addEventListener('click', () => check(true));
 btnFormat.addEventListener('click', format);
 
 // ---- Run: compile + run in a Web Worker with fuel and time limits
-let worker = null, workerReady = false, running = false, runTimer = 0, pendingSrc = null;
+let worker = null, workerReady = false, running = false, runTimer = 0, loadTimer = 0, pendingSrc = null;
 
 function killWorker() {
   if (worker) { worker.onmessage = null; worker.onerror = null; worker.terminate(); }
   worker = null; workerReady = false; pendingSrc = null;
 }
 function endRun() {
-  clearTimeout(runTimer); running = false; pendingSrc = null;
+  clearTimeout(runTimer); clearTimeout(loadTimer); running = false; pendingSrc = null;
   btnRun.disabled = !wasm; btnStop.hidden = true;
 }
 function failRun(msg) { killWorker(); endRun(); say(msg); }
@@ -243,11 +250,18 @@ function spawnWorker() {
   worker = w;
   w.onmessage = (e) => {
     const m = e.data;
-    if (m.type === 'ready') { workerReady = true; if (pendingSrc !== null) postRun(); }
+    if (m.type === 'ready') { clearTimeout(loadTimer); workerReady = true; if (pendingSrc !== null) postRun(); }
     else if (m.type === 'result') finishRun(m);
     else if (m.type === 'error') failRun(L.runFailed + ' (' + m.message + ')');
   };
   w.onerror = (e) => failRun(L.runFailed + (e && e.message ? ' (' + e.message + ')' : ''));
+  // the runner download + compile has its own limit: a stalled fetch must not leave Run disabled for ever
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => {
+    killWorker(); endRun();
+    const msg = L.loadTimeout.replace('{s}', String(LOAD_TIMEOUT_MS / 1000));
+    outNote.textContent = msg; say(msg);
+  }, LOAD_TIMEOUT_MS);
   w.postMessage({ type: 'init', url: root.dataset.runner });
 }
 

@@ -246,8 +246,8 @@ function widget(site, lang, id, b, ctx) {
 }
 
 // Run / Check / Format feedback texts of the playground (i18n keys under oxiscript.playground.*).
-const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
-  ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
+const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
+  ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_bad_argument', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
 
 function playgroundHtml(site, lang, ctx) {
   const labels = {};
@@ -278,6 +278,7 @@ function playgroundHtml(site, lang, ctx) {
 <div class="pg-pane"><div class="pg-mirror" id="pg-mirror" aria-hidden="true"></div>
 <textarea id="pg-src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" maxlength="200000" aria-label="${esc(labels.sourceLabel)}"></textarea></div>
 </div>
+<p class="note" id="pg-big" hidden></p>
 ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 <ul class="pg-diags" id="pg-diags"></ul>
 <div class="pg-explain" id="pg-explain" hidden></div>
@@ -577,7 +578,7 @@ function buildSite(site) {
   write(path.join(out, '404.html'), layout(site, 'en', 'index', { title: T('en', 'common.notFound.title'), h1: T('en', 'common.notFound.title'), lead: LANGS.map((l) => T(l, 'common.notFound.lead')).join(' / '), blocks: [{ t: 'links', items: [{ label: LANGS.map((l) => T(l, 'common.notFound.home')).join(' / '), href: '@' + site, primary: true }] }] }, { ...ctx, extraScript: '', is404: true }));
   write(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${ORIGIN[site]}/sitemap.xml\n`);
   write(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${u}</loc></url>`).join('\n')}\n</urlset>\n`);
-  write(path.join(out, '_headers'), headers([...LANGS.flatMap((lang) => SITES[site].pages.map((id) => ({ p: pagePath(lang, id), wasm: site === 'oxiscript' && id === 'index' }))), { p: '/404.html', wasm: false }]));
+  write(path.join(out, '_headers'), headers([...LANGS.flatMap((lang) => SITES[site].pages.map((id) => ({ p: pagePath(lang, id), wasm: site === 'oxiscript' && id === 'index' }))), { p: '/404.html', wasm: false }], out, ctx.workerJs));
   return out;
 }
 
@@ -593,9 +594,44 @@ const META_CSP = `<meta http-equiv="Content-Security-Policy" content="${cspPage(
 // media layer / canvas helpers. Still no inline script or style, no remote origins.
 const cspApp = () => [...CSP_BASE.map((d) => (d.startsWith('img-src') ? "img-src 'self' data: blob:" : d)), "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self'", "media-src 'self' blob:", "worker-src 'self' blob:"].join('; ');
 
-function headers(htmlPaths) {
-  const pageRules = htmlPaths.map(({ p, wasm }) => `${p}\n  Content-Security-Policy: ${cspPage(wasm)}\n`).join('\n');
-  return `# Cloudflare Pages headers (see sites/DEPLOY.md). Rules MERGE: do not add a second Content-Security-Policy to a path.
+// Cache-Control (same discipline as the CSP: Cloudflare Pages does NOT let a later rule replace an earlier one, the
+// values of every matching rule for the same header name are JOINED with a comma; so a hashed file must match exactly one
+// rule that sets Cache-Control). Hashed directories get one explicit rule each (`/app/<hash>/*`, `/play/<hash>/*`,
+// `/assets/<hash>/*`: immutable); every unhashed entry point (HTML, /app/, pages.json, licenses) gets its own non-overlapping
+// rule (`max-age=0, must-revalidate`). No broad `/app/*` or `/assets/*` rule sets Cache-Control. sites/check.mjs enforces it.
+const CC_IMMUTABLE = 'public, max-age=31536000, immutable';
+const CC_REVALIDATE = 'public, max-age=0, must-revalidate';
+// The worker script runs the visitor's program, so its own response carries a policy (workers use the CSP of their script):
+// it may load itself, the runner module and the runner wasm, and nothing else.
+const cspWorker = () => ["default-src 'none'", "script-src 'self' 'wasm-unsafe-eval'", "connect-src 'self'"].join('; ');
+
+function headers(htmlPaths, out, workerPath) {
+  const pageRules = htmlPaths.map(({ p, wasm }) => `${p}\n  Content-Security-Policy: ${cspPage(wasm)}\n  Cache-Control: ${CC_REVALIDATE}\n`).join('\n');
+  const hashed = [];
+  for (const top of ['app', 'play', 'assets']) {
+    const d = path.join(out, top);
+    if (!fs.existsSync(d)) continue;
+    for (const n of fs.readdirSync(d).sort()) if (/^[0-9a-f]{10}$/.test(n) && fs.statSync(path.join(d, n)).isDirectory()) hashed.push(`/${top}/${n}/*`);
+  }
+  const hasApp = fs.existsSync(path.join(out, 'app/index.html'));
+  const appRules = hasApp ? `/app/
+  Content-Security-Policy: ${cspApp()}
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/index.html
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/licenses/*
+  Cache-Control: ${CC_REVALIDATE}
+
+/app/pages.json
+  Cache-Control: public, max-age=300, must-revalidate
+
+/app/*
+  Content-Security-Policy: ${cspApp()}
+
+` : '';
+  return `# Cloudflare Pages headers (see sites/DEPLOY.md). Rules MERGE (same header name from several rules is JOINED): never give a path a second Content-Security-Policy or a second Cache-Control.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -603,29 +639,17 @@ function headers(htmlPaths) {
 
 # One CSP per HTML page (strict: no inline script or style, own origin only; 'wasm-unsafe-eval' only on the playground page)
 ${pageRules}
-/app/
-  Content-Security-Policy: ${cspApp()}
+${appRules}${workerPath ? `# the playground runner worker script (defence in depth)
+${workerPath}
+  Content-Security-Policy: ${cspWorker()}
 
-/app/*
-  Content-Security-Policy: ${cspApp()}
-
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/app/*/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/play/*
-  Cache-Control: public, max-age=31536000, immutable
-
+` : ''}# Content-hashed, never changes: one explicit rule per hashed directory
+${hashed.map((h) => `${h}\n  Cache-Control: ${CC_IMMUTABLE}\n`).join('\n')}
 /app/*.wasm
   Content-Type: application/wasm
 
 /play/*.wasm
   Content-Type: application/wasm
-
-/app/pages.json
-  Cache-Control: public, max-age=300, must-revalidate
 `;
 }
 

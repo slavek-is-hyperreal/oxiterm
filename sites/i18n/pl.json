@@ -525,7 +525,8 @@
             "items": [
               "Parser, formater i sprawdzanie typów (ten sam kod, którego używasz powyżej, skompilowany do WebAssembly).",
               "Rejestr stałych kodów błędów, każdy z wyjaśnieniem i często z mechaniczną poprawką.",
-              "Interfejsy możliwości hosta (`log`, `state`), które programy importują przez moduły `host:`."
+              "Interfejsy możliwości hosta (`log`, `state`), które programy importują przez moduły `host:`.",
+              "**Uruchamianie programów.** Uruchom kompiluje program i uruchamia go w przeglądarce, w osobnym wątku, z limitem instrukcji (paliwa) i limitem czasu 5 sekund; dostępne są `log` i `state` (`state` żyje w pamięci przez jedno uruchomienie). Wynik pojawia się, gdy program się zatrzyma."
             ]
           },
           {
@@ -535,7 +536,7 @@
           {
             "t": "ul",
             "items": [
-              "**Uruchamianie programów.** Uruchom kompiluje program i uruchamia go w przeglądarce, w osobnym wątku, z limitem instrukcji (paliwa) i limitem czasu 5 sekund; dostępne są `log` i `state`. Wynik pojawia się, gdy program się zatrzyma, a `f64` nie da się jeszcze zamienić na tekst (najpierw zamień go na liczbę całkowitą). Inne interfejsy hosta nie są dostępne na placu zabaw.",
+              "**Ograniczenia Uruchom.** `f64` nie da się jeszcze zamienić na tekst (najpierw zamień go na liczbę całkowitą), inne interfejsy hosta nie są dostępne na placu zabaw, a nic nie jest zachowywane między uruchomieniami ani przeładowaniami strony.",
               "Biblioteka standardowa, pakiety, serwer języka, urządzenia. Wszystko planowane, nic gotowe."
             ]
           },
@@ -709,7 +710,7 @@
           },
           {
             "t": "h2",
-            "x": "Stan, który przeżywa przeładowanie"
+            "x": "Stan przez interfejs hosta"
           },
           {
             "t": "code",
@@ -826,11 +827,13 @@
       "stop": "Zatrzymaj",
       "outputTitle": "Wynik",
       "outputEmpty": "(program niczego nie wypisał)",
-      "loadingRunner": "Ładowanie uruchamiacza (jednorazowo)...",
+      "loadingRunner": "Ładowanie uruchamiacza (jednorazowo; Zatrzymaj przerywa)...",
       "running": "Uruchamiam...",
       "ran": "Zakończono po {ms} ms, zużyto instrukcji: {fuel}.",
       "stopped": "Zatrzymano.",
       "timeout": "Zatrzymano po {s} s: program działał za długo. Nieskończona pętla?",
+      "bigInput": "Długi tekst: numery linii i oznaczenia błędów są pokazywane tylko dla pierwszych {n} linii. Sprawdzanie i uruchamianie używają całego tekstu.",
+      "loadTimeout": "Moduł uruchamiający nie załadował się w ciągu {s} s (wolne łącze?). Naciśnij Uruchom, aby spróbować ponownie.",
       "stoppedBecause": "Program się zatrzymał: {why}",
       "dropped": "Pominięto kolejne wiersze: {n} (limit wyniku).",
       "moreLines": "... pominięto kolejne wiersze: {n}.",
@@ -855,6 +858,7 @@
       "trap_stack_overflow": "stos wywołań jest za głęboki (nieskończona rekurencja?)",
       "trap_memory_bounds": "dostęp do pamięci poza zakresem",
       "trap_host_denied": "program użył uprawnienia, którego nie dostał",
+      "trap_host_bad_argument": "program przekazał argument, którego funkcja hosta nie przyjmuje (na przykład komunikat lub klucz stanu większy niż 64 KiB)",
       "trap_host_error": "funkcja hosta zawiodła",
       "trap_rejected": "środowisko odrzuciło skompilowany moduł",
       "trap_limit": "osiągnięto limit środowiska",

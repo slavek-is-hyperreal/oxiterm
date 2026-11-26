@@ -1,6 +1,5 @@
 #![allow(clippy::doc_markdown)]
-//! BAD ACTOR (run stage): `oxi run` / `oxi build` reproducers. Each test asserts the CORRECT behaviour and therefore FAILS today
-//! (#[ignore]d so the suite stays green; run with `cargo test -p oxiscript-cli --test bad_actor_run -- --ignored`).
+//! BAD ACTOR (run stage): `oxi run` / `oxi build` reproducers. Each test asserts the CORRECT behaviour (all findings fixed).
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -19,7 +18,6 @@ const HELLO: &str = "import { Log } from \"host:log\";\nexport function main(log
 
 /// R1: the default output name comes from `[package] name` unvalidated: `name = "../../x"` writes outside the project.
 #[test]
-#[ignore = "reproduces an open BAD ACTOR finding"]
 fn build_default_output_stays_inside_cwd() {
     let root = tmp("name");
     let proj = root.join("a/b");
@@ -32,7 +30,6 @@ fn build_default_output_stays_inside_cwd() {
 
 /// R2: `-o` follows a symlink and overwrites its target (outside the project). `oxi fmt` refuses symlinks; `build` does not.
 #[test]
-#[ignore = "reproduces an open BAD ACTOR finding"]
 fn build_output_does_not_follow_symlink() {
     let root = tmp("sym");
     std::fs::write(root.join("main.oxs"), HELLO).unwrap();
@@ -45,7 +42,6 @@ fn build_output_does_not_follow_symlink() {
 /// R3: `oxi run` into a closed pipe (`oxi run x | head -1`) or a full device panics (Rust `println!`), exit 101 plus a panic message;
 /// the documented exit codes are 0/1/2/4.
 #[test]
-#[ignore = "reproduces an open BAD ACTOR finding"]
 fn run_closed_stdout_is_not_a_panic() {
     let root = tmp("pipe");
     let body: String = (0..300).map(|_| "log.write(2, \"line\");").collect();
@@ -59,7 +55,6 @@ fn run_closed_stdout_is_not_a_panic() {
 /// R4: `--fuel 0` means "default budget" in the browser runner (`fuel >= 1 ? fuel : DEFAULT`) but `oxi run --fuel 0` clamps to 1
 /// and traps with out_of_fuel on any program.
 #[test]
-#[ignore = "reproduces an open BAD ACTOR finding"]
 fn run_fuel_zero_matches_browser_meaning() {
     let root = tmp("fuel0");
     std::fs::write(root.join("main.oxs"), HELLO).unwrap();
@@ -69,7 +64,6 @@ fn run_fuel_zero_matches_browser_meaning() {
 
 /// R1b (strongest form of R1+R3): a repo can ship a symlink at the DEFAULT output name; a plain `oxi build` (no `-o`) overwrites the target.
 #[test]
-#[ignore = "reproduces an open BAD ACTOR finding"]
 fn plain_build_does_not_write_through_a_shipped_symlink() {
     let root = tmp("shipped");
     let proj = root.join("proj");

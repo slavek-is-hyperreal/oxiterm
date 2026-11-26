@@ -525,7 +525,8 @@
             "items": [
               "Analysator, formator et examinator typorum (idem codex quem supra adhibes, in WebAssembly compilatus).",
               "Index stabilis codicum errorum, quisque cum explicatione et saepe cum remedio mechanico.",
-              "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important."
+              "Interfacies facultatum hospitis (`log`, `state`), quas programmata per moduli `host:` important.",
+              "**Programmata currere.** Curre programma compilat et in pervagatore currit, in opere separato, cum termino instructionum (combustibilis) et termino temporis quinque secundorum; `log` et `state` praesto sunt (`state` in memoria unius cursus manet). Exitus apparet cum programma sistit."
             ]
           },
           {
@@ -535,7 +536,7 @@
           {
             "t": "ul",
             "items": [
-              "**Programmata currere.** Curre programma compilat et in pervagatore currit, in opere separato, cum termino instructionum (combustibilis) et termino temporis quinque secundorum; `log` et `state` praesto sunt. Exitus apparet cum programma sistit, et `f64` nondum in textum converti potest (prius in integrum converte). Aliae interfaces hospitis in palaestra non praesto sunt.",
+              "**Fines Curre.** `f64` nondum in textum converti potest (prius in integrum converte), aliae interfaces hospitis in palaestra non praesto sunt, et nihil inter cursus neque inter renovationes paginae servatur.",
               "Bibliotheca communis, fasciculi, servus linguae, instrumenta. Omnia destinata, nihil paratum."
             ]
           },
@@ -709,7 +710,7 @@
           },
           {
             "t": "h2",
-            "x": "Status qui renovationem superat"
+            "x": "Status per facultatem hospitis"
           },
           {
             "t": "code",
@@ -826,11 +827,13 @@
       "stop": "Siste",
       "outputTitle": "Exitus",
       "outputEmpty": "(programma nihil scripsit)",
-      "loadingRunner": "Cursor oneratur (semel)...",
+      "loadingRunner": "Cursor oneratur (semel; Siste interrumpit)...",
       "running": "Curro...",
       "ran": "Peractum post {ms} ms, instructiones usae: {fuel}.",
       "stopped": "Sistitum est.",
       "timeout": "Sistitum post {s} s: programma nimis diu cucurrit. Orbis sine fine?",
+      "bigInput": "Textus longus: numeri linearum et notae errorum primis {n} lineis tantum monstrantur. Probatio et cursus totum textum adhibent.",
+      "loadTimeout": "Cursor intra {s} s non est onustus (nexus tardus?). Preme Curre ut iterum temptes.",
       "stoppedBecause": "Programma restitit: {why}",
       "dropped": "Lineae ulteriores non ostensae: {n} (terminus exitus).",
       "moreLines": "... lineae ulteriores non ostensae: {n}.",
@@ -855,6 +858,7 @@
       "trap_stack_overflow": "acervus vocationum nimis altus (recursio sine fine?)",
       "trap_memory_bounds": "accessus memoriae extra fines",
       "trap_host_denied": "programma facultate usum est quae data non erat",
+      "trap_host_bad_argument": "programma argumentum dedit quod functio hospitis non accipit (exempli gratia nuntium aut clavem status ultra 64 KiB)",
       "trap_host_error": "functio hospitis defecit",
       "trap_rejected": "ambitus modulum compilatum reiecit",
       "trap_limit": "terminus ambitus attactus est",

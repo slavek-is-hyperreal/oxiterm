@@ -79,7 +79,7 @@ enum Cmd {
     /// Compile and run a program (default entry: main.oxs). `host:log` prints to stdout (warn and error to stderr).
     Run {
         file: Option<PathBuf>,
-        /// Instruction budget for the whole run (default 10000000); running out ends the program with exit 4.
+        /// Instruction budget for the whole run (default 10000000; 0 means the default, as in the browser); running out ends the program with exit 4.
         #[arg(long, value_name = "N")]
         fuel: Option<u64>,
     },

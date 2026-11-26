@@ -35,11 +35,43 @@ fn explain(reason: &str) -> &'static str {
         "assert" => "an assertion failed",
         "bad_utf8" => "invalid UTF-8 text",
         "panic" => "the program called panic",
+        "host_denied" => "the program used a capability it was not given",
+        "host_bad_argument" => "a host function rejected an argument (for example a log message or state key over 64 KiB)",
         "unreachable" => "the program reached code that cannot run yet (for example, an f64 converted to text is not supported by the current runtime)",
         "out_of_fuel" => "the program used up its instruction budget (an endless loop? raise it with --fuel)",
         "stack_overflow" => "the call stack is too deep (endless recursion?)",
         "memory_bounds" => "a memory access was out of range",
         _ => "the runtime stopped the program",
+    }
+}
+
+/// `eprintln!` that never panics: a closed or full stderr is ignored (the exit code still says what happened).
+macro_rules! errln {
+    ($($a:tt)*) => {{
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr().lock(), $($a)*);
+    }};
+}
+
+/// A package name that is safe to use as the default output file name.
+fn valid_package_name(n: &str) -> bool {
+    (1..=64).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// Output sink for `run`: a closed pipe ends quietly (exit 0, like `cat | head`), any other write error is exit 2.
+enum Sink {
+    Ok,
+    Closed,
+    Failed(String),
+}
+
+fn emit(to_err: bool, line: &str) -> Sink {
+    use std::io::Write;
+    let r = if to_err { writeln!(std::io::stderr().lock(), "{line}") } else { writeln!(std::io::stdout().lock(), "{line}") };
+    match r {
+        Ok(()) => Sink::Ok,
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Sink::Closed,
+        Err(e) => Sink::Failed(e.to_string()),
     }
 }
 
@@ -49,7 +81,7 @@ pub fn run(a: &Args) -> i32 {
     let src = match project::read_regular(&entry, project::MAX_SOURCE_BYTES) {
         Ok(s) => s,
         Err(project::ReadError::Skipped(e) | project::ReadError::Failed(e) | project::ReadError::TooLarge(e) | project::ReadError::NotUtf8(e)) => {
-            eprintln!("error: {}: {e}", entry.display());
+            errln!("error: {}: {e}", entry.display());
             return EXIT_FATAL;
         }
     };
@@ -57,7 +89,7 @@ pub fn run(a: &Args) -> i32 {
     let prj = match project_for(&mut cache, &entry) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("error: {e}");
+            errln!("error: {e}");
             return EXIT_FATAL;
         }
     };
@@ -70,54 +102,75 @@ pub fn run(a: &Args) -> i32 {
     if !diags.is_empty() {
         let sources: HashMap<String, String> = checked.files.iter().map(|f| (f.display.clone(), f.src.clone())).collect();
         for d in &diags {
-            eprintln!("{}", report::render_human(d, &|f| sources.get(f).cloned(), false));
+            errln!("{}", report::render_human(d, &|f| sources.get(f).cloned(), false));
         }
     }
     if diags.iter().any(|d| d.severity == "error" || d.severity == "internal") {
-        eprintln!("oxi {cmd}: not {}: the program has errors", if a.build { "built" } else { "run" });
+        errln!("oxi {cmd}: not {}: the program has errors", if a.build { "built" } else { "run" });
         return EXIT_FINDINGS;
     }
     let wasm = match project::compile_entry(&ent, &prj.opts) {
         Ok(w) => w,
         Err(ds) => {
             for d in &ds.0 {
-                eprintln!("error[{}]: {}", d.code, d.message);
+                errln!("error[{}]: {}", d.code, d.message);
             }
-            eprintln!("oxi {cmd}: the program could not be compiled");
+            errln!("oxi {cmd}: the program could not be compiled");
             return EXIT_FINDINGS;
         }
     };
     if a.build {
-        let out = a.output.clone().unwrap_or_else(|| {
+        let out = if let Some(o) = a.output.clone() {
+            o
+        } else {
             let name = prj.manifest.as_ref().map_or_else(|| entry.file_stem().map_or_else(|| "out".to_string(), |s| s.to_string_lossy().into_owned()), |m| m.name.clone());
+            if !valid_package_name(&name) {
+                errln!("error: [package] name {name:?} is not usable as a file name (allowed: A-Z a-z 0-9 _ -, 1 to 64 characters); fix oxi.toml or pass -o FILE");
+                return EXIT_FATAL;
+            }
             PathBuf::from(format!("{name}.wasm"))
-        });
-        if let Err(e) = std::fs::write(&out, &wasm) {
-            eprintln!("error: {}: {e}", out.display());
+        };
+        if let Err(e) = project::write_atomic_bytes(&out, &wasm, true) {
+            errln!("error: {}: {e}", out.display());
             return EXIT_FATAL;
         }
-        eprintln!("oxi build: wrote {} ({} bytes)", out.display(), wasm.len());
+        errln!("oxi build: wrote {} ({} bytes)", out.display(), wasm.len());
         return 0;
     }
-    let report = run_wasm(&wasm, a.fuel.unwrap_or(DEFAULT_FUEL));
+    let fuel = match a.fuel {
+        None | Some(0) => DEFAULT_FUEL,
+        Some(n) => n,
+    };
+    let report = run_wasm(&wasm, fuel);
+    let mut pipe_closed = false;
     for l in &report.lines {
-        if l.level >= 3 {
-            eprintln!("{}: {}", if l.level == 3 { "warn" } else { "error" }, l.msg);
-        } else {
-            println!("{}", l.msg);
+        let r = if l.level >= 3 { emit(true, &format!("{}: {}", if l.level == 3 { "warn" } else { "error" }, l.msg)) } else { emit(false, &l.msg) };
+        match r {
+            Sink::Ok => {}
+            Sink::Closed => {
+                pipe_closed = true;
+                break;
+            }
+            Sink::Failed(e) => {
+                let _ = emit(true, &format!("oxi run: cannot write output: {e}"));
+                return EXIT_FATAL;
+            }
         }
     }
+    if pipe_closed {
+        return 0;
+    }
     if report.dropped > 0 {
-        eprintln!("oxi run: {} log line(s) dropped (output cap)", report.dropped);
+        let _ = emit(true, &format!("oxi run: {} log line(s) dropped (output cap)", report.dropped));
     }
     match report.stop {
         None => 0,
         Some(s) if s.reason == "rejected" => {
-            eprintln!("error: {} (`oxi run` provides host:log@1 and host:state@1; use `oxi build` for other interfaces)", s.detail);
+            let _ = emit(true, &format!("error: {} (`oxi run` provides host:log@1 and host:state@1; use `oxi build` for other interfaces)", s.detail));
             EXIT_FATAL
         }
         Some(s) => {
-            eprintln!("oxi run: stopped: {} [{}]", explain(s.reason), s.code);
+            let _ = emit(true, &format!("oxi run: stopped: {} [{}]", explain(s.reason), s.code));
             EXIT_TRAP
         }
     }

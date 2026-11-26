@@ -180,6 +180,7 @@ for (const site of ['home', 'oxiui', 'oxiscript']) {
       const sameBar = await pg.evaluate(() => document.getElementById('pg-check').parentElement === document.getElementById('pg-status').parentElement);
       if (!sameBar) fail(`${lang}: status line is not next to the buttons`);
       if (!(await pg.$eval('#pg-hint', (e) => !e.hidden && e.querySelector('button') !== null))) fail(`${lang}: tip not visible on load`);
+      await pg.waitForTimeout(1100); // the status carries a time with seconds: the click must land in a later second than the load-time check
       const st0 = await pgStatus();
       await pg.click('#pg-check');
       await pg.waitForFunction((b) => document.getElementById('pg-status').textContent !== b && /\d:\d\d/.test(document.getElementById('pg-status').textContent), st0, { timeout: 3000 });

@@ -525,7 +525,8 @@
             "items": [
               "Parser, formatter and type checker (the same code you are using above, compiled to WebAssembly).",
               "A registry of stable error codes, each with an explanation and, often, a mechanical fix.",
-              "Host capability interfaces (`log`, `state`) that programs import with `host:` modules."
+              "Host capability interfaces (`log`, `state`) that programs import with `host:` modules.",
+              "**Running programs.** Run compiles the program and runs it in your browser, in a worker, with an instruction limit (fuel) and a 5 second time limit; `log` and `state` are available (`state` lives in memory for that one run). Output appears when the program stops."
             ]
           },
           {
@@ -535,7 +536,7 @@
           {
             "t": "ul",
             "items": [
-              "**Running programs.** Run compiles the program and runs it in your browser, in a worker, with an instruction limit (fuel) and a 5 second time limit; `log` and `state` are available. Output appears when the program stops, and an `f64` cannot be converted to text yet (convert it to an integer first). Other host interfaces are not available in the playground.",
+              "**Limits of Run.** An `f64` cannot be converted to text yet (convert it to an integer first), other host interfaces are not available in the playground, and nothing is kept between runs or page loads.",
               "A standard library, packages, the language server, devices. All planned, none ready."
             ]
           },
@@ -709,7 +710,7 @@
           },
           {
             "t": "h2",
-            "x": "State that survives reload"
+            "x": "State through a host capability"
           },
           {
             "t": "code",
@@ -826,11 +827,13 @@
       "stop": "Stop",
       "outputTitle": "Output",
       "outputEmpty": "(the program wrote nothing)",
-      "loadingRunner": "Loading the runner (once)...",
+      "loadingRunner": "Loading the runner (once; Stop cancels)...",
       "running": "Running...",
       "ran": "Finished in {ms} ms, {fuel} instructions used.",
       "stopped": "Stopped.",
       "timeout": "Stopped after {s} s: the program ran too long. An endless loop?",
+      "bigInput": "Long input: line numbers and error marks are shown for the first {n} lines only. Check and Run still use the whole text.",
+      "loadTimeout": "The runner did not load within {s} s (slow connection?). Press Run to try again.",
       "stoppedBecause": "The program stopped: {why}",
       "dropped": "{n} more line(s) were not shown (output limit).",
       "moreLines": "... {n} more line(s) not shown.",
@@ -855,6 +858,7 @@
       "trap_stack_overflow": "the call stack is too deep (endless recursion?)",
       "trap_memory_bounds": "a memory access was out of range",
       "trap_host_denied": "the program used a capability it was not given",
+      "trap_host_bad_argument": "the program passed an argument the host function does not accept (for example a log message or state key over 64 KiB)",
       "trap_host_error": "a host function failed",
       "trap_rejected": "the compiled module was rejected by the runtime",
       "trap_limit": "a runtime limit was reached",

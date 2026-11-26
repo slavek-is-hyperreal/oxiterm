@@ -19,6 +19,10 @@ pub const DEFAULT_FUEL: u64 = 10_000_000;
 /// Most log lines and bytes one run may produce; more are dropped and counted.
 pub const MAX_LINES: usize = 1000;
 pub const MAX_OUTPUT_BYTES: usize = 64 * 1024;
+/// A log line longer than this many bytes is cut and marked (`LINE_CUT_MARK`).
+pub const MAX_LINE_BYTES: usize = 1024;
+/// Appended to a cut log line.
+pub const LINE_CUT_MARK: &str = " ... (line truncated at 1024 bytes)";
 
 /// One line written through `host:log` (level 0 trace .. 4 error).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +36,7 @@ pub struct Line {
 pub struct StopReason {
     /// Stable id the page localises: `overflow`, `div_by_zero`, `bounds`, `bad_cast`, `null_deref`,
     /// `out_of_memory`, `assert`, `bad_utf8`, `panic`, `unreachable`, `out_of_fuel`, `stack_overflow`,
-    /// `memory_bounds`, `host_denied`, `host_error`, `rejected`, `limit`, `engine`.
+    /// `memory_bounds`, `host_denied`, `host_bad_argument`, `host_error`, `rejected`, `limit`, `engine`.
     pub reason: &'static str,
     /// Registry code (`OXS-E04xx`).
     pub code: String,
@@ -58,7 +62,8 @@ fn classify(e: &Error) -> StopReason {
             (None, TrapCause::StackOverflow) => "stack_overflow",
             (None, TrapCause::MemoryOutOfBounds) => "memory_bounds",
             (None, TrapCause::Unreachable) => "unreachable",
-            (None, TrapCause::HostDenied { .. } | TrapCause::HostBadArgument(_)) => "host_denied",
+            (None, TrapCause::HostDenied { .. }) => "host_denied",
+            (None, TrapCause::HostBadArgument(_)) => "host_bad_argument",
             (None, TrapCause::HostFailure(_) | TrapCause::QueueFull(_)) => "host_error",
             (None, TrapCause::Engine(_)) => "engine",
         },
@@ -75,7 +80,7 @@ pub fn run_wasm(wasm: &[u8], fuel: u64) -> RunReport {
     let limits = Limits { fuel_per_call: fuel.max(1), ..Limits::default() };
     let host = Host::with_options(limits, HostOptions { no_clock: true, ..HostOptions::default() });
     let sink = LogSink::new(MAX_LINES);
-    let log_limits = LogLimits { max_lines_per_turn: MAX_LINES, max_bytes_per_turn: MAX_OUTPUT_BYTES, ..LogLimits::default() };
+    let log_limits = LogLimits { max_line: MAX_LINE_BYTES + 4, max_lines_per_turn: MAX_LINES, max_bytes_per_turn: MAX_OUTPUT_BYTES };
     let store = StateStore::new(StateLimits::default());
     host.register(Arc::new(LogProvider::new(Arc::clone(&sink), log_limits))).expect("log registers once");
     host.register(Arc::new(StateProvider::new(store))).expect("state registers once");
@@ -93,8 +98,21 @@ pub fn run_wasm(wasm: &[u8], fuel: u64) -> RunReport {
             (Some(classify(&e)), used)
         }
     };
-    let lines = sink.lines().into_iter().map(|l| Line { level: l.level, msg: l.msg }).collect();
+    // The provider cuts at `MAX_LINE_BYTES + 4`, so a line over `MAX_LINE_BYTES` was (or may have been) cut: mark it.
+    let lines = sink.lines().into_iter().map(|l| Line { level: l.level, msg: mark_cut(l.msg) }).collect();
     RunReport { lines, dropped: sink.dropped(), fuel_used, stop }
+}
+
+fn mark_cut(mut msg: String) -> String {
+    if msg.len() > MAX_LINE_BYTES {
+        let mut at = MAX_LINE_BYTES;
+        while !msg.is_char_boundary(at) {
+            at -= 1;
+        }
+        msg.truncate(at);
+        msg.push_str(LINE_CUT_MARK);
+    }
+    msg
 }
 
 /// Compile one source file with the playground's host interfaces. `Err` holds diagnostics in the JSON
