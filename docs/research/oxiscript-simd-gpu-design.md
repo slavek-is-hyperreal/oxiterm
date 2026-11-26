@@ -1,15 +1,19 @@
-# OxiScript Stages 8.3 (SIMD & Parallel) and 8.3b (GPU Kernels): Research & Architecture Design
+# OxiScript Stages 8.3a-8.3e (SIMD, Parallel and Transparent GPU Execution): Research & Architecture Design
+
+> [Revised 2026-11-26 for decision 4 transparency] Title and stage names changed; the original title was "Stages 8.3 (SIMD & Parallel) and 8.3b (GPU Kernels)".
 
 > **Draft by Gemini; verified and corrected by Claude (Opus) on 2026-11-26. See the verification ledger: [oxiscript-simd-gpu-design-verification.md](oxiscript-simd-gpu-design-verification.md).** Every correction is marked inline as **[Corrected 2026-11-26: ...]**. Read the ledger's section A (10 findings that change the design) before using this report.
 >
-> **Stage naming.** `docs/oxi-ui.md` names two stages: "8.3 SIMD/parallel layers and `@expect`" and "8.3b GPU kernels". This report splits them into five slices, 8.3a-8.3e:
-> * 8.3a and 8.3b (the auto-vectoriser) make up the plan's **8.3**.
-> * 8.3c, 8.3d and 8.3e make up the plan's **8.3b**.
->
-> Wherever this text says "Stage 8.3b" about the vectoriser or about `OXS-P01xx`, it means slice 8.3b of this report, not the plan's GPU stage.
+> **Stage naming. [Revised 2026-11-26 for decision 4 transparency]** `docs/oxi-ui.md` ("Later stages") now uses this report's five slices directly, so there is no mapping any more:
+> * **8.3a** explicit SIMD; **8.3b** auto-vectoriser, layer-0 combinators on CPU, placement report; **8.3c** `GpuContext` compute upgrade and isolation; **8.3d** one source to CPU and GPU (kernel profile, WGSL variants, residency types, executor choice); **8.3e** low-level `host:gpu`, `std/tensor`, AI demo.
+> * The plan's former "8.3" is 8.3a-8.3b; its former "8.3b GPU kernels" is 8.3c-8.3e. Older text that says "8.3b GPU" (`oxi-ui.md` sections on 3D and the shared GPU device, the research notes) means 8.3d unless it is about the shared device (then 8.3c).
+> * "Stage 8.3b" in this report means the auto-vectoriser slice.
+
+> **[Revised 2026-11-26 for decision 4 transparency] Design alignment.** The first version made GPU use explicit and low-level (guest code compiles kernels, allocates buffers and dispatches through `host:gpu@1`). `docs/oxi-ui.md` Phase 8 decision 4 says the opposite: *data parallelism is general, GPU is a backend; parallel and SIMD constructs have the semantics of sequential code; device residency and transfers are visible in types.* This revision therefore (1) adds section 4.6 "One source, several executors" as the normal GPU path, (2) demotes `host:gpu` (section 4.4) to a low-level capability for libraries and experts, (3) rewrites the staged plan (section 7.2) and the open questions (section 9). Safety, determinism and target findings are kept unchanged (every inline correction marker from the verification pass is still in place; the revision adds only `[Revised 2026-11-26 for decision 4 transparency]` markers). Where a statement below still describes explicit dispatch as the default, section 4.6 wins.
 
 > **Status:** Design specification (research stage, 2026-11-26). No product code changed.
 > **Scope:** Stage 8.3 (SIMD types, auto-vectorisation, `@expect(simd)`, placement report) and Stage 8.3b (`kernel` profile, OxiIR → WGSL, `host:gpu`, shared `GpuContext` integration with `oxiterm-gpu` Stage 5.2, AI/ML foundation, benchmarks, and staged delivery plan).
+> **Revised scope [Revised 2026-11-26 for decision 4 transparency].** Adds: layer-0 data-parallel combinators and `kernel` functions compiled to a CPU version always and a WGSL version when eligible, a `Resident<T>` type for visible residency, a deterministic executor policy, `@expect(gpu)` and runtime placement remarks.
 > **Evidence tags:** **[V]** verified directly in local repo/crate sources (`~/.cargo/registry`, `Cargo.lock`) or primary upstream specifications; **[S]** per web search summary of cited external source (verify before relying on exact numbers); **[P]** project design estimate; **[O]** architectural recommendation/opinion; **[U]** unverified / open unknown.
 
 ---
@@ -26,10 +30,21 @@ OxiScript's core compiler pipeline (`8.C`–`8.L`, `8.M`, `8.R`) and `oxiterm-gp
 | **2. ESP32-S3 PIE SIMD** | Do **not** rely on `wasm2c`/GCC auto-vectorisation for Xtensa PIE; expose PIE through linked C/assembly intrinsics (`esp-dsp`/`esp-nn`) or an explicit OxiIR-to-PIE-C pattern matcher for `i8`/`i16` dot/MAC kernels later. | Upstream GCC/LLVM do not auto-vectorise into ESP32-S3's proprietary `ee.*` PIE instructions **[S: community evidence only]**. MCU profiles default to scalar Wasm **[O]**. **[Corrected 2026-11-26: treVM does *not* show that SIMD code regresses on MCUs. It measured scalar CoreMark on Wasmtime/Pulley built with vs without SIMD support (the cost of enabling the feature), on boards that exclude the ESP32-S3. wasmi 2.0 no longer has that cost. The scalar default rests on flash and handler-size arguments and must be benchmarked (ledger A5).]** |
 | **3. Explicit SIMD syntax** | Built-in generic value type **`Simd<T, N>`** (fixed 128-bit lanes first: `f32x4`, `f64x2`, `i32x4`, `u32x4`, `i16x8`, `u16x8`, `i8x16`, `u8x16`, plus `SimdMask<T, N>`). Ordinary operators (`+`, `-`, `*`, `+&`/`+%`/`+|`), static constructors (`Simd.splat`, `Simd.load`), no untyped `v128` bitbag. | Readable as typed generics by any TS developer; aligns with `contracts.md` §3 (`Simd<f32, 4>`) and Rust `std::simd`; requires zero new grammar; lowers 1:1 to OxiIR `Ty::Vec` and either Wasm `v128` or identical-semantics scalar loops. |
 | **4. Auto-vectoriser v0** | Narrow, honest, predictable loop vectoriser on OxiIR SSA for **countable unit-stride loops** (`parallel for`, `for (const i of range(0, n))`) over contiguous `[T]`/inline-struct arrays, plus explicit reductions (`reduce`) and branchless `select`. Emit structured `OXS-P01xx` remarks for every declined loop. | Compilers vectorise 45–71% of synthetic loops but "only a few loops from the real applications" (Maleki et al. 2011 abstract **[V]**). **[Corrected 2026-11-26: the earlier "fails on 70–82%" had no source.]** Making `@expect(simd)` assert only language-defined vectorisability facts (`assertable yes`) and reporting heuristics (`assertable no`) avoids brittle builds. |
-| **5. GPU kernel lowering** | Lower `#kernel` OxiIR functions directly to **WGSL text** (validated offline in dev/CI via `naga` `wgsl-in`). Do **not** emit SPIR-V directly or pass `ShaderSource::Naga` in browsers. | Verified in `wgpu-30.0.2/src/backend/webgpu.rs` **[V]**: `ShaderSource::Wgsl` passes straight to WebGPU browsers with zero Naga bundle cost, while native `wgpu` compiles WGSL via its bundled Naga to Vulkan SPIR-V, Metal MSL, and DX12 HLSL automatically. **[Corrected 2026-11-26: "zero Naga" holds only for a WebGPU-only wasm32 build. A browser build that keeps the WebGL2 fallback needs the `webgl` feature, which pulls in `wgpu-core` + `wgpu-hal` + naga (ledger A9).]** |
+| **5. GPU kernel lowering** | Lower `#kernel` OxiIR functions directly to **WGSL text** (validated offline in dev/CI via `naga` `wgsl-in`). Do **not** emit SPIR-V directly or pass `ShaderSource::Naga` in browsers. | Verified in `wgpu-30.0.2/src/backend/webgpu.rs` **[V]**: `ShaderSource::Wgsl` passes straight to WebGPU browsers with zero Naga bundle cost, while native `wgpu` compiles WGSL via its bundled Naga to Vulkan SPIR-V, Metal MSL, and DX12 HLSL automatically. **[Corrected 2026-11-26: "zero Naga" holds only for a WebGPU-only wasm32 build. A browser build that keeps the WebGL2 fallback needs the `webgl` feature, which pulls in `wgpu-core` + `wgpu-hal` + naga (ledger A9).]** [Revised 2026-11-26 for decision 4 transparency] WGSL is emitted for layer-0 combinators and `kernel` functions alike, always next to a CPU version of the same code (section 4.6). |
 | **6. Shared `GpuContext`** | Upgrade `oxiterm-gpu`'s `GpuContext` with **tiered capability negotiation**. When `DownlevelFlags::COMPUTE_SHADERS` is set, request compute limits starting from `Limits::downlevel_defaults()` clamped with `.or_worse_values_from(&adapter.limits())`; otherwise fall back to `downlevel_webgl2_defaults()` (UI only; kernels run on CPU SIMD/scalar). **[Corrected 2026-11-26: the draft's `Limits::defaults().using_resolution(adapter)` does not clamp. `using_resolution` copies only the texture dimensions, so device creation fails on adapters below the WebGPU defaults (ledger A1).]** | Preserves OxiUI's GLES 3.0 / WebGL2 compatibility floor while unlocking WebGPU/Vulkan/Metal/DX12 compute on one shared `wgpu::Device` & `wgpu::Queue`, enabling zero-copy kernel-to-UI texture handoff (`Rgba8Unorm`). |
-| **7. Safety & Error Isolation** | Wrap every script GPU operation in `GpuContext::with_error_scopes`, forbid script-registered uncaptured handlers, enforce per-instance VRAM/buffer/dispatch quotas, inject **static loop trip-count guards** in emitted WGSL, and chunk large dispatches to stay well below the 2 s OS TDR watchdog. | Directly addresses Stage 5.2 BAD ACTOR B-01/B-03 findings (`wgpu` error scopes are thread-local; uncaptured handler is device-wide **[V]**) and prevents runaway user kernels from freezing the UI or triggering OS GPU device resets. **[Corrected 2026-11-26: wgpu 30's `ErrorScopeGuard` already pops on `Drop`. The hole that remains is that `GpuContext::device()` is `pub`, so any Rust co-user can replace the device-wide uncaptured handler. Close it by API design (ledger A3).]** |
-| **8. AI on top** | Keep AI out of the core language; ensure `kernel` + `host:gpu@1` support **tiled `f32` GEMM** (workgroup shared memory + barriers), **conv2d**, **reductions** (softmax/layernorm), **attention**, **backward passes** (for live MLP training), plus optional **`f16`** (`shader-f16`) and **`i8`/`u8` packed dequant** with `i32`/`f32` accumulation. Skip native `bf16` (not in WGSL **[S]**). **[Corrected 2026-11-26: subgroups are native-only in wgpu 30 and cannot be used through wgpu in the browser (ledger A2).]** | Satisfies the "Hero" course goal (perceptron → live-trained digit recogniser → tiny LM in browser) using the same general-purpose kernel stack. |
+| **7. Safety & Error Isolation** | Wrap every script GPU operation in `GpuContext::with_error_scopes`, forbid script-registered uncaptured handlers, enforce per-instance VRAM/buffer/dispatch quotas, inject **static loop trip-count guards** in emitted WGSL, and chunk large dispatches to stay well below the 2 s OS TDR watchdog. | Directly addresses Stage 5.2 BAD ACTOR B-01/B-03 findings (`wgpu` error scopes are thread-local; uncaptured handler is device-wide **[V]**) and prevents runaway user kernels from freezing the UI or triggering OS GPU device resets. **[Corrected 2026-11-26: wgpu 30's `ErrorScopeGuard` already pops on `Drop`. The hole that remains is that `GpuContext::device()` is `pub`, so any Rust co-user can replace the device-wide uncaptured handler. Close it by API design (ledger A3).]** [Revised 2026-11-26 for decision 4 transparency] The same rules apply to the executor-chosen GPU path (section 4.6), not only to `host:gpu`. |
+| **8. AI on top** | Keep AI out of the core language; ensure `kernel` + `host:gpu@1` support **tiled `f32` GEMM** (workgroup shared memory + barriers), **conv2d**, **reductions** (softmax/layernorm), **attention**, **backward passes** (for live MLP training), plus optional **`f16`** (`shader-f16`) and **`i8`/`u8` packed dequant** with `i32`/`f32` accumulation. Skip native `bf16` (not in WGSL **[S]**). **[Corrected 2026-11-26: subgroups are native-only in wgpu 30 and cannot be used through wgpu in the browser (ledger A2).]** | Satisfies the "Hero" course goal (perceptron → live-trained digit recogniser → tiny LM in browser) using the same general-purpose kernel stack. [Revised 2026-11-26 for decision 4 transparency] `std/tensor` is written once in layer-0/`kernel` code and runs on whichever executor fits; `host:gpu` is only the expert escape hatch. |
+
+### Transparent data parallelism (decision 4) [Revised 2026-11-26 for decision 4 transparency]
+
+| Topic | Recommendation |
+|---|---|
+| **One source, several executors** | Layer-0 code (`map`/`zip`/`reduce`/`parallel for` over arrays, images, grids) and `kernel` functions always compile to a CPU version (scalar + SIMD128 per target) and, when the code satisfies the `kernel` profile, also to WGSL. The runtime picks the executor. Full design: section 4.6. |
+| **Residency is a type** | `Resident<T>` (proposal; runner-up `Gpu<T>`; `Device<T>` rejected because `--target device` already means ESP32-class devices). Transfers are visible calls (`upload`, `download`). The runtime never inserts a transfer. |
+| **Executor policy** | A pure function of the static residency types of the inputs, the host compute tier and the profile. Host arrays run on CPU (SIMD or scalar); `Resident` inputs run on the GPU when the host has the Compute tier, otherwise on host memory with the same code; mixing is a compile error. Element-count thresholds only produce report hints. |
+| **Same results** | Integer results identical on every executor (GPU-eligible code is trap-free by construction); floats within the section 4.5 contract; `safety` keeps float code on the CPU. |
+| **Transparency window** | The placement report states, for every loop and kernel, where it runs or ran and why; `@expect(simd)` and the new `@expect(gpu)` assert only eligibility (`assertable yes`); actual placement is logged at run time in the same format. |
+| **`host:gpu`** | Survives as the low-level capability for libraries and experts, with all corrected safety rules. Pure compute through the executor needs no `main` parameter. |
 
 ---
 
@@ -86,6 +101,15 @@ However, **neither upstream GCC (`xtensa-esp32s3-elf-gcc`) nor LLVM auto-vectori
 | **ESP32-S3 live (`wasmi` `no_std`)** | Feature exists, **turn OFF** **[O]** | Off | None used by `wasmi` | Emit **scalar Wasm** | Unknown: treVM measured Wasmtime/Pulley, not wasmi or the S3 **[U, corrected]** | Saves flash and handler code size **[O]**; benchmark on the board before fixing the default |
 | **ESP32-S3 AOT (`w2c2`/`wasm2c` + `xtensa-esp32s3-elf-gcc`)** | Scalar C via SIMDe (no PIE) **[S/U]** | No | **Xtensa PIE** (`ee.*`, 128-bit `i8`/`i16`/`i32`) **[S]** | Emit **scalar Wasm**; dispatch DSP/NN ops to `esp-dsp`/`esp-nn` capability, or future direct OxiIR→C PIE intrinsics | **3.5×–14×** per kernel via `esp-nn` PIE **[V]** | GCC/LLVM do not auto-vectorise PIE **[S, community]** |
 | **Safety-critical target (qualified C compiler via `w2c2`/OxiIR→C)** | Optional (scalar fallback guaranteed identical) | **Forbidden** | Target-dependent | Scalar fallback or strictly verified deterministic `v128` (no FMA/relaxed ops) | Deterministic parity > peak speed | NaN canonicalised per `ir.md` §6 |
+
+
+**[Revised 2026-11-26 for decision 4 transparency] Target x executor availability (derived from the matrix above, section 5.7 and the profile/target rules of `oxi-ui.md` 8.2; [O]).** This is what the runtime's executor policy (section 4.6) chooses from; the language semantics are identical in every row.
+
+| `--target` / host | Scalar | SIMD128 | WGSL variant runs | Threads (8.4) |
+|---|---|---|---|---|
+| `device` (ESP32-class, wasmi) | yes (default) | off by default, provisional (Q9) | no (no GPU; the Resident type is host memory) | no |
+| `web` (browser local mode) | yes | yes | only with WebGPU and `ComputeTier::Compute`; WebGL2-only browsers get host memory | later (isolates / Wasm threads) |
+| `server` (native, Wasmtime/AOT) | yes | yes | with a native compute-capable adapter (Vulkan/Metal/DX12); lavapipe in CI | later |
 
 ---
 
@@ -246,15 +270,19 @@ Existing registry (`oxiscript-abi/registry/codes.txt:620-650`) **[V]** already e
 2. The vectoriser pass runs on **all** `parallel for` loops, loops annotated `@expect(simd)`, and countable inner loops (only reporting declined remarks for `parallel for` and `@expect(simd)` loops by default to keep noise low; `--report=full` reports all loops).
 3. If an `@expect(simd)` loop hits any `assertable yes` rejection (`P0102`–`P0108`), compilation fails with the exact code, source span, and fix suggestion—turning silent performance regressions into immediate, actionable compile errors.
 
+**[Revised 2026-11-26 for decision 4 transparency] Runtime phase.** The same `Remark` format also carries run-time placement facts (which executor actually ran a loop, and why); `@expect(gpu)` and the new reason codes are in section 4.6.7.
+
 ---
 
-## 4. GPU Kernels (Stage 8.3b): Profile, Lowering, Buffers & Determinism
+## 4. GPU Kernels (Stages 8.3d-8.3e): Profile, Lowering, Transparent Execution, Buffers & Determinism [Revised 2026-11-26 for decision 4 transparency]
+
+**[Revised 2026-11-26 for decision 4 transparency]** Read section 4.6 first: it is the normal way to use the GPU. Sections 4.2-4.5 define the profile, the WGSL lowering and the numeric contract that 4.6 relies on; section 4.4 (`host:gpu`) is the low-level layer underneath, for libraries and experts.
 
 OxiScript's principle (`oxi-ui.md` Phase 8, `contracts.md` §3): **no separate shader language glued on through strings**. GPU kernels are ordinary OxiScript functions marked `kernel function` (or `@profile(kernel)`), type-checked by the same front end, lowered to the same OxiIR with a `#kernel` attribute, and compiled to **either** WGSL (for GPU execution) **or** CPU SIMD/scalar loops (for GPU-less targets, WebGL2/GLES3 fallbacks, and deterministic reference tests).
 
 ### 4.1 Prior Art Analysis
 
-| System | Licence | Model & Architecture | Key Takeaway for OxiScript 8.3b |
+| System | Licence | Model & Architecture | Key Takeaway for OxiScript 8.3d-8.3e |
 |---|---|---|---|
 | **CubeCL / Burn** ([github.com/tracel-ai/cubecl](https://github.com/tracel-ai/cubecl)) **[V: licence + backends]** | **MIT OR Apache-2.0** | `#[cube]` Rust functions expanded to a typed SSA CubeIR, then compiled on demand to WGSL, SPIR-V, CUDA, HIP, Metal, and CPU SIMD. | **Closest architectural analogue.** Proves a restricted typed subset + own SSA IR → WGSL/SPIR-V/CPU works in production for real ML (Burn). |
 | **`rust-gpu`** ([transition blog](https://rust-gpu.github.io/blog/transition-announcement)) **[V]** | MIT / Apache-2.0 | Compiles full Rust via `rustc_codegen_spirv` to SPIR-V. Needs a (pinned) nightly `rustc` **[V]**. The Aug 2024 post announces a move from Embark to community ownership **[V]**. **[Corrected 2026-11-26: "Embark archived it in Oct 2025" is not in the cited source.]** | **Warning:** hooking into a general host compiler's internals is fragile. Owning OxiIR + a small `#kernel` profile avoids this completely. |
@@ -269,6 +297,8 @@ OxiScript's principle (`oxi-ui.md` Phase 8, `contracts.md` §3): **no separate s
 ### 4.2 The `kernel` Profile (`#kernel` on Functions)
 
 `kernel` is already reserved in `grammar.md` §1 & §5 (`FnModifiers::kernel`) and `oxiscript-abi/registry/codes.txt` (`OXS-E0500`) **[V]**. A `kernel function` is checked by `oxiscript-check` (8.T) and re-verified by `oxiscript-ir::verify`:
+
+**[Revised 2026-11-26 for decision 4 transparency]** (How such a function is called without dispatch, and how `BufferView` relates to `Resident<T[]>`: section 4.6.2a.) A `kernel function` makes the checks below mandatory. Layer-0 code gets a WGSL variant only if the same checks pass when inferred from the code (section 4.6.2).
 
 1. **Forbidden constructs (`OXS-E0500`):**
    - No managed heap allocation (`alloc`, `array.new`, `array.push`, `str.*`, `closure.new`, `clone`, nullable boxed scalars).
@@ -310,12 +340,15 @@ Three backend paths exist for lowering `#kernel` OxiIR to `wgpu`:
 - **Offline validation:** In tests and `oxi build --check-gpu`, run `naga::front::wgsl::parse_str` + `naga::valid::Validator` (MIT OR Apache-2.0, already in `Cargo.lock` as `naga 30.0.2` **[V]**) so WGSL validity and uniformity are verified in CI even without a GPU!
 - **Packaging kernels inside `.wasm`:** Each compiled `#kernel` function embeds its WGSL source string (plus binding metadata & workgroup size) in a read-only custom section **`oxi.kernels`** (or immutable static data) inside the `.wasm` module, alongside a **compiled CPU fallback function** in the Wasm code section! Thus one `.wasm` file runs identically on WebGPU, Vulkan/Metal/DX12, WebGL2-only browsers (CPU fallback), and ESP32 (CPU fallback).
 
-### 4.4 Buffers (`Buffer<T>`), `host:gpu@1` IDL, Dispatch & Readback
+### 4.4 Buffers (`Buffer<T>`), `host:gpu@1` IDL, Dispatch & Readback [Revised 2026-11-26 for decision 4 transparency]
+
+> **[Revised 2026-11-26 for decision 4 transparency] Low-level layer.** Everything in 4.4 is the *expert* interface: libraries (`std/tensor`, `std/image`) and people who need manual control use it; normal programs never compile kernels, bind buffers or dispatch (section 4.6). It still requires the `Gpu` capability in `main`, and the corrected safety rules (no guest WGSL text, module-verified kernels only, bounds guards, error-scope isolation, quotas) apply unchanged. The executor path of 4.6 is implemented on top of the same `GpuArena`, validation and error-scope code.
+
 
 Per `contracts.md` §3 and `abi.md` §5, GPU access is an ordinary capability **`host:gpu@1`** (zero ambient authority; scripts without `Gpu` in `main` cannot touch the GPU):
 
 ```text
-// oxiscript-abi/idl/gpu.idl (proposed for Stage 8.3d)
+// oxiscript-abi/idl/gpu.idl (proposed for Stage 8.3e; was 8.3d: [Revised 2026-11-26 for decision 4 transparency])
 interface Gpu "host:gpu" @1 {
     handle Buffer;
     handle Texture;
@@ -378,7 +411,7 @@ interface Gpu "host:gpu" @1 {
      const pos = gpu.upload<f32>([0.0, 1.0, 2.0, 3.0])?;
      const vel = gpu.upload<f32>([1.0, 1.0, 1.0, 1.0])?;
      gpu.dispatch(integrate, [pos.length], pos, vel, 0.016f32)?;
-     // Async readback (callback in 8.3d; `await` sugar once 8.4 async lands):
+     // Async readback (callback in 8.3e; `await` sugar once 8.4 async lands):
      pos.download((result) => { ... })?;
    }
    ```
@@ -393,13 +426,137 @@ GPU hardware cannot guarantee bit-identical floating-point results with CPU IEEE
   2. **`@approx` kernels (default for float `#kernel`s):** Defined as IEEE-754 `f32` within WGSL ULP bounds + FTZ tolerance (e.g., `abs_tol = 1e-6`, `rel_tol = 1e-5` in differential GPU-vs-CPU test harnesses). Allowed in `default` and `realtime` profiles; **rejected under `safety` profile** (`OXS-E0500`) unless explicitly routed to the CPU deterministic reference path.
   3. **Unordered reductions / atomics:** Floating-point parallel reductions on GPU are explicitly typed as `@approx`; integer atomic adds (`atomicAdd`) are commutative/associative so their final sum is `@exact`.
 
+**[Revised 2026-11-26 for decision 4 transparency] Applying the contract when the runtime chooses the executor.** (1) Integer results are identical on every executor; this is why GPU eligibility excludes trap-capable operations (4.6.2, 4.6.5). (2) Float results of layer-0 code are `@approx` on the GPU executor and bit-identical between scalar and SIMD128 (section 2.2). A program may therefore see different low-order float bits on a host with a GPU than on one without; the contract bounds the difference, and `safety` code never uses the GPU executor for floats (as for any future deterministic profile; `deterministic` is not a profile in `abi.md` today, **UNVERIFIED**). (3) A float reduction has the order of its documented contract (`reduceSum` is tree order; plain sequential float accumulation is not parallelised, `OXS-P0106`), never "whatever the GPU did".
+
+### 4.6 One source, several executors; residency in types [Revised 2026-11-26 for decision 4 transparency]
+
+#### 4.6.1 Model
+
+Decision 4: *parallel and SIMD constructs have the semantics of sequential code; GPU is a backend.* One OxiScript source (layer-0 combinators, `parallel for`, `kernel` functions) is compiled to **executor variants**. A variant is a lowering of the same OxiIR, never a different program.
+
+| Executor | Variant | Exists when | Stage |
+|---|---|---|---|
+| scalar | scalar Wasm loop | always | 8.3a |
+| SIMD128 | `v128` loop (explicit `Simd<T,N>`, or auto-vectorised per section 3) | target has SIMD128 (`web`, `server`; `device` provisional) | 8.3a/8.3b |
+| GPU | WGSL compute shader in the `oxi.kernels` section (4.3) | code is GPU-eligible (4.6.2) | 8.3d |
+| threads | chunked isolates / Wasm threads | later (decision 4 layer 2) | 8.4 (the Remark format already has an `executor` value for it) |
+
+The runtime chooses among *existing* variants by the policy of 4.6.4. The manifest records which variants a module carries (4.6.6).
+
+#### 4.6.2 When a WGSL variant exists (eligibility, inferred or declared)
+
+A layer-0 body gets a WGSL variant only if it satisfies the `kernel` profile (4.2), checked on the code, not annotated. `kernel function` makes the same check mandatory and an error if it fails. Concretely:
+* The function passed to `map`/`zip`/`reduce` must be statically known and inlinable (no closure values from variables, no recursion).
+* **No `f64`, `i64`, `u64`** (not in WGSL, 4.2). **An unsuffixed float literal defaults to `f64`** (AGENTS.md rule 1), so most float code is CPU-only unless written with `f32` (`x * 2.0f32`, or typed `f32` operands that make the literal `f32`). The report must say this plainly: `OXS-P0302` names the first `f64` use as the reason.
+* No managed allocation, strings, classes, host calls, or capabilities (4.2).
+* **Trap-free by construction (v1).** CPU integer `+ - *` overflow, integer `/` and `%` by zero, and out-of-range indexing all trap; on the GPU a guard can only return a value or skip a write (Q4). To keep integer results identical on every executor without a hidden trap channel, v1 eligibility excludes plain trapping integer ops (use `+%`, `+|`, as for SIMD, `OXS-P0108`) and any array index the checker cannot prove in range. **Provable shapes (the proof scope, chosen so that tiled GEMM, im2col/conv2d and attention stay eligible):** (a) the implicit index of `map`/`zip`/`parallel for`; (b) `i` guarded by a dominating `i < xs.length`; (c) **affine indices** `a*u + b*v + c` over `range()` loop variables, `globalId`/`localId` and constants, whose maximum is bounded by a shape guard the checker can see (`row < M && k < K` against `A.length === M * K` stated as a launch precondition); (d) `@shared` tile indices bounded by the constant tile size and `localId` (< workgroup size); (e) a **shaped view** `View2D<T>`/`View1D<T>` (the Mojo `LayoutTensor` idea, 4.1) whose `(row, col)` access is checked against its shape at the launch boundary (one check per launch, not per access), so kernels written against views are eligible without hand-written guards. Anything else (data-dependent gather such as `xs[idx[i]]`) gets `OXS-P0302` reason `unproven index`. WGSL behaviour on integer division by zero or overflow is **UNVERIFIED** in the ledger; the emitter must not rely on it.
+* `filter` and other size-changing combinators need stream compaction (a scan). **v1: CPU only**, with `OXS-P0302` reason `filter`; a scan-based variant is future work (Q16).
+* `reduce` is eligible only for operations whose parallel order cannot change the result for integers (`+%`, `min`, `max`, bitwise) or for the explicit `reduceSum`/`parallel reduce` float forms (`@approx`).
+
+#### 4.6.2a How a `kernel function` is called (no dispatch in normal code)
+
+* **Launch domain from the call.** A kernel is invoked like a function with a launch shape: `integrate.launch([n], pos, vel, dt)` (explicit range/shape as first argument), or inside `parallel for (const i of range(0, n)) { integrate1(pos, vel, dt, i); }` where the per-element form is an ordinary function and the compiler builds the launch. There is no handle, no binding table, no `dispatch`.
+* **Caller-side arguments** are `Resident<T[]>` (`inout` for writes) or host `T[]`, under the residency rules of 4.6.3 (mixing is an error; host arrays run the CPU/SIMD version, `Resident` arguments the GPU version). The call returns after enqueueing; observation of results is through `download` or another combinator.
+* **`BufferView<T>`, `ImageViewOut` and `View2D<T>` exist only inside the kernel body and in the WGSL lowering** (4.2): the caller's `Resident<T[]>` argument becomes the view; a parameter list written with views in 4.2 is the callee side of the same call.
+* **`@workgroup(...)`, `@shared` sizing hints** affect only the GPU variant; the CPU version ignores them (it runs the same body per element/tile), so results do not depend on them.
+* `host:gpu` (4.4) remains the way to compile kernels by index and dispatch manually; the example there is the expert path.
+
+#### 4.6.3 Residency in types: proposal `Resident<T>`
+
+`Resident<T[]>`, `Resident<Image>`, `Resident<f32>` mean "this data lives in the accelerator's memory domain". Reasoning for the name:
+* **Not `Device<T>`:** `oxi build --target device` (8.2) already names ESP32-class devices; two meanings of "device" in one language is a trap for readers and for the LSP.
+* **Not `Gpu<T>` (runner-up):** more discoverable, but on a host without a GPU the data is plain host memory, and the type must not promise a GPU. `Resident` says what the *type system* tracks (where the data is) and stays true in both cases.
+
+Semantics:
+* **Type-checking never depends on runtime availability.** `Resident<T>` has one API everywhere. On a host without the Compute tier it is host memory (the same bytes a `T[]` would have); operations run the CPU version of the same code. No transfer exists in that case, so none is reported.
+* **Transfers are visible calls** in `std/resident`, not syntax magic: `upload(xs: T[]): Result<Resident<T[]>, i32>` (fallible: quota) and `download(r: Resident<T>, cb)`; the callback form is required until 8.4 async, because readback is asynchronous (browser `mapAsync`, `abi.md` §5.3 no re-entrancy; section 4.4). Each call is one transfer line in the report.
+* **No operation returns host data from resident inputs.** `reduceSum` over `Resident<f32[]>` returns `Resident<f32>`, not `f32` (a host scalar would be a hidden transfer); it reaches the host only through `download`. Likewise `.length`-style metadata is known statically or kept host-side and is not a transfer.
+* **Mixing is a compile error:** a combinator or call with both `Resident` and plain `T[]` inputs fails (code to be allocated in the `OXS-E` range, **UNVERIFIED** free; message `mixed residency at {loc}: upload {arg} or download {arg}` with the fix naming the call). A `Resident` input whose body has no WGSL variant is also a compile error (the type demands eligibility; the check is static so it cannot depend on the host).
+* Resident values are handles owned by the instance's arena: hot reload and drop free them (section 5.3); after device loss, operations on them fail (Q15).
+
+Illustrative proposed syntax, not valid OxiScript today (fenced `ts` on purpose):
+```ts
+import { Log } from "host:log";
+import { upload, download } from "std/resident";
+
+// Host data: layer-0 runs on CPU (SIMD128 if the target has it, else scalar). Never GPU.
+function scaled(xs: f32[], k: f32): f32[] {
+  return xs.map((x) => x * k);
+}
+
+// Resident data: same combinator, now the GPU executor (or host memory without a GPU).
+function energy(xs: Resident<f32[]>, k: f32): Resident<f32> {
+  return xs.map((x) => x * k).reduceSum();
+}
+
+function run(xs: f32[], log: Log): Result<void, i32> {
+  const r = upload(xs)?;                   // visible host -> resident transfer
+  const e = energy(r, 0.5f32);             // no transfer here, in any executor
+  download(e, (v: f32) => {                // visible resident -> host transfer, callback
+    log.write(2, `energy = ${v}`);
+  });
+  return Ok(null);   // success value for Result<void, i32>: spelling UNVERIFIED
+}
+```
+
+#### 4.6.4 Executor policy (deterministic, documented)
+
+Hidden transfers killed C++ AMP (decision 4), so **the runtime never inserts a transfer**, and a clause such as "use the GPU when the transfer is amortised" is deliberately *not* part of the default policy (it would be a hidden transfer; see Q12). The policy is a pure function:
+
+`executor = f(residency type of the inputs, host compute tier, profile, target)`
+
+| Inputs (static types) | Host | Executor chosen |
+|---|---|---|
+| all host `T[]` / `Image` | any | SIMD128 if the target has it and the loop is vectorisable (`OXS-P0110`), else scalar; threads once 8.4 exists |
+| all `Resident` | `ComputeTier::Compute`, variant exists, profile allows | GPU |
+| all `Resident` | `GraphicsOnly` or no GPU | CPU version of the same code over host memory (no transfer) |
+| mixed | any | compile error (4.6.3) |
+| float code under `safety` (and a possible future `deterministic` profile, **UNVERIFIED**: `abi.md` lists only `default\|realtime\|safety\|kernel`) | any | scalar or SIMD128 only (4.5); `Resident` float code is then a compile error in these profiles |
+
+* Same inputs (types, tier, profile, target) give the same executor on every run: no hidden state, no timing, no adaptive tuning. Quotas never change the executor: `upload` returns `Err` when the VRAM quota is exceeded; a dispatch cap (section 5.5: invocations per dispatch, dispatches per turn) traps with a `quota` trap kind instead of silently re-routing (proposed; Q15).
+* **Size thresholds are report hints only.** A host loop over at least `N_hint` elements emits `OXS-P0305` ("large host loop; consider `Resident`"); a `Resident` operation below `N_small` emits an info that dispatch overhead may dominate. Provisional values `N_hint = 65 536`, `N_small = 4 096` **[P, placeholder: measure in the 8.3d benchmarks, Q13]**.
+* The GPU variant dispatches in chunks within the section 5.5 caps; chunking never changes results (elementwise) and reductions fix their tree order independent of chunking.
+
+#### 4.6.5 Same results on every executor
+
+* **Integers:** bit-identical on scalar, SIMD128 and GPU, including the trap behaviour, because eligible code cannot trap (4.6.2). Gate: three-executor differential test (7.2, 8.3d).
+* **Floats:** within the section 4.5 contract (`@approx`: `abs_tol = 1e-6`, `rel_tol = 1e-5` in the harness); scalar and SIMD128 bit-identical. Reduction order per 4.5.
+* Integer-only `@exact` code may use any executor under any profile.
+
+#### 4.6.6 Authority and manifest
+
+Pure compute on the GPU executor grants no authority, like SIMD: it reads and writes only the program's own `Resident` data, cannot name devices, buffers or shader text, and has no host calls (kernel profile). It therefore needs **no `main` parameter** (AGENTS.md rule 7 is about authority); it is limited by host quotas (VRAM, dispatch caps, section 5.3/5.5). `host:gpu` (4.4) still requires the capability. The manifest records the variants a module carries (proposal, with the ABI 1.1 `simd128` line: `variants wgsl`); a host without the Compute tier **ignores** WGSL variants (unlike a missing Wasm feature, which refuses the module), because a CPU version always exists. This holds only for hosts that understand ABI 1.1: `abi.md` makes older hosts refuse unknown manifest directives, so a module carrying the `variants` line needs the ABI minor bump. Whether `needs`/manifest should also declare "may use GPU" so an operator can forbid it is Q14.
+
+#### 4.6.7 The placement report as transparency window; `@expect(gpu)`
+
+For every loop and kernel the report states where it ran or will run (scalar / SIMD128 / GPU / threads) and why. Remarks come in two phases in one format:
+
+```text
+remark { code, severity, phase: "compile" | "run", loc,
+         executor: "scalar" | "simd128" | "gpu" | "threads",
+         reason, inputs: ["host" | "resident"], transfer_bytes? }
+```
+* **Compile phase** states what the policy will choose for the compile-time-known tier, and eligibility facts. **Run phase** logs the executor actually used (tier is a host fact) and every transfer, in the same stream.
+* **`@expect(gpu)` follows the `@expect(simd)` split.** It asserts only `assertable yes` facts: a WGSL variant exists and the `kernel` profile holds (`OXS-P0302` fails the build with reason and fix). *Where it actually ran* is `assertable no` (target/host facts) and goes only to the run-phase log; `@expect(gpu, on: "webgpu")` scoping works as for simd. `@expect(no_transfer)` asserts that the function body contains no `upload`/`download` call.
+* Proposed codes (**numbers checked against `codes.txt`: only `P0101`, `P0102`, `P0201`, `P0301` exist; `P0103`-`P0112` are proposed in 3.3; `P0302`-`P0306` are free; `codes.txt` is not edited by this report**):
+
+| Code | `assertable` | Title |
+|---|---|---|
+| `OXS-P0302` | yes | No GPU variant: `{reason}` (`f64` use, `filter`, trapping op, unproven index, non-inlinable function, managed type) |
+| `OXS-P0303` | no | Placement: `{executor}` ran / will run `{loc}` (positive fact, compile or run phase) |
+| `OXS-P0304` | no | GPU executor not used at run time: `{no compute tier / profile / device lost}` |
+| `OXS-P0305` | no | Large host loop or tiny resident op: consider the other residency (size hint, 4.6.4) |
+| `OXS-P0306` | no | Transfer `{upload / download}` of `{bytes}` at `{loc}` (run phase; the count of these equals the source's transfer calls) |
+
+Existing `OXS-P0301` (host transfer per call) keeps its meaning for host-capability traffic.
+
 ---
 
 ## 5. Shared Device Integration with `oxiterm-gpu` (Stage 5.2)
 
 Per `docs/oxi-ui.md` ("GPU after OxiScript: one device, several users"), **one `Arc<GpuContext>`** must serve three co-users without CPU round-trips:
 1. **`GpuSink` (Stage 5.2+):** DisplayList 2D renderer (SDF fills/borders, glyph atlas, scissor clips).
-2. **`OxiScript` GPU kernels (Stage 8.3b):** `host:gpu@1` compute pipelines, storage buffers, and procedural textures.
+2. **`OxiScript` GPU kernels (Stages 8.3d-8.3e; was "8.3b") [Revised 2026-11-26 for decision 4 transparency]:** WGSL variants chosen by the executor policy (4.6), `host:gpu@1` compute pipelines for experts, storage buffers, and procedural textures.
 3. **3D rendering (Stage 9.3):** Mesh/camera passes and kernel shaders.
 
 ### 5.1 Current State of `oxiterm-gpu` (Stage 5.2, Verified in Source)
@@ -530,6 +687,8 @@ The owner's course goal (`docs/oxi-ui.md` Level 5 "Hero") is **"first AI in OxiS
 
 ### 6.2 Minimal Kernel Primitives Needed (Only 7 Kernel Families)
 
+**[Revised 2026-11-26 for decision 4 transparency]** `std/tensor` is written once as layer-0 combinators and `kernel` functions over `Resident<f32[]>`; the executor policy (4.6.4) runs it on GPU or host memory, so the AI demo needs `host:gpu` only for expert pieces (workgroup tiling tuned by hand). Everything below stays valid as the kernel inventory.
+
 Every course milestone (perceptron → MNIST MLP/CNN live training → tiny GPT-style LM with 100k–10M params) decomposes into **seven small `#kernel` primitives**, all expressible in Stage 8.3d OxiScript without language changes:
 
 | # | Kernel Family | Required Language / WGSL Features | Used By |
@@ -570,16 +729,19 @@ All stages follow the repository's process rule (`docs/oxi-ui.md` §5): **measur
 | **8.S4 Placement report v0** (`placement.json` schema + remarks API) | Planned (Wave 5) | 8.3b plugs SIMD remarks (`OXS-P0103..P0112`) and `@expect(simd)` directly into the 8.S4 remarks API. (If 8.3a starts before 8.S4, 8.3a needs no placement report yet; 8.3b either depends on 8.S4 or defines the minimal `Remark` struct in `oxiscript-abi` shared with 8.S4.) |
 | **5.2 Headless `GpuSink`** (`oxiterm-gpu`) | **Done** (pending golden blessing; B-01..B-10 fixed) **[V]** | Direct foundation for 8.3c (`GpuContext` upgrade) and 8.3d (`host:gpu@1` + zero-copy texture). |
 | **Inline value structs in arrays** (`contracts.md` §3 worked example `Array<Particle>`) | Not yet implemented (MVP structs are heap-allocated COW objects) | Required for zero-copy `Array<Particle>` GPU uploads and SoA/AoS benchmarks; can land as an opt-in `@inline_elements` / scalar-only struct-array lowering in **8.3a** or **8.3d**. |
+| **8.2 targets (`oxi build --target device/web/server`) and manifest feature lines** [Revised 2026-11-26 for decision 4 transparency] | Planned (8.2) | The executor policy and variant list (4.6.6) are per target; 8.3a can start with a single `web`-like test target and the manifest `features simd128` line. |
 
 ### 7.2 Staged Delivery Plan Table
 
 | Stage | Scope | Measurable Gate | Key Risks & Mitigations | Depends On |
 |---|---|---|---|---|
 | **8.3a: Explicit SIMD + Wasm SIMD128 + Scalar Fallback** | Add `Simd<T, N>` & `SimdMask<T, N>` builtin value types to `oxiscript-check`; add `Ty::Vec`/`Ty::VecMask` + vector ops to `oxiscript-ir` + `verify`; add `lower_simd_to_scalar` pass; emit Wasm `v128` (`ABI 1.1`, `features simd128`) in `oxiscript-wasm` (`wasm-encoder` 0.263 already supports SIMD128 **[V]**); enable `wasmi/simd` in `oxiscript-runtime` with `wasm_simd(true)`, `wasm_relaxed_simd(false)` (mandatory: a test must show a module using `f32x4.relaxed_madd` is rejected); for the native release, set Wasmtime `relaxed_simd_deterministic` + `cranelift_nan_canonicalization`; add `FieldKind::Inline` vector layout support. | (1) All 10 `Simd<T, N>` types compile to both `simd128` and `scalar` Wasm and pass `wasmparser` validation. (2) Differential fuzz test (≥ 5,000 generated vector expressions incl. NaN, `-0.0`, `Inf`, min/max, overflow traps, bitcast) produces **bit-identical results** across `wasmi` SIMD128, `wasmi` scalar, and Wasmtime SIMD128. (3) Benchmark suite (§8) shows **≥ 2.5×** speedup for `f32x4` matmul/SAXPY in Wasmtime/browser vs scalar, and zero regression on non-SIMD benchmarks in `wasmi 2.0.3`. (4) BAD ACTOR pass (out-of-bounds `Simd.load`, misaligned/overflowing indices, NaN payload leak via `bitcast`, fuel exhaustion). | *Risk:* Wasm local count limit (`LIMIT_LOCALS = 12_000`) hit faster when `lower_simd_to_scalar` expands 1 `v128` into 16 `i8` scalars. *Mitigation:* add basic Wasm local reuse (liveness-based free list) in `oxiscript-wasm` or keep scalar-fallback loops compact. | 8.L (done), Benchmarks harness (§8) |
-| **8.3b: Auto-Vectoriser v0 + Placement Report + `@expect(simd)`** | Enable `parallel for` syntax (un-reserve `For*::parallel` in `oxiscript-syntax`); implement natural-loop + dependence/alias analyser on OxiIR SSA for shapes **S1–S4** (§3.2); emit `OXS-P0103..P0112` remarks into `placement.json`; enforce `@expect(simd)` on `assertable yes` codes (compile error with source span + fix); emit positive `OXS-P0110` for LSP inlays. | (1) Corpus of ≥ 25 loops (maps, zips, reductions, branchless `?:`, alias-guarded loops, plus negative tests: loop-carried deps, calls, allocs, trapping int `+`, non-associative float sums) matches expected `OXS-P01xx` codes 100% identically in debug and release. (2) `@expect(simd)` fails compilation with exact code on every negative case and passes on every S1–S4 case. (3) Auto-vectorised SAXPY, image filter, and SoA particle step achieve ≥ 80% of hand-written `Simd<f32, 4>` throughput (Wasmtime/browser). (4) Differential fuzzing verifies bit-identical outputs vs unvectorised loop. (5) BAD ACTOR pass (aliasing arrays passed to same loop, integer overflow on `n`, empty/1-3 element tails, NaN in branchless `?:`). | *Risk:* False aliasing or subtle trap reordering breaks sequential semantics. *Mitigation:* Conservative v0—never vectorise across any `Op::may_trap()` inside the body; require explicit runtime `a !== b` pointer guard whenever arrays aren't provably distinct; verify every case differentially. | 8.3a, 8.S4 (or shared `Remark` type) |
+| **8.3b: Auto-Vectoriser v0 + Layer-0 Combinators on CPU + Placement Report + `@expect(simd)`** [Revised 2026-11-26 for decision 4 transparency] | Enable `parallel for` syntax (un-reserve `For*::parallel` in `oxiscript-syntax`); implement natural-loop + dependence/alias analyser on OxiIR SSA for shapes **S1–S4** (§3.2); emit `OXS-P0103..P0112` remarks into `placement.json`; enforce `@expect(simd)` on `assertable yes` codes (compile error with source span + fix); emit positive `OXS-P0110` for LSP inlays. [Revised 2026-11-26 for decision 4 transparency] Also: layer-0 combinators (`map`/`zip`/`reduce`/`reduceSum`, `parallel for` over arrays) lowered to counted loops that feed the vectoriser (CPU executors only here); the shared `Remark` struct gains `phase` (compile/run), `executor` (scalar/simd128/gpu/threads) and `inputs` fields so 8.3d needs no format change. | (1) Corpus of ≥ 25 loops (maps, zips, reductions, branchless `?:`, alias-guarded loops, plus negative tests: loop-carried deps, calls, allocs, trapping int `+`, non-associative float sums) matches expected `OXS-P01xx` codes 100% identically in debug and release. (2) `@expect(simd)` fails compilation with exact code on every negative case and passes on every S1–S4 case. (3) Auto-vectorised SAXPY, image filter, and SoA particle step achieve ≥ 80% of hand-written `Simd<f32, 4>` throughput (Wasmtime/browser). (4) Differential fuzzing verifies bit-identical outputs vs unvectorised loop. (5) BAD ACTOR pass (aliasing arrays passed to same loop, integer overflow on `n`, empty/1-3 element tails, NaN in branchless `?:`). [Revised 2026-11-26 for decision 4 transparency] (6) The report states, for every layer-0 loop, the executor it will use and why (100% of the corpus has an `OXS-P0303`/`P0110`/`P0111` remark). | *Risk:* False aliasing or subtle trap reordering breaks sequential semantics. *Mitigation:* Conservative v0—never vectorise across any `Op::may_trap()` inside the body; require explicit runtime `a !== b` pointer guard whenever arrays aren't provably distinct; verify every case differentially. | 8.3a, 8.S4 (or shared `Remark` type) |
 | **8.3c: `GpuContext` Compute Upgrade & Isolation (`oxiterm-gpu`)** | Add `ComputeTier` (`GraphicsOnly` vs `Compute`), `GpuCapabilities`, and `GpuContext::new_negotiated[_async]` to `oxiterm-gpu`, with limits clamped by `or_worse_values_from` (not `using_resolution`); expose `pub with_error_scopes[_async]` / `run_scoped`, **stop exposing raw `device()` to co-users** (so the uncaptured handler cannot be replaced), and add a context-owned uncaptured-error counter; add shared `GpuTextureRegistry` + `image_pipeline` (`Rgba8Unorm` textured quad) for zero-copy texture display; verify `wasm32` build (`WebGPU` + `WebGL2`). | (1) On Vulkan/lavapipe CI, `new_negotiated` negotiates `ComputeTier::Compute` and runs a smoke compute shader writing into an `Rgba8Unorm` storage texture that `GpuSink` draws with **zero CPU readback**, matching a PNG golden. (2) Forced `GraphicsOnly` mode reproduces all Stage 5.2 PNG goldens unchanged. (3) BAD ACTOR pass (co-user leaking error scopes, including `mem::forget` of a guard; a co-user trying to replace the uncaptured handler through every public API; concurrent threads; OOM buffer creation; device destruction mid-compute; recovery via context recreation) passes with 0 panics and 0 leaked errors across subsystems. (4) Negotiation test with an adapter whose limits are below `Limits::defaults()` (e.g. forced GL backend): the device is created. | *Risk:* Browser `wasm32` `async` error scopes cannot use `pollster::block_on`. *Mitigation:* Keep `with_error_scopes_async` native-first and use `pollster::block_on` only in native sync wrappers. | 5.2 (done) |
-| **8.3d: `kernel` Profile + `oxiscript-wgsl` + `host:gpu@1`** | Un-reserve `kernel function` & `@workgroup(...)` / `@shared` / `@max_iters(...)`; enforce `#kernel` profile rules in `oxiscript-check` & `oxiscript-ir::verify` (`OXS-E0500`, plain-data `std430` layout checks, uniformity check for `kernel.barrier()`); build `oxiscript-wgsl` (OxiIR → WGSL text + mandatory loop-fuel counter); embed `oxi.kernels` custom section + CPU fallback in `.wasm`; implement `host:gpu@1` provider (`GpuArena` quotas, async `OnReadbackReady` + out-buffer chunking, dispatch caps, CPU fallback when `caps() == 0`); emit `OXS-P03xx` transfer remarks and `@expect(gpu)` / `@expect(no_transfer)`. | (1) Every emitted WGSL kernel validates cleanly with `naga 30.0.2` offline in CI (0 errors). (2) Particle physics (100k particles), 2D Gaussian blur (zero-copy texture → `GpuSink` PNG), and tiled 256×256 `f32` GEMM run on Vulkan/lavapipe **and** CPU fallback, agreeing within `@exact` (0 ULP int) or `@approx` (`1e-5` rel tol float). (3) BAD ACTOR pass (infinite loop kernel stopped by static `_fuel` counter in < 50 ms without TDR; OOB buffer index; aliasing read+write buffer rejected; VRAM quota exceeded returns `Err`; hot reload frees all GPU buffers with 0 VRAM leak). | *Risk:* WGSL uniformity analysis rejections confuse users; `std430` padding mismatches between host arrays and WGSL structs. *Mitigation:* Check uniformity & `std430` layout in `oxiscript-check` with clear source diagnostics; keep `naga` validation in CI tests. | 8.3a, 8.3c, 8.M (linking) |
-| **8.3e: AI Demo Kernels (`std/tensor` + Course Level 5)** | Add optional `f16` storage/compute support (`CAP_F16` / `enable f16;`), optional `subgroupAdd` fast path (`CAP_SUBGROUPS`, native only through wgpu 30), and `pack4xI8`/`unpack4xI8` helpers; write `std/tensor` entirely in OxiScript (7 kernel families of §6.2: elementwise/activations, tiled GEMM, im2col/conv2d, softmax/layernorm, scaled dot-product attention, SGD/AdamW backward pass, packed int8 matvec); build browser + native demos for MNIST digit recogniser (live training) and tiny char-level LM. | (1) MNIST 784→128→10 MLP trains live in browser (WebGPU & Wasm SIMD128 fallback) to ≥ 95% test accuracy in < 10 s (WebGPU) / < 60 s (SIMD128) with differential loss check against CPU scalar. (2) Tiny LM (e.g., 100k–1M params, 2-layer Transformer) generates tokens interactively in browser at ≥ 20 tok/s (WebGPU) / ≥ 5 tok/s (Wasm SIMD128) **[P target]**. (3) Zero ML concepts added to core grammar or compiler. (4) BAD ACTOR pass (NaN weights/gradients, huge tensor dims overflowing `u32` byte size, zero-length batch). | *Risk:* Shader compile cold-start latency on first browser load; float precision drift in `f16` training. *Mitigation:* Keep training in `f32`, use `f16`/`i8` for inference only; cache compiled `ComputePipeline`s per kernel hash in `GpuArena`. | 8.3b, 8.3d |
+| **8.3d: One Source to CPU and GPU** [Revised 2026-11-26 for decision 4 transparency] | `kernel` profile + layer-0 combinators lowered to WGSL + residency types + runtime executor choice + report. Un-reserve `kernel function` & `@workgroup(...)` / `@shared` / `@max_iters(...)`; enforce the `#kernel` profile in `oxiscript-check` and `oxiscript-ir::verify` (`OXS-E0500`, `std430` layout checks, uniformity check for `kernel.barrier()`), and infer the same eligibility for layer-0 bodies (`OXS-P0302` with reason); build `oxiscript-wgsl` (OxiIR to WGSL text, mandatory loop-fuel counter, bounds guards); embed `oxi.kernels` (WGSL + CPU version of every GPU-eligible loop) in the `.wasm`; add `Resident<T>` (`std/resident`: `upload`/`download`, mixed-residency error) and `GpuArena` quotas and error-scope isolation for the executor path; implement the deterministic executor policy (4.6.4) and the manifest `variants wgsl` line; `@expect(gpu)`, `@expect(no_transfer)`, run-phase remarks (`OXS-P0302`-`P0306`); inline struct arrays (Q2) for `Resident<Particle[]>`. | (1) Every emitted WGSL variant validates with `naga 30.0.2` offline in CI (0 errors). (2) **Three-executor differential test:** the same program (particle step 100k, 2D Gaussian blur, tiled 256x256 `f32` GEMM, integer `reduce`) run on scalar, SIMD128 and GPU gives identical integer results and `f32` results within the 4.5 contract (`1e-5` rel); scalar and SIMD128 float results bit-identical. (3) **Policy determinism:** a property test (>= 10,000 generated residency/tier/profile combinations) shows the same inputs always give the same executor, and an exhaustive table test covers every row of 4.6.4. (4) **No hidden transfers:** for every test program, the transfers logged at run time (`OXS-P0306`) equal the `upload`/`download` calls executed in the source, on a GPU host and on a host forced to `GraphicsOnly`; `@expect(no_transfer)` rejects a function containing one. (5) `@expect(gpu)` fails the build with the exact `P0302` reason on every negative case (`f64`, `filter`, trapping `+`, unproven index, non-inlinable closure) and passes on every eligible case. (6) Mixed `Resident`/host input and `Resident` input without a WGSL variant are compile errors with the fix. (7) BAD ACTOR pass (infinite-loop kernel stopped by the static `_fuel` counter in < 50 ms without TDR; out-of-range index attempts never reach an eligible variant; aliasing read+write rejected; VRAM quota exceeded returns `Err` from `upload`; dispatch cap traps; hot reload frees all GPU buffers with 0 VRAM leak; device loss poisons handles without hanging the UI). | *Risk:* WGSL uniformity rejections confuse users; `std430` padding; users hit `f64` literal defaults and see "CPU only" surprises; eligibility too narrow to be useful without a trap channel. *Mitigation:* uniformity and `std430` checked in `oxiscript-check` with source diagnostics; `P0302` names the exact reason and fix (`2.0f32`, `+%`); measure how much real code is eligible (Q16) before widening beyond the 4.6.2 proof scope; `naga` validation in CI. | 8.3a, 8.3b, 8.3c, 8.M (linking) |
+| **8.3e: Low-Level `host:gpu`, `std/tensor` + AI Demo (Course Level 5)** [Revised 2026-11-26 for decision 4 transparency] | Implement the low-level `host:gpu@1` provider for libraries and experts (IDL of 4.4: `GpuArena` handles, async `OnReadbackReady` + out-buffer chunking, dispatch caps, `caps()`, only module-verified kernels, no guest WGSL), built on the 8.3d arena and validation. Add optional `f16` storage/compute support (`CAP_F16` / `enable f16;`), optional `subgroupAdd` fast path (`CAP_SUBGROUPS`, native only through wgpu 30), and `pack4xI8`/`unpack4xI8` helpers; write `std/tensor` entirely in OxiScript (layer-0 combinators and `kernel` functions over `Resident<f32[]>`; the executor policy runs it, `host:gpu` only for hand-tuned pieces) (7 kernel families of §6.2: elementwise/activations, tiled GEMM, im2col/conv2d, softmax/layernorm, scaled dot-product attention, SGD/AdamW backward pass, packed int8 matvec); build browser + native demos for MNIST digit recogniser (live training) and tiny char-level LM. | (1) MNIST 784→128→10 MLP trains live in browser (WebGPU & Wasm SIMD128 fallback) to ≥ 95% test accuracy in < 10 s (WebGPU) / < 60 s (SIMD128) with differential loss check against CPU scalar. (2) Tiny LM (e.g., 100k–1M params, 2-layer Transformer) generates tokens interactively in browser at ≥ 20 tok/s (WebGPU) / ≥ 5 tok/s (Wasm SIMD128) **[P target]**. (3) `host:gpu` conformance: a hostile guest gets `Err` for guest WGSL text, foreign kernel index, aliasing and quota, with the corrected safety rules unchanged. (4) Zero ML concepts added to core grammar or compiler. (5) BAD ACTOR pass (NaN weights/gradients, huge tensor dims overflowing `u32` byte size, zero-length batch). | *Risk:* Shader compile cold-start latency on first browser load; float precision drift in `f16` training. *Mitigation:* Keep training in `f32`, use `f16`/`i8` for inference only; cache compiled `ComputePipeline`s per kernel hash in `GpuArena`. | 8.3d |
+
+**[Revised 2026-11-26 for decision 4 transparency] Cross-stage gates.** Every slice that changes an executor keeps the same measurable rule: *one program gives identical integer results and in-contract float results on scalar, SIMD128 and GPU executors, and the executor policy is deterministic given inputs* (enforced for scalar/SIMD128 from 8.3b, fully in 8.3d). Stage mapping: 8.3a explicit SIMD + scalar fallback; 8.3b auto-vectoriser + layer-0 on CPU + placement report; 8.3c compute-capable `GpuContext` + isolation; 8.3d one source to CPU and GPU; 8.3e low-level `host:gpu` + `std/tensor` + AI demo.
 
 ### 7.3 Permissive-Only Libraries to Reuse (Zero GPL/LGPL)
 
@@ -645,8 +807,10 @@ Before starting Stage 8.3a implementation, these calls need the owner's decision
    - `8.3b` emits `OXS-P0103..P0112` remarks and enforces `@expect(simd)`. Should `8.S4` land first so `8.3b` plugs into the finalized `placement.json` schema (recommended), or should `8.3a` introduce a minimal `Remark` struct in `oxiscript-abi` early?
 4. **GPU OOB semantics in `#kernel` (`clamped/zero` vs `debug trap flag`):**
    - WebGPU/WGSL cannot trap mid-shader, and robust access leaves the OOB result implementation-defined: a read may return any in-bounds value or zero, and a write may land elsewhere in-bounds or be dropped **[corrected 2026-11-26]**. The emitter therefore must guard every access itself (§4.3). The open question is only *which defined result* the guard gives. *Recommendation:* read → 0, write → skipped, plus a debug-build atomic `oob_flag` reported as `TrapKind::Bounds` after the dispatch, documented in `ir.md` and `contracts.md`. The alternative is to always run with the flag and trap the instance after the dispatch, which brings GPU behaviour closer to CPU behaviour at a small cost.
+   - **[Revised 2026-11-26 for decision 4 transparency] Revised recommendation.** With transparent executor choice the user cannot see which executor ran, so a debug-only flag would make results depend on the executor, and a read of 0 or a skipped write would differ from the CPU trap. Therefore **v1: GPU-eligible code is trap-free by construction** (no plain trapping integer ops, only provably in-range indices, 4.6.2); the guards remain as robustness for the emitted WGSL and never fire in verified code, so no flag is needed. A later version may add the flag plus a *deferred* trap (checked at the next download or end of turn; the deferral is observable through host effects in between, so it must be documented), which widens eligibility at a semantic cost (Q16). The `host:gpu` expert path keeps the original recommendation (read 0, skip write, debug flag), because there the program asked for GPU semantics explicitly.
 5. **Browser `wgpu` vs thin JS WebGPU bridge for `host:gpu@1`:**
    - In browser local mode (`oxiterm-web`, Phase 7.1), `oxiterm-core` + `oxiscript` already run in wasm32. Should `host:gpu@1` in the browser go through `wgpu 30` compiled to wasm32 (shares 100% Rust code with `oxiterm-gpu`, enables zero-copy `GpuSink` in the browser, but adds wasm bundle size—currently unmeasured **[U]**) or call `navigator.gpu` via thin `web-sys` bindings when Canvas2D is the UI sink? *Recommendation:* in a 1-day spike at the start of slice 8.3c, measure the wasm32 gzip size of `wgpu 30` in two variants: `features = ["webgpu","wgsl"]` with `default-features = false` (no naga, since we emit WGSL text), and `["webgpu","webgl","wgsl"]`, which pulls in wgpu-core, wgpu-hal and naga for the WebGL2 fallback **[corrected 2026-11-26]**. Decide only after measuring.
+   - [Revised 2026-11-26 for decision 4 transparency] The question now covers the browser *executor* path as well as `host:gpu`: both share one WGSL/arena implementation, so measure once.
 6. **Hardware validation target for GPU benchmarks:**
    - The current dev box runs Mesa `llvmpipe` (software Vulkan) on an i5-3450. Will Stage 8.3c/8.3d hardware GPU benchmarks run on a hardware Vulkan/WebGPU machine (e.g., laptop iGPU/dGPU or Raspberry Pi 5 V3D) before closing Stage 8.3d's speedup gate?
 
@@ -657,6 +821,16 @@ Before starting Stage 8.3a implementation, these calls need the owner's decision
 9. **ESP32-S3 SIMD default.** No measurement exists for wasmi with SIMD on Xtensa (treVM measured Wasmtime/Pulley on other boards). Keep "scalar by default on the S3" as a provisional [O] until the board (expected after 2026-12-10) is benchmarked?
 10. **Upstream report.** Should we file the wasmi `relaxed_madd` (fused under `deterministic`) divergence from the Wasm 3.0 deterministic profile upstream?
 11. **Repo research fix.** `docs/research/oxiscript-language.md:320,341` also says that relaxed SIMD ships in all three engines (Safari needs a flag). Should it be corrected in the same pass?
+
+*Added by the decision 4 revision (2026-11-26) [Revised 2026-11-26 for decision 4 transparency]:*
+
+12. **Runtime-inserted transfers.** The default forbids them (hidden transfers killed C++ AMP). Should the owner allow an opt-in policy "above `N` elements the runtime may upload host inputs and download results, logged as `OXS-P0306`"? It would make results and timing depend on a threshold and weaken `@expect(no_transfer)`. *Recommendation:* no; keep it a library function (`gpuMap(xs, f)` that does `upload` + `map` + `download` visibly).
+13. **Size thresholds.** What are `N_hint` and `N_small` (provisional 65 536 and 4 096 **[P]**)? They only drive report hints, so they can be tuned after the 8.3d benchmarks; may they be per-host (measured at startup) or must they be fixed constants so that the report is reproducible? *Recommendation:* fixed constants per edition.
+14. **Residency type name and authority.** Is `Resident<T>` the right name (runner-up `Gpu<T>`; `Device<T>` rejected by the `--target device` clash)? Should a module that may use the GPU executor declare it in `needs`/the manifest so an operator can forbid it (default proposed: no declaration, host quotas only)?
+15. **Failure of resident operations.** On device loss or an exceeded dispatch cap, should layer-0 operations on `Resident` data trap (`quota`/`device-lost` trap kind) or return `Result`? A `Result` return makes every combinator fallible and hurts the "same code" goal. *Recommendation:* trap, with `Resident` handles poisoned, and rebuild by re-`upload`.
+16. **How wide is GPU eligibility in v1?** Excluding trap-capable ops and `filter` keeps integer results identical but may leave much real code CPU-only. The v1 choice is to *widen the proof scope* (affine indices, `localId`/`@shared` tiles and shaped views, 4.6.2) rather than weaken the gates, so GEMM, conv2d and attention remain on the GPU executor. Data-dependent gathers (`xs[idx[i]]`) stay CPU-only. Measure the eligible fraction on the 8.3d corpus before adding a flag-plus-deferred-trap channel (gathers) or a scan for `filter`.
+17. **May the executor differ between runs?** The policy is deterministic for fixed types, tier, profile and target, but the *host tier* (GPU present or not) differs between machines, so low-order float bits can differ between a laptop and a server (within the 4.5 contract). Acceptable by default, with `safety` pinning float code to the CPU, or should the default profile also pin it unless the program opts in to `@approx`? *Recommendation:* accept; record the executor in the report and the run log.
+18. **Which layer-0 vocabulary is core?** The combinators with defined parallel semantics (`map`, `zip`, `reduce`, `reduceSum`, `parallel for`, `filter`, image/grid stencils) need a spec pass in `grammar.md`/stdlib before 8.3b. Which are in v1?
 
 ---
 
