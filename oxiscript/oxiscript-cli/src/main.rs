@@ -2,8 +2,8 @@
 //!
 //! Exit codes (all commands): `0` success, `1` findings (errors reported,
 //! `fmt --check` would change a file), `2` usage / I/O / configuration error,
-//! `3` the command exists but needs a part of the toolchain that is not merged
-//! yet (`run`, `build`).
+//! `3` reserved (it used to mean "not merged yet"; never reused), `4` the program
+//! ran and stopped on a trap (`run`: overflow, bounds, out of fuel, ...).
 #![allow(
     clippy::too_many_lines,
     clippy::needless_pass_by_value,
@@ -76,10 +76,20 @@ enum Cmd {
         #[arg(long, default_value = "blink")]
         template: String,
     },
-    /// Compile and run a program (needs 8.L lowering).
-    Run { paths: Vec<PathBuf> },
-    /// Compile a program to Wasm (needs 8.L lowering).
-    Build { paths: Vec<PathBuf> },
+    /// Compile and run a program (default entry: main.oxs). `host:log` prints to stdout (warn and error to stderr).
+    Run {
+        file: Option<PathBuf>,
+        /// Instruction budget for the whole run (default 10000000); running out ends the program with exit 4.
+        #[arg(long, value_name = "N")]
+        fuel: Option<u64>,
+    },
+    /// Compile a program to a Wasm module (default entry: main.oxs; default output: <name>.wasm).
+    Build {
+        file: Option<PathBuf>,
+        /// Output file.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -89,8 +99,8 @@ fn main() {
         Cmd::Fmt { paths, check, stdin } => fmtcmd::run(&fmtcmd::Args { paths, check, stdin }),
         Cmd::Explain { code } => explain::run(&code),
         Cmd::New { name, template } => newcmd::run(&name, &template),
-        Cmd::Run { paths } => runcmd::run("run", &paths),
-        Cmd::Build { paths } => runcmd::run("build", &paths),
+        Cmd::Run { file, fuel } => runcmd::run(&runcmd::Args { file, fuel, output: None, build: false }),
+        Cmd::Build { file, output } => runcmd::run(&runcmd::Args { file, fuel: None, output, build: true }),
     };
     std::process::exit(code);
 }

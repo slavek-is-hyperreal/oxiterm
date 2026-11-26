@@ -245,28 +245,39 @@ function widget(site, lang, id, b, ctx) {
   }
 }
 
+// Run / Check / Format feedback texts of the playground (i18n keys under oxiscript.playground.*).
+const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
+  ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
+
 function playgroundHtml(site, lang, ctx) {
   const labels = {};
-  for (const k of ['check', 'format', 'run', 'runSoon', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes', 'staleFix', 'fixFailed', 'tooLargeTitle', 'tooLarge', 'discardAsk', 'discard', 'keepEditing']) labels[k] = T(lang, `oxiscript.playground.${k}`);
+  for (const k of ['check', 'format', 'run', 'examples', 'apply', 'explain', 'noProblems', 'problems', 'loading', 'failed', 'close', 'line', 'formatFailed', 'formatted', 'sourceLabel', 'warning', 'error', 'fixes', 'staleFix', 'fixFailed', 'tooLargeTitle', 'tooLarge', 'discardAsk', 'discard', 'keepEditing', ...PG_RUN_KEYS]) labels[k] = T(lang, `oxiscript.playground.${k}`);
   const compilerEnglish = T(lang, 'oxiscript.playground.compilerEnglish'); // empty on the English page
   const examples = fs.readdirSync(path.join(HERE, 'oxiscript/examples')).filter((f) => f.endsWith('.oxs')).sort().map((f) => ({ id: f.replace(/\.oxs$/, ''), src: read(path.join(HERE, 'oxiscript/examples', f)) }));
   const json = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
-  return `<section class="pg" id="playground" data-wasm="${ctx.playJs}" aria-labelledby="pg-h">
+  return `<section class="pg" id="playground" data-wasm="${ctx.playJs}" data-runner="${ctx.runnerJs}" data-worker="${ctx.workerJs}" aria-labelledby="pg-h">
 <h2 id="pg-h">${esc(T(lang, 'oxiscript.playground.title'))}</h2>
 <div class="pg-bar">
 <label>${esc(labels.examples)} <select id="pg-ex"></select></label>
 <button type="button" class="btn" id="pg-check" disabled>${esc(labels.check)}</button>
 <button type="button" class="btn" id="pg-format" disabled>${esc(labels.format)}</button>
 <button type="button" class="btn" id="pg-run" disabled aria-describedby="pg-run-note">${esc(labels.run)}</button>
-<span class="note" id="pg-run-note">${esc(labels.runSoon)}</span>
+<button type="button" class="btn" id="pg-stop" hidden>${esc(labels.stop)}</button>
+<span class="pg-status" id="pg-status" role="status" aria-live="polite">${esc(labels.loading)}</span>
+</div>
+<p class="note" id="pg-run-note">${esc(labels.runNote)}</p>
+<p class="note" id="pg-hint" hidden></p>
+<p class="pg-confirm" id="pg-confirm" role="alert" hidden></p>
+<div class="pg-output" id="pg-output" hidden>
+<h3>${esc(labels.outputTitle)}</h3>
+<pre class="code" id="pg-out" tabindex="0"></pre>
+<p class="note" id="pg-out-note"></p>
 </div>
 <div class="pg-editor">
 <pre class="pg-gutter" id="pg-gutter" aria-hidden="true">1</pre>
 <div class="pg-pane"><div class="pg-mirror" id="pg-mirror" aria-hidden="true"></div>
 <textarea id="pg-src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" maxlength="200000" aria-label="${esc(labels.sourceLabel)}"></textarea></div>
 </div>
-<p class="pg-confirm" id="pg-confirm" role="alert" hidden></p>
-<p class="pg-status" id="pg-status" role="status">${esc(labels.loading)}</p>
 ${compilerEnglish ? `<p class="note">${esc(compilerEnglish)}</p>` : ''}
 <ul class="pg-diags" id="pg-diags"></ul>
 <div class="pg-explain" id="pg-explain" hidden></div>
@@ -524,6 +535,14 @@ function buildSite(site) {
     if (!playPkg) throw new Error('OXI_PLAY_PKG not set');
     const hash = copyBundle(playPkg, path.join(out, 'play'), ['oxiscript_playground.js', 'oxiscript_playground_bg.wasm']);
     ctx.playJs = `/play/${hash}/oxiscript_playground.js`;
+    // The runner (compiler + wasmi runtime, a few hundred KB more) is loaded by a Web Worker only when Run is first pressed.
+    const runPkg = process.env.OXI_RUN_PKG || path.join(HERE, '.build/pkg_run');
+    const rhash = copyBundle(runPkg, path.join(out, 'play'), ['oxiscript_runner.js', 'oxiscript_runner_bg.wasm']);
+    ctx.runnerJs = `/play/${rhash}/oxiscript_runner.js`;
+    const wjs = read(path.join(HERE, 'oxiscript/js/runner-worker.js'));
+    const wh = hashOf(wjs);
+    write(path.join(out, 'assets', wh, 'runner-worker.js'), wjs);
+    ctx.workerJs = `/assets/${wh}/runner-worker.js`;
     const pjs = read(path.join(HERE, 'oxiscript/js/playground.js'));
     const ph = hashOf(pjs);
     write(path.join(out, 'assets', ph, 'playground.js'), pjs);

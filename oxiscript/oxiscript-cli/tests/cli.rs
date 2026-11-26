@@ -466,22 +466,75 @@ fn new_refuses_bad_input() {
 
 // ---------------------------------------------------------------- run / build
 
+const HELLO: &str = "import { Log } from \"host:log\";\nexport function main(log: Log): void {\n  log.write(2, \"hi\");\n  log.write(4, \"bad\");\n}\n";
+
 #[test]
-fn run_and_build_check_first_then_report_not_available() {
+fn run_executes_and_reports_errors_like_check() {
     let w = tmp("run");
     // no entry
     assert_eq!(oxi(&["run"], &w, None).status.code(), Some(2));
-    std::fs::write(w.join("main.oxs"), "export function f(): i32 { return 1; }\n").unwrap();
-    for c in ["run", "build"] {
-        let o = oxi(&[c], &w, None);
-        assert_eq!(o.status.code(), Some(3));
-        assert!(text(&o).contains("available after 8.L (lowering) is merged"), "{}", text(&o));
-    }
-    // errors are reported like `check` and exit 1, not 3
+    std::fs::write(w.join("main.oxs"), HELLO).unwrap();
+    let o = oxi(&["run"], &w, None);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(String::from_utf8_lossy(&o.stdout), "hi\n");
+    assert!(String::from_utf8_lossy(&o.stderr).contains("error: bad"), "{}", text(&o));
+    // type errors are reported like `check` and exit 1
     std::fs::write(w.join("main.oxs"), "export function f(a: i32): bool { return a == 1; }\n").unwrap();
     let o = oxi(&["run"], &w, None);
     assert_eq!(o.status.code(), Some(1));
     assert!(text(&o).contains("OXS-E0005"), "{}", text(&o));
+}
+
+#[test]
+fn run_traps_exit_4_and_fuel_is_honoured() {
+    let w = tmp("runtrap");
+    let spin = "import { Log } from \"host:log\";\nexport function main(log: Log): void {\n  log.write(2, \"start\");\n  let i: i32 = 0;\n  while (true) { i = i +% 1; }\n}\n";
+    std::fs::write(w.join("main.oxs"), spin).unwrap();
+    let o = oxi(&["run", "--fuel", "50000"], &w, None);
+    assert_eq!(o.status.code(), Some(4), "{}", text(&o));
+    assert!(text(&o).contains("instruction budget"), "{}", text(&o));
+    assert!(text(&o).contains("start"), "output before the trap is kept: {}", text(&o));
+    let ovf = "import { Log } from \"host:log\";\nexport function main(log: Log): void {\n  const k = [1];\n  const i: i32 = 2147483647 + k[0];\n  log.write(2, `${i}`);\n}\n";
+    std::fs::write(w.join("main.oxs"), ovf).unwrap();
+    let o = oxi(&["run"], &w, None);
+    assert_eq!(o.status.code(), Some(4));
+    assert!(text(&o).contains("overflowed"), "{}", text(&o));
+}
+
+#[test]
+fn run_a_project_with_modules_and_needs() {
+    let w = tmp("runproj");
+    std::fs::write(w.join("oxi.toml"), "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2026\"\nneeds = [\"host:log@1\"]\n").unwrap();
+    std::fs::write(w.join("util.oxs"), "export function twice(n: i32): i32 {\n  return n * 2;\n}\n").unwrap();
+    std::fs::write(w.join("main.oxs"), "import { Log } from \"host:log\";\nimport { twice } from \"./util\";\n\nexport function main(log: Log): void {\n  log.write(2, `${twice(21)}`);\n}\n").unwrap();
+    let o = oxi(&["run"], &w, None);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert_eq!(String::from_utf8_lossy(&o.stdout), "42\n");
+    assert_eq!(oxi(&["build"], &w, None).status.code(), Some(0));
+    assert!(w.join("demo.wasm").exists(), "named after the package");
+    // a template that needs hardware: `run` says so (exit 2), `build` still works
+    assert_eq!(oxi(&["new", "blinky", "--template", "blink"], &w, None).status.code(), Some(0));
+    let o = oxi(&["run", "blinky/main.oxs"], &w, None);
+    assert_eq!(o.status.code(), Some(2), "{}", text(&o));
+    assert!(text(&o).contains("host:gpio"), "{}", text(&o));
+    assert_eq!(oxi(&["build", "blinky/main.oxs"], &w, None).status.code(), Some(0));
+}
+
+#[test]
+fn build_writes_a_wasm_module() {
+    let w = tmp("build");
+    std::fs::write(w.join("main.oxs"), HELLO).unwrap();
+    let o = oxi(&["build"], &w, None);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let bytes = std::fs::read(w.join("main.wasm")).unwrap();
+    assert_eq!(&bytes[..4], b"\0asm");
+    let o = oxi(&["build", "main.oxs", "-o", "out/x.wasm"], &w, None);
+    assert_eq!(o.status.code(), Some(2), "output directory does not exist: {}", text(&o));
+    std::fs::create_dir_all(w.join("out")).unwrap();
+    assert_eq!(oxi(&["build", "main.oxs", "-o", "out/x.wasm"], &w, None).status.code(), Some(0));
+    assert!(w.join("out/x.wasm").exists());
+    std::fs::write(w.join("main.oxs"), "export function f(a: i32): bool { return a == 1; }\n").unwrap();
+    assert_eq!(oxi(&["build"], &w, None).status.code(), Some(1));
 }
 
 // ---------------------------------------------------------------- docs: every ```oxs block passes

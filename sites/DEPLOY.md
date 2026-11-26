@@ -78,5 +78,5 @@ Not a `_headers` line: set it in the dashboard, zone `slavekm.pl`, **SSL/TLS, Ed
 
 ## What changes later
 
-- 8.L: enable the Run button (`sites/oxiscript/js/playground.js`, search `TODO(8.L)`) and add `compile`/`compile_bytes` to `oxiscript/oxiscript-playground/src/lib.rs`; no page structure changes.
+- Run is live: the page loads a second wasm bundle (`/play/<hash>/oxiscript_runner*`, built by `sites/build.sh` with the `run` feature of `oxiscript-playground`) inside a Web Worker (`/assets/<hash>/runner-worker.js`, same origin, covered by the page CSP) on the first press of Run. No CSP change was needed.
 - Latin: see above. Course lessons: add them to `sites/i18n/<lang>.json` (one file per language, no strings elsewhere).

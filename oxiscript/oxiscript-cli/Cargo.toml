@@ -13,6 +13,9 @@ path = "src/main.rs"
 oxiscript-syntax = { path = "../oxiscript-syntax" }
 oxiscript-check = { path = "../oxiscript-check" }
 oxiscript-abi = { path = "../oxiscript-abi" }
+oxiscript-lower = { path = "../oxiscript-lower" }
+# the shared compile-and-run path (same runtime and limits as the browser playground)
+oxiscript-playground = { path = "../oxiscript-playground" }
 clap = { version = "4.4", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
