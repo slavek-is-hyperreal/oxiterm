@@ -70,7 +70,7 @@ fn median_f(v: &mut [f64]) -> f64 {
     crate::stats::median(v)
 }
 
-/// Compile the OxiScript source `reps` times; returns the wasm and the compile times (ms).
+/// Compile the `OxiScript` source `reps` times; returns the wasm and the compile times (ms).
 pub fn compile_oxs(id: &str, reps: usize) -> Result<(Vec<u8>, Vec<f64>), String> {
     let src = workloads::oxs_source(id);
     let mut wasm = Vec::new();
@@ -93,17 +93,14 @@ fn which(cmd: &str, arg: &str) -> bool {
 }
 
 fn child_cmd(cfg: &Config, program: &str, args: Vec<String>) -> Command {
-    match cfg.pin_core {
-        Some(c) => {
-            let mut cmd = Command::new("taskset");
-            cmd.arg("-c").arg(c.to_string()).arg(program).args(args);
-            cmd
-        }
-        None => {
-            let mut cmd = Command::new(program);
-            cmd.args(args);
-            cmd
-        }
+    if let Some(c) = cfg.pin_core {
+        let mut cmd = Command::new("taskset");
+        cmd.arg("-c").arg(c.to_string()).arg(program).args(args);
+        cmd
+    } else {
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        cmd
     }
 }
 
@@ -178,7 +175,7 @@ fn gcc_build(w: &Workload, dir: &Path) -> Result<(PathBuf, f64, u64), String> {
         }
         best = best.min(t.elapsed().as_secs_f64() * 1e3);
     }
-    let size = std::fs::metadata(&bin).map(|m| m.len()).unwrap_or(0);
+    let size = std::fs::metadata(&bin).map_or(0, |m| m.len());
     Ok((bin, best, size))
 }
 
@@ -186,7 +183,7 @@ fn gcc_build(w: &Workload, dir: &Path) -> Result<(PathBuf, f64, u64), String> {
 pub fn run(cfg: &Config) -> Result<usize, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(cfg.out.join("artifacts")).map_err(|e| e.to_string())?;
-    let tmp = std::env::var("TMPDIR").map(PathBuf::from).unwrap_or_else(|_| cfg.out.join("artifacts"));
+    let tmp = std::env::var("TMPDIR").map_or_else(|_| cfg.out.join("artifacts"), PathBuf::from);
     let cdir = tmp.join("oxiperf-c");
     std::fs::create_dir_all(&cdir).map_err(|e| e.to_string())?;
 
@@ -223,7 +220,7 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
         pinned_core: cfg.pin_core,
         engines: &notes,
     };
-    let mut manifest = machine::build_manifest(&info, machine::snapshot());
+    let mut manifest = machine::build_manifest(&info, &machine::snapshot());
     machine::validate_manifest(&manifest)?;
     write_json(&manifest_path, &manifest)?; // immutable-before-measurement copy; `end` is filled in afterwards
 
@@ -247,7 +244,7 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
             emit(json!({ "kind": "artifact", "benchmark": w.id, "engine": "c-gcc", "artifact": "executable", "artifact_bytes": size, "compile_ms_median": ms, "compile_note": "gcc -O2, best of 3, includes link; size of the unstripped executable" }))?;
             c_bin = Some(bin);
         }
-        let js = std::fs::metadata(workloads::suite_file(w.id, "main.js")).map(|m| m.len()).unwrap_or(0);
+        let js = std::fs::metadata(workloads::suite_file(w.id, "main.js")).map_or(0, |m| m.len());
         emit(json!({ "kind": "artifact", "benchmark": w.id, "engine": "js-node", "artifact": "source", "artifact_bytes": js, "compile_note": "no ahead-of-time step; V8 compiles at load" }))?;
         arts.push((w, Artifacts { wasm: Some(path), c_bin }));
     }
@@ -294,34 +291,31 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
 
     // Phase 1: dimensioning. A pilot per cell (workload x engine); the counts are computed from its
     // variance components and cost, then frozen (R21) before any measured run.
-    let mut plans: std::collections::BTreeMap<(usize, usize), (usize, usize)> = Default::default();
+    let mut plans: std::collections::BTreeMap<(usize, usize), (usize, usize)> = std::collections::BTreeMap::default();
     let mut plan_cells: Vec<Value> = vec![];
     for (wi, (w, art)) in arts.iter().enumerate() {
         for (ei, e) in engines.iter().enumerate() {
             if *e == Engine::C && art.c_bin.is_none() {
                 continue;
             }
-            let cell = match cfg.fixed {
-                Some((inv, it)) => (inv, it),
-                None => {
-                    let mut groups: Vec<Vec<f64>> = vec![];
-                    let mut costs: Vec<f64> = vec![];
-                    for p in 0..cfg.pilot_invocations {
-                        if let Some(r) = one(&mut emit, "pilot", p, wi, w, art, *e, cfg.warmup, cfg.pilot_iters)? {
-                            if r["valid"] == json!(true) {
-                                let its: Vec<f64> = r["iter_ns"].as_array().unwrap().iter().filter_map(Value::as_f64).collect();
-                                let reps = r["inner_reps"].as_f64().unwrap_or(1.0);
-                                let timed = (cfg.warmup + its.len()) as f64 * reps * crate::stats::mean(&its);
-                                costs.push((r["process_ms"].as_f64().unwrap_or(0.0) * 1e6 - timed).max(1e5));
-                                groups.push(its);
-                            }
+            let cell = if let Some((inv, it)) = cfg.fixed { (inv, it) } else {
+                let mut groups: Vec<Vec<f64>> = vec![];
+                let mut costs: Vec<f64> = vec![];
+                for p in 0..cfg.pilot_invocations {
+                    if let Some(r) = one(&mut emit, "pilot", p, wi, w, art, *e, cfg.warmup, cfg.pilot_iters)? {
+                        if r["valid"] == json!(true) {
+                            let its: Vec<f64> = r["iter_ns"].as_array().unwrap().iter().filter_map(Value::as_f64).collect();
+                            let reps = r["inner_reps"].as_f64().unwrap_or(1.0);
+                            let timed = (cfg.warmup + its.len()) as f64 * reps * crate::stats::mean(&its);
+                            costs.push((r["process_ms"].as_f64().unwrap_or(0.0) * 1e6 - timed).max(1e5));
+                            groups.push(its);
                         }
                     }
-                    if groups.len() < 2 {
-                        (cfg.bounds.min_invocations, cfg.bounds.min_iters)
-                    } else {
-                        crate::stats::plan_counts(&groups, crate::stats::median(&costs), cfg.bounds)
-                    }
+                }
+                if groups.len() < 2 {
+                    (cfg.bounds.min_invocations, cfg.bounds.min_iters)
+                } else {
+                    crate::stats::plan_counts(&groups, crate::stats::median(&costs), cfg.bounds)
                 }
             };
             plans.insert((wi, ei), cell);
@@ -329,7 +323,7 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
             emit(json!({ "kind": "plan", "benchmark": w.id, "engine": e.id(), "invocations": cell.0, "iterations_per_invocation": cell.1, "derived_from_pilot": cfg.fixed.is_none() }))?;
         }
     }
-    manifest["plan"] = plan_json(cfg, Some(plan_cells));
+    manifest["plan"] = plan_json(cfg, Some(&plan_cells));
     write_json(&manifest_path, &manifest)?; // the frozen plan, before the measured phase
 
     // Phase 2: measured runs, interleaved round-robin across engines (R13).
@@ -349,7 +343,6 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
         }
     }
 
-    drop(one);
     // Checksums: every executor of a workload must agree (R01, section 4.3).
     let mut mismatches = 0usize;
     for (id, rs) in &results {
@@ -362,7 +355,6 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
             }
         }
     }
-    drop(emit);
     drop(raw);
     manifest["host"]["end"] = machine::snapshot();
     manifest["invalid_invocations"] = json!(invalid);
@@ -378,7 +370,7 @@ pub fn write_json(path: &Path, v: &Value) -> Result<(), String> {
     std::fs::write(path, serde_json::to_string_pretty(v).unwrap() + "\n").map_err(|e| format!("{}: {e}", path.display()))
 }
 
-fn plan_json(cfg: &Config, cells: Option<Vec<Value>>) -> Value {
+fn plan_json(cfg: &Config, cells: Option<&[Value]>) -> Value {
     let b = cfg.bounds;
     json!({
         "description": match cfg.fixed {

@@ -2,20 +2,28 @@
 //! (`cargo` release profile: opt-level 3).
 
 #[path = "../../../bench/oxiperf/suites/awfy_mandelbrot/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod awfy_mandelbrot;
 #[path = "../../../bench/oxiperf/suites/awfy_sieve/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod awfy_sieve;
 #[path = "../../../bench/oxiperf/suites/sort/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod sort;
 #[path = "../../../bench/oxiperf/suites/map_set/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod map_set;
 #[path = "../../../bench/oxiperf/suites/string_template/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod string_template;
 #[path = "../../../bench/oxiperf/suites/json_tokenize/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod json_tokenize;
 #[path = "../../../bench/oxiperf/suites/tree/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod tree;
 #[path = "../../../bench/oxiperf/suites/matmul/main.rs"]
+#[allow(clippy::pedantic, clippy::nursery)] // benchmark twin: kept as written, identical across languages
 mod matmul;
 
 pub fn run(id: &str, n: i32) -> Option<u32> {

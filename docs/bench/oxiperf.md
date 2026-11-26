@@ -8,7 +8,7 @@ Method: [cross-language-benchmark-methodology.md](../research/cross-language-ben
 
 ```bash
 export TMPDIR=/path/with/space       # C executables and smoke-test output go here
-cargo run -p oxiscript-bench --release -- run
+cargo run -p oxiscript-bench --release --features wasmtime -- run   # without --features wasmtime the Wasmtime rows are reported as unavailable
 ```
 
 Writes `bench/oxiperf/results/<date>-<cpu>/` with:

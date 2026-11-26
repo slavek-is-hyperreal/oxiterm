@@ -45,7 +45,7 @@ pub fn run(n: i32) -> u32 {
         } else if (48..=57).contains(&c) {
             let mut v: u32 = 0;
             while i < len && (48..=57).contains(&buf[i]) {
-                v = v.wrapping_mul(10).wrapping_add((buf[i] - 48) as u32);
+                v = v.wrapping_mul(10).wrapping_add(u32::from(buf[i] - 48));
                 i += 1;
             }
             h = h.wrapping_mul(31).wrapping_add(v);
@@ -60,7 +60,7 @@ pub fn run(n: i32) -> u32 {
             tokens = tokens.wrapping_add(1);
         } else {
             if matches!(c, 123 | 125 | 91 | 93 | 44 | 58) {
-                h = h.wrapping_mul(31).wrapping_add(c as u32);
+                h = h.wrapping_mul(31).wrapping_add(u32::from(c));
                 tokens = tokens.wrapping_add(1);
             }
             i += 1;

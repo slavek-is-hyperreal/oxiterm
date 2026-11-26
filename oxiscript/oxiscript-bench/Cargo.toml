@@ -11,8 +11,8 @@ name = "oxiperf"
 path = "src/main.rs"
 
 [features]
-default = ["wasmtime"]
-# Wasmtime (Cranelift) executor. `--no-default-features` drops it (and the long Cranelift build);
+default = []
+# Wasmtime (Cranelift) executor, opt-in (`--features wasmtime`): it adds a ~6 min Cranelift build to any workspace build;
 # the harness then reports the Wasmtime rows as unavailable.
 wasmtime = ["dep:wasmtime"]
 

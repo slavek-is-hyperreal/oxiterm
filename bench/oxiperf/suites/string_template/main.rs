@@ -9,7 +9,7 @@ pub fn run(n: i32) -> u32 {
         let d = x - y;
         let s = format!("row #{i}: {label} ({x}, {y}) delta={d}");
         for b in s.bytes() {
-            h = h.wrapping_mul(31).wrapping_add(b as u32);
+            h = h.wrapping_mul(31).wrapping_add(u32::from(b));
         }
         total = total.wrapping_add(s.len() as u32);
     }

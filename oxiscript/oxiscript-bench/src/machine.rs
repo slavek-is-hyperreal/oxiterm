@@ -32,7 +32,7 @@ fn cpu_model() -> String {
 pub fn machine_slug() -> String {
     let m = cpu_model();
     let tok = m.split_whitespace().find(|t| t.chars().any(|c| c.is_ascii_digit()) && t.contains('-') && !t.starts_with("(R)"));
-    let s = tok.map(str::to_string).unwrap_or_else(|| m.replace(' ', "-"));
+    let s = tok.map_or_else(|| m.replace(' ', "-"), str::to_string);
     s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>().to_lowercase()
 }
 
@@ -88,7 +88,7 @@ pub struct RunInfo<'a> {
     pub engines: &'a [(String, String)], // (engine id, availability note)
 }
 
-pub fn build_manifest(info: &RunInfo, start: Value) -> Value {
+pub fn build_manifest(info: &RunInfo, start: &Value) -> Value {
     let governor = read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
     let turbo_disabled = read("/sys/devices/system/cpu/intel_pstate/no_turbo").map(|v| v == "1");
     // Without root the governor cannot be set; wall times from such a run are not publishable (R13).
@@ -111,7 +111,7 @@ pub fn build_manifest(info: &RunInfo, start: Value) -> Value {
         "host": {
             "arch": std::env::consts::ARCH,
             "cpu_model": cpu_model(),
-            "cpus_logical": std::thread::available_parallelism().map_or(0, |n| n.get()),
+            "cpus_logical": std::thread::available_parallelism().map_or(0, std::num::NonZero::get),
             "ram_total_mib": mem_total_mib(),
             "os": read("/proc/version").map(|v| v.split(" (").next().unwrap_or("").to_string()),
             "governor": governor,
@@ -119,7 +119,7 @@ pub fn build_manifest(info: &RunInfo, start: Value) -> Value {
             "aslr_mode": read("/proc/sys/kernel/randomize_va_space").and_then(|v| v.parse::<u32>().ok()),
             "pinned_core": info.pinned_core,
             "uncontrolled_dvfs": uncontrolled,
-            "start": start,
+            "start": start.clone(),
             "end": Value::Null,
         },
         "toolchains": {
@@ -174,7 +174,7 @@ mod tests {
         let engines = vec![("rust-native".to_string(), "ok".to_string())];
         build_manifest(
             &RunInfo { run_id: "t", tier: "dev", runtime_mode: "stub", plan: json!({ "description": "test" }), pinned_core: None, engines: &engines },
-            snapshot(),
+            &snapshot(),
         )
     }
 
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(m["publishable"], json!(false));
         assert_eq!(m["host"]["uncontrolled_dvfs"], json!(true)); // no pinned core in this sample
         assert!(m["host"]["cpu_model"].as_str().unwrap().len() > 2);
-        assert_eq!(m["toolchains"]["w2c2"]["status"].as_str().unwrap().starts_with("TODO"), true);
+        assert!(m["toolchains"]["w2c2"]["status"].as_str().unwrap().starts_with("TODO"));
     }
 
     #[test]

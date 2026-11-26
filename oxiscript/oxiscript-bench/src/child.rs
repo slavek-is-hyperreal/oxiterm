@@ -159,10 +159,10 @@ impl Wt {
 impl Runner for Wt {
     fn prepare(&mut self) -> Result<(), String> {
         let mut store = wasmtime::Store::new(&self.engine, ());
-        let inst = wasmtime::Instance::new(&mut store, &self.module, &[]).map_err(|e| format!("instantiate: {e}"))?;
-        let init = inst.get_typed_func::<(), ()>(&mut store, "oxi_init").map_err(|e| format!("oxi_init: {e}"))?;
-        init.call(&mut store, ()).map_err(|e| format!("oxi_init call: {e}"))?;
-        self.cur = Some((store, inst));
+        let instance = wasmtime::Instance::new(&mut store, &self.module, &[]).map_err(|e| format!("instantiate: {e}"))?;
+        let init_fn = instance.get_typed_func::<(), ()>(&mut store, "oxi_init").map_err(|e| format!("oxi_init: {e}"))?;
+        init_fn.call(&mut store, ()).map_err(|e| format!("oxi_init call: {e}"))?;
+        self.cur = Some((store, instance));
         Ok(())
     }
     fn call(&mut self) -> Result<u32, String> {

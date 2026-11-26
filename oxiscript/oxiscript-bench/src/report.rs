@@ -89,7 +89,7 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
                     }
                     continue;
                 }
-                let its: Vec<f64> = r["iter_ns"].as_array().map(|a| a.iter().filter_map(Value::as_f64).collect()).unwrap_or_default();
+                let its: Vec<f64> = r["iter_ns"].as_array().map_or_else(Vec::new, |a| a.iter().filter_map(Value::as_f64).collect());
                 if its.is_empty() {
                     continue;
                 }
@@ -142,7 +142,7 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
             "median_ms": stats::median(&pooled) / 1e6, "ci95_ms": [lo / 1e6, hi / 1e6],
             "iqr_ms": [stats::percentile(&pooled, 25.0) / 1e6, stats::percentile(&pooled, 75.0) / 1e6],
             "p95_ms": stats::percentile(&pooled, 95.0) / 1e6,
-            "min_ms": pooled.iter().cloned().fold(f64::MAX, f64::min) / 1e6, "max_ms": pooled.iter().cloned().fold(0.0, f64::max) / 1e6,
+            "min_ms": pooled.iter().copied().fold(f64::MAX, f64::min) / 1e6, "max_ms": pooled.iter().copied().fold(0.0, f64::max) / 1e6,
             "mean_ms": stats::mean(&pooled) / 1e6, "cv": stats::cv(&pooled),
             "warmup_status": statuses.join("+"),
             "inner_reps_median": med(inner.get(key).map_or(&[][..], |v| v)),
@@ -168,7 +168,7 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
     }
     let geomeans: Vec<Value> = per_engine
         .iter()
-        .map(|((o, e), v)| json!({ "origin": o, "engine": e, "benchmarks": v.len(), "geomean": stats::geomean(v), "min": v.iter().cloned().fold(f64::MAX, f64::min), "max": v.iter().cloned().fold(0.0, f64::max) }))
+        .map(|((o, e), v)| json!({ "origin": o, "engine": e, "benchmarks": v.len(), "geomean": stats::geomean(v), "min": v.iter().copied().fold(f64::MAX, f64::min), "max": v.iter().copied().fold(0.0, f64::max) }))
         .collect();
 
     let digests_ok = digest.values().all(|d| d["digest_ok"] == json!(true)) && !digest.is_empty();
@@ -241,7 +241,7 @@ pub fn render(m: &Value, s: &Value) -> String {
     let _ = writeln!(o, "\n`origin awfy` = Are We Fast Yet: the JavaScript twin is the **upstream file, vendored verbatim at a pinned commit** (`upstream/PIN`); the Rust, C and OxiScript twins are our ports of the same algorithm because no upstream port exists (so they are not independent of the OxiScript author). `origin own` = our own workload, every twin written here, **reported separately and never a headline**. `base` = identical algorithm in every language (sources in `bench/oxiperf/suites/<id>/`); `stdlib` = each language's built-in hash map/set (the C row is absent: C has none). Every executor returns a u32 checksum and all must agree.\n## Tools\n\n| Tool | Version | Flags |\n|---|---|---|");
     for (name, t) in m["toolchains"].as_object().into_iter().flatten() {
         let ver = ["version", "crate_version", "status"].iter().find_map(|k| t.get(*k).filter(|v| !v.is_null())).map_or("-".to_string(), |v| v.to_string().trim_matches('"').to_string());
-        let _ = writeln!(o, "| {name} | {ver} | {} |", t.get("flags").map_or("".to_string(), |v| v.to_string().trim_matches('"').to_string()));
+        let _ = writeln!(o, "| {name} | {ver} | {} |", t.get("flags").map_or(String::new(), |v| v.to_string().trim_matches('"').to_string()));
     }
     let _ = writeln!(o, "\n## Wall time (warm, steady state)\n");
     let _ = writeln!(o, "Median over all measured iterations of all invocations, 95% hierarchical bootstrap interval of the median ({} resamples), p95, and the ratio to `{BASELINE}` with its interval. `verdict` follows R18: a difference counts only if the interval excludes 1.0 and the point estimate is at least {:.0}% away. `n` is the problem size. Fuel is wasmi's deterministic metering and is **not** comparable across engines.\n", BOOTSTRAP_RESAMPLES, MPES * 100.0);

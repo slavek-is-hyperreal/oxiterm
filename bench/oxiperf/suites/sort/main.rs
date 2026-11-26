@@ -34,7 +34,7 @@ pub fn run(n: i32) -> u32 {
     let mut s: u32 = 2463534242;
     let mut a = vec![0i32; n];
     let mut tmp = vec![0i32; n];
-    for x in a.iter_mut() {
+    for x in &mut a {
         s ^= s << 13;
         s ^= s >> 17;
         s ^= s << 5;

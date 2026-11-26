@@ -24,7 +24,7 @@ impl Track {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Origin {
     /// Are We Fast Yet: the JavaScript twin is the UPSTREAM file, vendored verbatim and pinned.
-    /// The Rust, C and OxiScript twins are our ports (no upstream exists). Headline group.
+    /// The Rust, C and `OxiScript` twins are our ports (no upstream exists). Headline group.
     Awfy,
     /// Our own workload, all twins written here. Reported separately, never a headline.
     Own,

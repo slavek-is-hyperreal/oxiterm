@@ -1,4 +1,4 @@
-//! `oxiperf`: the OxiScript performance benchmark harness (stage 8.Bench, OxiPerf v0).
+//! `oxiperf`: the `OxiScript` performance benchmark harness (stage 8.Bench, `OxiPerf` v0).
 //!
 //! ```text
 //! oxiperf run [--out DIR] [--quick] [--invocations N --iters N: fixed plan instead of a derived one] [--max-invocations N] [--max-iters N] [--warmup N] [--min-iter-ms MS]
@@ -6,6 +6,10 @@
 //! oxiperf analyze --input DIR        # regenerate summary.json and report.md from raw.jsonl only
 //! oxiperf exec --engine wasmi|wasmtime|native ...   # internal: one measured child process
 //! ```
+
+// Statistics and benchmark plumbing: single-letter names follow the maths, the report and driver
+// functions are long straight-line code, and measurements are cast between integer and float types.
+#![allow(clippy::many_single_char_names, clippy::too_many_lines)]
 
 mod child;
 mod driver;
@@ -29,7 +33,7 @@ fn num<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> Result<
 }
 
 fn list(args: &[String], name: &str) -> Vec<String> {
-    arg(args, name).map(|v| v.split(',').map(str::to_string).collect()).unwrap_or_default()
+    arg(args, name).map_or_else(Vec::new, |v| v.split(',').map(str::to_string).collect())
 }
 
 fn today() -> String {
@@ -98,7 +102,7 @@ fn real_main() -> Result<i32, String> {
             };
             let bad = driver::run(&cfg)?;
             println!("report: {}/report.md", cfg.out.display());
-            Ok(if bad == 0 { 0 } else { 1 })
+            Ok(i32::from(bad != 0))
         }
         _ => {
             eprintln!("usage: oxiperf run [--quick] [--out DIR] [...] | oxiperf analyze --input DIR");

@@ -2,10 +2,10 @@ pub fn run(n: i32) -> u32 {
     let size = n;
     let (mut sum, mut byte_acc, mut bit_num) = (0i32, 0i32, 0i32);
     for y in 0..size {
-        let ci = ((2.0 * y as f64) / size as f64) - 1.0;
+        let ci = ((2.0 * f64::from(y)) / f64::from(size)) - 1.0;
         for x in 0..size {
             let (mut zrzr, mut zi, mut zizi) = (0.0f64, 0.0f64, 0.0f64);
-            let cr = ((2.0 * x as f64) / size as f64) - 1.5;
+            let cr = ((2.0 * f64::from(x)) / f64::from(size)) - 1.5;
             let (mut z, mut not_done, mut escape) = (0, true, 0i32);
             while not_done && z < 50 {
                 let zr = zrzr - zizi + cr;

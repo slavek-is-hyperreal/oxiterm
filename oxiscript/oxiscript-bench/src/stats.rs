@@ -1,4 +1,4 @@
-//! Statistics for OxiPerf (methodology R16): median, percentiles, hierarchical bootstrap
+//! Statistics for `OxiPerf` (methodology R16): median, percentiles, hierarchical bootstrap
 //! (resample invocations, then iterations inside each chosen invocation) with a seeded PRNG,
 //! so the same raw data always gives the same interval.
 
@@ -183,6 +183,7 @@ pub fn plan_counts(pilot: &[Vec<f64>], cost_invocation_ns: f64, b: PlanBounds) -
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact values by construction (constants, deterministic seeds)
 mod tests {
     use super::*;
 
@@ -260,9 +261,9 @@ mod tests {
     #[test]
     fn drift_classification() {
         assert_eq!(drift_status(&[1.0; 12]), "steady");
-        let slowing: Vec<f64> = (0..12).map(|i| 1.0 + i as f64 * 0.1).collect();
+        let slowing: Vec<f64> = (0..12).map(|i| 1.0 + f64::from(i) * 0.1).collect();
         assert_eq!(drift_status(&slowing), "slowdown");
-        let warming: Vec<f64> = (0..12).map(|i| 2.0 - i as f64 * 0.1).collect();
+        let warming: Vec<f64> = (0..12).map(|i| 2.0 - f64::from(i) * 0.1).collect();
         assert_eq!(drift_status(&warming), "speedup");
         assert_eq!(drift_status(&[1.0, 2.0]), "too_few_iterations");
     }
