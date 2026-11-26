@@ -20,7 +20,7 @@ fn is_reserved_wasm_export(n: &str) -> bool {
     matches!(n, "main" | "memory" | "__heap_base" | "__data_end") || n.starts_with("oxi_") || n.starts_with("cb:")
 }
 
-const KNOWN_ATTRS: [&str; 7] = ["expect", "profile", "allow", "inline", "noinline", "export_name", "host"];
+const KNOWN_ATTRS: [&str; 8] = ["expect", "profile", "allow", "inline", "noinline", "export_name", "host", "intrinsic"];
 
 impl<'a> Checker<'a> {
     // ---- environments -----------------------------------------------------
@@ -169,6 +169,7 @@ impl<'a> Checker<'a> {
         }
         self.check_attrs(&item.attrs, "item", item.id);
         self.check_host_placement(item, local);
+        self.check_intrinsic_placement(item, local);
         let id = item.id;
         let sp = item.span;
         let d = match &item.kind {
@@ -312,6 +313,28 @@ impl<'a> Checker<'a> {
         self.err("OXS-E0121", a.span, &[("detail", detail)]);
     }
 
+    /// `@intrinsic("...")` is legal only on top-level non-generic functions in bundled std modules.
+    fn check_intrinsic_placement(&mut self, item: &'a Item, local: bool) {
+        let Some(a) = item.attrs.iter().find(|a| !a.inner && a.name.name == "intrinsic") else { return };
+        if !self.mods[self.cm].is_std {
+            // already reported by check_attrs
+            return;
+        }
+        let detail = match &item.kind {
+            ItemKind::Fn(f) => {
+                if local {
+                    "`@intrinsic` cannot be applied to a nested function"
+                } else if !f.type_params.is_empty() {
+                    "`@intrinsic` cannot be applied to a generic function"
+                } else {
+                    return;
+                }
+            }
+            _ => "`@intrinsic` applies only to top-level functions in the standard library",
+        };
+        self.err("OXS-E0123", a.span, &[("detail", detail)]);
+    }
+
     pub fn check_attrs(&mut self, attrs: &'a [Attribute], what: &str, node: NodeId) {
         let mut rec: Vec<(String, Vec<String>)> = Vec::new();
         for a in attrs {
@@ -382,6 +405,17 @@ impl<'a> Checker<'a> {
                 "inline" | "noinline" => {
                     if !a.args.is_empty() {
                         self.err("OXS-E0123", a.span, &[("detail", &format!("`@{n}` takes no arguments"))]);
+                    }
+                }
+                "intrinsic" => {
+                    if !self.mods[self.cm].is_std {
+                        self.err("OXS-E0123", a.span, &[("detail", "`@intrinsic` is reserved for the bundled standard library and cannot be used in user code")]);
+                    } else if what != "item" {
+                        self.err("OXS-E0123", a.span, &[("detail", "`@intrinsic` applies only to top-level functions in the standard library")]);
+                    } else if a.args.len() != 1 || !matches!(&a.args[0].value, AttrValue::Lit(l) if matches!(l.kind, LitKind::Str(_))) {
+                        self.err("OXS-E0123", a.span, &[("detail", "`@intrinsic` takes one string naming the intrinsic: `@intrinsic(\"sqrt\")`")]);
+                    } else if !crate::std_lib::is_known_intrinsic(&args[0]) {
+                        self.err("OXS-E0123", a.span, &[("detail", &format!("unknown compiler intrinsic `{}`", args[0]))]);
                     }
                 }
                 _ => {}

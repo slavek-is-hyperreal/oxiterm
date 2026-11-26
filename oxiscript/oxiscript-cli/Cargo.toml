@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-cli"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "`oxi`: the OxiScript command-line tool (check, fmt, explain, new, run, build)."

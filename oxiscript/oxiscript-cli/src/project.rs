@@ -175,7 +175,7 @@ pub fn write_atomic_bytes(path: &Path, data: &[u8], create: bool) -> Result<(), 
         Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
         _ => PathBuf::from("."),
     };
-    let fname = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let fname = path.file_name().map_or_else(Default::default, |n| n.to_string_lossy().into_owned());
     let tmp = dir.join(format!(".{fname}.oxi-tmp-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
     let res = (|| -> std::io::Result<()> {
         use std::io::Write;
@@ -413,6 +413,13 @@ impl ModuleLoader for FsLoader {
         }
         Some((name, src))
     }
+
+    fn on_std_loaded(&mut self, name: &str, src: &str) {
+        if !self.names.iter().any(|n| n == name) {
+            self.names.push(name.to_string());
+            self.files.push(SourceFile::new(name.to_string(), src.to_string()));
+        }
+    }
 }
 
 /// The result of checking one entry file.
@@ -440,7 +447,7 @@ fn entry_loader(entry: &Entry<'_>) -> (FsLoader, String) {
         cwd.join(entry.path)
     };
     let base = find_root(entry.path)
-        .unwrap_or_else(|| abs.parent().map(Path::to_path_buf).unwrap_or_default());
+        .unwrap_or_else(|| abs.parent().map_or_else(Default::default, Path::to_path_buf));
     let abs = std::fs::canonicalize(&abs).unwrap_or(abs);
     let base = std::fs::canonicalize(&base).unwrap_or(base);
     let name = abs

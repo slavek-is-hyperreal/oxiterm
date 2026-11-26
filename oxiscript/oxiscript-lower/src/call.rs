@@ -6,7 +6,7 @@ use crate::fb::{tgt, Fb};
 use crate::fx::{strip, AssignScan, Fx, FnKind, Key, Opnd, Slot};
 use oxiscript_abi::idl::{IdlFn, IdlRet, IdlTy};
 use oxiscript_check::{Builtin, CallInfo, DefId, DefKind, ParamId, Res, Ty, TyKind};
-use oxiscript_ir::{CmpOp, Const, Field, FieldRef, Op, Ovf, Terminator, Ty as It, TypeRef, ValueId};
+use oxiscript_ir::{BinOp as IrBinOp, CmpOp, Const, Field, FieldRef, Op, Ovf, Terminator, Ty as It, TypeRef, UnOp as IrUnOp, ValueId};
 use oxiscript_syntax::visit::Visitor;
 use oxiscript_syntax::{ArrowBody, ArrowFn, Expr, ExprKind};
 
@@ -95,6 +95,17 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
     }
 
     fn user_call(&mut self, e: &Expr, d: DefId, recv: Option<Opnd>, args: &[Expr]) -> Opnd {
+        if recv.is_none() {
+            if let Some(iname) = self.lw.ck.intrinsic_of(d).map(str::to_string) {
+                let sig = self.lw.ck.fns[&d].clone();
+                let ptys: Vec<Ty> = sig.params.iter().map(|p| p.ty).collect();
+                let ops = self.eval_args(e, Some(d), args, &ptys, &[]);
+                let argv: Vec<ValueId> = ops.iter().filter_map(|o| o.v).collect();
+                let r = self.emit_intrinsic(&iname, &argv, sig.ret, Some(e.span));
+                self.finish_args(&ops);
+                return r;
+            }
+        }
         let (sym, ptys, ret, map, _) = self.callee_info(e, d);
         let ops = self.eval_args(e, Some(d), args, &ptys, &map);
         let mut argv: Vec<ValueId> = recv.iter().filter_map(|r| r.v).collect();
@@ -102,6 +113,38 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         let r = self.emit_call_result(sym, argv, ret);
         self.finish_args(&ops);
         r
+    }
+
+    /// Lower a bundled std `@intrinsic("...")` call directly to a single OxiIR instruction.
+    pub fn emit_intrinsic(&mut self, name: &str, argv: &[ValueId], ret: Ty, span: Option<oxiscript_syntax::Span>) -> Opnd {
+        let Some(rt) = self.lw.repr(ret) else {
+            self.lw.unsupported(&format!("intrinsic `{name}` with void result"), span);
+            return Opnd::void();
+        };
+        let op = match (name, argv) {
+            ("abs", &[a]) => Op::Un { op: IrUnOp::Abs, ovf: Ovf::Trap, a },
+            ("sqrt", &[a]) => Op::Un { op: IrUnOp::Sqrt, ovf: Ovf::Trap, a },
+            ("floor", &[a]) => Op::Un { op: IrUnOp::Floor, ovf: Ovf::Trap, a },
+            ("ceil", &[a]) => Op::Un { op: IrUnOp::Ceil, ovf: Ovf::Trap, a },
+            ("trunc", &[a]) => Op::Un { op: IrUnOp::Trunc, ovf: Ovf::Trap, a },
+            ("nearest", &[a]) => Op::Un { op: IrUnOp::Nearest, ovf: Ovf::Trap, a },
+            ("min", &[a, b]) => Op::Bin { op: IrBinOp::Min, ovf: Ovf::Trap, a, b },
+            ("max", &[a, b]) => Op::Bin { op: IrBinOp::Max, ovf: Ovf::Trap, a, b },
+            ("clz", &[a]) => Op::Un { op: IrUnOp::Clz, ovf: Ovf::Trap, a },
+            ("ctz", &[a]) => Op::Un { op: IrUnOp::Ctz, ovf: Ovf::Trap, a },
+            ("popcnt", &[a]) => Op::Un { op: IrUnOp::Popcnt, ovf: Ovf::Trap, a },
+            ("bitcast", &[a]) => Op::Bitcast { a },
+            ("str_byte", &[s, idx]) => Op::StrByte { s, idx },
+            ("str_cmp", &[a, b]) => Op::StrCmp { a, b },
+            ("str_from_utf8", &[bytes, len]) => Op::StrFromUtf8 { bytes, len },
+            _ => {
+                self.lw.unsupported(&format!("compiler intrinsic `{name}`"), span);
+                return Opnd::void();
+            }
+        };
+        let owned = matches!(op, Op::StrFromUtf8 { .. });
+        let r = self.fb.emit1(op, rt);
+        if owned { Opnd::owned(r) } else { Opnd::borrowed(r) }
     }
 
     /// Emit a call and wrap its single result; a `never` result ends the block.
@@ -254,6 +297,30 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         let name = self.lw.ck.ifaces[&iface].methods[index as usize].name.clone();
         let ot = self.ty_of(strip(obj).id);
         let TyKind::Adt(owner, oargs) = self.kind(ot) else {
+            if matches!(self.kind(ot), TyKind::Num(_) | TyKind::Bool | TyKind::Str) {
+                if name == "hash" && args.is_empty() {
+                    let recv = self.expr(obj);
+                    let Some(rv) = recv.v else { return Opnd::void() };
+                    self.hold(recv);
+                    let r = self.emit_prim_hash(rv);
+                    self.unhold(recv);
+                    self.drop_o(recv);
+                    return r;
+                }
+                if name == "equals" && args.len() == 1 {
+                    let recv = self.expr(obj);
+                    let Some(rv) = recv.v else { return Opnd::void() };
+                    self.hold(recv);
+                    let other = self.expr(&args[0]);
+                    self.hold(other);
+                    let r = self.emit_prim_equals(rv, other.val());
+                    self.unhold(other);
+                    self.drop_o(other);
+                    self.unhold(recv);
+                    self.drop_o(recv);
+                    return r;
+                }
+            }
             self.unsupported("calling an interface method on this type", e.span);
             return Opnd::void();
         };
@@ -1052,6 +1119,15 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                 }
             }
             Builtin::Downcast => self.downcast(e, rv, rty),
+            Builtin::PrimHash => self.emit_prim_hash(rv),
+            Builtin::PrimEquals => {
+                let other = self.expr(&args[0]);
+                self.hold(other);
+                let r = self.emit_prim_equals(rv, other.val());
+                self.unhold(other);
+                self.drop_o(other);
+                r
+            }
             _ => {
                 self.unsupported("this builtin", e.span);
                 Opnd::void()
@@ -1098,6 +1174,67 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
         self.jump_join(&mut j, Some(n));
         let r = self.enter_join(&j).expect("join result");
         Opnd::owned(r)
+    }
+
+    fn emit_prim_hash(&mut self, rv: ValueId) -> Opnd {
+        let ty = self.fb.ty(rv).clone();
+        if ty == It::Str {
+            let h = self.lw.helper("hash_str");
+            let r = self.fb.emit1(Op::Call { callee: h, args: vec![rv] }, It::U64);
+            return Opnd::borrowed(r);
+        }
+        let u = match ty {
+            It::U64 => rv,
+            It::Bool => {
+                let one = self.fb.emit1(Op::Const(Const::Int(1)), It::U64);
+                let zero = self.fb.emit1(Op::Const(Const::Int(0)), It::U64);
+                self.fb.emit1(Op::Select { cond: rv, a: one, b: zero }, It::U64)
+            }
+            It::F64 => {
+                // Canonicalise -0.0 -> +0.0 so hash(-0.0) === hash(+0.0) matches IEEE ===.
+                let pz = self.fb.emit1(Op::Const(Const::F64(0.0f64.to_bits())), It::F64);
+                let norm = self.fb.emit1(Op::Bin { op: IrBinOp::Add, ovf: Ovf::Trap, a: rv, b: pz }, It::F64);
+                self.fb.emit1(Op::Bitcast { a: norm }, It::U64)
+            }
+            It::F32 => {
+                let pz = self.fb.emit1(Op::Const(Const::F32(0.0f32.to_bits())), It::F32);
+                let norm = self.fb.emit1(Op::Bin { op: IrBinOp::Add, ovf: Ovf::Trap, a: rv, b: pz }, It::F32);
+                let bits = self.fb.emit1(Op::Bitcast { a: norm }, It::U32);
+                self.fb.emit1(Op::Conv { ovf: Ovf::Wrap, a: bits }, It::U64)
+            }
+            t if t.is_int() => self.fb.emit1(Op::Conv { ovf: Ovf::Wrap, a: rv }, It::U64),
+            _ => {
+                self.lw.unsupported("hashing this type", None);
+                return Opnd::void();
+            }
+        };
+        let h = self.lw.helper("hash_u64");
+        let r = self.fb.emit1(Op::Call { callee: h, args: vec![u] }, It::U64);
+        Opnd::borrowed(r)
+    }
+
+    fn emit_prim_equals(&mut self, a: ValueId, b: ValueId) -> Opnd {
+        let ty = self.fb.ty(a).clone();
+        let r = if ty == It::Str {
+            self.fb.emit1(Op::StrEq { a, b }, It::Bool)
+        } else if matches!(ty, It::F64 | It::F32) {
+            // SameValueZero for float key equality: -0.0 equals +0.0, and NaN equals NaN.
+            // Matches emit_prim_hash which canonicalises -0.0 -> +0.0 and NaN -> canonical qNaN.
+            let eq = self.fb.emit1(Op::Cmp { op: CmpOp::Eq, a, b }, It::Bool);
+            let a_nan = self.fb.emit1(Op::Cmp { op: CmpOp::Ne, a, b: a }, It::Bool);
+            let b_nan = self.fb.emit1(Op::Cmp { op: CmpOp::Ne, a: b, b }, It::Bool);
+            let both_nan = self.fb.emit1(
+                Op::Bin { op: IrBinOp::And, ovf: Ovf::Trap, a: a_nan, b: b_nan },
+                It::Bool,
+            );
+            self.fb.emit1(
+                Op::Bin { op: IrBinOp::Or, ovf: Ovf::Trap, a: eq, b: both_nan },
+                It::Bool,
+            )
+        } else {
+            self.fb.emit1(Op::Cmp { op: CmpOp::Eq, a, b }, It::Bool)
+        };
+        Opnd::borrowed(r)
     }
 
     fn range_call(&mut self, args: &[Expr]) -> Opnd {

@@ -213,6 +213,10 @@ pub enum Builtin {
     Downcast,
     /// `range(a, b)`
     Range,
+    /// Deterministic 64-bit hash on primitives and `string` (satisfies `Hash`).
+    PrimHash,
+    /// Value equality on primitives and `string` (satisfies `Eq<Self>`).
+    PrimEquals,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -337,6 +341,8 @@ pub struct ModuleInfo {
     /// Canonical name (`""` for a single-file check, a path or `std/..` for imports).
     pub name: String,
     pub file: FileId,
+    /// Whether this module was loaded from the bundled standard library (`std/...` or prelude).
+    pub is_std: bool,
     /// Top-level definitions in declaration order.
     pub items: Vec<DefId>,
     /// Type of every expression node (after narrowing), indexed by `NodeId`; `ERROR`-free when there are no errors.
@@ -422,6 +428,20 @@ impl Checked {
             .get(info.module as usize)
             .and_then(|m| m.attrs.get(&info.node))
             .is_some_and(|v| v.iter().any(|(n, _)| n == "host"))
+    }
+
+    /// If `d` is a bundled standard-library `@intrinsic("...")` function, returns the intrinsic name.
+    pub fn intrinsic_of(&self, d: DefId) -> Option<&str> {
+        let info = &self.defs[d.0 as usize];
+        let m = self.modules.get(info.module as usize)?;
+        if !m.is_std {
+            return None;
+        }
+        m.attrs
+            .get(&info.node)?
+            .iter()
+            .find(|(n, _)| n == "intrinsic")
+            .and_then(|(_, a)| a.first().map(String::as_str))
     }
 
     /// Name of the first side table that holds the poison type, if any. Poison is only legal in

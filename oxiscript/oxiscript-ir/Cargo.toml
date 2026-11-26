@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-ir"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiIR: OxiScript's typed SSA intermediate representation and its text form (Phase 8)."

@@ -67,7 +67,7 @@ fn ir_new_ops_misuse_is_rejected() {
         eprintln!("GOOD {name}: {}", o.chars().take(110).collect::<String>());
         if o == "PANIC" { bad.push(format!("{name}: PANIC")); }
     }
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 /// array.pop on an empty array and str.byte/str.slice out of range at IR level (no lowering guard): must trap, not read freed/garbage memory.

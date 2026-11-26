@@ -100,7 +100,7 @@ fn diag_json(src: &str, li: &LineIndex, d: &Diagnostic) -> Value {
     json!({
         "code": d.code,
         "severity": severity,
-        "title": def.as_ref().map(|c| c.title.clone()).unwrap_or_default(),
+        "title": def.as_ref().map_or_else(String::new, |c| c.title.clone()),
         "message": d.message,
         "start": utf16_at(src, lo), "end": utf16_at(src, hi),
         "line": line, "col": col, "endLine": end_line, "endCol": end_col,
@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(v["ok"], false, "{v}");
         let d = &v["diagnostics"][0];
         assert!(d["code"].as_str().unwrap().starts_with("OXS-E"));
-        assert!(!d["title"].as_str().unwrap().is_empty());
+        assert_ne!(d["title"].as_str().unwrap(), "");
         let start = d["start"].as_u64().unwrap() as usize;
         let units: Vec<u16> = src.encode_utf16().collect();
         let tail = String::from_utf16(&units[start..]).unwrap();
@@ -377,6 +377,40 @@ mod tests {
     fn oversize_source_is_refused() {
         let big = "a".repeat(MAX_SOURCE_BYTES + 1);
         assert_eq!(parse(&check_json(&big))["ok"], false);
+    }
+
+    #[test]
+    fn std_modules_resolve_and_run_in_playground() {
+        let src = r#"
+import { Log } from "host:log";
+import { sqrt, sin, PI } from "std/math";
+import { trim, toUpperAscii, toFixed } from "std/string";
+import { sortI32, join } from "std/array";
+import { unwrapOr } from "std/result";
+import { Map } from "std/collections";
+
+export function main(log: Log): void {
+  const s = toUpperAscii(trim("  oxi  "));
+  const xs = sortI32([3, 1, 2]);
+  const m = new Map<string, i32>();
+  m.set(s, xs[0] + xs[2]);
+  const v = unwrapOr(Ok<i32, string>(m.getOr(s, 0)), 0);
+  const parts = [s, toFixed(sqrt(9.0) + sin(PI * 0.5), 1)];
+  log.write(2, `${join(parts, ":")}=${v}`);
+}
+"#;
+        let v = parse(&check_json(src));
+        assert_eq!(v["ok"], true, "{v}");
+        let bad = parse(&check_json("import { x } from \"std/unknown\";\n"));
+        assert_eq!(bad["ok"], false, "{bad}");
+        assert_eq!(bad["diagnostics"][0]["code"], "OXS-E0302");
+        #[cfg(feature = "run")]
+        {
+            let r = parse(&run::run_json(src, run::DEFAULT_FUEL));
+            assert_eq!(r["ok"], true, "{r}");
+            assert!(r["stop"].is_null(), "{r}");
+            assert_eq!(r["lines"][0]["msg"], "OXI:4.0=4");
+        }
     }
 
     #[test]

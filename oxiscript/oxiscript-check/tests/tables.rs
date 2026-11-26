@@ -82,7 +82,7 @@ fn walk_all(src: &str, label: &str) {
     let parsed = parse(src, FileId(0));
     let mut w = Walk { c: &c, m: 0, bad: Vec::new() };
     w.visit_module(&parsed.module);
-    assert!(w.bad.is_empty(), "{label}: {:#?}", w.bad);
+    assert_eq!(w.bad.len(), 0, "{label}: {:#?}", w.bad);
     // locals: every recorded local has a type that is not the poison type
     for l in &c.modules[0].locals {
         assert!(l.ty != ERROR, "{label}: local {} has the error type", l.name);

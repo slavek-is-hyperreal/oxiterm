@@ -305,18 +305,73 @@ done:
 const RANGE: &str = r#"
 func @lw.range(%a: i32, %b: i32) -> [i32] {
 entry:
+  %zero: i32 = const 0
   %one: i32 = const 1
-  %out: [i32] = array.empty
-  br loop(%a)
-loop(%i: i32):
-  %end: bool = ge %i, %b
+  %empty: bool = ge %a, %b
+  br_if %empty, ret_empty(), alloc()
+ret_empty:
+  %e: [i32] = array.empty
+  ret %e
+alloc:
+  %len: i32 = sub %b, %a
+  %out: [i32] = array.new %len
+  br loop(%zero)
+loop(%idx: i32):
+  %end: bool = ge %idx, %len
   br_if %end, done(), body()
 body:
-  array.push %out, %i
-  %i2: i32 = add %i, %one
-  br loop(%i2)
+  %val: i32 = add %a, %idx
+  array.set %out, %idx, %val
+  %idx2: i32 = add.wrap %idx, %one
+  br loop(%idx2)
 done:
   ret %out
+}
+"#;
+
+const HASH_U64: &str = r#"
+func @lw.hash_u64(%x: u64) -> u64 {
+entry:
+  %c1: u64 = const 11400714819323198485
+  %c2: u64 = const 13787848793156543929
+  %c3: u64 = const 10723151780598845931
+  %s30: u64 = const 30
+  %s27: u64 = const 27
+  %s31: u64 = const 31
+  %z0: u64 = add.wrap %x, %c1
+  %t1: u64 = shr %z0, %s30
+  %z1: u64 = xor %z0, %t1
+  %z2: u64 = mul.wrap %z1, %c2
+  %t2: u64 = shr %z2, %s27
+  %z3: u64 = xor %z2, %t2
+  %z4: u64 = mul.wrap %z3, %c3
+  %t3: u64 = shr %z4, %s31
+  %z5: u64 = xor %z4, %t3
+  ret %z5
+}
+"#;
+
+const HASH_STR: &str = r#"
+func @lw.hash_str(%s: str) -> u64 {
+entry:
+  %n: i32 = str.len %s
+  %zero: i32 = const 0
+  %one: i32 = const 1
+  %basis: u64 = const 14695981039346656037
+  %prime: u64 = const 1099511628211
+  br loop(%zero, %basis)
+loop(%i: i32, %h: u64):
+  %end: bool = ge %i, %n
+  br_if %end, done(), body()
+body:
+  %b: u8 = str.byte %s, %i
+  %b64: u64 = conv %b
+  %x: u64 = xor %h, %b64
+  %h2: u64 = mul.wrap %x, %prime
+  %i2: i32 = add %i, %one
+  br loop(%i2, %h2)
+done:
+  ret %h
 }
 "#;
 
@@ -342,6 +397,8 @@ impl<'c, 'a> Lw<'c, 'a> {
             "str_bytes" => ("lw.str_bytes", STR_BYTES, &[]),
             "str_chars" => ("lw.str_chars", STR_CHARS, &[]),
             "range" => ("lw.range", RANGE, &[]),
+            "hash_u64" => ("lw.hash_u64", HASH_U64, &[]),
+            "hash_str" => ("lw.hash_str", HASH_STR, &[]),
             other => panic!("unknown helper {other}"),
         };
         if self.helper_done.insert(sym.to_string()) {
@@ -511,8 +568,43 @@ done:
 "#
                 )
             }
-            "slice" => format!(
-                r#"
+            "slice" => if !t.is_managed() {
+                format!(
+                    r#"
+func @{sym}(%a: [{tt}], %lo: i32, %hi: i32) -> [{tt}] {{
+entry:
+  %n: i32 = array.len %a
+  %zero: i32 = const 0
+  %one: i32 = const 1
+  %bad1: bool = lt %lo, %zero
+  %bad2: bool = gt %hi, %n
+  %bad3: bool = gt %lo, %hi
+  %b12: bool = or %bad1, %bad2
+  %bad: bool = or %b12, %bad3
+  br_if %bad, oob(), start()
+oob:
+  trap bounds
+start:
+  %len: i32 = sub %hi, %lo
+  %out: [{tt}] = array.new %len
+  br loop(%zero)
+loop(%k: i32):
+  %end: bool = ge %k, %len
+  br_if %end, done(), body()
+body:
+  %src_i: i32 = add.wrap %lo, %k
+  %e: {tt} = array.get %a, %src_i
+  array.set %out, %k, %e
+  %k2: i32 = add.wrap %k, %one
+  br loop(%k2)
+done:
+  ret %out
+}}
+"#
+                )
+            } else {
+                format!(
+                    r#"
 func @{sym}(%a: [{tt}], %lo: i32, %hi: i32) -> [{tt}] {{
 entry:
   %n: i32 = array.len %a
@@ -541,7 +633,8 @@ done:
   ret %out
 }}
 "#
-            ),
+                )
+            },
             "concat" => format!(
                 r#"
 func @{sym}(%a: [{tt}], %b: [{tt}]) -> [{tt}] {{

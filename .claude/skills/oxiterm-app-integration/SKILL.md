@@ -68,9 +68,17 @@ Consequences you must design around:
 { "now_playing": "Lordofon — Passé", "progress": "42", "auth_error": "" }
 ```
 
-### 2.3 `open_url`: the one-shot browser command
+### 2.3 Reserved patch keys: `open_url`, `navigate`, `set_app_token`
 
-Undocumented in the guide but fully implemented in `dispatcher.rs`. If your patch object contains the key `open_url`, OxiTerm **removes it before applying the patch** and instead emits a browser-open command for that session. It is never stored in state.
+Three keys of a patch are commands, not state. They are documented in `docs/app-server-guide.md` (section on navigation and tokens) and implemented in the event loop; each is removed before the rest of the patch is applied and is never stored in state.
+
+- `open_url`: described below.
+- `navigate`: `{"navigate": "dir/page.thtml"}` moves the session (SSH and web) to a page; the path is relative to the **app base directory**, `.thtml` only, no scheme, no absolute path, no `open:`; the rest of the patch is applied first, so the new page already sees the patched state; a refused or missing page gives the generic navigation error notice. It is the way for an App Server that generates pages (such as `oxiterm-reader`) to show them.
+- `set_app_token`: `{"set_app_token": "<token>"}` stores the permanent application token in the session (`_app_token`) and sends opcode `0x35` so the web client keeps it in `localStorage`; an empty string clears it. Other `_`-prefixed keys are reserved and are skipped by every patch.
+
+#### `open_url`
+
+If your patch object contains the key `open_url`, OxiTerm **removes it before applying the patch** and instead emits a browser-open command for that session. It is never stored in state.
 
 ```json
 { "status": "Opening Spotify...", "open_url": "https://accounts.spotify.com/authorize?...&state=abc123" }
@@ -225,8 +233,8 @@ Work down this list before forming a theory.
 Run the real suites rather than reasoning about correctness:
 
 ```bash
-cargo test --workspace                          # engine and server
-cd spotify-app-server && python -m pytest       # reference App Server
+cargo test --workspace                          # engine and server (in a git worktree use per-package cargo: -p <crate>)
+docker compose -f docker-compose.test.yml up --build test-spotify   # reference App Server, tests run only inside Docker
 ```
 
 Then exercise the flow by hand, over web **and** SSH if the change touches interaction. Automated tests in this repository have repeatedly passed while the screen was visibly wrong, and several security regressions passed because the test covered a helper function rather than its call site. When you add a guard, add a test that hits the *failing* branch — the `None` case, the expired token, the wrong session — not only the happy path.

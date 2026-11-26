@@ -266,7 +266,7 @@ fn formatter_keeps_every_comment() {
 #[test]
 fn formatter_errors_on_invalid_input() {
     let e = format("let = ;").unwrap_err();
-    assert!(!e.diagnostics.is_empty());
+    assert_ne!(e.diagnostics.len(), 0);
     assert!(e.to_string().contains("OXS-E0001"));
 }
 
@@ -306,7 +306,7 @@ fn grammar_md_examples_parse() {
         let end = body.find("```").unwrap();
         let code = &body[..end];
         let (_, d) = parse_module(code);
-        assert!(d.is_empty(), "grammar.md example failed:\n{code}\n{d:#?}");
+        assert_eq!(d.len(), 0, "grammar.md example failed:\n{code}\n{d:#?}");
         let f = format(code).unwrap();
         assert_eq!(format(&f).unwrap(), f);
         n += 1;

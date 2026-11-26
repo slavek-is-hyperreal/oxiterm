@@ -1,5 +1,27 @@
 # Changelog
 
+## OxiScript 0.0.2 — 2026-11-26
+
+Owner release before the 5555-line step (`owner-release=standard library v0`, [docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md)). Nothing is guaranteed before 1.0.0. Git tag: `oxiscript-v0.0.2`.
+
+### Standard library v0 (new)
+- `std/math`: Wasm intrinsics (`sqrt`, `floor`, `ceil`, `trunc`, `abs`, `min`, `max`, ...) and 14 transcendental functions (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `log2`, `log10`, `pow`, `cbrt`, `hypot`) in pure OxiScript, ported from FDLIBM/musl: deterministic, no FMA, no host libm, no heap allocation; measured within 2 ULP of the host libm. `round` and `toFixed` round halfway cases to even.
+- `std/string`: correctly rounded `parseFloat` (Clinger, Eisel-Lemire, exact fallback; checked against Rust on 201k inputs), integer parsing, radix formatting, exact `toFixed`.
+- `std/array`: stable merge sort (`sortBy` and typed sorts), search, `reverse`, `join`, `fill`, `flatMap`.
+- `std/collections`: `Map` and `Set` with insertion order, `Hash`/`Eq` interfaces with laws; float keys use SameValueZero (NaN equals NaN, +0 equals -0). Built-in hashes are not seeded: do not use untrusted keys where hash flooding matters.
+- `std/result`: predicates, extractors and combinators for `Result`.
+- Numbers, `bool` and `string` gained `hash()` and `equals()`. `std` and `std/...` import specifiers are reserved.
+- Reference: `docs/oxiscript/std.md`. Hardened by BAD ACTOR (findings BS01-BS08 fixed) and a separate review.
+
+### Also in this release
+- Compilation targets `device`, `web`, `server` (`oxi build --target`, manifest `target`, `OXS-E0411`); the runtime refuses modules that need features the host lacks.
+- Playground: a program without `main` now says that nothing ran and lists its exported functions.
+- Versioning: `oxiscript/std/**/*.oxs` counts toward the 5555-line step; owner override `--owner-release`.
+
+### Known limitations
+- `f64` to text still needs the real runtime linked (stage 8.M-link, in progress); `toFixed` works without it.
+- Sorting 30k `i32` needs about 21M fuel (default 10M per call); stage 8.Perf.
+
 ## OxiScript 0.0.1 — 2026-11-26
 
 First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semantics, ABI, OxiIR, the `oxi` CLI and its JSON schema may change in any release ([docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md)). One version for all `oxiscript-*` crates, the `oxi` CLI, the VS Code extension and the playground. Git tag: `oxiscript-v0.0.1`.
@@ -33,7 +55,7 @@ First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semanti
 - In the playground only `host:log` and `host:state` exist; nothing persists between runs.
 - Two parser/formatter oracles (comment re-attachment, an E0006 no-op fix) still need a multi-seed check.
 
-## OxiTerm / OxiUI work since 2026-11-23 (OxiTerm crate versions unchanged)
+## [Unreleased] — OxiTerm / OxiUI work since 2026-11-23 (OxiTerm crate versions unchanged)
 
 - **Phase 4:** `oxiterm-core` extracted as a pure crate (session state, event-loop step API, animations, frame limiter) driven by host traits; builds for wasm32 and Android.
 - **Phase 5.2:** headless GPU sink `oxiterm-gpu` (wgpu, SDF fills and borders, glyph atlas matching the CPU renderer, golden and CPU-comparison tests).
@@ -42,9 +64,7 @@ First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semanti
 - **Phase 7.6:** media and diagram parity across modes (SVG, PNG, Lottie, Rive, diagrams in GUI and local mode; honest missing-media placeholder in the no-native-media renderer).
 - Dependency security upgrade (below) and the showcase versions of the sites.
 
-## [Unreleased] — 2026-11-23
-
-### 🔒 Dependency security upgrade
+### 🔒 Dependency security upgrade (2026-11-23)
 - **russh 0.45 → 0.65** (`russh-keys` merged into `russh::keys`; `ssh-key` 0.7 backend): fixes RUSTSEC-2026-0496, -0493, -0494, -0492, -0154 and russh-cryptovec -0153 (pre-auth allocation / decompression / unbounded-size DoS issues). Also drops `rsa 0.9` (RUSTSEC-2023-0071, now `rsa 0.10`) and `crypto-bigint 0.5` (RUSTSEC-2026-0387, now 0.7).
 - **prometheus 0.13 → 0.14** (protobuf 2.x → 3.7.2, RUSTSEC-2024-0437).
 - **resvg 0.47 → 0.50** (drops the unmaintained `rustybuzz`/`ttf-parser` chain), **scraper 0.20 → 0.29** (drops unmaintained `fxhash`); `cargo update` of all compatible dependencies.

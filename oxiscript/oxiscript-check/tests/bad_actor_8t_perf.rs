@@ -213,5 +213,5 @@ fn growth_is_not_superquadratic() {
             bad.push_str(&format!("{name}: exponent {exp:.2}, {tb:.3}s\n"));
         }
     }
-    assert!(bad.is_empty(), "{bad}");
+    assert_eq!(bad.len(), 0, "{bad}");
 }

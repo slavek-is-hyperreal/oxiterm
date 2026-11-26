@@ -4,7 +4,9 @@
 #   scripts/oxiscript-version.sh --check   verify every manifest carries ONE version (exit 1 otherwise)
 #
 # Rule: x.y.c; c += 1 per 5555 changed lines (added + deleted) in oxiscript/oxiscript-*/src/**
-# since the last tag `oxiscript-v*`; the remainder carries over. The carry lives in the ANNOTATED
+# and the standard library oxiscript/std/**/*.oxs since the last tag `oxiscript-v*`; the remainder
+# carries over.
+#   scripts/oxiscript-version.sh --owner-release "<reason>"   owner override: next c now, carry 0 The carry lives in the ANNOTATED
 # tag message as a line `carry=N`, so the result is deterministic from git alone.
 # No tag yet: initial release, prints 0.0.1 (history before the first tag is not counted).
 # Exit codes: 0 ok, 1 error / mismatch, 2 usage, 3 no release due yet.
@@ -42,7 +44,12 @@ manifests_check() {
 }
 
 if [ "${1:-}" = "--check" ]; then manifests_check; exit $?; fi
-[ $# -eq 0 ] || { echo "usage: $0 [--check]" >&2; exit 2; }
+OWNER=""
+if [ "${1:-}" = "--owner-release" ]; then
+  [ -n "${2:-}" ] || { echo "usage: $0 --owner-release \"<reason>\"" >&2; exit 2; }
+  OWNER="$2"; shift 2
+fi
+[ $# -eq 0 ] || { echo "usage: $0 [--check | --owner-release \"<reason>\"]" >&2; exit 2; }
 
 TAG=$(git tag -l 'oxiscript-v*' --sort=-v:refname | head -n1)
 if [ -z "$TAG" ]; then
@@ -57,13 +64,20 @@ CARRY=$(git tag -l --format='%(contents)' "$TAG" | sed -n 's/^carry=\([0-9][0-9]
 [ -n "$CARRY" ] || { echo "$TAG has no 'carry=N' line in its message" >&2; exit 1; }
 
 # added + deleted lines (same sum as `git diff --shortstat`, binary files skipped).
-DIFF=$(git diff --numstat "$TAG" HEAD -- ':(glob)oxiscript/oxiscript-*/src/**' | awk '$1!="-"{s+=$1+$2} END{print s+0}')
+DIFF=$(git diff --numstat "$TAG" HEAD -- ':(glob)oxiscript/oxiscript-*/src/**' ':(glob)oxiscript/std/**/*.oxs' | awk '$1!="-"{s+=$1+$2} END{print s+0}')
 TOTAL=$((DIFF + CARRY))
 BUMP=$((TOTAL / STEP))
 NEWCARRY=$((TOTAL % STEP))
 BASE=${TAG#oxiscript-v}
 X=${BASE%%.*}; REST=${BASE#*.}; Y=${REST%%.*}; C=${REST#*.}
 echo "since $TAG: $DIFF changed src lines + carry $CARRY = $TOTAL; +$BUMP" >&2
+if [ -n "$OWNER" ]; then
+  # Owner override (VERSIONING.md): release now even below the step; at least +1; carry resets to 0.
+  [ "$BUMP" -ge 1 ] || BUMP=1
+  echo "$X.$Y.$((C + BUMP))"
+  echo "owner release: tag message must contain: carry=0 and owner-release=$OWNER" >&2
+  exit 0
+fi
 if [ "$BUMP" -eq 0 ]; then
   echo "no release due (need $((STEP - TOTAL)) more changed lines); carry stays $TOTAL" >&2
   exit 3

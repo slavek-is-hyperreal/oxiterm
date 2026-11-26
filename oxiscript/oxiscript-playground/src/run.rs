@@ -144,7 +144,7 @@ pub fn compile(src: &str) -> Result<Vec<u8>, String> {
                     let (lo, hi) = d.span.map_or((0, 0), |s| (s.lo, s.hi.max(s.lo)));
                     let (line, col) = li.line_col(src, lo);
                     let (el, ec) = li.line_col(src, hi);
-                    let title = oxiscript_abi::codes::lookup(&d.code).map(|c| c.title).unwrap_or_default();
+                    let title = oxiscript_abi::codes::lookup(&d.code).map_or_else(Default::default, |c| c.title);
                     json!({ "code": d.code, "severity": "error", "title": title, "message": d.message,
                             "start": utf16_at(src, lo as usize), "end": utf16_at(src, hi as usize),
                             "line": line, "col": col, "endLine": el, "endCol": ec, "fixes": [] })
@@ -164,8 +164,26 @@ pub fn run_json(src: &str, fuel: u64) -> String {
         Err(j) => return j,
     };
     let r = run_wasm(&wasm, fuel);
+    // A module without `export function main` compiles and "runs", but nothing is called: say so
+    // instead of reporting an empty, successful run, and list what the module exports.
+    let (module, _) = oxiscript_syntax::parse_module(src);
+    let mut has_main = false;
+    let mut exported: Vec<String> = Vec::new();
+    for item in &module.items {
+        if let oxiscript_syntax::ast::ItemKind::Fn(f) = &item.kind {
+            if item.export {
+                if f.name.name == "main" {
+                    has_main = true;
+                } else {
+                    exported.push(f.name.name.clone());
+                }
+            }
+        }
+    }
     json!({
         "ok": true,
+        "noMain": !has_main,
+        "exported": exported,
         "lines": r.lines.iter().map(|l| json!({ "level": l.level, "msg": l.msg })).collect::<Vec<_>>(),
         "dropped": r.dropped,
         "fuelUsed": r.fuel_used,

@@ -453,9 +453,18 @@ impl<'a> Checker<'a> {
             .collect()
     }
 
-    /// Signature `(params, ret, mutating)` of a method of a struct/class type, instantiated.
+    /// Signature `(params, ret, mutating)` of a method of a struct/class type (or a primitive/string builtin), instantiated.
     pub fn find_method_sig(&mut self, t: Ty, name: &str) -> Option<(Vec<Ty>, Ty, bool)> {
-        let TyKind::Adt(d, args) = self.tys.kind(t).clone() else { return None };
+        let TyKind::Adt(d, args) = self.tys.kind(t).clone() else {
+            if matches!(self.tys.kind(t), TyKind::Num(_) | TyKind::Bool | TyKind::Str) {
+                if let Some(crate::calls::MemberOut::Callable(c, _)) = self.builtin_member(t, name) {
+                    if c.tparams.is_empty() && !c.mutating {
+                        return Some((c.params, c.ret, false));
+                    }
+                }
+            }
+            return None;
+        };
         if !matches!(self.kind_of(d), DefKind::Struct | DefKind::Class) {
             return None;
         }

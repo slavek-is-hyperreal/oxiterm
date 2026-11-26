@@ -2,6 +2,8 @@
 
 This document describes the interactive showcase application (`examples/demos/showcase.thtml`) and project site structure built as a comprehensive feature demonstration for the OxiTerm engine.
 
+> The showcase also runs as a pixel GUI (`?gui=1`) and without a server in the browser (`?local=1`, local mode). The public sites (built by `sites/build.sh`, see [sites/DEPLOY.md](../sites/DEPLOY.md)) carry OxiUI versions of the pages and are the maintained showcase; see [getting-started.md](getting-started.md) for the modes.
+
 ---
 
 ## 🌟 Overview
@@ -28,8 +30,8 @@ The showcase features interactive tabs (e.g. **Home**, **Media Showcase**, **Int
 
 ### 3. Active Lottie Vector Ticker (`assets/bell.json`)
 - Runs a vector bell loop animation.
-- When active, OxiTerm automatically dynamically scales the session's event loop tick rate to 15 FPS (`66ms` tick) for smooth playback.
-- When inactive, the session drops back to an idle sleep state (`5ms` poll) to conserve server CPU cycles.
+- While an animation, a transition, a drag or media is active, the core asks for a tick every 16 ms (about 60 FPS) for smooth playback.
+- When nothing is active the session ticks once a second (1000 ms idle); removing even that wake-up is stage U.Idle in [roadmap/oxiui.md](roadmap/oxiui.md).
 
 ### 4. Interactive Rive Toggle (`assets/toggle.riv`)
 - Renders an interactive slider toggle component in `examples/demos/media.thtml`.

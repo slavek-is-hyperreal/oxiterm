@@ -65,12 +65,12 @@ OxiTerm supports two independent TUI image distribution channels:
 
 OxiTerm's performance and stability in a network environment rely on several key mechanisms:
 * **Resilient Reactor Thread (RRT):** A dedicated, non-blocking OS thread used to read user input from SSH. The RRT parses the raw byte stream into keyboard and mouse events (Kitty/SGR) using the `InputStateMachine`, preventing the event loop from blocking and mitigating DoS attacks (e.g., excessively long escape sequences are rejected in `sanitize_frame`).
-* **Dynamic Ticking Loop:** In an idle state, the rendering loop sleeps for `5ms` awaiting events. If there are active Lottie or Rive animations in the DOM tree, OxiTerm dynamically raises the refresh rate to 15 FPS (`66ms` tick) for smooth animation playback.
+* **Dynamic Ticking Loop:** The core's step API reports when `tick` must run next (`EventLoop::next_deadline`): every 16 ms (about 60 FPS) while an animation, a drag or media is active, otherwise every 1000 ms. A pending debounced resize or a frame deferred by the frame limiter pulls the deadline earlier. An idle session still wakes once a second; removing that wake-up is stage U.Idle in [roadmap/oxiui.md](roadmap/oxiui.md).
 * **Dual-Tier Graphic Cache:**
   - `SvgCache`: Stores once-parsed `usvg::Tree` vector structures to avoid repeating expensive XML parsing.
   - `AssetCache`: Stores pre-compressed Sixel/Kitty graphic byte streams matching the current frame resolution, bypassing the entire rasterization process when there are no changes.
 * **Synchronized Updates (BSU/ESU):** Prevents screen tearing by wrapping ANSI diff packets in the terminal frame synchronization protocol (`\x1b[?2026h` / `\x1b[?2026l`).
-* **Predictive Local Echo:** A local text prediction buffer that minimizes network latency for users typing in `<input>` fields.
+* **Predictive Local Echo:** A server-side text prediction buffer (`SessionState`, event loop) that echoes typing in `<input>` fields before the application state round trip finishes. It is not a client-side layer; adaptive switching on round-trip time is not implemented (decision recorded in U.Term).
 * **Backpressure (Congestion Control):** A bounded frame channel (`BoundedFrameChannel`). Slow client terminals that cannot keep up with receiving diffs cause safe frame dropping on the server, preventing memory leaks.
 * **Scrollback Buffer Clearing:** Upon startup and resize, a `\x1b[3J` sequence is sent to clear the client's scrollback history, preventing graphic artifacts.
 
@@ -80,7 +80,7 @@ OxiTerm's performance and stability in a network environment rely on several key
 
 When launching the server with the `--a11y` flag, the engine switches to the **LinearFrameSink** mode:
 * Instead of a two-dimensional ANSI buffer, the document is rendered as a linear text tree, ideal for screen readers.
-* The `oxiterm-a11y` crate exposes an AT-SPI/D-Bus API surface (`DBusBridge`, `register_at_spi`, `update_focus`), but **the transport layer is not yet implemented** — no D-Bus connections are established at runtime. The API is a skeleton for future integration with speech synthesizers and Braille displays.
+* The `oxiterm-a11y` crate exposes an AT-SPI/D-Bus API surface (`DBusBridge`, `register_at_spi`, `update_focus`), but **the transport layer is not yet implemented** — no D-Bus connections are established at runtime. The API is a skeleton for future integration with speech synthesizers and Braille displays. The linear `--a11y` sink is what SSH users get today; AccessKit for the native window is stage 5.7 and the open question of an AT-SPI tunnel for SSH users is U.A11y in [roadmap/oxiui.md](roadmap/oxiui.md).
 
 **GUI web clients (`?gui=1`, display-list sessions) get an ARIA mirror.** The canvas is opaque to screen readers, so the server also sends the accessibility tree as JSON (`0x37`, see §7b) and the client renders it as transparent, non-`display:none` DOM positioned over the canvas (buttons as `<button>`, inputs as `role="textbox"`, images as `role="img"`, labelled groups as `role="group"`, the root as a labelled region). Keyboard focus stays on the canvas, which carries `role="application"`, `aria-owns` and `aria-activedescendant` pointing at the mirrored focused element; an `aria-live="polite"` region announces focus changes. A click dispatched on a mirrored button by assistive technology is translated into a mouse press + release at the centre of that node. The text of `<input type="password">` is never sent.
 
@@ -102,7 +102,7 @@ OxiTerm features a unified, client-driven responsive design system:
 
 ## 7b. Display-List Protocol (OxiUI phase 3a/3b)
 
-Web clients may opt in to receive a `DisplayList` per frame instead of cell diffs (see [oxi-ui.md](oxi-ui.md)). Since phase 3b the session's layout engine runs in `RenderMode::Gui` for such clients (fractional rects, origins and sizes; it switches back to Tui when the flag is reset), and the builder keeps that geometry instead of snapping it. The client paints with vector primitives. Wire version 2 is the baseline; version 3 (Phase 6.4, proportional text) is negotiated per connection. Clients that do not opt in, and SSH, are unaffected.
+Web clients may opt in to receive a `DisplayList` per frame instead of cell diffs (see [roadmap/oxiui.md](roadmap/oxiui.md); the Phase 0-7 narrative is in [history/oxi-ui-plan-history.md](history/oxi-ui-plan-history.md)). Since phase 3b the session's layout engine runs in `RenderMode::Gui` for such clients (fractional rects, origins and sizes; it switches back to Tui when the flag is reset), and the builder keeps that geometry instead of snapping it. The client paints with vector primitives. Wire version 2 is the baseline; version 3 (Phase 6.4, proportional text) is negotiated per connection. Clients that do not opt in, and SSH, are unaffected.
 
 **Negotiation (client to server):** `0x12 <caps:u8>`. Bit 0 = "display list". Bit 1 = "wire v3" (positioned proportional glyph runs; only meaningful with bit 0; the GUI client sends `0x12 0x03`). The server stores `SessionState::display_list_v3` (reachable as `ClientSession::display_list_v3`) for bit 1 (reset on every new connection like the rest, and only used to pick the wire version) and stores `ClientSession::display_list_client`, emits `InputEvent::SetDisplayList(on)`, and the event loop reparses the current page with `RenderMode::Gui` (`@media gui` rules apply) and re-renders. All later page loads use the same mode. The capability is **per connection**: it is reset to cell diffs on every new connection, reattach or takeover (re-parsing the page in TUI mode if it was set), and the client must resend `0x12` each time. A `0x12` from a superseded connection is ignored. Clients should send `0x12` **before** their first `0x10`: the handshake then already knows the mode, so the page is parsed in GUI mode from the start and the first frame is a display list (no cell frame first). A `0x12` sent after the first `0x10` still works, but the client briefly sees a cell frame before the switch.
 
@@ -207,7 +207,7 @@ OxiTerm manages connections separately from persistent interactive sessions:
 
 ## 9. Retro Hardware & Desktop Environment ("OxiDE")
 
-For a detailed blueprint on adapting OxiTerm as a standalone Desktop Environment (GUI/DE) for vintage and resource-constrained Linux hardware (direct `/dev/fb0`, DRM/KMS, raw TTY console, multi-window compositing, and D-Bus system integration), see [docs/retro-desktop-environment.md](retro-desktop-environment.md).
+For a detailed blueprint on adapting OxiTerm as a standalone Desktop Environment (GUI/DE) for vintage and resource-constrained Linux hardware (direct `/dev/fb0`, DRM/KMS, raw TTY console, multi-window compositing, and D-Bus system integration), see [docs/retro-desktop-environment.md](retro-desktop-environment.md). The software sink `oxiterm-fb` is merged (stage 7.2); the console runner and the desktop shell are stages 7.2b and U.OxiDE in [roadmap/oxiui.md](roadmap/oxiui.md).
 
 
 ---
@@ -220,7 +220,7 @@ The session logic lives in **`oxiterm-core`**: state, events and actions, animat
 * **Local mode** (phase 7.1, `--local-mode` / `OXITERM_LOCAL_MODE=1`, `?local=1` in the client): the core runs in the browser inside `oxiterm-web` (`src/local.rs`, `src/local_wasm.rs`); pages and assets come from an in-memory page source, timers drive the step API, and App Server actions are proxied. The static websites under `sites/` use this mode with no server at all.
 * **OxiDE** (phase 7.2, crate `oxiterm-fb`): a software rasterizer that draws a display list into RGBA (fills, rounded borders, paths, glyphs from the bundled fonts) and writes PNG, `/dev/fb0` or a DRM dumb buffer. Device output needs an explicit opt-in; tests only write PNG.
 
-Plan, measurements and remaining phases (Android shell, native GPU window): [oxi-ui.md](oxi-ui.md).
+Status, measurements and remaining stages (Android shell, native GPU window): [roadmap/oxiui.md](roadmap/oxiui.md); the measurement history is in [history/oxi-ui-plan-history.md](history/oxi-ui-plan-history.md).
 
 ---
 
@@ -242,8 +242,8 @@ graph LR
 
 * **`oxiscript-abi`** fixes the memory layout, the host interface language (IDL), the manifest and the registry of stable diagnostic codes (`OXS-E…`, append-only).
 * **`oxiscript-ir`** (OxiIR) is a typed SSA IR with explicit reference counting; every module is verified before code generation.
-* **`oxiscript-rc`** is the memory runtime (reference counting with elision hooks and a cycle collector) compiled to Wasm. Today the compiler's tests link a small stub runtime instead; linking the real one is the next step.
+* **`oxiscript-rc`** is the memory runtime (reference counting with elision hooks and a cycle collector) compiled to Wasm. The compiler's default tests link a small stub runtime instead; linking the real one into every program is stage 8.M-link ([roadmap/oxiscript.md](roadmap/oxiscript.md#s-8-m-link), in progress).
 * **`oxiscript-runtime`** loads modules under strict limits (own pre-scan of the binary first, then wasmi), binds host capabilities from the IDL and supports hot reload by instance swap.
-* **Tools:** `oxiscript-cli` (the `oxi` command: check with JSON diagnostics and fixes, fmt, explain, new; run/build next), `oxiscript-playground` (the compiler built for the browser, used by oxiscript.slavekm.pl) and the VS Code extension in `editors/vscode-oxiscript`.
+* **Tools:** `oxiscript-cli` (the `oxi` command: check with JSON diagnostics and fixes, fmt, explain, new, run, build), `oxiscript-playground` (the compiler built for the browser, used by oxiscript.slavekm.pl) and the VS Code extension in `editors/vscode-oxiscript`.
 
 Language reference: [oxiscript/grammar.md](oxiscript/grammar.md); IR: [oxiscript/ir.md](oxiscript/ir.md); ABI: [oxiscript/abi.md](oxiscript/abi.md).

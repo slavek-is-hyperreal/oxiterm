@@ -331,7 +331,7 @@ fn run_range(lo: u64, hi: u64, n: usize, wide: bool, noparam: bool) -> St {
         let src = gen_cfg_x(seed, nb, wide, noparam);
         let m = parse_module(&src).unwrap_or_else(|e| panic!("seed {seed}: parse {e}\n{src}"));
         let errs = verify(&m);
-        assert!(errs.is_empty(), "seed {seed}: generated IR does not verify: {errs:?}\n{src}");
+        assert_eq!(errs.len(), 0, "seed {seed}: generated IR does not verify: {errs:?}\n{src}");
         let mut rng = Rng(seed * 31 + 5);
         check(&src, &m, &mut rng, &mut st, &format!("seed {seed}"));
     }

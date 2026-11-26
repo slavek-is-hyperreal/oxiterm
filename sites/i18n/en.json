@@ -26,12 +26,11 @@
     "demoWeight": "Nothing is sent anywhere: the page is rendered by WebAssembly on your device.",
     "demoTitle": "OxiUI live demo",
     "showSource": "Show THTML source",
-    "roadmapSource": "Generated at build time from docs/oxi-ui.md in the repository; status is derived from the wave log.",
+    "roadmapSource": "Generated at build time from docs/roadmap/ in the repository (status tables of the OxiUI and OxiScript plans); the wave log is section 11 of the OxiScript plan.",
     "roadmapEnglishOnly": "The plan itself is written in English only.",
-    "phases": "Phases",
-    "stages7": "Phase 7 stages",
-    "slices8": "OxiScript slices (Phase 8)",
-    "colSlice": "Slice",
+    "groups": "Groups",
+    "stages": "Stages",
+    "colSlice": "Stage",
     "colStatus": "Status",
     "colWhat": "What",
     "waveLog": "Wave log",
@@ -284,7 +283,7 @@
             "items": [
               {
                 "label": "Architecture notes in the repository",
-                "href": "repo:docs/oxi-ui.md"
+                "href": "repo:docs/ARCHITECTURE.md"
               }
             ]
           }
@@ -872,6 +871,8 @@
       "stop": "Stop",
       "outputTitle": "Output",
       "outputEmpty": "(the program wrote nothing)",
+      "noMain": "(nothing ran: this program has no `export function main(log: Log)`, so Run had nothing to call. Exported functions: {fns}. Add a main that calls them, as in the Hello example.)",
+      "noMainStatus": "Nothing ran: no main function.",
       "loadingRunner": "Loading the runner (once; Stop cancels)...",
       "running": "Running...",
       "ran": "Finished in {ms} ms, {fuel} instructions used.",

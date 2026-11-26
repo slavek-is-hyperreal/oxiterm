@@ -7,7 +7,7 @@ description: Write or edit THTML markup and TCSS styles for OxiTerm terminal UI 
 
 THTML is a declarative markup language rendered server-side to a fixed character grid. TCSS is its styling language. Both **resemble** HTML/CSS closely enough that the resemblance is the main hazard: web habits produce documents that parse cleanly, render wrong, and give you no error.
 
-Read this whole file before writing markup. The exhaustive reference lives in `docs/thtml-reference.md` and `docs/tcss-reference.md` — consult them for detail, but where this skill and those docs disagree, **this skill is correct** (it was derived from the parser source; the docs contain known errors, listed in §2.2).
+Read this whole file before writing markup. The exhaustive reference lives in `docs/thtml-reference.md` and `docs/tcss-reference.md` — consult them for detail, but where this skill and those docs disagree, check the parser source: the skill was derived from it, and the docs were corrected against it on 2026-11-26 (spring order, `position` default, units, self-closing tags), so the two now agree on the points listed in §2.2.
 
 ---
 
@@ -34,12 +34,12 @@ These are all of them. There are no others.
 | `height` | integer (rows) | Omit for content-sizing. **Never write `auto`.** |
 | `fg` / `color` | color | Text colour. |
 | `bg` / `background-color` | color | Background colour. |
-| `position` | `relative` (default), `absolute`, `fixed` | `absolute` positions relative to closest ancestor; `fixed` anchors to screen origin. |
+| `position` | `static` (default), `relative`, `absolute`, `fixed` | `absolute` positions relative to closest ancestor; `fixed` anchors to screen origin. |
 | `top` / `bottom` | integer (rows) | Inset offsets for positioned elements. |
 | `left` / `right` | integer (columns) | Inset offsets for positioned elements. |
 | `z-index` | integer | Stacking context order (higher draws above lower; hit-testing checks highest z-index first). Default `0`. |
 | `opacity` | float (0.0 to 1.0) | Multiplies rendering opacity (1.0 default). |
-| `transition` | comma-separated specs | E.g. `transition: opacity 300ms ease-out, width 200ms spring`. Easings: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1,y1,x2,y2)`, `spring` / `spring(m,k,c)`. |
+| `transition` | comma-separated specs | E.g. `transition: opacity 300ms ease-out, width 200ms spring`. Easings: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1,y1,x2,y2)`, `spring` / `spring(stiffness, damping, mass)` (defaults 100, 10, 1). |
 | `flex-direction` | `row` (default), `column` | Any other value silently becomes `row`. |
 | `align-items` | `flex-start` (default), `flex-end`, `center`, `stretch` | Cross axis. |
 | `justify-content` | `flex-start` (default), `flex-end`, `center`, `space-between`, `space-around` | Main axis. |
@@ -55,7 +55,7 @@ These are all of them. There are no others.
 
 Colors: named (`black red green yellow blue magenta cyan white` — exactly these eight), hex `#rrggbb`, a 0–255 ANSI palette index, or `reset` / `transparent`.
 
-No units anywhere. `10px`, `50%`, `2em` all parse to `0`.
+No units in layout properties (`width`, `height`, `margin`, `padding`, `gap`, `top`, `left`, ...): `10px`, `50%`, `2em` there all parse to `0`. Units are accepted only by the GUI-only properties (inside `@media (render: gui)`): `px`/`dp`/`em`/`%`/`ch`/`lh` in `font-size` and `line-height`, `px`/`dp` in `border-radius`; the terminal ignores them.
 
 ### 2.1 Any border property turns the border on
 
@@ -108,7 +108,7 @@ total           7   → height: 7, and not one row less
 
 The reverse also applies: a parent's declared height is a hard ceiling for its children's *sum*, and the page root's height is a hard ceiling for the sum of its sections. Overrun makes the page scroll (`PgDn` indicator) instead of fitting.
 
-Because there is no `flex: 1`, sizing a "fill the rest" region means: take the root height, subtract every rigid sibling's height and margins, and write the remainder as an integer. Redo that arithmetic every time you add or resize a sibling.
+`flex: <N>` exists (§2.2) but is easy to get wrong inside a rigid-height tree, so when a "fill the rest" region must be exact, size it by hand: take the root height, subtract every rigid sibling's height and margins, and write the remainder as an integer. Redo that arithmetic every time you add or resize a sibling.
 
 ### 3.3 Text width and wrapping
 
@@ -134,7 +134,7 @@ Nine tags (implicit `<screen>` plus 8 authorable tags). An unknown tag is a **pa
 | `<for>` | loop | Exactly one template child; `each` names a List state key; `{item}` in the child's text is substituted. |
 | `<diagram>` | diagram | Mermaid flowchart; needs `src`, `alt`, `width`, `height`. |
 
-**Any** tag may self-close — the parser's self-closing branch (`thtml.rs:225`) is not restricted by tag name, so `<text bind-state="k"/>` is valid. `docs/thtml-reference.md` claims only `<img>` and `<input>` may do this; that restriction is not in the code. A self-closed tag has no children and no text, so self-closing `<text>` is only useful with `bind-state`, and self-closing `<for>` is always a mistake.
+**Any** tag may self-close — the parser's self-closing branch (`thtml.rs:225`) is not restricted by tag name, so `<text bind-state="k"/>` is valid. (Older versions of `docs/thtml-reference.md` claimed only `<img>` and `<input>` may do this; the doc is corrected, the code never had that restriction.) A self-closed tag has no children and no text, so self-closing `<text>` is only useful with `bind-state`, and self-closing `<for>` is always a mistake.
 
 `<img>`/`<video>` without `src`, or with `width`/`height` missing or zero, is a **hard parse error** with a message naming what is missing. This is intentional — the grid cannot lay out an unknown-size box.
 

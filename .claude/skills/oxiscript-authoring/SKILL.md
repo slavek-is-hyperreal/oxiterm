@@ -124,7 +124,7 @@ export function same(a: i32, b: i32): bool {
 * `oxi new <name> --template blink|touch-button|sensor-dashboard|oxiui-page` creates a project that already passes `oxi check`.
 * `oxi.toml`: `[package]` name/version/edition and `needs = ["host:log@1", ...]`, the host interfaces `main` receives, in parameter order.
 * Host interfaces are IDL files: built in are `host:log` and `host:state`; a project adds its own in `idl/*.idl` (the UI, GPIO and sensor ones in the templates are placeholders until their slices land). Never call a method that is not in an IDL.
-* Built-in members are only: array `length push pop map filter reduce forEach slice some every concat`; string `byteLength bytes chars slice startsWith endsWith includes indexOf`; number `toString wrapping<T> saturating<T>`; union `downcast<T>`; `Result Ok Err`.
+* Built-in members: array `length push pop map filter reduce forEach slice some every concat`; string `byteLength bytes chars slice startsWith endsWith includes indexOf`; number `toString wrapping<T> saturating<T>`; numbers, `bool` and `string` also `hash() equals()`; union `downcast<T>`; `Result Ok Err`. Everything else comes from the standard library by import: `std/math`, `std/string`, `std/array`, `std/collections` (`Map`, `Set`), `std/result` (see `docs/oxiscript/std.md`).
 
 ## 5. What not to do
 

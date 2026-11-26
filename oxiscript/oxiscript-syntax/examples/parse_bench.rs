@@ -35,7 +35,7 @@ fn main() {
     let t = Instant::now();
     let (m, d) = parse_module(&src);
     let tp = t.elapsed().as_secs_f64();
-    assert!(d.is_empty(), "{:?}", d.first());
+    assert_eq!(d.len(), 0, "{:?}", d.first());
     let items = m.items.len();
     drop(m);
     let t = Instant::now();

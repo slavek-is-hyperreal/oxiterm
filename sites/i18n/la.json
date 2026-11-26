@@ -26,12 +26,11 @@
     "demoWeight": "Nihil usquam mittitur: pagina a WebAssembly in instrumento tuo pingitur.",
     "demoTitle": "Demonstratio OxiUI viva",
     "showSource": "Fontem THTML ostende",
-    "roadmapSource": "In aedificatione ex docs/oxi-ui.md in repositorio gignitur; status ex annalibus undarum colligitur.",
+    "roadmapSource": "In aedificatione ex docs/roadmap/ in repositorio gignitur (tabulae status consiliorum OxiUI et OxiScript); annales undarum sectio undecima consilii OxiScript est.",
     "roadmapEnglishOnly": "Ipsum consilium Anglice tantum scriptum est.",
-    "phases": "Phases",
-    "stages7": "Gradus phasis septimae",
-    "slices8": "Partes OxiScript (phasis octava)",
-    "colSlice": "Pars",
+    "groups": "Greges",
+    "stages": "Gradus",
+    "colSlice": "Gradus",
     "colStatus": "Status",
     "colWhat": "Quid",
     "waveLog": "Annales undarum",
@@ -284,7 +283,7 @@
             "items": [
               {
                 "label": "Notae de structura in repositorio",
-                "href": "repo:docs/oxi-ui.md"
+                "href": "repo:docs/ARCHITECTURE.md"
               }
             ]
           }
@@ -872,6 +871,8 @@
       "stop": "Siste",
       "outputTitle": "Exitus",
       "outputEmpty": "(programma nihil scripsit)",
+      "noMain": "(nihil actum est: programma `export function main(log: Log)` non habet, itaque Run nihil vocare potuit. Functiones exportatae: {fns}. Adde main quae eas vocet, ut in exemplo Hello.)",
+      "noMainStatus": "Nihil actum est: functio main deest.",
       "loadingRunner": "Cursor oneratur (semel; Siste interrumpit)...",
       "running": "Curro...",
       "ran": "Peractum post {ms} ms, instructiones usae: {fuel}.",

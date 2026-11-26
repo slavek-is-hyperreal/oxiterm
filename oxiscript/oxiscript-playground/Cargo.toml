@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-playground"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript compiler and runner in the browser (wasm-bindgen): check, format, compile, run. Used by oxiscript.slavekm.pl and by `oxi run`."

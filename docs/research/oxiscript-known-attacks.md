@@ -1,5 +1,9 @@
 # OxiScript known-attack corpus (input for BAD ACTOR regression tests)
 
+> **Status (2026-11-26):** this is a catalogue of attack classes, kept as such; every row is `S`/`R` (sourced or reasoned) and the per-slice lists predate the real crates. Which classes have a regression test is tracked by stages 8.Spec and 8.Sec in [../roadmap/oxiscript.md](../roadmap/oxiscript.md#s-8-sec); until a status column is added here, treat "covered" as unknown.
+>
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
 Compiled 2026-11-25. Purpose: catalogue KNOWN, documented bug/attack classes so adversarial agents can turn them into regression tests for OxiScript slices 8.P (oxiscript-syntax), 8.T (oxiscript-check), 8.L (lowering), 8.G (oxiscript-wasm codegen), 8.M (oxiscript-rc), 8.R (oxiscript-runtime, wasmi).
 
 ## Verification legend

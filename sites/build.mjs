@@ -5,7 +5,7 @@
 // Inputs
 //   sites/i18n/<lang>.json      all strings, one file per language (en = source of truth, pl, la)
 //   sites/shared, sites/<site>  css/js/assets
-//   docs/oxi-ui.md              roadmap + wave log tables (parsed, never hand-copied)
+//   docs/roadmap/oxiui.md, oxiscript.md   status tables + wave log (parsed, never hand-copied)
 //   examples/demos/*.thtml      gallery pages;  sites/oxiscript/examples/*.oxs  playground + tour code
 // Environment
 //   OXI_LOCAL_PKG  dir with oxiterm_local.js / _bg.wasm   (7.1 local-mode bundle)
@@ -114,7 +114,11 @@ function inline(site, lang, s) {
 }
 const plain = (s) => s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[`*]/g, '');
 
-// ---------------------------------------------------------------- roadmap from docs/oxi-ui.md
+// ---------------------------------------------------------------- roadmap from docs/roadmap/{oxiui,oxiscript}.md
+// Both files carry a table `Stage | Status | Merged` (id in the first cell, status todo/idea/blocked/in-progress/done,
+// `date, hash` or an em dash). oxiui.md also has a Done table `Stage | What | ... | Merged` (a row there is done).
+// Titles and scopes come from the `#### <id> <title>` headings; the group of a stage is the `### ` heading above it.
+// The wave log (measured times) is the `Slice | Implementation` table of oxiscript.md section 11.
 function parseTables(md) {
   const lines = md.split('\n');
   const tables = [];
@@ -137,42 +141,90 @@ function shorten(s, n) {
   const dot = cut.lastIndexOf('. ');
   return (dot > n * 0.5 ? cut.slice(0, dot + 1) : cut.replace(/\s+\S*$/, '') + ' ...');
 }
-function roadmapData() {
-  const md = read(path.join(REPO, 'docs/oxi-ui.md'));
-  const tables = parseTables(md);
-  const phases = [];
-  for (const m of md.matchAll(/^### (Phase \d+): (.+)$/gm)) {
-    const title = m[2].replace(/\s*—\s*✅ done/, '').replace(/\s*\((planned|draft)[^)]*\)\s*$/, '').trim();
-    const state = /✅ done/.test(m[2]) ? 'done' : /planned|draft/.test(m[2]) ? 'planned' : 'active';
-    phases.push({ id: m[1], title: plain(title), state });
-  }
-  const wave = tables.find((t) => t.head[0] === 'Slice' && t.head[1] === 'Implementation');
-  const slices = tables.find((t) => t.head[0] === 'Slice' && t.head[1] === 'Crate / area') || tables.find((t) => t.head[0] === 'Slice' && t.head.length >= 4 && t.head[1] !== 'Implementation');
-  const p7 = tables.find((t) => t.head[0] === 'Stage' && t.head[1] === 'Scope' && t.rows.some((r) => r[0] === '7.1'));
-  if (!wave || !slices) throw new Error('roadmap: tables not found in docs/oxi-ui.md (format changed?)');
-  const stateOf = (id) => {
-    const w = wave.rows.find((r) => r[0].split(' ')[0] === id);
-    if (!w) return 'planned';
-    if (/\b[0-9a-f]{7}\b/.test(w[5] || '') || /merged|20\d\d-\d\d-\d\d/.test(w[5] || '')) return /—/.test(w[5]) ? 'active' : 'done';
-    return 'active';
-  };
-  const slice = (r) => ({ id: r[0].split(' ')[0], name: plain(r[0].replace(/^\S+\s*/, '')), what: shorten(r[2] || '', 230), state: stateOf(r[0].split(' ')[0]) });
-  // A phase whose heading says "planned" but whose stages/slices have started is in progress.
-  const started = (list) => list.some((x) => x.state !== 'planned');
-  const slicesList = slices.rows.map(slice);
-  const stages7List = p7 ? p7.rows.map((r) => ({ state: stateOf(r[0]) })) : [];
-  for (const ph of phases) {
-    if (ph.id === 'Phase 8' && ph.state === 'planned' && started(slicesList)) ph.state = 'active';
-    if (ph.id === 'Phase 7' && ph.state !== 'done' && started(stages7List)) ph.state = 'active';
-  }
-  return {
-    phases,
-    stages7: p7 ? p7.rows.map((r) => ({ id: r[0], name: shorten(r[1].replace(/\*\*([^*]+)\*\*/, '$1'), 150), state: stateOf(r[0]) })) : [],
-    slices: slices.rows.map(slice),
-    wave: wave.head.length ? { head: wave.head.map(plain), rows: wave.rows.map((r) => r.map((c) => shorten(c, 170))) } : null,
-  };
+const ROADMAP_FILES = { oxiui: 'docs/roadmap/oxiui.md', oxiscript: 'docs/roadmap/oxiscript.md' };
+const stripAnchors = (s) => s.replace(/<a id="[^"]*"><\/a>/g, '').trim();
+const groupName = (g) => plain(g).replace(/^5\.[\w]+\s+/, '');
+const STAGE_ID = /^(?:U\.[\w-]+|\d[\w.-]*)$/;
+/** "8.C Contracts" -> {id:'8.C', title:'Contracts'}; "Terminal baseline" (no id token) -> {id: whole cell, title: ''}. */
+function splitStage(cell) {
+  const c = stripAnchors(cell);
+  const first = c.split(/\s+/)[0];
+  return STAGE_ID.test(first) ? { id: first, title: c.slice(first.length).trim() } : { id: c, title: '' };
 }
-const ROADMAP = roadmapData();
+const stateOfStatus = (status) => (/^done\b/.test(status) ? 'done' : /^in[- ]progress\b/.test(status) ? 'active' : 'planned');
+const groupState = (stages) => {
+  if (stages.length && stages.every((s) => s.state === 'done')) return 'done';
+  return stages.some((s) => s.state !== 'planned') ? 'active' : 'planned';
+};
+function roadmapData(site) {
+  const file = ROADMAP_FILES[site];
+  const md = read(path.join(REPO, file));
+  const tables = parseTables(md);
+  const status = tables.find((t) => t.head[0] === 'Stage' && t.head[1] === 'Status' && t.head[2] === 'Merged');
+  if (!status) throw new Error(`roadmap: status table (Stage | Status | Merged) not found in ${file} (format changed?)`);
+  // headings: `#### <id> <title>` under a `### <group>` heading
+  const info = new Map();
+  let group = '';
+  const lines = md.split('\n');
+  const head = new Map();
+  lines.forEach((l, i) => {
+    let m;
+    if ((m = /^### (.+)$/.exec(l))) group = m[1];
+    else if ((m = /^- (?:<a id="[^"]*"><\/a>)?\*\*(\S+) ([^*]+)\*\*:?\s*(.*)$/.exec(l)) && STAGE_ID.test(m[1])) {
+      info.set(m[1], { id: m[1], title: plain(m[2]), what: shorten(m[3], 230), group });
+    } else if ((m = /^#### (.+)$/.exec(l))) {
+      const s = splitStage(m[1]);
+      if (!STAGE_ID.test(s.id)) return;
+      const title = s.title.replace(/\s*\((?:[^()]*(?:todo|progress|idea|blocked|conditional|draft)[^()]*)\)\s*$/, '').trim();
+      let what = '';
+      for (let k = i + 1; k < lines.length && !/^#{1,4} /.test(lines[k]); k++) {
+        const t = lines[k].trim();
+        if (/^- Scope/.test(t)) { what = t.replace(/^- Scope[^:]*:\s*/, ''); break; }
+        if (!what && t && !t.startsWith('<a ') && !t.startsWith('|') && !t.startsWith('- ')) what = t;
+      }
+      info.set(s.id, { id: s.id, title: plain(title), what: shorten(what, 230), group });
+    }
+  });
+  // Done rows: oxiui.md `Stage | What | ... | Merged`, oxiscript.md section 3 `Stage | What | Evidence`
+  const doneRows = [];
+  for (const t of tables) {
+    if (t.head[0] !== 'Stage' || t.head[1] !== 'What') continue;
+    for (const r of t.rows) {
+      const s = splitStage(r[0]);
+      const title = s.title || (STAGE_ID.test(s.id) ? r[1].split(/[(:;]/)[0].trim() : '');
+      doneRows.push({ id: s.id, title: plain(shorten(title, 70)), what: shorten(stripAnchors(r[1]), 230), listed: t.head[t.head.length - 1] === 'Merged' });
+    }
+  }
+  const stages = [];
+  const seen = new Set();
+  const push = (id, state, grp) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const i = info.get(id);
+    const d = doneRows.find((x) => x.id === id);
+    stages.push({ id, name: (state === 'done' ? (d && d.title) || (i && i.title) : (i && i.title) || (d && d.title)) || '', what: (d && state === 'done' && d.what) || (i && i.what) || (d && d.what) || '', state, group: grp });
+  };
+  const DONE = 'Done';
+  for (const r of doneRows) if (r.listed && !status.rows.some((x) => stripAnchors(x[0]) === r.id)) push(r.id, 'done', DONE);
+  for (const r of status.rows) {
+    const id = stripAnchors(r[0]);
+    const st = stateOfStatus(r[1].toLowerCase());
+    push(id, st, st === 'done' ? DONE : (info.get(id) || {}).group || 'Other');
+  }
+  // done stages listed in the status table keep their group (done); order: done first, then document order
+  const order = [];
+  for (const s of stages) if (!order.includes(s.group)) order.push(s.group);
+  order.sort((a, b) => (a === DONE ? -1 : b === DONE ? 1 : 0));
+  const groups = order.map((g) => {
+    const list = stages.filter((s) => s.group === g);
+    return { title: groupName(g), state: g === DONE ? 'done' : groupState(list), count: list.length, done: list.filter((s) => s.state === 'done').length };
+  });
+  // wave log
+  const wave = parseTables(read(path.join(REPO, ROADMAP_FILES.oxiscript))).find((t) => t.head[0] === 'Slice' && t.head[1] === 'Implementation');
+  if (!wave) throw new Error(`roadmap: wave log table (Slice | Implementation) not found in ${ROADMAP_FILES.oxiscript}`);
+  return { file, groups, stages, wave: { head: wave.head.map(plain), rows: wave.rows.map((r) => r.map((c) => shorten(c, 170))) } };
+}
+const ROADMAPS = { oxiui: roadmapData('oxiui'), oxiscript: roadmapData('oxiscript') };
 const stateLabel = (lang, s) => T(lang, `common.state.${s}`);
 
 // ---------------------------------------------------------------- code blocks
@@ -217,15 +269,14 @@ function iframeStarter(site, lang, thtml, titleKey) {
 }
 
 function roadmapHtml(site, lang) {
-  const R = ROADMAP;
+  const R = ROADMAPS[site];
   const badge = (s) => `<span class="badge s-${s}">${esc(stateLabel(lang, s))}</span>`;
   let h = `<p class="note">${esc(T(lang, 'common.roadmapSource'))}${lang === 'en' ? '' : ' ' + esc(T(lang, 'common.roadmapEnglishOnly'))}</p>`;
-  h += `<h2 class="sub">${esc(T(lang, 'common.phases'))}</h2><ul class="phases">${R.phases.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.title)}</li>`).join('')}</ul>`;
-  h += `<h2 class="sub">${esc(T(lang, 'common.stages7'))}</h2><ul class="phases">${R.stages7.map((p) => `<li>${badge(p.state)} <strong>${esc(p.id)}</strong> ${esc(p.name)}</li>`).join('')}</ul>`;
-  h += `<h2 class="sub">${esc(T(lang, 'common.slices8'))}</h2><div class="tablewrap"><table><thead><tr><th scope="col">${esc(T(lang, 'common.colSlice'))}</th><th scope="col">${esc(T(lang, 'common.colStatus'))}</th><th scope="col">${esc(T(lang, 'common.colWhat'))}</th></tr></thead><tbody>${R.slices.map((s) => `<tr><td><strong>${esc(s.id)}</strong> ${esc(s.name)}</td><td>${badge(s.state)}</td><td>${esc(s.what)}</td></tr>`).join('')}</tbody></table></div>`;
+  h += `<h2 class="sub">${esc(T(lang, 'common.groups'))}</h2><ul class="phases">${R.groups.map((g) => `<li>${badge(g.state)} <strong>${esc(g.title)}</strong> (${g.done}/${g.count})</li>`).join('')}</ul>`;
+  h += `<h2 class="sub">${esc(T(lang, 'common.stages'))}</h2><div class="tablewrap"><table><thead><tr><th scope="col">${esc(T(lang, 'common.colSlice'))}</th><th scope="col">${esc(T(lang, 'common.colStatus'))}</th><th scope="col">${esc(T(lang, 'common.colWhat'))}</th></tr></thead><tbody>${R.stages.map((s) => `<tr><td><strong>${esc(s.id)}</strong> ${esc(s.name)}</td><td>${badge(s.state)}</td><td>${esc(s.what)}</td></tr>`).join('')}</tbody></table></div>`;
   h += `<h2 class="sub" id="wave-log">${esc(T(lang, 'common.waveLog'))}</h2><p>${esc(T(lang, 'common.waveLogIntro'))}</p>`;
   h += `<div class="tablewrap"><table><thead><tr>${R.wave.head.map((c) => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${R.wave.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-  h += `<p class="note"><a href="${REPO_URL}/blob/main/docs/oxi-ui.md" rel="noopener">docs/oxi-ui.md</a></p>`;
+  h += `<p class="note"><a href="${REPO_URL}/blob/main/${R.file}" rel="noopener">${esc(R.file)}</a></p>`;
   return h;
 }
 
@@ -248,7 +299,7 @@ function widget(site, lang, id, b, ctx) {
 }
 
 // Run / Check / Format feedback texts of the playground (i18n keys under oxiscript.playground.*).
-const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
+const PG_RUN_KEYS = ['runNote', 'stop', 'outputTitle', 'outputEmpty', 'noMain', 'noMainStatus', 'loadingRunner', 'running', 'ran', 'stopped', 'timeout', 'bigInput', 'loadTimeout', 'stoppedBecause', 'dropped', 'moreLines', 'runFailed', 'cannotRun', 'checkedOk', 'checkedProblems', 'formatSame', 'formatChanged', 'hint',
   ...['overflow', 'div_by_zero', 'bounds', 'bad_cast', 'null_deref', 'out_of_memory', 'assert', 'bad_utf8', 'panic', 'unreachable', 'out_of_fuel', 'stack_overflow', 'memory_bounds', 'host_denied', 'host_bad_argument', 'host_error', 'rejected', 'limit', 'engine'].map((r) => `trap_${r}`)];
 
 function playgroundHtml(site, lang, ctx) {
@@ -440,10 +491,10 @@ ${sc ? sc.css : ''}</style>
       case 'gallery': for (const g of GALLERY) { textL('h2', t(`oxiui.gallery.${g}.title`)); textL('dim', t(`oxiui.gallery.${g}.desc`)); btn(t('common.runDemo'), `../demos/${g}.thtml`); } break;
       case 'roadmap':
         textL('dim', t('common.roadmapSource'));
-        textL('h2', t('common.slices8'));
-        for (const s of ROADMAP.slices) li('*', `[${stateLabel(lang, s.state)}] ${s.id} ${s.name}`);
+        textL('h2', t('common.stages'));
+        for (const s of ROADMAPS[site].stages) li('*', `[${stateLabel(lang, s.state)}] ${s.id} ${s.name}`);
         textL('h2', t('common.waveLog'));
-        for (const r of ROADMAP.wave.rows) li('*', `${r[0]}: ${r[5]}`);
+        for (const r of ROADMAPS[site].wave.rows) li('*', `${r[0]}: ${r[5]}`);
         break;
       case 'projectcards':
         for (const s of ['oxiui', 'oxiscript']) { textL('h2', t(`common.sites.${s}`)); textL('p', t(`home.cards.${s}.text`)); btn(t(`home.cards.${s}.cta`), `open:${ORIGIN[s]}${pagePath(lang, 'index')}`); }

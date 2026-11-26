@@ -1,5 +1,9 @@
 # OxiScript: language and execution-stack research
 
+> **Superseded in part (2026-11-26):** the phased roadmap, the estimates and the architecture table (it names `oxiscript-front`) are superseded by [../roadmap/oxiscript.md](../roadmap/oxiscript.md); the research findings and evidence tags remain valid input. Two claims about relaxed SIMD were removed (see section on engines).
+>
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
 Research input for the design of **OxiScript**, a statically and soundly typed, TypeScript-feeling, general-purpose language for the OxiUI project. Written 2026-11-24.
 
 **Evidence tags used throughout**
@@ -317,7 +321,7 @@ The release path in the browser is: instantiate a second Wasm module with the br
 | Pulley | same | no_std portable; RP2350 bare-metal reports [S] | "not the fastest interpreter" [S] | n/a | Yes (treVM tested) | | | Yes | Yes |
 | w2c2 | MIT [V] | Generates C; no engine | ~7% slower than native [V] | Yes (via C compiler) | SIMDe [V] | atomics [V] | No (DIY) | Any C99 target [V] | No |
 | wasm2c (wabt) | Apache-2.0 [U] | Generates C | ~native-ish [S] | Yes | Yes [S] | partial [U] | No | Any C target | No |
-| Browser engines | n/a | n/a | JIT | JIT | SIMD128 yes; relaxed SIMD in all three major engines per BCD [S] | Needs cross-origin isolation [V] | No | n/a | Yes |
+| Browser engines | n/a | n/a | JIT | JIT | SIMD128 yes; relaxed SIMD support differs by engine and is not relied on [U] | Needs cross-origin isolation [V] | No | n/a | Yes |
 | Wasefire interpreter | [U] | Very small [S] | Slow; "not for computation-heavy" [S] | No | [U] | No | [U] | nRF52840, OpenTitan [S] | No |
 
 Deterministic profile: Wasm 3.0 defines one (deterministic NaN, relaxed SIMD) [V: [Wasm 3.0](https://webassembly.org/news/2025-09-17-wasm-3.0/)]; wasmi supports relaxed-SIMD [V], but we exclude it by default (section I.5).
@@ -338,7 +342,7 @@ Deterministic profile: Wasm 3.0 defines one (deterministic NaN, relaxed SIMD) [V
 
 ### E.2 WASM facts that constrain the design
 
-- SIMD128: shipped broadly (Firefox >= 89, Safari >= 16.4 [S: Emscripten docs]); relaxed SIMD now in all three major engines per Igalia BCD (Aug 2026) [S]; relaxed SIMD results may differ by implementation, so it is excluded from the deterministic profile [V].
+- SIMD128: shipped broadly (Firefox >= 89, Safari >= 16.4 [S: Emscripten docs]); relaxed SIMD availability differs by engine (an earlier claim that all three major engines ship it was not verified and has been removed); relaxed SIMD results may differ by implementation, so it is excluded from the deterministic profile [V].
 - SIMD is **not always faster on MCU interpreters**: in treVM "Wasmtime No SIMD" beat the SIMD build on 3 of 4 boards (RP2350 18.6 vs 13.2) [V]. So SIMD lowering must be decided per target profile from one front end, not by shipping one universal `.wasm` [O].
 - Threads: Wasm threads need shared memory; in browsers `SharedArrayBuffer`/shared `WebAssembly.Memory` require a secure, cross-origin-isolated context (COOP/COEP) [V: [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer)]. wasmi: no threads [V]. Wasmtime threads tier 2, known issues with resource limiting [V]. wasi-threads is being superseded by shared-everything-threads, which Wasmtime lists as unimplemented [V/S]. Rust `wasm32-wasip1-threads` exists [S].
 - Single-core MCUs: cooperative scheduling (TinyGo) [S].

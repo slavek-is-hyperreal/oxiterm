@@ -26,7 +26,7 @@ fn seventy_thousand_fields_verify_fast() {
     let t = std::time::Instant::now();
     let errs = verify(&m);
     let el = t.elapsed();
-    assert!(errs.is_empty(), "{:?}", errs.first());
+    assert_eq!(errs.len(), 0, "{:?}", errs.first());
     eprintln!("verify 70000 fields: {el:?}");
     if cfg!(debug_assertions) {
         assert!(el < std::time::Duration::from_secs(20), "verify took {el:?}");

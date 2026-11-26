@@ -124,7 +124,7 @@ fn manifest_variants_matrix() {
             }
         }
     }
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 #[test]

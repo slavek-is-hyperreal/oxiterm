@@ -1,0 +1,1456 @@
+// OxiScript standard library: std/string
+// UTF-8 string manipulation, parsing, and deterministic number formatting.
+
+import { INF, NEG_INF, NAN, I32_MIN, I32_MAX, I64_MIN, I64_MAX, bitsOf, fromBits, clz32, clz64 } from "std/math";
+
+@intrinsic("str_byte")
+export function byteAt(s: string, idx: i32): u8 {
+  return 0u8;
+}
+
+@intrinsic("str_cmp")
+export function compare(a: string, b: string): i32 {
+  return 0;
+}
+
+@intrinsic("str_from_utf8")
+function strFromUtf8Raw(bytes: u8[], len: i32): string {
+  return "";
+}
+
+function isAsciiSpace(b: u8): bool {
+  return b === 32u8 || b === 9u8 || b === 10u8 || b === 13u8 || b === 11u8 || b === 12u8;
+}
+
+function utf8SeqLen(lead: u8): i32 {
+  if (lead < 0x80u8) {
+    return 1;
+  }
+  if (lead < 0xe0u8) {
+    return 2;
+  }
+  if (lead < 0xf0u8) {
+    return 3;
+  }
+  return 4;
+}
+
+export function isEmpty(s: string): bool {
+  return s.byteLength === 0;
+}
+
+export function charCount(s: string): i32 {
+  const n = s.byteLength;
+  let i: i32 = 0;
+  let count: i32 = 0;
+  while (i < n) {
+    i += utf8SeqLen(byteAt(s, i));
+    count++;
+  }
+  return count;
+}
+
+export function fromUtf8(bytes: u8[]): Result<string, string> {
+  const n = bytes.length;
+  let i: i32 = 0;
+  while (i < n) {
+    const b0 = bytes[i];
+    if (b0 < 0x80u8) {
+      i += 1;
+    } else if (b0 >= 0xc2u8 && b0 <= 0xdfu8) {
+      if (i + 1 >= n) {
+        return Err("truncated UTF-8 sequence");
+      }
+      const b1 = bytes[i + 1];
+      if ((b1 & 0xc0u8) !== 0x80u8) {
+        return Err("invalid UTF-8 continuation byte");
+      }
+      i += 2;
+    } else if (b0 >= 0xe0u8 && b0 <= 0xefu8) {
+      if (i + 2 >= n) {
+        return Err("truncated UTF-8 sequence");
+      }
+      const b1 = bytes[i + 1];
+      const b2 = bytes[i + 2];
+      if ((b1 & 0xc0u8) !== 0x80u8 || (b2 & 0xc0u8) !== 0x80u8) {
+        return Err("invalid UTF-8 continuation byte");
+      }
+      if (b0 === 0xe0u8 && b1 < 0xa0u8) {
+        return Err("overlong UTF-8 sequence");
+      }
+      if (b0 === 0xedu8 && b1 >= 0xa0u8) {
+        return Err("UTF-8 surrogate code point");
+      }
+      i += 3;
+    } else if (b0 >= 0xf0u8 && b0 <= 0xf4u8) {
+      if (i + 3 >= n) {
+        return Err("truncated UTF-8 sequence");
+      }
+      const b1 = bytes[i + 1];
+      const b2 = bytes[i + 2];
+      const b3 = bytes[i + 3];
+      if ((b1 & 0xc0u8) !== 0x80u8 || (b2 & 0xc0u8) !== 0x80u8 || (b3 & 0xc0u8) !== 0x80u8) {
+        return Err("invalid UTF-8 continuation byte");
+      }
+      if (b0 === 0xf0u8 && b1 < 0x90u8) {
+        return Err("overlong UTF-8 sequence");
+      }
+      if (b0 === 0xf4u8 && b1 >= 0x90u8) {
+        return Err("UTF-8 code point above U+10FFFF");
+      }
+      i += 4;
+    } else {
+      return Err("invalid UTF-8 leading byte");
+    }
+  }
+  return Ok(strFromUtf8Raw(bytes, n));
+}
+
+export function fromCodePoint(cp: u32): Result<string, string> {
+  if (cp > 0x10_ffffu32 || (cp >= 0xd800u32 && cp <= 0xdfffu32)) {
+    return Err("invalid Unicode scalar value");
+  }
+  const buf: u8[] = [];
+  if (cp < 0x80u32) {
+    buf.push(cp as u8);
+  } else if (cp < 0x800u32) {
+    buf.push((0xc0u32 | (cp >> 6u32)) as u8);
+    buf.push((0x80u32 | (cp & 0x3fu32)) as u8);
+  } else if (cp < 0x10000u32) {
+    buf.push((0xe0u32 | (cp >> 12u32)) as u8);
+    buf.push((0x80u32 | ((cp >> 6u32) & 0x3fu32)) as u8);
+    buf.push((0x80u32 | (cp & 0x3fu32)) as u8);
+  } else {
+    buf.push((0xf0u32 | (cp >> 18u32)) as u8);
+    buf.push((0x80u32 | ((cp >> 12u32) & 0x3fu32)) as u8);
+    buf.push((0x80u32 | ((cp >> 6u32) & 0x3fu32)) as u8);
+    buf.push((0x80u32 | (cp & 0x3fu32)) as u8);
+  }
+  return Ok(strFromUtf8Raw(buf, buf.length));
+}
+
+export function trimStart(s: string): string {
+  const n = s.byteLength;
+  let i: i32 = 0;
+  while (i < n && isAsciiSpace(byteAt(s, i))) {
+    i++;
+  }
+  return s.slice(i, n);
+}
+
+export function trimEnd(s: string): string {
+  let end = s.byteLength;
+  while (end > 0 && isAsciiSpace(byteAt(s, end - 1))) {
+    end--;
+  }
+  return s.slice(0, end);
+}
+
+export function trim(s: string): string {
+  const n = s.byteLength;
+  let lo: i32 = 0;
+  while (lo < n && isAsciiSpace(byteAt(s, lo))) {
+    lo++;
+  }
+  let hi = n;
+  while (hi > lo && isAsciiSpace(byteAt(s, hi - 1))) {
+    hi--;
+  }
+  if (lo === 0 && hi === n) {
+    return s;
+  }
+  return s.slice(lo, hi);
+}
+
+function matchAt(s: string, pos: i32, needle: string): bool {
+  const m = needle.byteLength;
+  if (pos + m > s.byteLength) {
+    return false;
+  }
+  let j: i32 = 0;
+  while (j < m) {
+    if (byteAt(s, pos + j) !== byteAt(needle, j)) {
+      return false;
+    }
+    j++;
+  }
+  return true;
+}
+
+function indexOfFrom(s: string, needle: string, start: i32): i32 {
+  const n = s.byteLength;
+  const m = needle.byteLength;
+  if (m === 0) {
+    return start <= n ? start : -1;
+  }
+  const lim = n - m;
+  let i = start;
+  while (i <= lim) {
+    if (matchAt(s, i, needle)) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+export function lastIndexOf(s: string, needle: string): i32 {
+  const n = s.byteLength;
+  const m = needle.byteLength;
+  if (m === 0) {
+    return n;
+  }
+  if (m > n) {
+    return -1;
+  }
+  let i = n - m;
+  while (i >= 0) {
+    if (matchAt(s, i, needle)) {
+      return i;
+    }
+    i--;
+  }
+  return -1;
+}
+
+function pushStrBytes(buf: u8[], s: string): void {
+  const n = s.byteLength;
+  let i: i32 = 0;
+  while (i < n) {
+    buf.push(byteAt(s, i));
+    i++;
+  }
+}
+
+function pushSliceBytes(buf: u8[], s: string, lo: i32, hi: i32): void {
+  let i = lo;
+  while (i < hi) {
+    buf.push(byteAt(s, i));
+    i++;
+  }
+}
+
+export function split(s: string, sep: string): string[] {
+  const out: string[] = [];
+  const n = s.byteLength;
+  const m = sep.byteLength;
+  if (m === 0) {
+    let i: i32 = 0;
+    while (i < n) {
+      const step = utf8SeqLen(byteAt(s, i));
+      out.push(s.slice(i, i + step));
+      i += step;
+    }
+    return out;
+  }
+  let start: i32 = 0;
+  while (start <= n) {
+    const pos = indexOfFrom(s, sep, start);
+    if (pos < 0) {
+      out.push(s.slice(start, n));
+      break;
+    }
+    out.push(s.slice(start, pos));
+    start = pos + m;
+  }
+  return out;
+}
+
+export function replace(s: string, from: string, to: string): string {
+  const m = from.byteLength;
+  if (m === 0) {
+    return `${to}${s}`;
+  }
+  const pos = s.indexOf(from);
+  if (pos < 0) {
+    return s;
+  }
+  const buf: u8[] = [];
+  pushSliceBytes(buf, s, 0, pos);
+  pushStrBytes(buf, to);
+  pushSliceBytes(buf, s, pos + m, s.byteLength);
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+export function replaceAll(s: string, from: string, to: string): string {
+  const n = s.byteLength;
+  const m = from.byteLength;
+  const buf: u8[] = [];
+  if (m === 0) {
+    pushStrBytes(buf, to);
+    let i: i32 = 0;
+    while (i < n) {
+      const step = utf8SeqLen(byteAt(s, i));
+      pushSliceBytes(buf, s, i, i + step);
+      pushStrBytes(buf, to);
+      i += step;
+    }
+    return strFromUtf8Raw(buf, buf.length);
+  }
+  let start: i32 = 0;
+  while (start <= n) {
+    const pos = indexOfFrom(s, from, start);
+    if (pos < 0) {
+      pushSliceBytes(buf, s, start, n);
+      break;
+    }
+    pushSliceBytes(buf, s, start, pos);
+    pushStrBytes(buf, to);
+    start = pos + m;
+  }
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+export function repeat(s: string, count: i32): string {
+  if (count <= 0 || s.byteLength === 0) {
+    return "";
+  }
+  const buf: u8[] = [];
+  let k: i32 = 0;
+  while (k < count) {
+    pushStrBytes(buf, s);
+    k++;
+  }
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+function appendPadChars(buf: u8[], pad: string, needChars: i32): void {
+  const plen = pad.byteLength;
+  if (plen === 0 || needChars <= 0) {
+    return;
+  }
+  let added: i32 = 0;
+  while (added < needChars) {
+    let i: i32 = 0;
+    while (i < plen && added < needChars) {
+      const step = utf8SeqLen(byteAt(pad, i));
+      pushSliceBytes(buf, pad, i, i + step);
+      i += step;
+      added++;
+    }
+  }
+}
+
+export function padStart(s: string, targetLen: i32, pad: string = " "): string {
+  const cur = charCount(s);
+  if (targetLen <= cur || pad.byteLength === 0) {
+    return s;
+  }
+  const buf: u8[] = [];
+  appendPadChars(buf, pad, targetLen - cur);
+  pushStrBytes(buf, s);
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+export function padEnd(s: string, targetLen: i32, pad: string = " "): string {
+  const cur = charCount(s);
+  if (targetLen <= cur || pad.byteLength === 0) {
+    return s;
+  }
+  const buf: u8[] = [];
+  pushStrBytes(buf, s);
+  appendPadChars(buf, pad, targetLen - cur);
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+export function toUpperAscii(s: string): string {
+  const n = s.byteLength;
+  const buf: u8[] = [];
+  let i: i32 = 0;
+  while (i < n) {
+    const b = byteAt(s, i);
+    if (b >= 97u8 && b <= 122u8) {
+      buf.push(b - 32u8);
+    } else {
+      buf.push(b);
+    }
+    i++;
+  }
+  return strFromUtf8Raw(buf, n);
+}
+
+export function toLowerAscii(s: string): string {
+  const n = s.byteLength;
+  const buf: u8[] = [];
+  let i: i32 = 0;
+  while (i < n) {
+    const b = byteAt(s, i);
+    if (b >= 65u8 && b <= 90u8) {
+      buf.push(b + 32u8);
+    } else {
+      buf.push(b);
+    }
+    i++;
+  }
+  return strFromUtf8Raw(buf, n);
+}
+
+// -----------------------------------------------------------------------------
+// Parsing: parseInt / parseInt32 / parseFloat
+// -----------------------------------------------------------------------------
+
+function digitVal(b: u8): i32 {
+  if (b >= 48u8 && b <= 57u8) {
+    return (b - 48u8) as i32;
+  }
+  if (b >= 65u8 && b <= 90u8) {
+    return ((b - 65u8) as i32) + 10;
+  }
+  if (b >= 97u8 && b <= 122u8) {
+    return ((b - 97u8) as i32) + 10;
+  }
+  return -1;
+}
+
+export function parseInt(s: string, radix: i32 = 10): Result<i64, string> {
+  if (radix < 2 || radix > 36) {
+    return Err("radix must be between 2 and 36");
+  }
+  const t = trim(s);
+  const n = t.byteLength;
+  if (n === 0) {
+    return Err("empty integer string");
+  }
+  let i: i32 = 0;
+  let neg = false;
+  const first = byteAt(t, 0);
+  if (first === 45u8) {
+    neg = true;
+    i = 1;
+  } else if (first === 43u8) {
+    i = 1;
+  }
+  if (i >= n) {
+    return Err("missing digits");
+  }
+  const limit: u64 = neg ? 9223372036854775808u64 : 9223372036854775807u64;
+  const base: u64 = radix as u64;
+  let acc: u64 = 0u64;
+  while (i < n) {
+    const d = digitVal(byteAt(t, i));
+    if (d < 0 || d >= radix) {
+      return Err("invalid digit");
+    }
+    const du: u64 = d as u64;
+    if (acc > (limit - du) / base) {
+      return Err("integer overflow");
+    }
+    acc = acc * base + du;
+    i++;
+  }
+  if (neg) {
+    if (acc === 9223372036854775808u64) {
+      return Ok(I64_MIN);
+    }
+    return Ok(-(acc as i64));
+  }
+  return Ok(acc as i64);
+}
+
+export function parseInt32(s: string, radix: i32 = 10): Result<i32, string> {
+  const v = parseInt(s, radix)?;
+  if (v < (I32_MIN as i64) || v > (I32_MAX as i64)) {
+    return Err("i32 overflow");
+  }
+  return Ok(v as i32);
+}
+
+// -----------------------------------------------------------------------------
+// Exact 128-bit and BigUint arithmetic helpers for parseFloat and toFixed
+//
+// parseFloat implements correctly-rounded (IEEE-754 round-to-nearest-even)
+// decimal-to-binary64 conversion:
+//   1. Clinger (1990) exact f64 fast path for <= 53-bit significand, |e| <= 22.
+//   2. Eisel-Lemire 128-bit fast path:
+//        Daniel Lemire, "Number Parsing at a Gigabyte per Second",
+//        Software: Practice and Experience 51(8), 2021 (as in Rust core::num::dec2flt
+//        and fast_float), using a 44-entry coarse 128-bit power-of-5 table (step 16)
+//        combined with exact 5^0..5^15 (proven error < 3 ULPs of 128-bit mantissa).
+//   3. Exact arbitrary-precision BigUint fallback (base-2^32 limbs, truncating at
+//      768 significant digits with sticky bit per Gay 1990 / Clinger 1990) for
+//      long digit strings and all near-halfway / subnormal tie cases.
+//
+// toFixed formats the exact binary64 value in fixed-point decimal with exact
+// round-to-nearest-even on the exact value (no "-0"), supporting all finite f64
+// values including f64::MAX without trapping.
+// -----------------------------------------------------------------------------
+
+function mul64Hi(a: u64, b: u64): u64 {
+  const aLo = a & 0xffff_ffffu64;
+  const aHi = a >> 32u64;
+  const bLo = b & 0xffff_ffffu64;
+  const bHi = b >> 32u64;
+  const p00 = aLo *% bLo;
+  const p01 = aLo *% bHi;
+  const p10 = aHi *% bLo;
+  const p11 = aHi *% bHi;
+  const mid = (p00 >> 32u64) +% (p01 & 0xffff_ffffu64) +% (p10 & 0xffff_ffffu64);
+  return p11 +% (p01 >> 32u64) +% (p10 >> 32u64) +% (mid >> 32u64);
+}
+
+function pow5Small(r: i32): u64 {
+  switch (r) {
+    case 0: return 1u64;
+    case 1: return 5u64;
+    case 2: return 25u64;
+    case 3: return 125u64;
+    case 4: return 625u64;
+    case 5: return 3125u64;
+    case 6: return 15625u64;
+    case 7: return 78125u64;
+    case 8: return 390625u64;
+    case 9: return 1953125u64;
+    case 10: return 9765625u64;
+    case 11: return 48828125u64;
+    case 12: return 244140625u64;
+    case 13: return 1220703125u64;
+    case 14: return 6103515625u64;
+    case 15: return 30517578125u64;
+    case 16: return 152587890625u64;
+    case 17: return 762939453125u64;
+    case 18: return 3814697265625u64;
+    case 19: return 19073486328125u64;
+    default: return 95367431640625u64;
+  }
+}
+
+function pow10Exact(e: i32): f64 {
+  switch (e) {
+    case 0: return 1.0;
+    case 1: return 1e1;
+    case 2: return 1e2;
+    case 3: return 1e3;
+    case 4: return 1e4;
+    case 5: return 1e5;
+    case 6: return 1e6;
+    case 7: return 1e7;
+    case 8: return 1e8;
+    case 9: return 1e9;
+    case 10: return 1e10;
+    case 11: return 1e11;
+    case 12: return 1e12;
+    case 13: return 1e13;
+    case 14: return 1e14;
+    case 15: return 1e15;
+    case 16: return 1e16;
+    case 17: return 1e17;
+    case 18: return 1e18;
+    case 19: return 1e19;
+    case 20: return 1e20;
+    case 21: return 1e21;
+    default: return 1e22;
+  }
+}
+
+// Normalized 128-bit floor approximations of 5^(-352 + 16*k) for k in 0..=43:
+// (hi * 2^64 + lo) * 2^exp <= 5^(-352 + 16*k) < (hi * 2^64 + lo + 1) * 2^exp.
+function pow5CoarseHi(k: i32): u64 {
+  switch (k) {
+    case 0: return 0xcd42a11346f34f7du64;
+    case 1: return 0xe3e27a444d8d98b7u64;
+    case 2: return 0xfd00b897478238d0u64;
+    case 3: return 0x8c71dcd9ba0b4925u64;
+    case 4: return 0x9becce62836ac577u64;
+    case 5: return 0xad1c8eab5ee43b66u64;
+    case 6: return 0xc0314325637a1939u64;
+    case 7: return 0xd5605fcdcf32e1d6u64;
+    case 8: return 0xece53cec4a314ebdu64;
+    case 9: return 0x8380dea93da4bc60u64;
+    case 10: return 0x91ff83775423cc06u64;
+    case 11: return 0xa21727db38cb002fu64;
+    case 12: return 0xb3f4e093db73a093u64;
+    case 13: return 0xc7caba6e7c5382c8u64;
+    case 14: return 0xddd0467c64bce4a0u64;
+    case 15: return 0xf64335bcf065d37du64;
+    case 16: return 0x88b402f7fd75539bu64;
+    case 17: return 0x97c560ba6b0919a5u64;
+    case 18: return 0xa87fea27a539e9a5u64;
+    case 19: return 0xbb127c53b17ec159u64;
+    case 20: return 0xcfb11ead453994bau64;
+    case 21: return 0xe69594bec44de15bu64;
+    case 22: return 0x8000000000000000u64;
+    case 23: return 0x8e1bc9bf04000000u64;
+    case 24: return 0x9dc5ada82b70b59du64;
+    case 25: return 0xaf298d050e4395d6u64;
+    case 26: return 0xc2781f49ffcfa6d5u64;
+    case 27: return 0xd7e77a8f87daf7fbu64;
+    case 28: return 0xefb3ab16c59b14a2u64;
+    case 29: return 0x850fadc09923329eu64;
+    case 30: return 0x93ba47c980e98cdfu64;
+    case 31: return 0xa402b9c5a8d3a6e7u64;
+    case 32: return 0xb616a12b7fe617aau64;
+    case 33: return 0xca28a291859bbf93u64;
+    case 34: return 0xe070f78d3927556au64;
+    case 35: return 0xf92e0c3537826145u64;
+    case 36: return 0x8a5296ffe33cc92fu64;
+    case 37: return 0x9991a6f3d6bf1765u64;
+    case 38: return 0xaa7eebfb9df9de8du64;
+    case 39: return 0xbd49d14aa79dbc82u64;
+    case 40: return 0xd226fc195c6a2f8cu64;
+    case 41: return 0xe950df20247c83fdu64;
+    case 42: return 0x81842f29f2cce375u64;
+    default: return 0x8fcac257558ee4e6u64;
+  }
+}
+
+function pow5CoarseLo(k: i32): u64 {
+  switch (k) {
+    case 0: return 0x0092757bf2623727u64;
+    case 1: return 0xfd1b1b2308169b25u64;
+    case 2: return 0x8920b098955522b4u64;
+    case 3: return 0x9ff0c08b7f1d0b14u64;
+    case 4: return 0x4ee367f9430aec32u64;
+    case 5: return 0xda3243650005eecfu64;
+    case 6: return 0xfa911155fefb5308u64;
+    case 7: return 0xfb1e4a9a90880a64u64;
+    case 8: return 0xa4f8bf5635246428u64;
+    case 9: return 0x4247cb9e59f71e6du64;
+    case 10: return 0x7b6306a34627ddcfu64;
+    case 11: return 0xb8ada00e5a506a7cu64;
+    case 12: return 0x59ed216765690f56u64;
+    case 13: return 0xfe64a52ee96b8fc0u64;
+    case 14: return 0xac7cb3f6d05ddbdeu64;
+    case 15: return 0x4d4617b5ff4a16d5u64;
+    case 16: return 0x11dbcb0218ebb414u64;
+    case 17: return 0xdccd879fc967d41au64;
+    case 18: return 0x3f2398d747b36224u64;
+    case 19: return 0x5560c018580d5d52u64;
+    case 20: return 0x67de18eda5814af2u64;
+    case 21: return 0x4c2ebe687989a9b3u64;
+    case 22: return 0x0000000000000000u64;
+    case 23: return 0x0000000000000000u64;
+    case 24: return 0xf020000000000000u64;
+    case 25: return 0x9670b12b7f410000u64;
+    case 26: return 0x3cbf6b71c76b25fbu64;
+    case 27: return 0xdc33745ec97be906u64;
+    case 28: return 0xc5cfe94ef3ea101eu64;
+    case 29: return 0x03e2cf6bc604ddb0u64;
+    case 30: return 0xc66f336c36b10137u64;
+    case 31: return 0x5f16206c9c6209a6u64;
+    case 32: return 0x577b986b314d6009u64;
+    case 33: return 0x7d7b8f7503cfdcfeu64;
+    case 34: return 0x85bbe253f47b1417u64;
+    case 35: return 0xa7709a56ccdf8a82u64;
+    case 36: return 0x82bd6b70d99aaa6fu64;
+    case 37: return 0xacca6da1e0a8ef29u64;
+    case 38: return 0xddbb901b98feeab7u64;
+    case 39: return 0x4b2d8644d8a74e18u64;
+    case 40: return 0x73832eec6fff3111u64;
+    case 41: return 0x47c6b82ef32a2069u64;
+    case 42: return 0xe6a1158300d46640u64;
+    default: return 0x213a4f0aa5e8a7b1u64;
+  }
+}
+
+function pow5CoarseExp(k: i32): i32 {
+  switch (k) {
+    case 0: return -945;
+    case 1: return -908;
+    case 2: return -871;
+    case 3: return -833;
+    case 4: return -796;
+    case 5: return -759;
+    case 6: return -722;
+    case 7: return -685;
+    case 8: return -648;
+    case 9: return -610;
+    case 10: return -573;
+    case 11: return -536;
+    case 12: return -499;
+    case 13: return -462;
+    case 14: return -425;
+    case 15: return -388;
+    case 16: return -350;
+    case 17: return -313;
+    case 18: return -276;
+    case 19: return -239;
+    case 20: return -202;
+    case 21: return -165;
+    case 22: return -127;
+    case 23: return -90;
+    case 24: return -53;
+    case 25: return -16;
+    case 26: return 21;
+    case 27: return 58;
+    case 28: return 95;
+    case 29: return 133;
+    case 30: return 170;
+    case 31: return 207;
+    case 32: return 244;
+    case 33: return 281;
+    case 34: return 318;
+    case 35: return 355;
+    case 36: return 393;
+    case 37: return 430;
+    case 38: return 467;
+    case 39: return 504;
+    case 40: return 541;
+    case 41: return 578;
+    case 42: return 616;
+    default: return 653;
+  }
+}
+
+// Little-endian base-2^32 unsigned big integer helpers.
+function bigNormalize(a: u32[]): void {
+  while (a.length > 0 && a[a.length - 1] === 0u32) {
+    const _ = a.pop();
+  }
+}
+
+function bigFromU64(v: u64): u32[] {
+  const out: u32[] = [];
+  const lo: u32 = (v & 0xffff_ffffu64) as u32;
+  const hi: u32 = (v >> 32u64) as u32;
+  if (hi !== 0u32) {
+    out.push(lo);
+    out.push(hi);
+  } else if (lo !== 0u32) {
+    out.push(lo);
+  }
+  return out;
+}
+
+function bigBitLen(a: u32[]): i32 {
+  const n = a.length;
+  if (n === 0) {
+    return 0;
+  }
+  const top = a[n - 1];
+  return (n - 1) * 32 + (32 - (clz32(top) as i32));
+}
+
+function bigCmp(a: u32[], b: u32[]): i32 {
+  if (a.length !== b.length) {
+    return a.length < b.length ? -1 : 1;
+  }
+  let i = a.length - 1;
+  while (i >= 0) {
+    if (a[i] !== b[i]) {
+      return a[i] < b[i] ? -1 : 1;
+    }
+    i--;
+  }
+  return 0;
+}
+
+function bigMulAddU32(a: u32[], mul: u32, add: u32): void {
+  let carry: u64 = add as u64;
+  const m64: u64 = mul as u64;
+  const n = a.length;
+  let i: i32 = 0;
+  while (i < n) {
+    const p = (a[i] as u64) *% m64 +% carry;
+    a[i] = (p & 0xffff_ffffu64) as u32;
+    carry = p >> 32u64;
+    i++;
+  }
+  if (carry > 0u64) {
+    a.push(carry as u32);
+  }
+}
+
+function bigMulPow5(a: u32[], power: i32): void {
+  let p = power;
+  while (p >= 13) {
+    bigMulAddU32(a, 1220703125u32, 0u32);
+    p -= 13;
+  }
+  if (p > 0) {
+    bigMulAddU32(a, pow5Small(p) as u32, 0u32);
+  }
+}
+
+function bigShl(a: u32[], bits: i32): u32[] {
+  if (a.length === 0) {
+    return [];
+  }
+  if (bits === 0) {
+    return a.slice(0, a.length);
+  }
+  const wordShift = bits / 32;
+  const bitShift = bits % 32;
+  const out: u32[] = [];
+  let w: i32 = 0;
+  while (w < wordShift) {
+    out.push(0u32);
+    w++;
+  }
+  const n = a.length;
+  if (bitShift === 0) {
+    let i: i32 = 0;
+    while (i < n) {
+      out.push(a[i]);
+      i++;
+    }
+  } else {
+    const bsu: u32 = bitShift as u32;
+    const rsu: u32 = (32 - bitShift) as u32;
+    let carry: u32 = 0u32;
+    let i: i32 = 0;
+    while (i < n) {
+      const v = a[i];
+      out.push((v << bsu) | carry);
+      carry = v >> rsu;
+      i++;
+    }
+    if (carry !== 0u32) {
+      out.push(carry);
+    }
+  }
+  return out;
+}
+
+function bigShl1InPlace(a: u32[]): void {
+  let carry: u32 = 0u32;
+  const n = a.length;
+  let i: i32 = 0;
+  while (i < n) {
+    const v = a[i];
+    const nextCarry = v >> 31u32;
+    a[i] = (v << 1u32) | carry;
+    carry = nextCarry;
+    i++;
+  }
+  if (carry !== 0u32) {
+    a.push(carry);
+  }
+}
+
+function bigShr1InPlace(a: u32[]): void {
+  let carry: u32 = 0u32;
+  let i = a.length - 1;
+  while (i >= 0) {
+    const v = a[i];
+    const nextCarry = (v & 1u32) << 31u32;
+    a[i] = (v >> 1u32) | carry;
+    carry = nextCarry;
+    i--;
+  }
+  bigNormalize(a);
+}
+
+function bigSubInPlace(a: u32[], b: u32[]): void {
+  let borrow: i64 = 0i64;
+  const na = a.length;
+  const nb = b.length;
+  let i: i32 = 0;
+  while (i < na) {
+    const av: i64 = a[i] as i64;
+    const bv: i64 = i < nb ? (b[i] as i64) : 0i64;
+    const diff = av - bv - borrow;
+    if (diff < 0i64) {
+      a[i] = (diff + 4294967296i64) as u32;
+      borrow = 1i64;
+    } else {
+      a[i] = diff as u32;
+      borrow = 0i64;
+    }
+    i++;
+  }
+  bigNormalize(a);
+}
+
+function bigDivRemU32(a: u32[], d: u32): u32 {
+  const d64: u64 = d as u64;
+  let rem: u64 = 0u64;
+  let i = a.length - 1;
+  while (i >= 0) {
+    const cur = (rem << 32u64) | (a[i] as u64);
+    a[i] = (cur / d64) as u32;
+    rem = cur % d64;
+    i--;
+  }
+  bigNormalize(a);
+  return rem as u32;
+}
+
+function parseFloatBigInt(t: string, mantStart: i32, mantEnd: i32, expSigned: i32, neg: bool): f64 {
+  // Parse up to 768 significant decimal digits into bigD with sticky digit if truncated.
+  const bigD: u32[] = [];
+  let sigCount: i32 = 0;
+  let decExp: i32 = 0;
+  let seenDot = false;
+  let sticky = false;
+  let chunk: u32 = 0u32;
+  let chunkLen: i32 = 0;
+  let chunkMul: u32 = 1u32;
+  let p = mantStart;
+  while (p < mantEnd) {
+    const b = byteAt(t, p);
+    if (b === 46u8) {
+      seenDot = true;
+      p++;
+      continue;
+    }
+    const d: u32 = (b - 48u8) as u32;
+    if (sigCount === 0 && d === 0u32) {
+      if (seenDot) {
+        decExp--;
+      }
+    } else if (sigCount < 768) {
+      chunk = chunk * 10u32 + d;
+      chunkMul = chunkMul * 10u32;
+      chunkLen++;
+      sigCount++;
+      if (seenDot) {
+        decExp--;
+      }
+      if (chunkLen === 9) {
+        bigMulAddU32(bigD, 1000000000u32, chunk);
+        chunk = 0u32;
+        chunkLen = 0;
+        chunkMul = 1u32;
+      }
+    } else {
+      if (!seenDot) {
+        decExp++;
+      }
+      if (d !== 0u32) {
+        sticky = true;
+      }
+    }
+    p++;
+  }
+  if (chunkLen > 0) {
+    bigMulAddU32(bigD, chunkMul, chunk);
+  }
+  if (sticky) {
+    bigMulAddU32(bigD, 10u32, 1u32);
+    decExp--;
+  }
+  bigNormalize(bigD);
+  if (bigD.length === 0) {
+    return neg ? -0.0 : 0.0;
+  }
+  const q = decExp + expSigned;
+  // Build exact ratio (num / den) * 2^q = bigD * 5^q * 2^q.
+  let num: u32[] = bigD;
+  let den: u32[] = [1u32];
+  if (q > 0) {
+    bigMulPow5(num, q);
+  } else if (q < 0) {
+    bigMulPow5(den, -q);
+  }
+  // Find exact exp2 such that 2^exp2 <= (num / den) * 2^q < 2^(exp2 + 1).
+  const nb = bigBitLen(num);
+  const mb = bigBitLen(den);
+  const diff = nb - mb;
+  let cmpRes: i32 = 0;
+  if (diff > 0) {
+    cmpRes = bigCmp(num, bigShl(den, diff));
+  } else if (diff < 0) {
+    cmpRes = bigCmp(bigShl(num, -diff), den);
+  } else {
+    cmpRes = bigCmp(num, den);
+  }
+  const exp2 = cmpRes < 0 ? (q + diff - 1) : (q + diff);
+  if (exp2 >= 1024) {
+    return neg ? NEG_INF : INF;
+  }
+  if (exp2 < -1075) {
+    return neg ? -0.0 : 0.0;
+  }
+  const lsbExp = exp2 >= -1022 ? (exp2 - 52) : -1074;
+  const shift = q - lsbExp;
+  if (shift > 0) {
+    num = bigShl(num, shift);
+  } else if (shift < 0) {
+    den = bigShl(den, -shift);
+  }
+  // Exact binary long division: quot = floor(num / den) (< 2^53), rem = num % den.
+  const maxBit = bigBitLen(num) - bigBitLen(den);
+  let quot: u64 = 0u64;
+  const rem: u32[] = num;
+  if (maxBit >= 0) {
+    const dShift = bigShl(den, maxBit);
+    let bit = maxBit;
+    while (bit >= 0) {
+      if (bigCmp(rem, dShift) >= 0) {
+        bigSubInPlace(rem, dShift);
+        quot = quot | (1u64 << (bit as u64));
+      }
+      if (bit > 0) {
+        bigShr1InPlace(dShift);
+      }
+      bit--;
+    }
+  }
+  // Exact round-half-to-even: compare 2 * rem vs den.
+  bigShl1InPlace(rem);
+  const c = bigCmp(rem, den);
+  if (c > 0 || (c === 0 && (quot & 1u64) !== 0u64)) {
+    quot = quot + 1u64;
+  }
+  const signBit: u64 = neg ? 0x8000_0000_0000_0000u64 : 0u64;
+  if (lsbExp === -1074) {
+    // Subnormal (or promoted to min normal 0x0010_0000_0000_0000 when quot === 2^52).
+    return fromBits(signBit | quot);
+  }
+  let biased = exp2 + 1023;
+  if (quot === (1u64 << 53u64)) {
+    quot = quot >> 1u64;
+    biased++;
+  }
+  if (biased >= 2047) {
+    return neg ? NEG_INF : INF;
+  }
+  const bits = signBit | (((biased as u64) << 52u64) | (quot & 0x000f_ffff_ffff_ffffu64));
+  return fromBits(bits);
+}
+
+export function parseFloat(s: string): Result<f64, string> {
+  const t = trim(s);
+  const n = t.byteLength;
+  if (n === 0) {
+    return Err("empty float string");
+  }
+  let i: i32 = 0;
+  let neg = false;
+  const first = byteAt(t, 0);
+  if (first === 45u8) {
+    neg = true;
+    i = 1;
+  } else if (first === 43u8) {
+    i = 1;
+  }
+  if (i >= n) {
+    return Err("missing digits");
+  }
+  const ch0 = byteAt(t, i);
+  if (ch0 === 78u8 || ch0 === 110u8 || ch0 === 73u8 || ch0 === 105u8) {
+    const rest = toLowerAscii(t.slice(i, n));
+    if (rest === "nan") {
+      return Ok(NAN);
+    }
+    if (rest === "inf" || rest === "infinity") {
+      return Ok(neg ? NEG_INF : INF);
+    }
+  }
+  const mantStart = i;
+  let mant: u64 = 0u64;
+  let sigDigits: i32 = 0;
+  let decExp: i32 = 0;
+  let truncated = false;
+  let seenDigit = false;
+  let seenDot = false;
+  while (i < n) {
+    const b = byteAt(t, i);
+    if (b >= 48u8 && b <= 57u8) {
+      seenDigit = true;
+      const d: u64 = (b - 48u8) as u64;
+      if (sigDigits === 0 && d === 0u64) {
+        if (seenDot) {
+          decExp--;
+        }
+      } else if (sigDigits < 19) {
+        mant = mant * 10u64 + d;
+        sigDigits++;
+        if (seenDot) {
+          decExp--;
+        }
+      } else {
+        if (!seenDot) {
+          decExp++;
+        }
+        if (d !== 0u64) {
+          truncated = true;
+        }
+      }
+      i++;
+    } else if (b === 46u8 && !seenDot) {
+      seenDot = true;
+      i++;
+    } else {
+      break;
+    }
+  }
+  const mantEnd = i;
+  if (!seenDigit) {
+    return Err("invalid float literal");
+  }
+  let expSigned: i32 = 0;
+  if (i < n && (byteAt(t, i) === 101u8 || byteAt(t, i) === 69u8)) {
+    i++;
+    let expNeg = false;
+    if (i < n && byteAt(t, i) === 45u8) {
+      expNeg = true;
+      i++;
+    } else if (i < n && byteAt(t, i) === 43u8) {
+      i++;
+    }
+    let expDigits = false;
+    let expVal: i32 = 0;
+    while (i < n) {
+      const b = byteAt(t, i);
+      if (b < 48u8 || b > 57u8) {
+        return Err("invalid exponent digit");
+      }
+      expDigits = true;
+      if (expVal < 10000000) {
+        expVal = expVal * 10 + ((b - 48u8) as i32);
+      }
+      i++;
+    }
+    if (!expDigits) {
+      return Err("missing exponent digits");
+    }
+    expSigned = expNeg ? -expVal : expVal;
+    decExp += expSigned;
+  }
+  if (i !== n) {
+    return Err("unexpected trailing characters");
+  }
+  if (mant === 0u64) {
+    return Ok(neg ? -0.0 : 0.0);
+  }
+  const sciExp = decExp + sigDigits - 1;
+  if (sciExp > 309) {
+    return Ok(neg ? NEG_INF : INF);
+  }
+  if (sciExp < -325) {
+    return Ok(neg ? -0.0 : 0.0);
+  }
+  // Fast path 1 (Clinger 1990): exact f64 significand and exact power of 10.
+  if (!truncated && mant <= 9007199254740991u64 && decExp >= -22 && decExp <= 22) {
+    const p10 = pow10Exact(decExp < 0 ? -decExp : decExp);
+    const val = decExp >= 0 ? ((mant as f64) * p10) : ((mant as f64) / p10);
+    return Ok(neg ? -val : val);
+  }
+  // Fast path 2 (Eisel-Lemire 128-bit): exact 19-digit mantissa, q in [-348, 347].
+  if (!truncated && decExp >= -348 && decExp <= 347) {
+    const lz = clz64(mant);
+    const w = mant << lz;
+    const k = (decExp + 352) / 16;
+    const rem = (decExp + 352) - k * 16;
+    let qHi = pow5CoarseHi(k);
+    let qLo = pow5CoarseLo(k);
+    let eQ = pow5CoarseExp(k);
+    if (rem > 0) {
+      const m = pow5Small(rem);
+      const lo0 = qLo *% m;
+      const hi0 = mul64Hi(qLo, m);
+      const lo1 = qHi *% m;
+      const hi1 = mul64Hi(qHi, m);
+      const midP = lo1 +% hi0;
+      const top = hi1 +% (midP < lo1 ? 1u64 : 0u64);
+      const sh: i32 = 64 - (clz64(top) as i32);
+      const rsh: u64 = sh as u64;
+      const lsh: u64 = (64 - sh) as u64;
+      qHi = (top << lsh) | (midP >> rsh);
+      qLo = (midP << lsh) | (lo0 >> rsh);
+      eQ += sh;
+    }
+    const p1Hi = mul64Hi(w, qHi);
+    const p1Lo = w *% qHi;
+    const p0Hi = mul64Hi(w, qLo);
+    const mid = p1Lo +% p0Hi;
+    const hi = p1Hi +% (mid < p1Lo ? 1u64 : 0u64);
+    // Error bound: true_mid - mid in [0, 4). Reject if mid could carry into hi.
+    if (mid < 0xffff_ffff_ffff_fffbu64) {
+      const msb: i32 = (hi >> 63u64) as i32;
+      const exp2 = 190 + msb + decExp - (lz as i32) + eQ;
+      let biased = exp2 + 1023;
+      if (biased >= 2047) {
+        return Ok(neg ? NEG_INF : INF);
+      }
+      if (biased <= -54) {
+        return Ok(neg ? -0.0 : 0.0);
+      }
+      const rshift = biased >= 1 ? (10 + msb) : (10 + msb + 1 - biased);
+      if (rshift <= 62) {
+        const rsu: u64 = rshift as u64;
+        const mask = (1u64 << rsu) - 1u64;
+        const half = 1u64 << (rsu - 1u64);
+        const remHi = hi & mask;
+        if (remHi !== half || mid > 0u64) {
+          let sig = hi >> rsu;
+          if (remHi >= half) {
+            sig = sig + 1u64;
+          }
+          const signBit: u64 = neg ? 0x8000_0000_0000_0000u64 : 0u64;
+          if (biased <= 0) {
+            return Ok(fromBits(signBit | sig));
+          }
+          if (sig === (1u64 << 53u64)) {
+            sig = sig >> 1u64;
+            biased++;
+          }
+          if (biased >= 2047) {
+            return Ok(neg ? NEG_INF : INF);
+          }
+          return Ok(fromBits(signBit | (((biased as u64) << 52u64) | (sig & 0x000f_ffff_ffff_ffffu64))));
+        }
+      }
+    }
+  }
+  // Exact BigUint fallback for >19-digit inputs and all halfway / ambiguous cases.
+  return Ok(parseFloatBigInt(t, mantStart, mantEnd, expSigned, neg));
+}
+
+// -----------------------------------------------------------------------------
+// Formatting: toRadix / toRadixU64 / toRadixI32 / toFixed
+// -----------------------------------------------------------------------------
+
+function digitChar(d: u64): u8 {
+  if (d < 10u64) {
+    return (48u64 + d) as u8;
+  }
+  return (87u64 + d) as u8;
+}
+
+export function toRadixU64(n: u64, radix: i32): string {
+  if (radix < 2 || radix > 36) {
+    const _ = byteAt("", 0);
+  }
+  const base: u64 = radix as u64;
+  if (n === 0u64) {
+    return "0";
+  }
+  const rev: u8[] = [];
+  let v = n;
+  while (v > 0u64) {
+    rev.push(digitChar(v % base));
+    v = v / base;
+  }
+  const out: u8[] = [];
+  let i = rev.length - 1;
+  while (i >= 0) {
+    out.push(rev[i]);
+    i--;
+  }
+  return strFromUtf8Raw(out, out.length);
+}
+
+export function toRadix(n: i64, radix: i32): string {
+  if (n < 0i64) {
+    const mag: u64 = (0i64 -% n).wrapping<u64>();
+    return `-${toRadixU64(mag, radix)}`;
+  }
+  return toRadixU64(n as u64, radix);
+}
+
+export function toRadixI32(n: i32, radix: i32): string {
+  return toRadix(n as i64, radix);
+}
+
+function formatZeroFixed(digits: i32): string {
+  if (digits === 0) {
+    return "0";
+  }
+  const out: u8[] = [48u8, 46u8];
+  let k: i32 = 0;
+  while (k < digits) {
+    out.push(48u8);
+    k++;
+  }
+  return strFromUtf8Raw(out, out.length);
+}
+
+function formatU128Fixed(hiIn: u64, loIn: u64, digits: i32, neg: bool): string {
+  if (hiIn === 0u64 && loIn === 0u64) {
+    return formatZeroFixed(digits);
+  }
+  const rev: u8[] = [];
+  let hi = hiIn;
+  let lo = loIn;
+  while (hi > 0u64 || lo > 0u64) {
+    if (hi === 0u64) {
+      rev.push((48u64 + (lo % 10u64)) as u8);
+      lo = lo / 10u64;
+    } else {
+      const qh = hi / 10u64;
+      const rh = hi % 10u64;
+      const mid = (rh << 32u64) | (lo >> 32u64);
+      const qm = mid / 10u64;
+      const rm = mid % 10u64;
+      const bot = (rm << 32u64) | (lo & 0xffff_ffffu64);
+      const qb = bot / 10u64;
+      const rem = bot % 10u64;
+      rev.push((48u64 + rem) as u8);
+      hi = qh;
+      lo = (qm << 32u64) | qb;
+    }
+  }
+  const out: u8[] = [];
+  if (neg) {
+    out.push(45u8);
+  }
+  const len = rev.length;
+  if (digits === 0) {
+    let i = len - 1;
+    while (i >= 0) {
+      out.push(rev[i]);
+      i--;
+    }
+    return strFromUtf8Raw(out, out.length);
+  }
+  if (len <= digits) {
+    out.push(48u8);
+    out.push(46u8);
+    let pad = digits - len;
+    while (pad > 0) {
+      out.push(48u8);
+      pad--;
+    }
+    let i = len - 1;
+    while (i >= 0) {
+      out.push(rev[i]);
+      i--;
+    }
+  } else {
+    let i = len - 1;
+    while (i >= digits) {
+      out.push(rev[i]);
+      i--;
+    }
+    out.push(46u8);
+    while (i >= 0) {
+      out.push(rev[i]);
+      i--;
+    }
+  }
+  return strFromUtf8Raw(out, out.length);
+}
+
+export function toFixed(x: f64, digits: i32 = 0): string {
+  if (digits < 0 || digits > 20) {
+    const _ = byteAt("", 0);
+  }
+  if (x !== x) {
+    return "NaN";
+  }
+  if (x === INF) {
+    return "Infinity";
+  }
+  if (x === NEG_INF) {
+    return "-Infinity";
+  }
+  const u = bitsOf(x);
+  const neg = (u >> 63u64) !== 0u64;
+  const rawExp: i32 = ((u >> 52u64) & 0x7ffu64) as i32;
+  const rawMant: u64 = u & 0x000f_ffff_ffff_ffffu64;
+  if (rawExp === 0 && rawMant === 0u64) {
+    return formatZeroFixed(digits);
+  }
+  const sig: u64 = rawExp === 0 ? rawMant : (rawMant | 0x0010_0000_0000_0000u64);
+  const exp2: i32 = rawExp === 0 ? -1074 : (rawExp - 1075);
+
+  // Case 1: exact integer value (|x| = sig * 2^exp2, fractional digits all zero).
+  if (exp2 >= 0) {
+    const out: u8[] = [];
+    if (neg) {
+      out.push(45u8);
+    }
+    if (exp2 <= 11) {
+      let iv: u64 = sig << (exp2 as u64);
+      const rev: u8[] = [];
+      while (iv > 0u64) {
+        rev.push((48u64 + (iv % 10u64)) as u8);
+        iv = iv / 10u64;
+      }
+      let p = rev.length - 1;
+      while (p >= 0) {
+        out.push(rev[p]);
+        p--;
+      }
+    } else {
+      // Exact BigUint decimal expansion (handles up to f64::MAX without trapping).
+      const bigInt = bigShl(bigFromU64(sig), exp2);
+      const chunks: u32[] = [];
+      while (bigInt.length > 0) {
+        chunks.push(bigDivRemU32(bigInt, 1000000000u32));
+      }
+      let ci = chunks.length - 1;
+      // Top chunk without leading zeros.
+      let top = chunks[ci];
+      const topRev: u8[] = [];
+      while (top > 0u32) {
+        topRev.push((48u32 + (top % 10u32)) as u8);
+        top = top / 10u32;
+      }
+      let tp = topRev.length - 1;
+      while (tp >= 0) {
+        out.push(topRev[tp]);
+        tp--;
+      }
+      ci--;
+      // Subsequent chunks padded to 9 digits.
+      while (ci >= 0) {
+        let v = chunks[ci];
+        let div: u32 = 100000000u32;
+        while (div > 0u32) {
+          out.push((48u32 + (v / div)) as u8);
+          v = v % div;
+          div = div / 10u32;
+        }
+        ci--;
+      }
+    }
+    if (digits > 0) {
+      out.push(46u8);
+      let k: i32 = 0;
+      while (k < digits) {
+        out.push(48u8);
+        k++;
+      }
+    }
+    return strFromUtf8Raw(out, out.length);
+  }
+
+  // Case 2: exact scaled integer (|x| * 10^digits = sig * 5^digits * 2^(exp2 + digits), < 2^119).
+  const s = exp2 + digits;
+  if (s >= 0) {
+    const p5 = pow5Small(digits);
+    const pLo = sig *% p5;
+    const pHi = mul64Hi(sig, p5);
+    if (s === 0) {
+      return formatU128Fixed(pHi, pLo, digits, neg);
+    }
+    const su: u64 = s as u64;
+    const qHi = (pHi << su) | (pLo >> (64u64 - su));
+    const qLo = pLo << su;
+    return formatU128Fixed(qHi, qLo, digits, neg);
+  }
+
+  // Case 3: |x| * 10^digits = (sig * 5^digits) / 2^sh with exact round-half-to-even.
+  const sh = -s;
+  if (sh > 101) {
+    // sig * 5^digits < 2^100, so (sig * 5^digits) / 2^sh < 0.5 strictly.
+    return formatZeroFixed(digits);
+  }
+  const p5 = pow5Small(digits);
+  const pLo = sig *% p5;
+  const pHi = mul64Hi(sig, p5);
+  let qHi: u64 = 0u64;
+  let qLo: u64 = 0u64;
+  let halfBit: u64 = 0u64;
+  let sticky = false;
+  if (sh < 64) {
+    const shu: u64 = sh as u64;
+    qHi = pHi >> shu;
+    qLo = (pHi << (64u64 - shu)) | (pLo >> shu);
+    halfBit = (pLo >> (shu - 1u64)) & 1u64;
+    const stickyMask = (1u64 << (shu - 1u64)) - 1u64;
+    sticky = (pLo & stickyMask) !== 0u64;
+  } else if (sh === 64) {
+    qHi = 0u64;
+    qLo = pHi;
+    halfBit = pLo >> 63u64;
+    sticky = (pLo & 0x7fff_ffff_ffff_ffffu64) !== 0u64;
+  } else {
+    const k: u64 = (sh - 64) as u64;
+    qHi = 0u64;
+    qLo = pHi >> k;
+    halfBit = (pHi >> (k - 1u64)) & 1u64;
+    const stickyMask = (1u64 << (k - 1u64)) - 1u64;
+    sticky = ((pHi & stickyMask) !== 0u64) || pLo !== 0u64;
+  }
+  if (halfBit === 1u64 && (sticky || (qLo & 1u64) !== 0u64)) {
+    qLo = qLo +% 1u64;
+    if (qLo === 0u64) {
+      qHi = qHi +% 1u64;
+    }
+  }
+  return formatU128Fixed(qHi, qLo, digits, neg);
+}

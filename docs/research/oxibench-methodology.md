@@ -1,5 +1,7 @@
 # OxiBench: methodology (v0.1, draft for owner approval)
 
+> **Status (2026-11-26):** still a draft, blocked on the owner's approval and API keys (question Q-OB-1 in [../roadmap/oxiscript.md](../roadmap/oxiscript.md)); stage 8.OB. `oxi run` now exists, so the run-based condition C3 is feasible.
+
 Status: written by the lead 2026-11-25 at the owner's request. **Nothing is run until the owner approves this file and the freeze in section 7 is committed.**
 
 Question OxiBench answers: *how well do today's AI models write correct OxiScript, with and without our documentation and tool loop, compared with the same tasks in TypeScript, and which OxiScript features cause their mistakes?*
@@ -27,7 +29,7 @@ The lead (Opus, this session) designs the methodology and integrates the results
 ### 2.1 Task format
 
 Each task is a directory with:
-- `prompt.md`: a natural-language description, the same for every condition. It specifies behaviour, not implementation, and names the function signature to implement (e.g. `export function median(xs: [u8]): ...` or a `main(log: Log)` program).
+- `prompt.md`: a natural-language description, the same for every condition. It specifies behaviour, not implementation, and names the function signature to implement (e.g. `export function median(xs: u8[]): ...` or a `main(log: Log)` program).
 - `ref.oxs`: an OxiScript reference solution.
 - `ref.ts`: an equivalent TypeScript reference solution (the TS twin, section 4.3).
 - `tests/`: **hidden** tests: input/output cases, laws with seeds, expected `host:log` output, expected traps where the spec demands them.

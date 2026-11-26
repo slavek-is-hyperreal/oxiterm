@@ -1,4 +1,4 @@
-//! Backend-neutral paint commands (OxiUI phase 1, see `docs/oxi-ui.md`).
+//! Backend-neutral paint commands (OxiUI phase 1, see `docs/history/oxi-ui-plan-history.md`).
 //!
 //! The renderer turns DOM + layout into a [`DisplayList`]: a flat, paint-ordered list of
 //! primitives in `f32` logical units. Backends ("sinks") rasterize it. In phase 1 the only

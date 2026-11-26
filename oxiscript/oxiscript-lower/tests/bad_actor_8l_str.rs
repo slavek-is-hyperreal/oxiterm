@@ -92,7 +92,7 @@ fn string_ops_table() {
         if got != Ok(vec![I32(want)]) { bad.push(format!("{name}() = {got:?} want {want}")); }
     }
     eprintln!("string/array cases: {n}, mismatches {}", bad.len());
-    assert!(bad.is_empty(), "{} of {n} differ:\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{} of {n} differ:\n{}", bad.len(), bad.join("\n"));
 }
 
 fn oracle(name: &str, a: &str) -> i32 {

@@ -58,11 +58,11 @@ pub fn run_cases(cases: &[(&str, &str)]) {
             bad.push_str(&format!("--- {name}\nwant {want:?}\n got {got:?}\n{}\n", show(src)));
         }
     }
-    assert!(bad.is_empty(), "\n{bad}");
+    assert_eq!(bad.len(), 0, "\n{bad}");
 }
 
 pub fn assert_ok(src: &str) {
     let c = check_source(src, &hosts());
     let errs: Vec<_> = c.errors().collect();
-    assert!(errs.is_empty(), "unexpected errors:\n{}\n--- source ---\n{src}", show(src));
+    assert_eq!(errs.len(), 0, "unexpected errors:\n{}\n--- source ---\n{src}", show(src));
 }

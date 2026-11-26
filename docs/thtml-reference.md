@@ -23,6 +23,8 @@ Every THTML document is parsed into a tree of nodes, where the default, implicit
 
 Files must not contain elements specific to browser HTML, such as `<!DOCTYPE>`, `<html>`, `<head>`, or `<body>`.
 
+**Client modes.** The same file is rendered for three kinds of clients: a terminal or the browser cell canvas (cells; the default), a display-list GUI client (`?gui=1`; a web client opts in with the `0x12` capability message, bit 0 = display list, bit 1 = wire v3 with proportional glyph runs; see [ARCHITECTURE.md](ARCHITECTURE.md) section 7b) and browser local mode (`?local=1`, the core runs in the page). GUI-only TCSS lives in `@media (render: gui)` blocks and is ignored by terminals; the THTML markup itself does not change between modes.
+
 ---
 
 ## 2. Supported Tags
@@ -78,7 +80,7 @@ The following attributes can be applied to any node type:
 |---|---|---|
 | `<img>`, `<video>` | `src` | **Required.** Relative path to the resource file (relative to the directory containing the `.thtml` file). Paths are checked for Path Traversal attack attempts. |
 | `<img>`, `<video>` | `style` / TCSS | **Required.** Must declare explicit `width` (>0) and `height` (>0) inline or via TCSS class. Omission triggers a parsing error. |
-| `<img>`, `<video>` | `alt` | Textual description of the media element, used in accessibility mode (`--a11y`). |
+| `<img>`, `<video>` | `alt` | Textual description of the media element. It is the accessible label in `--a11y` mode and in the ARIA mirror (`0x37`) that GUI web clients (`?gui=1`) get, where the media node has role `img`; it is not painted. |
 | `<input>` | `placeholder` | Helper text displayed in the field when the input buffer is empty. |
 | `<input>` | `name` | Machine name of the input field, used as a label in the Accessibility Tree. |
 | `<input>` | `bind-value` | State key in `StateManager` where the typed text is saved **in real-time** (on every keystroke). |

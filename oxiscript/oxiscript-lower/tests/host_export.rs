@@ -53,7 +53,7 @@ fn export_name_cannot_forge_reserved_or_empty_names() {
             "{HDR}@host @export_name(\"{n}\") export function f(): i32 {{ return 1; }}\nexport function main(log: Log): void {{ log.write(2, \"up\"); }}\n"
         );
         let t = compile_err(&src);
-        assert!(!t.is_empty(), "export_name({n:?})");
+        assert_ne!(t.len(), 0, "export_name({n:?})");
     }
 }
 
@@ -62,11 +62,11 @@ fn export_name_collisions_are_rejected() {
     let two = format!(
         "{HDR}@host @export_name(\"x\") export function a(): i32 {{ return 1; }}\n@host @export_name(\"x\") export function b(): i32 {{ return 2; }}\nexport function main(log: Log): void {{}}\n"
     );
-    assert!(!compile_err(&two).is_empty());
+    assert_ne!(compile_err(&two).len(), 0);
     let vs_name = format!(
         "{HDR}@host @export_name(\"b\") export function a(): i32 {{ return 1; }}\n@host export function b(): i32 {{ return 2; }}\nexport function main(log: Log): void {{}}\n"
     );
-    assert!(!compile_err(&vs_name).is_empty());
+    assert_ne!(compile_err(&vs_name).len(), 0);
 }
 
 #[test]
@@ -74,6 +74,6 @@ fn unreachable_plain_export_is_not_lowered() {
     // a plain export that nothing calls costs nothing and cannot fail lowering
     let src = format!("{HDR}export function dead(x: i32): i32 {{ return x; }}\nexport function main(log: Log): void {{ log.write(2, \"up\"); }}\n");
     let mut p = Prog::new(&src);
-    assert!(p.rt.user_exports().is_empty());
+    assert_eq!(p.rt.user_exports().len(), 0);
     p.finish();
 }

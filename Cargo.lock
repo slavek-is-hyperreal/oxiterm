@@ -2882,11 +2882,11 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-abi"
-version = "0.0.1"
+version = "0.0.2"
 
 [[package]]
 name = "oxiscript-check"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-syntax",
@@ -2894,7 +2894,7 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-cli"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "oxiscript-abi",
@@ -2908,14 +2908,14 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-ir"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "oxiscript-abi",
 ]
 
 [[package]]
 name = "oxiscript-lower"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-check",
@@ -2927,7 +2927,7 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-playground"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-check",
@@ -2940,7 +2940,7 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-rc"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dlmalloc",
  "oxiscript-abi",
@@ -2949,7 +2949,7 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-runtime"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "arbitrary",
  "oxiscript-abi",
@@ -2961,11 +2961,11 @@ dependencies = [
 
 [[package]]
 name = "oxiscript-syntax"
-version = "0.0.1"
+version = "0.0.2"
 
 [[package]]
 name = "oxiscript-wasm"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-ir",
