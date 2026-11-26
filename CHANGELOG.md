@@ -33,7 +33,7 @@ First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semanti
 - In the playground only `host:log` and `host:state` exist; nothing persists between runs.
 - Two parser/formatter oracles (comment re-attachment, an E0006 no-op fix) still need a multi-seed check.
 
-## OxiTerm / OxiUI work since 2026-11-23 (OxiTerm crate versions unchanged)
+## [Unreleased] — OxiTerm / OxiUI work since 2026-11-23 (OxiTerm crate versions unchanged)
 
 - **Phase 4:** `oxiterm-core` extracted as a pure crate (session state, event-loop step API, animations, frame limiter) driven by host traits; builds for wasm32 and Android.
 - **Phase 5.2:** headless GPU sink `oxiterm-gpu` (wgpu, SDF fills and borders, glyph atlas matching the CPU renderer, golden and CPU-comparison tests).
@@ -42,9 +42,7 @@ First OxiScript release. **Nothing is guaranteed before 1.0.0**: syntax, semanti
 - **Phase 7.6:** media and diagram parity across modes (SVG, PNG, Lottie, Rive, diagrams in GUI and local mode; honest missing-media placeholder in the no-native-media renderer).
 - Dependency security upgrade (below) and the showcase versions of the sites.
 
-## [Unreleased] — 2026-11-23
-
-### 🔒 Dependency security upgrade
+### 🔒 Dependency security upgrade (2026-11-23)
 - **russh 0.45 → 0.65** (`russh-keys` merged into `russh::keys`; `ssh-key` 0.7 backend): fixes RUSTSEC-2026-0496, -0493, -0494, -0492, -0154 and russh-cryptovec -0153 (pre-auth allocation / decompression / unbounded-size DoS issues). Also drops `rsa 0.9` (RUSTSEC-2023-0071, now `rsa 0.10`) and `crypto-bigint 0.5` (RUSTSEC-2026-0387, now 0.7).
 - **prometheus 0.13 → 0.14** (protobuf 2.x → 3.7.2, RUSTSEC-2024-0437).
 - **resvg 0.47 → 0.50** (drops the unmaintained `rustybuzz`/`ttf-parser` chain), **scraper 0.20 → 0.29** (drops unmaintained `fxhash`); `cargo update` of all compatible dependencies.

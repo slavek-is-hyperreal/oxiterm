@@ -28,7 +28,8 @@ Rules can be restricted to one render backend with a media block in the `<style>
 .card { border-style: rounded; padding: 1; }
 
 @media (render: gui) {
-  .card { border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+  .card { border-radius: 8px; }
+  /* box-shadow is not supported: it is ignored silently, like any unknown property */
 }
 @media (render: tui) {
   .card { bg: #1a1b26; }
@@ -39,7 +40,7 @@ Rules can be restricted to one render backend with a media block in the `<style>
 * **Cascade:** rules inside a block keep their source position, so an unconditional rule before or after the block wins or loses by the usual order-of-appearance rule.
 * **Unknown queries are skipped:** any other query (`screen`, `(render: hologram)`, `(render: tui) and ...`) skips the whole block silently and parsing continues after its closing `}`.
 * **No nesting:** `@media` inside `@media` is not supported.
-* **GUI-only properties:** `border-radius` is parsed (see below) but only display-list (GUI) clients draw it; `font-family`, `font-size` and `line-height` are parsed and inherited (see the font rows in section 2) but do not change layout or painting yet (Stage 6.2 of Phase 6); `box-shadow` is ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
+* **GUI-only properties:** `border-radius` is parsed (see below) but only display-list (GUI) clients draw it; `font-family`, `font-size` and `line-height` are parsed, inherited and used for layout and painting (see the font rows in section 2; Phase 6 is done); `box-shadow` is ignored like any unknown property. They do not affect the other declarations of the same rule, even when the value contains commas, parentheses or quotes.
 
 ---
 
@@ -192,7 +193,7 @@ When any transition is active, the OxiTerm event loop ticks at 60 FPS (16ms). Wh
 
 ## 8. What TCSS Does NOT Support & Unknown Property Handling
 
-* **No Units or `auto` Keywords:** Dimensions, margins, and paddings are specified as pure positive integers. Units such as `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
+* **Units:** Layout lengths (`width`, `height`, `margin`, `padding`, `gap`, ...) are plain numbers in cells; units such as `em`, `%` and keywords like `auto` (e.g. `height: auto`) are not supported there. Units are accepted only by the GUI-only properties: `px`/`dp` (through the 9.6 x 20 px reference cell) and `ch`/`lh`/`em`/`%` in the font properties, `px`/`dp` in `border-radius`. Omitting a dimension property leaves it unconstrained (`Dimension::Auto`).
 * **`border-radius` (GUI only):** one non-negative length (cells, or `px`/`dp` through the 9.6 x 20 px reference cell, so `19.2px` = 2 cells; measured along the horizontal axis). It is carried to the display list as the `radius` of that node's fill and border. Terminals ignore it completely; the rule `.card { border-radius: 8px; }` inside `@media (render: gui)` is the intended use. Multi-value forms (`4px 8px`) and negative values are rejected with a warning.
 * **Unknown Property Warnings:** Any unrecognized property name or invalid property value (e.g. `height: auto`, `flex: 0`, `flex: -1`) emits a `tracing::warn!` log and is ignored by the parser. `box-shadow` is ignored without a warning, and an invalid value of a font property (`font-family`, `font-size`, `line-height`, `font-weight`, `font-style`) is ignored with a debug-level log only.
 * **No `display: none`:** Hiding elements is done entirely at the DOM structure level using the `bind-show` attribute.

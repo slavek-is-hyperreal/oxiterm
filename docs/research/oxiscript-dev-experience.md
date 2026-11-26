@@ -1,10 +1,14 @@
 # OxiScript developer experience: what the persona loves, misses, and what we should build
 
+> **Status (2026-11-26):** the `Status` column of the tables below is partly stale; current status is in [../roadmap/oxiscript.md](../roadmap/oxiscript.md). Shipped since this was written: the checker (8.T), parser and formatter (8.P), lowering and codegen, `oxi run` and `oxi build`, the DevKit v0 (8.D0). Still planned: LSP (8.S2), laws (8.S4a), placement report (8.S4b), Rust crates (8.N), board (8.S3).
+>
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
 Date: 2026-11-25. Author: research agent (developer experience). Scope: web-researched, not implemented.
 
 **Legend.** `[V]` = a primary page was fetched and read. `[S]` = taken from a search-result summary only (secondary or snippet). `[M]` = from the author's background knowledge, not re-checked in this session (treat as unverified; canonical URL given where I am confident of it). `[I]` = internal repo document. `[O]` = opinion/inference. Percentages and counts are quoted as the source gave them; several secondary sources disagree and that is flagged.
 
-Internal references: `docs/oxi-ui.md` Phase 8 [I], `docs/oxiscript/grammar.md` [I] (section numbers are cited as "G §n"; "G §6 #n" = row n of "Deviations from TypeScript"), `docs/research/oxiscript-language.md` [I].
+Internal references: `docs/history/oxi-ui-plan-history.md` Phase 8 [I], `docs/oxiscript/grammar.md` [I] (section numbers are cited as "G §n"; "G §6 #n" = row n of "Deviations from TypeScript"), `docs/research/oxiscript-language.md` [I].
 
 ---
 
@@ -114,13 +118,13 @@ Not done: PlatformIO pain data, Arduino IDE 2 changelog, MicroPython WebREPL/mpr
 ### 5.1 Pain -> OxiScript feature (honest)
 | Pain | OxiScript answer | Grammar/plan ref | Status |
 |---|---|---|---|
-| Types lie at runtime (`as`, `any`, `JSON.parse`) | no `any`, checked downcast, no unchecked casts | G §6 #3, #12 | planned, 8.T done in main [I] |
-| One `number` type, silent overflow | `i32/u8/f64...` with suffixes; overflow traps | G §6 #1, #17 | planned |
-| Untyped exceptions | `Result<T,E>` + `?`; traps for bugs | G §6 #6 | planned |
-| `undefined` vs `null` | one absence value | G §6 #4 | planned |
-| Switch fall-through, non-exhaustive switch | exhaustive, no fall-through | G §6 #7 | planned |
-| `arr[i]` out of range gives `undefined` | traps `bounds` | G §6 #19 | planned |
-| Config sprawl | single toolchain, manifest, built-in formatter/LSP | oxi-ui.md Principle 10 | planned (8.P parser+formatter merged (`13b5987`)) |
+| Types lie at runtime (`as`, `any`, `JSON.parse`) | no `any`, checked downcast, no unchecked casts | G §6 #3, #12 | shipped (8.T) |
+| One `number` type, silent overflow | `i32/u8/f64...` with suffixes; overflow traps | G §6 #1, #17 | shipped (8.T/8.L; see the roadmap) |
+| Untyped exceptions | `Result<T,E>` + `?`; traps for bugs | G §6 #6 | shipped (8.T/8.L; see the roadmap) |
+| `undefined` vs `null` | one absence value | G §6 #4 | shipped (8.T/8.L; see the roadmap) |
+| Switch fall-through, non-exhaustive switch | exhaustive, no fall-through | G §6 #7 | shipped (8.T/8.L; see the roadmap) |
+| `arr[i]` out of range gives `undefined` | traps `bounds` | G §6 #19 | shipped (8.T/8.L; see the roadmap) |
+| Config sprawl | single toolchain, manifest, built-in formatter/LSP | oxi-ui-plan-history.md Principle 10 | shipped (`oxi` CLI with fmt, 8.P `13b5987`, 8.D0); LSP is 8.S2 |
 | Hidden slowness | placement report + `@expect` | Principle 5, 8.S4 | planned |
 | Hardware access from JS | capabilities; wasm; ESP32 via wasm->C | Principles 6, 7, 8.S3 | blocked on board (after 2026-12-10) |
 | Missing libraries | `rust:` linked crates | G §2.7, 8.N | planned |
@@ -221,7 +225,7 @@ Also in 8.S5, prefer porting tiny libraries (e.g. `base64`, `hex`, colour maths)
 - A package registry (use git URLs + `rust:` first). A Jupyter-style notebook. A WebSerial IDE of our own beyond the simulator. Do not clone Wokwi's component library.
 
 ### 6.8 Licensing caveat
-Everything above assumes permissive licences only (oxi-ui.md Principle 11) [I]; Toit, XS and Jaculus are references, not dependencies.
+Everything above assumes permissive licences only (oxi-ui-plan-history.md Principle 11) [I]; Toit, XS and Jaculus are references, not dependencies.
 
 ### 6.9 First 15 minutes: the ideal walkthrough
 | Min | What the persona does | What happens |
@@ -267,7 +271,7 @@ Everything above assumes permissive licences only (oxi-ui.md Principle 11) [I]; 
 - [Stack Overflow 2025 survey blog](https://stackoverflow.blog/2025/07/29/developers-remain-willing-but-reluctant-to-use-ai-the-2025-developer-survey-results-are-here/) [S]; [VentureBeat](https://venturebeat.com/ai/stack-overflow-data-reveals-the-hidden-productivity-tax-of-almost-right-ai-code) [S]
 - [Gleam 2024 survey results](https://gleam.run/news/developer-survey-2024-results) [S]; [byteiota Gleam 70%](https://byteiota.com/gleam-hits-70-developer-admiration-stack-overflow-survey/) [S]
 - [Biome guides](https://betterstack.com/community/guides/scaling-nodejs/biome-eslint/) [S]; [flaviocopes](https://flaviocopes.com/biome/) [S]
-- Internal: `docs/oxi-ui.md` Phase 8, `docs/oxiscript/grammar.md`, `docs/research/oxiscript-language.md` [I]
+- Internal: `docs/history/oxi-ui-plan-history.md` Phase 8, `docs/oxiscript/grammar.md`, `docs/research/oxiscript-language.md` [I]
 
 ## Known gaps in this report
 Zig/Roc/MoonBit/Bun claims are [M] and need citations (Go 1.18 and Deno lint/fmt now [V]); TS issue reaction counts not captured; Espruino, Low.js, PlatformIO, Arduino IDE 2 not researched; Rust crate licences and wasm32 eligibility not checked; `rmcp` licence not read; cargo suggestion-applicability fields not confirmed from the rustc JSON doc.

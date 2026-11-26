@@ -1,5 +1,7 @@
 # HANDOFF 8.D BAD ACTOR fixes (update after every fix)
 
+> **Status (2026-11-26):** complete and merged (`148b8e8`; DevKit v0 of stage 8.D0). The unchecked boxes below were never ticked in these working notes: the items were finished (see `oxiscript/oxiscript-cli/tests/agent_test/LOG.md`, `oxiscript/oxiscript-cli/SCHEMA.md`, `editors/vscode-oxiscript`), and the final report was delivered.
+
 Plan: I/O layer (F1 F5 F8 F9 F15) -> F7 -> notes (F13 F6 F15) -> F16 -> F2 -> F6 -> F17 -> F10 -> F4 -> extension (F3 F11 F12).
 
 ## Done

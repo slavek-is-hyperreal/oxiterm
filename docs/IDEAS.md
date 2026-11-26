@@ -1,6 +1,6 @@
 # 💡 OxiTerm Ideas & Strategic Roadmaps
 
-This document serves as the master catalog and index of architectural ideas, concept designs, and future evolution roadmaps for the OxiTerm ecosystem. Each idea is summarized below with direct links to its dedicated, in-depth architectural specification.
+Status column: the stage ids refer to the roadmaps in [roadmap/](roadmap/README.md), which are the source of truth. This document serves as the master catalog and index of architectural ideas, concept designs, and future evolution roadmaps for the OxiTerm ecosystem. Each idea is summarized below with direct links to its dedicated, in-depth architectural specification.
 
 ---
 
@@ -8,13 +8,17 @@ This document serves as the master catalog and index of architectural ideas, con
 
 | Idea | Scope / Target | Status | Dedicated Specification |
 |---|---|---|---|
-| **1. OxiDESK / OxiDE** | Retro Linux Desktop Environment (Pentium II/III/4, 64–512 MB RAM) | Core foundations merged; DE fork planned | [docs/retro-desktop-environment.md](retro-desktop-environment.md) |
-| **2. OxiTerm Embedded** | Embedded Linux (SBCs), Industrial HMI, IoT Gateways & OpenWrt | Architecture blueprint defined | [docs/embedded-iot-platform.md](embedded-iot-platform.md) |
-| **3. Framebuffer Engine (`oxiterm-fb`)** | Direct hardware `/dev/fb0` & DRM/KMS blitter (Zero X11 / Zero Wayland) | Conceptual design complete | [docs/embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers) |
-| **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented in core | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
-| **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Planned / Architecture defined | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
-| **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phases 0–2 implemented | [docs/oxi-ui.md](oxi-ui.md) |
-| **7. OxiScreens** | Many dumb networked screens (tablets, ESP32 LCD, e-ink) driven by one home server; Home Assistant bridge; server-side 3D | Blueprint defined | [docs/iot-screens.md](iot-screens.md) |
+| **1. OxiDESK / OxiDE** | Retro Linux Desktop Environment (Pentium II/III/4, 64–512 MB RAM) | Window features and software sink merged; runner and shell: [7.2b](roadmap/oxiui.md#s-7-2b), [U.OxiDE](roadmap/oxiui.md#s-u-oxide) | [docs/retro-desktop-environment.md](retro-desktop-environment.md) |
+| **2. OxiTerm Embedded** | Embedded Linux (SBCs), Industrial HMI, IoT Gateways & OpenWrt | Blueprint; stages [U.IPC](roadmap/oxiui.md#s-u-ipc), [U.Screens](roadmap/oxiui.md#s-u-screens), [U.Bench](roadmap/oxiui.md#s-u-bench) | [docs/embedded-iot-platform.md](embedded-iot-platform.md) |
+| **3. Framebuffer Engine (`oxiterm-fb`)** | Direct hardware `/dev/fb0` & DRM/KMS blitter (Zero X11 / Zero Wayland) | `oxiterm-fb` software sink merged (7.2); console runner [7.2b](roadmap/oxiui.md#s-7-2b) | [docs/embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers](embedded-iot-platform.md#31-direct-linux-framebuffer-devfb0-or-drmkms-dumb-buffers) |
+| **4. Smooth Physics & Transitions** | Non-linear easing (Cubic Bézier & Damped Spring Oscillator) at 60 FPS | Implemented (0.6.0) | [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves) |
+| **5. Reactive Hover States (`:hover`)** | Any-event cursor tracking (1003h), `:hover` pseudoclass & animated color/glow transitions | Not implemented: [U.Hover](roadmap/oxiui.md#s-u-hover) | [#5-reactive-hover-states--pseudoclasses-hover-focus](#5-reactive-hover-states--pseudoclasses-hover-focus) |
+| **6. OxiUI** | One THTML/TCSS source → TUI, web canvas, native GPU window, mobile; server-driven and local modes | Phases 0–6, 7.1, 7.2, 7.6, 5.2 done; rest: [roadmap/oxiui.md](roadmap/oxiui.md) | [docs/roadmap/oxiui.md](roadmap/oxiui.md) |
+| **7. OxiScreens** | Many dumb networked screens (tablets, ESP32 LCD, e-ink) driven by one home server; Home Assistant bridge; server-side 3D | Blueprint; stage [U.Screens](roadmap/oxiui.md#s-u-screens) (waits for hardware) | [docs/iot-screens.md](iot-screens.md) |
+| **8. Server-rendered high-risk surfaces** | Login, PIN and payment screens with no DOM and no secrets in the browser | Idea: [U.Secure](roadmap/oxiui.md#s-u-secure) | [#8](#8-server-rendered-high-risk-surfaces-zero-dom-zero-secrets-in-the-browser) |
+| **9. OxiScript** | General-purpose typed language compiled to WebAssembly, OxiUI as first host | 0.0.1 released; stages in [roadmap/oxiscript.md](roadmap/oxiscript.md) | [docs/oxiscript/](oxiscript/grammar.md) |
+| **10. 3D in OxiUI** | Three tiers of server-driven 3D, GPU path in local mode | Draft, not scheduled: [9.1-9.4](roadmap/oxiui.md#s-9-1) | [roadmap/oxiui.md](roadmap/oxiui.md#s-9-1) |
+| **11. Terminal+ concept documents** | The original Terminal+ specification and amendment | Historical, superseded by the roadmaps | [docs/history/](history/) |
 
 ---
 
@@ -26,7 +30,7 @@ This document serves as the master catalog and index of architectural ideas, con
   - Running directly on Linux Virtual Consoles (`/dev/tty1`), DRM dumb buffers, or minimal X11/Wayland kiosks.
   - Multi-window manager with z-index stacking contexts, window dragging, collapsing (window shading), and taskbar integration.
   - Sub-50 MB total system RAM consumption and <0.1% CPU idle overhead.
-  - Planned to sit on top of [OxiUI](oxi-ui.md) (idea #6) as a DisplayList consumer instead of a separate cell-grid fork.
+  - Planned to sit on top of [OxiUI](roadmap/oxiui.md) (idea #6) as a DisplayList consumer instead of a separate cell-grid fork.
 * **Read the full blueprint:** 📄 [docs/retro-desktop-environment.md](retro-desktop-environment.md)
 
 ---
@@ -57,7 +61,7 @@ This document serves as the master catalog and index of architectural ideas, con
 * **The Vision:** Fluid non-linear interface motion in the terminal without CPU overhead.
 * **Key Innovations:**
   - Newton-Raphson numerical cubic Bézier solver (`ease`, `ease-in`, `ease-out`, `ease-in-out`).
-  - Analytic second-order differential equation solver for physical damped springs (`spring`, `spring(mass, stiffness, damping)`).
+  - Analytic second-order differential equation solver for physical damped springs (`spring`, `spring(stiffness, damping, mass)`).
   - Adaptive event loop: active animations tick at 60 FPS (~16ms), while idle states drop immediately to zero CPU usage with a 1000ms idle timeout.
   - Declarative style bindings (`bind-width`, `bind-height`, `bind-top`, `bind-left`, `bind-opacity`, `bind-z-index`) connecting state to motion.
 * **Read the full documentation:** 📄 [docs/tcss-reference.md#10-css-transitions--timing-curves](tcss-reference.md#10-css-transitions--timing-curves)
@@ -75,7 +79,7 @@ This document serves as the master catalog and index of architectural ideas, con
 
 ---
 
-### 6. [OxiUI: One Source → Terminal, Web, Desktop & Mobile](oxi-ui.md)
+### 6. [OxiUI: One Source → Terminal, Web, Desktop & Mobile](roadmap/oxiui.md)
 * **The Vision:** Turn the terminal renderer into one backend among several. The same THTML/TCSS documents, sessions and App Server protocol drive a TUI, a web canvas, a native `winit` + `wgpu` window, and later mobile and framebuffer targets.
 * **Key Innovations:**
   - **DisplayList** of `f32` primitives (rect, border, text run, clip, image) between layout and output; `CellBuffer` becomes just the TUI sink.
@@ -83,7 +87,7 @@ This document serves as the master catalog and index of architectural ideas, con
   - **Golden cell snapshots** gate every phase so existing TUI apps never regress.
   - **Two execution modes from the same app source:** *server-driven* (thin client paints a DisplayList received over WS, LiveView-style) and *local core* (`oxiterm-core` compiled into a desktop/Android/WASM app, offline, Flutter-style).
   - **No font drift:** a shared font bundle in both modes, and positioned glyph runs in the DisplayList so thin clients never re-measure text.
-* **Read the full plan:** 📄 [docs/oxi-ui.md](oxi-ui.md)
+* **Read the roadmap:** 📄 [docs/roadmap/oxiui.md](roadmap/oxiui.md)
 
 ---
 
