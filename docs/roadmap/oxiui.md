@@ -445,6 +445,8 @@ IDEAS.md index mapping: #1 OxiDESK -> 7.2b, U.OxiDE; #2 Embedded -> U.IPC, U.Scr
 
 ## 8. Working rules that matter for OxiUI
 
+- BAD ACTOR is always a Claude Opus agent ([D-33](oxiscript.md#d-33)); Gemini never the only security reviewer ([D-31](oxiscript.md#d-31)).
+
 - **BAD ACTOR gate (O-8):** every stage ends with an adversarial agent that writes failing tests and a report and never fixes code; a separate fix agent fixes; findings stay as regression tests. Stage notes go to `docs/stages/<stage>/`.
 - **Gates:** `scripts/oxiscript-gate.sh quick|merge` before merge and push; per-package cargo in worktrees (`-p ...`; a workspace build in a worktree fails on the missing web bundle); at most 3 concurrent agents, `CARGO_BUILD_JOBS=2`; nightly fuzz `.github/workflows/oxiscript-fuzz.yml`; check `gh run list` after every push (O-18).
 - **Golden files:** agents never set `OXI_BLESS*`; the lead blesses after review (O-17). GPU goldens are blessed only on the verified llvmpipe pairs (LLVM 20 / Mesa 25.2, LLVM 21 / Mesa 26.0); tolerance 2 / 0.25%. Stage changes that alter wire or traces say so explicitly (7.6 was a wire break: server and client ship together).
