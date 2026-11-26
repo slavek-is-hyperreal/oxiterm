@@ -5,6 +5,9 @@
 **Observed Baseline Gap (from 8.M-link measurements):** Linked `oxiscript-rc` (`dlmalloc` + Bacon-Rajan cycle collector) costs **6.5–10.5×** more `wasmi` fuel/iter than the bump-allocator stub (`new class`: 398 → 3,070 fuel/iter; array literal: 579 → 5,584; template string: 1,657 → 12,006), **~2.5×** wall time, and requires large heap headroom for cycle-collector work vectors.  
 **Verification note:** Claims grounded in repository files (`oxiscript-rc`, `oxiscript-wasm`, `oxiscript-lower`) or `~/.cargo/registry` (`wasmi 2.0.3`, `dlmalloc 0.2.14`) are cited directly. External literature and project claims carry links; quantitative estimates for OxiScript that have not yet been benchmarked are marked **[estimate]** and unverified secondary claims are marked **[unverified]**.
 
+> **Corrected by Claude (Opus), 2026-11-26:** this draft was verified claim by claim; the ledger, the measurements and corrected recommendations are in `oxiscript-memory-performance-verification.md`. The corrections below are inline; the most important one is that the fuel gap is mostly a **metering artifact of dlmalloc's code shape** (A1/A2 there), not call overhead or missing elision.
+
+
 ---
 
 ## Executive Summary & Clear Recommendations
@@ -13,6 +16,9 @@ OxiScript's 6.5–10.5× fuel penalty is **not** a fundamental limitation of ref
 
 1. **General-purpose boundary-tag allocator (`dlmalloc`) on every tiny fixed-size object** (~40–50% of the excess fuel): Every `oxi_alloc` pays `drain()` entry checks, type-descriptor indirection, `dlmalloc::calloc` (which always runs `write_bytes` even on fresh memory or immediately overwritten payloads, adds a 4-byte chunk header + 8-byte alignment rounding—turning 16 B objects into 24 B and 24 B into 32 B—and walks doubly-linked bins/dv/top), followed on free by boundary-tag coalescing.
 2. **Function-call overhead and zero inlining on hot memory operations** (~25–35% of excess fuel): In `wasmi 2.0.3`, *every* Wasm operator (except structured delimiters `block`/`loop`/`end`/`else`/`nop`/`drop`/`return`/`unreachable`) costs 1 fuel (`wasmi-2.0.3/src/engine/costs.rs:505–538`). Every `retain`, `release`, `is_unique`, and `alloc` currently crosses a Wasm `call` boundary into LLVM-compiled Rust code (prologue/epilogue, shadow-stack `$__stack_pointer` traffic, generic type-descriptor lookup, null/sticky/colour branching, and `q_head` push-then-immediate-pop on every `rc 1 → 0` release).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the percentage split in items 1-3 is wrong. Measured fuel per call (rtlink 0cf56d3, wasmi 2.0.3 eager): `oxi_retain` 41, `oxi_is_unique` 10, non-final `oxi_release` 120, `oxi_alloc` 1908, final release 1107. For `new class`, alloc + final release = 3015 of the 3070 fuel/iter, so the allocator and the destruction path are ~95% of that row; call overhead on retain/is_unique is a few percent. See `oxiscript-memory-performance-verification.md` A2.
+
 3. **Zero RC elision and naive lowering in `oxiscript-lower`** (~20–40% of excess fuel, and the primary driver of array-literal 9.6× and template-string 7.2× blowups): Lowering follows "own everything" (retaining every field/array/global load, never reusing/cancelling `retain`/`release` pairs), lowers array literals `[a, b, c, d, e]` via `ArrayEmpty` + repeated `ArrayPush` (triggering 2–3 `dlmalloc` allocs/copies/frees per literal), and lowers template strings via pairwise `StrConcat` (quadratic copying + $O(k)$ temporary allocations).
 4. **Vector-backed cycle collector requiring large headroom**: `oxiscript-rc` allocates three growable guest-heap `V32` vectors (`roots`, `stack`, `log`) and reserves `stack.cap >= 2 * work + roots + 8` words before Phase 2 (`rt.rs:1056`), forcing OOM aborts when linear memory is tight.
 
@@ -27,6 +33,9 @@ OxiScript's 6.5–10.5× fuel penalty is **not** a fundamental limitation of ref
 
 Combined, Pillars 1–3 should reduce per-operation fuel from the current **6.5–10.5×** stub baseline down to **~1.1–1.8×** of the bump stub (a **4–7× fuel reduction** **[estimate]**) while retaining exact deterministic RC reclamation, full cycle collection, and < 15–25 MB RSS on small hardware.
 
+> **Corrected by Claude (Opus), 2026-11-26:** Pillar 2's "~150-400 fuel" baseline holds only for alloc and final release (retain is 41, is_unique 10). The 1.1-1.8x target is reachable for `new class` mainly through Pillar 1 (a scratch free-list front cut `oxi_alloc` from 1908 to 241 fuel) plus direct free of leaf objects. The 50-80% RC-removal figure of Pillar 3 has no source in the cited papers (ledger A8). Pillar 4 is not log-free as described (ledger A7).
+
+
 ---
 
 ## 0. Baseline Diagnosis: Why OxiScript's Linked RC Runtime Costs 6.5–10.5× Fuel Today
@@ -34,11 +43,17 @@ Combined, Pillars 1–3 should reduce per-operation fuel from the current **6.5�
 Inspecting `oxiscript/oxiscript-rc/src/{rt.rs,wasm.rs}`, `oxiscript/oxiscript-wasm/src/{func.rs,stubrt.rs}`, `oxiscript/oxiscript-lower/src/expr.rs`, `dlmalloc-0.2.14`, and `wasmi-2.0.3` pinpoints every instruction behind the measured gap:
 
 1. **`wasmi 2.0.3` fuel model (`wasmi-2.0.3/src/engine/costs.rs:505–538`):** By default, every Wasm operator except `nop`, `drop`, `block`, `loop`, `unreachable`, `return`, `else`, `end` charges **1 fuel** per executed Wasm opcode, and `memory.copy` / `memory.fill` additionally charge per-byte bulk fuel (`fuel_for_copying_values`, `wasmi-2.0.3/src/engine/executor/handler/exec.rs:530,592`). A Wasm `call` itself charges 1 fuel for the opcode, **plus every instruction inside the callee** (including Rust/LLVM stack-pointer prologue/epilogue and callee-saved spills) and incurs interpreter frame-push/pop wall-time cost.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the cost table is right, but fuel is **not** charged per executed opcode. wasmi 2.0 charges each region's **static** operator sum, plus 1, when the region is entered. Regions start at function entry, `loop`, the `if` then-arm and `else`; `block` opens no region (`translator/func/mod.rs:301`, `visit.rs:118-130, 146, 200, 233`, `encoder.rs:396-410`). Code after a `br_if` exit is paid for even when it is skipped. LLVM emits Rust as `block`/`br_if` (0 `if` in all runtime functions), so dlmalloc's inlined `malloc` costs its 1651-operator entry region on every call. That explains 6.5-10.5x fuel next to only 2.5x wall time. Bulk ops cost 1 fuel per **64** bytes, and a call adds `ceil(locals/8)`. Ledger A1.
+
 2. **Exact cost of `oxi_alloc` (`oxiscript-rc/src/rt.rs:571–581`, `wasm.rs:57–60`):**
    - Calls `self.drain(self.cfg.drain_budget)` unconditionally on every allocation (even when `q_head == 0`).
    - Validates `id < td_count` and checks single-entry cache `tdc_id` (misses whenever allocating alternating types, e.g. array + struct + string).
    - Enters `raw_alloc` loop → `WasmHeap::alloc` → `DL.calloc(total, 8)`.
    - Inside `dlmalloc-0.2.14`: `calloc` calls `c_memalign(8, total)` → `c_malloc(total)` (smallbin bitmap lookup, chunk splitting/unlinking from `dv`/`top`, boundary-tag writes) **and then always runs `ptr::write_bytes(ptr, 0, total)`** because `calloc_must_clear` returns `true` for all non-mmapped chunks (`dlmalloc.rs:319–320`), even on fresh zeroed Wasm pages and even for strings/clones that immediately overwrite every byte!
+
+> **Corrected by Claude (Opus), 2026-11-26:** the code fact is right: this dlmalloc never mmaps a chunk, so every chunk is cleared, even though `WasmSys::allocates_zeros()` is true. The cost is negligible: with `+bulk-memory` the clear is a single `memory.fill`, about 1-2 fuel for 24 B. Eliminating zeroing (and `alloc_uninit`) is not a fuel win. Ledger A3.
+
    - `dlmalloc` adds a 4-byte `head` chunk header and rounds up to `malloc_alignment = 8` (`pad_request(amt) = align_up(amt + 4, 8)`, `dlmalloc.rs:258–260`): a 16 B object occupies **24 B** (+50%) and a 24 B object (`NODE`) occupies **32 B** (+33%).
    - Updates `live_objects: u32` and `live_bytes: u64` (64-bit arithmetic in 32-bit Wasm) and in debug builds updates the `livemap` bitmap.
 3. **Exact cost of `oxi_release` (`rt.rs:618–656`, `745–795`):**
@@ -47,6 +62,9 @@ Inspecting `oxiscript/oxiscript-rc/src/{rt.rs,wasm.rs}`, `oxiscript/oxiscript-wa
 4. **Why `array literal` (579 → 5,584 fuel, 9.6×) and `template string` (1,657 → 12,006 fuel, 7.2×) are even worse than `new class` (398 → 3,070, 7.7×):**
    - `oxiscript-lower/src/expr.rs:489–501` lowers every array literal `[e0, e1, ...]` as `Op::ArrayEmpty` (`oxi_array_new(id, 0)`) followed by a sequence of `Op::ArrayPush` instructions! Pushing 5 elements calls `oxi_array_new` (alloc #1) → `oxi_array_grow(4)` (alloc #2) → `oxi_array_grow(8)` (alloc #3 + copy + free #1) — **3 `dlmalloc` allocs + 1 copy + 1 free** for a compile-time constant length!
    - `oxiscript-lower/src/expr.rs:283,1188` lowers template strings as left-associative pairwise `Op::StrConcat`: a 4-part template `` `a${x}b${y}` `` performs 3 separate `oxi_str_concat` calls (each doing `drain` + `dlmalloc::calloc` + zero-fill + 2× `memory.copy`) plus `oxi_str_from_i64`/`f64` plus 3× `oxi_release` of intermediate strings!
+
+> **Corrected by Claude (Opus), 2026-11-26:** BL06 measured `[1, 2, 3]` and `` `k${i}` ``, not the examples above. `[1,2,3]` is 2 allocations (the header, plus data at capacity 4; `oxi_array_new(id, 0)` allocates no data block) and 0 copies. Direct sizing measured only -5% (5448 → 5181 fuel). `` `k${i}` `` has exactly one concat; its 4 allocations per iteration come from `lw.itoa`/`lw.fmt_u`, which builds a `[u8]` and then copies it into a string (`oxiscript-lower/src/helpers.rs:8-62`). The template lowering is at `expr.rs:288-330`; `:1188` is binary `+`. Ledger A4.
+
    - `oxiscript-lower` performs **zero RC elision**: every load from a field, array, global, or cell emits `Op::Retain` immediately and `Op::Release` at scope exit (`docs/stages/8.L/implementation.md:20`), and `oxiscript-wasm/src/func.rs:733–736,1023–1030` emits a full `call` for every `IsUnique`, `Retain`, and `Release`.
 
 ---
@@ -76,6 +94,9 @@ In OxiScript, every Wasm instance is **strictly single-threaded** (`docs/oxiscri
    - *Design:* Pure-Rust `no_std` allocator using boundary-tagged doubly-linked lists segregated into TLSF-like power-of-two + linear sub-buckets (`TalcCell` lockless single-threaded mode). Supports explicit arenas, heap extension/shrinking (reclaiming tail space), and optional byte counters.
    - *Performance & size:* In the `talc` benchmarks ([SFBdragon/talc](https://github.com/SFBdragon/talc)), `talc` is consistently faster than `dlmalloc` on single-threaded random alloc/free workloads while producing smaller Wasm code (~5–8 KB vs `dlmalloc`'s ~10–15 KB) **[verify exact KB on wasm32 build]**. Uses 1 `usize` (4 B on wasm32) overhead per live chunk (same 8-byte rounding caveat as `dlmalloc` for tiny multiples-of-8 objects unless fronted by a slab cache).
    - *Fit for OxiScript:* Excellent candidate for the **backing / large-object allocator** (replacing `dlmalloc`), especially paired with a small-object slab front-end.
+
+   > **Corrected by Claude (Opus), 2026-11-26:** talc's own Wasm benchmark concludes "DLmalloc and RLSF's GlobalTlsf are worse in both size and performance to Talc", but talc's default Wasm configuration uses "10%-15% higher runtime memory" (`BENCHMARKS_WASM.md`). rlsf's README measures **1267 B** of Wasm against dlmalloc's **9613 B**, not 4-7 KB / 12-15 KB. Licences CONFIRMED on the repositories: talc MIT, rlsf MIT/Apache-2.0, mattconte/tlsf 3-clause BSD.
+
 7. **`TLSF` (Two-Level Segregated Fit)** ([Masmano et al., ECRTS 2004](https://doi.org/10.1109/EMRTS.2004.1311009), [J. Systems & Software 2008](https://doi.org/10.1016/j.jss.2007.07.018)); Rust crate **`rlsf`** ([github.com/yvt/rlsf](https://github.com/yvt/rlsf), **MIT OR Apache-2.0**); C reference [`mattconte/tlsf`](https://github.com/mattconte/tlsf) (**3-clause BSD**):
    - *Design:* Two-level bitmaps: First Level (FL) splits sizes by $\lfloor \log_2 s \rfloor$, Second Level (SL) subdivides each power of two into $2^k$ (typically 16 or 32) linear sub-bins. Lookup uses Wasm native `i32.clz` / `i32.ctz` (both 1-fuel MVP instructions!), guaranteeing **strict $O(1)$ worst-case execution time (WCET)** for `malloc`, `free`, and `realloc` with average fragmentation ~10–15% (Masmano et al. 2004). Used as the allocator of AssemblyScript (`~lib/rt/tlsf.ts`).
    - *Fit for OxiScript:* **Strongest backing allocator** for OxiScript's `realtime`/`safety` roadmap because WCET is strictly $O(1)$ (unlike `dlmalloc`'s treebin traversal) and `i32.clz`/`i32.ctz` are single Wasm MVP instructions. Still has a 4-byte block header + boundary-tag coalescing, so fronting it with a small-object slab tier gives the best of both worlds.
@@ -108,6 +129,8 @@ In OxiScript, every Wasm instance is **strictly single-threaded** (`docs/oxiscri
 | **Buddy** | Power-of-2 split/merge | 0–4 B (bitmap) | $O(\log n)$ | **Up to 50%** / Low | ~2–3 KB | Bounded | N/A (algo) | Only for 4 KiB+ page management |
 | **`mimalloc` (upstream C)** | 64 KiB page-sharded slabs | 0 B (page header) | $O(1)$ | $\le 12.5\%$ / Low | ~30–60 KB | $O(1)$ fast path | MIT | Too large as-is; **borrow algorithm** |
 | **Recommended: Custom 4 KiB Slabs + `rlsf` (TLSF)** | Per-class 4 KiB slabs (bump+freelist) over TLSF | **0 B** (≤256 B); 4–8 B (>256 B) | **Strict $O(1)$ / $O(1)$** | **$\le 12.5\%$** / Very low | ~6–9 KB total | **Strict $O(1)$ WCET** | **MIT/Apache-2.0** | **Recommended target design** |
+
+> **Corrected by Claude (Opus), 2026-11-26:** code-size cells: rlsf 1267 B and dlmalloc 9613 B (rlsf README); other sizes are unmeasured. After the fuel-model correction, a backing allocator's wasmi fuel depends mostly on its entry-region size, so the "Best backing allocator" ranking must come from measurement (ledger A5).
 
 ### 1.3 Recommended Allocator Design for OxiScript
 
@@ -165,13 +188,22 @@ Because OxiScript's ABI already guarantees **all object sizes are multiples of 8
 1. **Lean 4 — "Counting Immutable Beans"** ([Ullrich & de Moura, IFL 2019 / arXiv:1908.05647](https://arxiv.org/abs/1908.05647)):
    - *Mechanisms:* (a) **Owned vs. Borrowed calling convention** inferred by a fixed-point interprocedural **borrow inference** pass (callee parameters default to borrowed unless consumed into a constructor, mutated in place, or returned); (b) **Reset/Reuse (`reset x` / `reuse w`)** turning a decrement-to-zero of an unshared cell immediately followed by an allocation of the same size into an in-place update; (c) **Delayed/hoisted RC insertion** minimising live ranges.
    - *Published results:* In the paper's benchmark suite (`rbmap`, `deriv`, `const_fold`, `qsort`, `binarytrees`), Lean 4's RC with borrow inference + reuse matches or beats GHC/OCaml/MLton on tree and symbolic benchmarks; disabling borrow inference (`-borrow`) causes **10–40%+ slowdowns** on traversal-heavy benchmarks, and reuse removes **up to 50–90%+ of allocations** on in-place tree updates like `rbmap` (where every unique-path rotation reuses the exact node cell).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the paper reports run time, not allocation or RC-op counts. Fig. 6, `-borrow`: geometric mean 1.27; binarytrees 1.14, deriv 1.16, **const_fold 0.90 (faster without it)**, others ~1.00. `-reuse`: geometric mean 1.74 (const_fold 1.64, rbmap 3.23, unionfind 1.41). The "50-90%+ of allocations" figure is not in the paper. Lean is "competitive and often outperforms"; on rbmap it is faster than everything except OCaml.
+
 2. **Koka — Perceus & FBIP (Functional But In-Place)** ([Reinking, Xie, de Moura, Leijen, PLDI 2021](https://doi.org/10.1145/3453483.3454032), [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/publication/perceus-garbage-free-reference-counting-with-reuse/)):
    - *Mechanisms:* Linear-resource-calculus compilation producing **garbage-free** RC (objects are dropped immediately at their last use, not at lexical scope exit — crucial for freeing references *before* a subsequent `is_unique` / COW check or tail call!). Adds **Drop Specialization** (inlining a type's destructor when statically known, skipping `dec` on fields that are about to be reused), **Reuse Specialization** (skipping writes to unchanged fields when reusing a cell in place), and **Tail-Recursion Modulo Cons (TRMC)** ([Leijen & Lorenzen, POPL 2023](https://doi.org/10.1145/3571233)).
    - *Published results:* Koka with Perceus + `mimalloc` outperforms OCaml, Haskell, Swift, and Java on `rbtree`, `deriv`, `nqueens`, and `cfold` (up to **2× faster than OCaml** on `rbtree` due to in-place reuse and zero GC pauses) while cutting peak heap to ~1× live set.
+
+> **Corrected by Claude (Opus), 2026-11-26:** wrong. On rbtree the paper says "OCaml is close in performance"; the 2x is Koka's own "no-opt" build against the optimised one. OCaml uses less memory than Koka on deriv and cfold, and the optimisations "are less effective" with sharing (deriv, nqueens). Perceus TR v4, §4.
+
    - *Applicability to OxiScript:* **Extremely high.** OxiScript's `struct` has **value semantics with copy-on-write (`is_unique` ? mutate : `clone`)** (`docs/oxiscript/ir.md:156`). Last-use dropping (Perceus) is the *exact* mechanism that turns `let s2 = moveX(s1)` from a `clone` into an in-place mutation when `s1` is dead after the call!
 3. **Swift ARC Optimiser & Ownership SSA (OSSA)** ([Swift SIL docs](https://github.com/swiftlang/swift/blob/main/docs/SIL/SIL.rst), [Ownership Manifesto](https://github.com/swiftlang/swift/blob/main/docs/OwnershipManifesto.md), [LLVM Dev Meeting 2019 — OSSA](https://www.youtube.com/watch?v=0s1160M33b8)):
    - *Mechanisms:* Swift's SIL encodes ownership directly in SSA (`@owned`, `@guaranteed` [borrowed], `@unowned`). Key passes:
      - **Guaranteed (borrowed) default calling convention** (Swift 5 switched default parameters from `@owned` to `@guaranteed`, eliminating caller retains + callee releases across call boundaries).
+
+> **Corrected by Claude (Opus), 2026-11-26:** the switch to +0 (guaranteed) parameters came in **Swift 4.2** (2018), not Swift 5. No source was found for the 50-80% figure below.
+
      - **ARC Sequence Optimization (`ARCSequenceOpts`)**: dataflow pairing of `strong_retain` and `strong_release` (moving retains later, releases earlier, cancelling adjacent pairs when no intervening instruction can decrement the refcount to zero).
      - **Immortal/static object specialization** (no RC ops on static constants).
      - **Stack promotion (`StackPromotion`)**: escape analysis converting non-escaping class instances into stack allocations with zero RC traffic.
@@ -196,12 +228,18 @@ Because OxiScript's ABI already guarantees **all object sizes are multiples of 8
    - *Applicability to OxiScript:* Requires a tracing/root-scanning epoch boundary (same Wasm local stack-map constraint as Deferred RC), plus write-barrier cost on every `setfield`. Better suited to tracing-hybrid JVM runtimes than immediate-RC Wasm.
 9. **Biased Reference Counting (BRC)** ([Choi, Shull, Torrellas, PACT 2018](https://doi.org/10.1145/3243176.3243195)):
    - *Mechanism:* Splits count into non-atomic owner-thread count + atomic shared count, achieving ~17–22% speedup over atomic RC in multi-threaded Swift/C++.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the abstract gives 22.5% lower average execution time for client programs and 7.3% higher throughput for server programs (Swift runtime).
+
    - *Applicability to OxiScript:* **Not needed today** because OxiScript Wasm instances are already single-threaded with **non-atomic** RC (`abi.md:22`). Revisit only if Stage 8.4 adds shared-memory threads (currently OxiScript plans actor/isolate message passing, which preserves non-atomic per-isolate RC!).
 10. **Ulterior RC, RC Immix, and LXR:**
     - **Ulterior RC** ([Blackburn & McKinley, OOPSLA 2003](https://doi.org/10.1145/949305.949336)): Copying nursery for young objects + coalescing RC for mature objects; ~1% overhead vs generational tracing GC.
     - **Down for the Count?** ([Shahriyar, Blackburn, Frampton, ISMM 2012](https://doi.org/10.1145/2258996.2259008)): Showed naive RC is ~30% slower than tracing GC, but combining coalescing + deferred RC + small stuck counts (3–4 bits) brings RC within ~1–5% of tracing GC.
     - **RC Immix** ([Shahriyar et al., OOPSLA 2013](https://doi.org/10.1145/2509136.2509527)): Combines coalescing RC with Immix line-based mark-region allocation and opportunistic copying defragmentation; matches or beats generational copying GC throughput.
     - **LXR (Low-Latency, High-Throughput GC)** ([Zhao, Jacob, Blackburn, PLDI 2022](https://doi.org/10.1145/3519939.3523440), [arXiv:2204.01918](https://arxiv.org/abs/2204.01918)): Immix blocks + coalescing RC + concurrent satellite tracing for cycles; achieves sub-millisecond pauses and beats G1/Shenandoah/ZGC throughput by 10–30%.
+
+> **Corrected by Claude (Opus), 2026-11-26:** arXiv:2204.01918 is an unrelated paper; LXR's extended version is arXiv:2210.17175. Across 17 workloads with a moderate heap, LXR beats G1 throughput by 4% and Shenandoah by 43%. "Down for the Count?" says optimised RC reaches parity ("on par") with a well-tuned mark-sweep, without giving a 1-5% figure.
+
     - *Applicability to OxiScript:* The **moving/copying and stack-scanning pieces** of Ulterior RC / RC Immix / LXR do **not** transfer to Core Wasm (no stack maps to update Wasm locals on object relocation). What *does* transfer: (a) **narrow saturating (sticky) RC** (Shahriyar et al. 2012 showed >99.9% of objects never exceed a tiny refcount; OxiScript can pack `rc` into 16 bits or 24 bits if header shrinking is ever desired, though 32-bit `rc` is cheap on wasm32), and (b) **line/slab-based allocation** (Immix-style bump carving inside blocks before free-list reuse).
 
 ### 2.2 RC Optimisation Comparison Table (for OxiScript / OxiIR)
@@ -249,6 +287,9 @@ OxiIR (`docs/oxiscript/ir.md`) is unusually well-suited for static RC elision be
 3. **PHP Zend Cycle Collector** ([PHP Manual — Collecting Cycles](https://www.php.net/manual/en/features.gc.collecting-cycles.php), [`Zend/zend_gc.c`](https://github.com/php/php-src/blob/master/Zend/zend_gc.c)):
    - *Design:* Classic synchronous Bacon-Rajan with a **pre-allocated fixed-size root buffer** (`GC_ROOT_BUFFER_MAX_ENTRIES = 10_000` entries initially in PHP 5.3–7.2; dynamic adaptive threshold in PHP 7.3+ that grows up to 1,000,000 when a collection frees little, avoiding $O(N^2)$ thrashing when 10,000 live roots sit in the buffer!).
    - *Key trick:* Each `zend_refcounted_h` stores its **index in the root buffer (`gc_info`)**! When an object is destroyed (`rc == 0`) or retained back to black, PHP removes it from the root buffer in **$O(1)$** via its stored index — **completely eliminating `ZOMBIE` objects**!
+
+> **Corrected by Claude (Opus), 2026-11-26:** in php-src today, `GC_THRESHOLD_DEFAULT` is 10,000 + first root, `GC_THRESHOLD_STEP` 10,000, `GC_THRESHOLD_MAX` **1,000,000,000**, and the default buffer is 16 Ki entries. The root index lives in the `GC_INFO` bits of the existing 32-bit type_info word, so it costs no extra 4 bytes (`Zend/zend_gc.c:88-195`).
+
 4. **Nim ORC** ([Nim ORC Design / `lib/system/orc.nim`](https://github.com/nim-lang/Nim/blob/devel/lib/system/orc.nim)):
    - *Design:* Synchronous Bacon-Rajan trial deletion over a `roots` `CellSeq` (hash-set/array) with **aggressive static `#acyclic` analysis** (most Nim types—strings, seqs of primitives, non-recursive refs—are statically acyclic and never touch the cycle collector!). Uses `rc` shifted by `rcShift` with colour bits in the low bits of the single `rc` word!
    - *OxiScript relevance:* `oxiscript-rc` was explicitly modelled on Nim ORC, and Nim's biggest practical win is **compiler-proven acyclicity + cursor inference** keeping the candidate root set near-empty on real programs.
@@ -291,6 +332,14 @@ We can eliminate **100% of dynamic collector headroom** by combining three class
    - **Alternative 1 (Cleanest for small devices):** Instead of trial-mutating `rc` in place and undoing on budget overflow, either:
      - Run `oxi_gc_step` on **one connected component / small root batch** with a **fixed static undo ring** (e.g., 512 entries inside the 4 KiB scratch buffer) for fast incremental trials, falling back to full unbounded `oxi_collect_cycles` (which **never aborts** and therefore **needs no `log` vector at all!**) when idle or on OOM!
      - Even better: during full `oxi_collect_cycles`, **zero `log` vector is needed** — `gather_white` does not need a `log` either if `collect_white` releases untraced children directly in Pass A (scanning `WHITE` bits in cyclic slabs) and frees `WHITE` objects in Pass B (scanning `WHITE` bits in cyclic slabs)!
+
+> **Corrected by Claude (Opus), 2026-11-26:** three corrections.
+> * `log` is not only an undo log. Phase 3 reuses it as the **list of dead nodes** (`rt.rs:1066-1104`), because untraced children of every dead node are released before any node is freed.
+> * Full `oxi_collect_cycles` *does* abort: on OOM while reserving the stack it undoes the trial and retries (`rt.rs:1169-1176`). The undo log is what makes OOM recoverable.
+> * A bounded `gc_step` that aborts needs undo state proportional to the work it did, which a fixed ring cannot guarantee.
+>
+> Mark-stack overflow plus rescan needs an extra "gray, edges not yet subtracted" state, because MarkGray's decrements are not idempotent. Its worst-case time is O(heap) per overflow. Reusing `oxi_scratch_ptr` is not "strictly safe": `abi.md:15` lets the host write the scratch region whenever the guest is not running, which is exactly when the collector runs. Ledger A7.
+
 4. **Triggering Policy (Adaptive + Host-Cooperative):**
    - Keep OxiScript's core invariant (`abi.md:81`): **never run cycle collection inside a guest call**, only at quiescent points between events (or as an OOM recovery fallback if allowed by policy).
    - **Adaptive threshold (PHP 7.3+ / Boehm style):** Track `purple_count` (incremented when a slab purple bit transitions `0 → 1`, decremented on `1 → 0`). Trigger `oxi_gc_step` from the host event loop (`Runtime::pump` / after `oxi_tick`) when `purple_count >= threshold` (initial `threshold = 256`). If a full sweep reclaims `< 10%` of scanned candidates (live cyclic working set, like a DOM/UI graph), **double `threshold`** (up to e.g. 16,384) so the collector does not repeatedly re-scan a live cyclic graph on every frame; reset `threshold` downward when a sweep reclaims $> 25\%$!
@@ -352,6 +401,8 @@ Production JIT/AOT engines (V8, JavaScriptCore, SpiderMonkey, Go, OCaml 5, .NET,
 | **`WAMR` Fast-Interpreter** ([Bytecode Alliance `wasm-micro-runtime`](https://github.com/bytecodealliance/wasm-micro-runtime), **Apache-2.0 with LLVM exception**) | Rewrites stack Wasm to register-based bytecode with computed-goto dispatch ([Intel WAMR design](https://github.com/bytecodealliance/wasm-micro-runtime/blob/main/doc/perf_tune.md)). | Register-based dispatch makes local-register arithmetic very fast (~1.5–2× faster than classic interp), making `call` + memory-alloc overhead proportionally *more* dominant. | Supports fixed pre-allocated memory pools on MCUs to avoid `realloc` spikes. |
 | **`w2c2`** ([github.com/turbolent/w2c2](https://github.com/turbolent/w2c2), **MIT**) & **`wasm2c`** ([WebAssembly/wabt](https://github.com/WebAssembly/wabt), **Apache-2.0**) | Source-to-source AOT: Wasm → C → GCC/Clang native code (planned OxiScript Stage 8.2 release path for RPi 1 ARMv6 & ESP32-S3). | Because the whole runtime is statically linked into one `.wasm` module (`oxiscript-wasm`), GCC/Clang (`-O2`/`-O3`) *can* inline small runtime helpers across functions — **provided** they are small and have simple control flow! Large monolithic Rust functions (`dlmalloc` + `Rt::alloc` + `drain`) defeat C inlining and spill ARMv6 registers. Explicit Wasm fast-path/slow-path splitting (`inline fast path` + cold `#[inline(never)]` slow call) helps **both `wasmi` AND `w2c2`+GCC**! | On 32-bit ARMv6 (Raspberry Pi 1) and Xtensa/RISC-V (ESP32-S3), `w2c2` cannot use 4 GiB `mmap` guard pages; every memory access is bounds-checked, so **scalar replacement** (eliminating heap loads/stores) and **fewer memory touches per RC op** yield outsized native speedups! |
 
+> **Corrected by Claude (Opus), 2026-11-26:** in the `wasmi` row, fuel is charged by static region at entry, not per executed op (see the §0.1 correction). This makes the fast-path/slow-path split the main fuel lever in wasmi as well: even unchanged Rust gains if the cold paths move to `#[cold] #[inline(never)]` functions. The "10-25x fuel" for inlining a retain or release is unrealistic: the call costs 41-120 fuel in total today.
+
 ### 5.2 The Wasm Shadow Stack and `memory.grow` Costs
 
 - **Wasm Shadow Stack (`$__stack_pointer`):** Core Wasm separates the control/value stack (hidden inside the engine) from linear memory. When Rust (`rustc`/LLVM) compiles `oxiscript-rc` to `wasm32`, any function that takes the address of a local (`&mut buf`, `core::fmt`, slices, `Dlmalloc` structs) decrements a mutable Wasm global (`$__stack_pointer`), spills locals to linear memory, and restores `$__stack_pointer` on return (`oxiscript-rc/build.rs` reserves 64 KiB for it). Every single call into Rust-compiled `oxi_alloc` / `oxi_release` that touches the shadow stack executes extra `global.get`/`i32.sub`/`global.set` + memory loads/stores — **pure wasted fuel** when the fast path is written directly in Wasm or minimal leaf Rust!
@@ -364,6 +415,9 @@ Production JIT/AOT engines (V8, JavaScriptCore, SpiderMonkey, Go, OCaml 5, .NET,
 
 1. **AssemblyScript — The Critical Case Study (RC → ITCMS + TLSF)** ([AssemblyScript Memory Docs](https://www.assemblyscript.org/runtime.html), [PR #1600 / Incremental GC](https://github.com/AssemblyScript/assemblyscript/pull/1600), **Apache-2.0**):
    - *History:* AssemblyScript originally shipped a **TLSF allocator + Pure Reference Counting runtime (`full` / `half`)** with a Bacon-Rajan cycle collector (`rt/pure.ts`). In v0.18+ (2020–2021), AssemblyScript **abandoned RC completely** and replaced it with **TLSF + ITCMS (Incremental Tri-Color Mark-Sweep)** (`--runtime incremental`, plus `--runtime minimal` and `--runtime stub`), using a compiler-maintained linear-memory shadow stack for roots.
+
+> **Corrected by Claude (Opus), 2026-11-26:** the change is **PR #1559** ("Rewrite runtime, switch to tracing GC and bootstrap"), released in **v0.18.0 on 2021-01-29**; #1600 is an unrelated fix. The stated reason is removing "the error-prone automatic reference counting implementation that has been haunting us for a long time", plus preparing for Wasm GC. Reason 1 below is an inference. In reason 3, the RC-era host API was `__retain`/`__release`; `__pin`/`__unpin` is the *new* GC-era API.
+
    - *Why AssemblyScript moved away from RC — and what OxiScript MUST learn from it:*
      1. **No SSA RC elision pass:** AssemblyScript compiles AST → Binaryen IR with almost no static ownership/borrow/escape analysis. Consequently, *every* local assignment, loop iteration, and function call emitted `__pin`/`__retain`/`__release` calls — destroying throughput and bloating `.wasm` code size.
      2. **Cycle-collector complexity + cascading drops:** Without static `#acyclic` analysis or cursor inference, cyclic-capable JS-style objects flooded the Bacon-Rajan root buffer, while deep drops caused frame-time spikes.
@@ -373,6 +427,9 @@ Production JIT/AOT engines (V8, JavaScriptCore, SpiderMonkey, Go, OCaml 5, .NET,
      - **The existential lesson from AssemblyScript:** *Unoptimised naive RC in Wasm is slow and bloated.* OxiScript **must** implement inline fast paths + OxiIR RC elision/borrow inference (Pillars 1–3) so we never suffer AssemblyScript's PureRC performance cliff!
 2. **Grain** ([grain-lang.org](https://grain-lang.org/), [Grain runtime](https://github.com/grain-lang/grain/tree/main/stdlib/runtime), **Apache-2.0**):
    - Historically used **reference counting in Wasm linear memory** (with a custom free-list allocator and static `incRef`/`decRef` emitted by its compiler, without a cycle collector for immutable-default values), and has been transitioning toward WasmGC for browsers. Confirms that RC in linear memory works well when values are mostly immutable/acyclic and RC ops are aggressively optimised.
+
+> **Corrected by Claude (Opus), 2026-11-26:** Grain's licence is **LGPL-3.0** (its repository LICENSE), not Apache-2.0. Learning from its design is fine; reusing its code is forbidden by our policy.
+
 3. **MoonBit** ([moonbitlang.com](https://www.moonbitlang.com/), [MoonBit WasmGC vs Wasm1](https://www.moonbitlang.com/blog/)):
    - Compiles to **WasmGC** on browsers (achieving tiny ~KB bundles and fast execution via V8's GC) and to **linear memory with custom Perceus-style RC** (on native C / linear-memory Wasm backends), using static RC elision and aggressive unboxing/inlining to stay competitive without WasmGC.
 4. **Kotlin/Wasm** ([kotlinlang.org/docs/wasm-overview.html](https://kotlinlang.org/docs/wasm-overview.html), **Apache-2.0**):
@@ -425,6 +482,9 @@ To drive every optimisation stage empirically (matching OxiScript's "measure bef
 - **OxiScript `wasmi` 8.M-link baseline (from prompt):** `new class` 398 (stub) → **3,070** (linked, 7.7×); `array literal` 579 → **5,584** (9.6×); `template string` 1,657 → **12,006** (7.2×); wall time **~2.5×**.
 - **Native small-object allocators:** `mimalloc` / `tcmalloc` / `jemalloc` small-object alloc+free fast path is **~5–15 ns/op** (~10–20 native instructions) on modern x86_64 ([Leijen et al., APLAS 2019](https://www.microsoft.com/en-us/research/publication/mimalloc-free-list-sharding-in-action/)); `rlsf` (TLSF) achieves **strict $O(1)$** with ~10–15% average fragmentation ([Masmano et al., ECRTS 2004](https://doi.org/10.1109/EMRTS.2004.1311009)); `jemalloc`/`tcmalloc` 4-step geometric classes cap internal fragmentation at **$\le 12.5\%$** ([TCMalloc Design](https://google.github.io/tcmalloc/design.html)).
 - **Compiler RC elision:** Lean 4 borrow inference + Perceus reuse eliminate **50–90%** of dynamic RC/alloc operations in tree/functional workloads ([Ullrich & de Moura, IFL 2019](https://arxiv.org/abs/1908.05647); [Reinking et al., PLDI 2021](https://doi.org/10.1145/3453483.3454032)); Shahriyar et al. ([ISMM 2012](https://doi.org/10.1145/2258996.2259008)) showed unoptimised RC carries **~30%** overhead vs tracing GC, collapsing to **~1–5%** once redundant counts are removed.
+
+> **Corrected by Claude (Opus), 2026-11-26:** see the corrections in §2.1. Neither Lean nor Perceus reports a percentage of RC/alloc operations eliminated, and Shahriyar et al. report parity ("on par") for deferred and coalesced JVM RC, which is not compiler elision.
+
 - **Interpreter vs AOT factor:** `wasmi` 2.0 register interpreter is ~2.2× faster than `wasmi` 1.0, yet still typically **~10–30×** slower than native C (`w2c2`+GCC) on compute/allocation loops **[estimate; Stage `8.Mem` will measure the exact RPi 1 ARMv6 factor]**.
 
 ---
@@ -445,6 +505,15 @@ To drive every optimisation stage empirically (matching OxiScript's "measure bef
 | **R1 (Research, 3–4 wk)** | **Escape Analysis & Scalar Replacement** on OxiIR: unbox non-escaping `struct`s, boxed nullable scalars (`T?`), `Result<T, E>`, and non-escaping closures into Wasm locals (and shadow-stack frames for small non-escaping arrays). | **Up to −80 to −100% alloc+RC** on numeric/struct-heavy & `Result`/`T?`-heavy hot loops **[estimate]** | Eliminates heap traffic entirely for short-lived `Result`/`T?`/Point/Vec2 values — massive win on both `wasmi` and `w2c2` ARMv6! | **Complexity:** Must respect OxiScript's `LIMIT_LOCALS = 12_000` (`oxiscript-wasm/src/lib.rs:94`) by adding Wasm local-slot reuse (liveness coloring) first! |
 | **R2 (Research, 3–4 wk)** | **Perceus Reuse Analysis (`reset`/`reuse`) + Drop Specialisation + Arena Regions (`alloc.arena`)**: Pair last-use `release` with same-class `alloc` for in-place reuse; inline specialised destructors for hot types; add scoped `alloc.arena` for per-frame UI scratch. | **−50 to −90% allocations** on persistent/COW trees & functional updates; bump-speed per-frame arenas **[estimate, aligned with Perceus PLDI 2021]** | Matches Koka/Lean 4 FBIP performance on COW `struct`s and union ASTs; prepares `realtime` profile arenas. | **Memory safety:** Verify reuse tokens cannot keep dead cells alive across recursive calls (the Roc/Counting-Immutable-Beans pitfall, [Lorenzen 2021](https://studenttheses.uu.nl/handle/20.500.12932/40485)). |
 
+> **Corrected by Claude (Opus), 2026-11-26:** the estimates in this table were checked against measurements (ledger section H).
+>
+> * **Q1** is unrealistic for the measured rows. Direct sizing of `[1,2,3]` gives -5%. Folding the header and data into one allocation, and formatting integers straight into a string (removing 2 of the 4 allocations of `` `k${i}` ``), are the real wins. `concat_n` helps only templates with three or more parts.
+> * **Q2(a)** (`alloc_uninit`, zeroing) saves about 0 fuel and weakens the zero-fill contract of `ir.md:150`, which the verifier relies on for nullable and scalar fields. Drop it.
+> * **Q2(b)** (leaf direct free) and a small allocator fast path with cold paths out of line are the large wins: a scratch free-list front gave `oxi_alloc` 1908 → 241 and final release 1107 → 668.
+> * **Q3** saves tens of fuel per RC op (retain is 41 today).
+> * **M2**'s -50 to -70% is not supported by the cited literature; measure it per corpus.
+> * Because fuel is charged by static region, report wall time (wasmi and w2c2) next to fuel in every row.
+
 ### 7.2 Permissive-Licence Code Reuse Assessment
 
 Every candidate below complies strictly with OxiScript's permissive-licence policy (`docs/HANDOFF.md:8`: MIT / Apache-2.0 / BSD / Zlib / ISC / Public Domain only; **zero GPL/LGPL/MPL**):
@@ -459,6 +528,10 @@ Every candidate below complies strictly with OxiScript's permissive-licence poli
 | **[`bumpalo`](https://github.com/fitzgen/bumpalo)** | **MIT OR Apache-2.0** | Reference for chunked bump arenas (Stage R2 `alloc.arena`). | Reference (OxiScript's guest arena is ~30 lines of custom Rust/Wasm). |
 | **`wee_alloc`** | **MPL-2.0** | Abandoned, known memory leak (#106), non-MIT/Apache licence. | **Do NOT use.** |
 | **Moddable XS / Toit / Jaculus** | **GPL / LGPL** | Forbidden by licence policy. | **Do NOT reuse code.** |
+| **Grain** (added by verifier) | **LGPL-3.0** | Design reference only. | **Do NOT reuse code.** |
+
+> **Corrected by Claude (Opus), 2026-11-26:** `HANDOFF.md:8` allows MPL "only if recorded", so the policy is not "zero MPL". Licences re-checked on the repositories: rlsf MIT/Apache-2.0, talc MIT, dlmalloc-rs MIT/Apache-2.0, mattconte/tlsf 3-clause BSD, mimalloc MIT, bumpalo Apache-2.0 (dual licence not re-checked), wee_alloc MPL-2.0 (archived; RUSTSEC-2022-0054).
+
 
 ---
 
@@ -469,4 +542,6 @@ Every candidate below complies strictly with OxiScript's permissive-licence poli
 3. **Minor ABI extension for `oxi_rt_init` and linker-pinned slab table address:** Inline `alloc` fast paths are fastest (~16 ops) when `SLAB_FREE_HEADS[15]` sits at a fixed static linear-memory offset known to both `oxiscript-wasm` and `oxiscript-rc` (or passed/exported as an immutable Wasm global `oxi_slab_heads`, similar to `oxi_typedesc_base`), and `oxi_alloc_uninit(type_id)` + `oxi_array_new_cap(type_id, cap)` + `oxi_str_concat_n` are added as internal/extension runtime exports. Since OxiScript is `0.0.1` (`docs/oxi-ui.md:659`), is expanding the internal `oxi:rt` linking table acceptable right now? *(Recommendation: yes — these are internal statically-linked symbols, not host-visible ABI surfaces!)*
 4. **Tier 2 backing allocator choice (`rlsf` vs `talc`):** Both are pure Rust, `no_std`, and permissive (MIT/Apache-2.0 vs MIT). `rlsf` guarantees strict $O(1)$ WCET (aligning with the future `realtime`/`safety` profiles), whereas `talc` has slightly lower metadata overhead on very small heaps. Should we prototype both behind `oxiscript-rc`'s `Heap` trait in our benchmark suite (B1–B9) and pick the winner by measured `wasmi` fuel + Wasm KB + peak pages? *(Recommendation: yes — takes ~1 day behind the existing `Heap` trait.)*
 5. **Reusing `oxi_scratch_ptr` (4 KiB) as the cycle collector's fixed DFS work stack:** `abi.md §1, §5.3` guarantees `oxi_scratch_ptr` is only written by the host *before* calling a guest entry, and `oxi_collect_cycles`/`oxi_gc_step` only run between events. Is reusing `oxi_scratch_ptr` during cycle collection acceptable to save 4 KiB of static RAM on ESP32-S3, or should the collector own its own dedicated 2–4 KiB static stack to keep the host scratch region strictly single-purpose? *(Recommendation: dedicated 2 KiB static stack [512 entries] keeps separation of concerns crystal clear at negligible 2 KiB cost.)*
+
+> **Corrected by Claude (Opus), 2026-11-26:** the dedicated stack is required, not just preferable (`abi.md:15`, ledger A7). On Q4: talc's own Wasm benchmark ranks talc ahead of rlsf's `GlobalTlsf`, so measure both by fuel entry-region, wall time on ARMv6 and peak pages. On Q6: the first fix should be the runtime-only allocator front plus leaf direct free (no ABI change), not the lowering quick wins.
 6. **Priority order relative to `8.S1` and `8.Mem`:** Quick wins **Q1 + Q2** (array-literal/template lowering + unzeroed alloc + leaf direct free + `rlsf`/`talc`) take ~3–5 days and immediately cut fuel by ~2–3× before running the Raspberry Pi 1 `8.Mem` measurements. Should Q1 + Q2 land *before* `8.Mem` publishes its first numbers, or should `8.Mem` capture both before and after? *(Recommendation: capture current baseline once, land Q1+Q2, and publish the before/after delta in `8.Mem`.)*
