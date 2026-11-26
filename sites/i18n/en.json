@@ -273,7 +273,7 @@
               ],
               [
                 "Linux framebuffer (OxiDE)",
-                "Software sink draws a page to a framebuffer or DRM screen (explicit opt-in); no input loop yet (7.2b)",
+                "The renderer runs there and a software sink draws the page to a framebuffer or DRM screen (explicit opt-in); the core event loop does not run there yet, so no input (7.2b)",
                 "partly"
               ],
               [
@@ -558,9 +558,10 @@
         "s": "THTML markup|TCSS styles"
       },
       "core": {
-        "t": "Core (oxiterm-core)",
+        "t": "Core",
+        "s": "oxiterm-renderer|+ oxiterm-core",
         "parse": "Parse|THTML + TCSS cascade",
-        "state": "State and events|inc:, toggle:, set:",
+        "state": "State and events|inc:, dec:, toggle:, set:",
         "layout": "Layout|flex, whole cells"
       },
       "list": {
@@ -601,7 +602,7 @@
         "s": "any language|over HTTP"
       },
       "appEdge": "action out,|state patch back",
-      "events": "Events: clicks, keys, resize, timers",
+      "events": "Events: clicks and keys",
       "status": {
         "done": "works",
         "partial": "partly",

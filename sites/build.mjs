@@ -257,11 +257,12 @@ function pipelineSvg(lang) {
 
   // ---------------- wide
   const W = 'dgw';
-  let w = open(W, 'dg-wide', '0 0 1000 600');
+  const INTERACTIVE = [0, 1, 2, 5]; // sinks with an input path back to the core (SSH, browser x2, ARIA mirror clicks)
+  let w = open(W, 'dg-wide', '0 0 1030 600');
   w += box(8, 190, 140, 90, 'dg-pat') + lines(78, 228, P('src.t'), 'dg-t', 16, 'middle') + lines(78, 250, P('src.s'), 'dg-s', 15, 'middle');
-  w += box(196, 30, 190, 420, 'dg-pat dg-core') + lines(291, 56, P('core.t'), 'dg-t', 16, 'middle');
-  [['parse', 84], ['state', 202], ['layout', 320]].forEach(([k, y]) => { w += '<rect class="dg-sub" x="212" y="' + y + '" width="158" height="96" rx="6"/>' + lines(291, y + 40, P('core.' + k), 'dg-s2', 18, 'middle'); });
-  w += edge(W, 'M291 180 V202', 'pat', 'e') + edge(W, 'M291 298 V320', 'pat', 'e');
+  w += box(196, 30, 190, 420, 'dg-pat dg-core') + lines(291, 54, P('core.t'), 'dg-t', 16, 'middle') + lines(291, 72, P('core.s'), 'dg-s', 14, 'middle');
+  [['parse', 100], ['state', 214], ['layout', 328]].forEach(([k, y]) => { w += '<rect class="dg-sub" x="212" y="' + y + '" width="158" height="92" rx="6"/>' + lines(291, y + 38, P('core.' + k), 'dg-s2', 18, 'middle'); });
+  w += edge(W, 'M291 192 V214', 'pat', 'e') + edge(W, 'M291 306 V328', 'pat', 'e');
   w += box(420, 150, 150, 150, 'dg-pat dg-list') + lines(495, 190, P('list.t'), 'dg-t', 16, 'middle') + lines(495, 222, P('list.s'), 'dg-s', 16, 'middle');
   w += edge(W, 'M148 235 H196', 'pat', 'e') + edge(W, 'M386 235 H420', 'pat', 'e');
   const RY = (i) => 28 + i * 70; // sink box top
@@ -272,8 +273,10 @@ function pipelineSvg(lang) {
     w += box(612, y, 380, 62, cls(st)) + lines(624, y + 23, P(k + '.t'), 'dg-t', 16, 'start') + lines(624, y + 42, P(k + '.s'), 'dg-s', 14, 'start') + tag(980, y + 23, st, 'end');
     w += edge(W, 'M592 ' + (y + 31) + ' H612', 'pat', 'e');
   });
-  w += edge(W, 'M796 ' + (RY(6) + 62) + ' V550 H330 V450', 'act', 'e');
-  w += lines(563, 540, P('events'), 'dg-lbl', 15, 'middle');
+  // events: stubs from the interactive sinks join one spine, which runs under the sinks back to the core
+  w += edge(W, 'M1014 ' + (RY(0) + 31) + ' V560 H330 V450', 'act', 'e');
+  INTERACTIVE.forEach((i) => { w += edge(W, 'M992 ' + (RY(i) + 31) + ' H1014', 'act', ''); });
+  w += lines(672, 552, P('events'), 'dg-lbl', 15, 'middle');
   w += box(8, 330, 150, 80, 'dg-act dg-app') + lines(83, 362, P('app.t'), 'dg-t', 16, 'middle') + lines(83, 384, P('app.s'), 'dg-s', 15, 'middle');
   w += edge(W, 'M158 370 H196', 'act', 'se');
   w += lines(83, 436, P('appEdge'), 'dg-lbl', 15, 'middle');
@@ -281,25 +284,27 @@ function pipelineSvg(lang) {
 
   // ---------------- tall
   const Tn = 'dgt';
-  let t = open(Tn, 'dg-tall', '0 0 360 1232');
+  let t = open(Tn, 'dg-tall', '0 0 360 1200');
   t += box(8, 8, 150, 76, 'dg-pat') + lines(83, 36, P('src.t'), 'dg-t', 16, 'middle') + lines(83, 56, P('src.s'), 'dg-s', 15, 'middle');
   t += box(202, 8, 150, 76, 'dg-act dg-app') + lines(277, 36, P('app.t'), 'dg-t', 16, 'middle') + lines(277, 56, P('app.s'), 'dg-s', 15, 'middle');
   t += edge(Tn, 'M83 84 V140', 'pat', 'e') + edge(Tn, 'M277 84 V140', 'act', 'se');
   t += lines(266, 106, P('appEdge'), 'dg-lbl', 14, 'end') + '<g transform="translate(0 20)">';
-  t += box(30, 120, 306, 200, 'dg-pat dg-core') + lines(183, 144, P('core.t'), 'dg-t', 16, 'middle');
-  [['parse', 156], ['state', 206], ['layout', 256]].forEach(([k, y]) => { t += '<rect class="dg-sub" x="46" y="' + y + '" width="274" height="42" rx="6"/>' + lines(183, y + 18, P('core.' + k), 'dg-s2', 14, 'middle'); });
-  t += edge(Tn, 'M183 320 V350', 'pat', 'e');
-  t += box(30, 350, 306, 64, 'dg-pat dg-list') + lines(183, 376, P('list.t'), 'dg-t', 16, 'middle') + lines(183, 396, P('list.s').replace('|', ' '), 'dg-s', 15, 'middle');
-  t += '<text class="dg-cap" x="30" y="436">' + esc(P('sinks')) + '</text>';
-  const TY = (i) => 458 + i * 100;
-  t += edge(Tn, 'M30 382 H14 V' + (TY(6) + 46), 'pat', '');
+  t += box(30, 120, 306, 216, 'dg-pat dg-core') + lines(183, 142, P('core.t'), 'dg-t', 16, 'middle') + lines(183, 158, P('core.s').replace('|', ' '), 'dg-s', 14, 'middle');
+  [['parse', 170], ['state', 216], ['layout', 262]].forEach(([k, y]) => { t += '<rect class="dg-sub" x="46" y="' + y + '" width="274" height="40" rx="6"/>' + lines(183, y + 17, P('core.' + k), 'dg-s2', 14, 'middle'); });
+  t += lines(183, 326, P('events'), 'dg-lbl', 15, 'middle');
+  t += edge(Tn, 'M183 336 V366', 'pat', 'e');
+  t += box(30, 366, 306, 64, 'dg-pat dg-list') + lines(183, 392, P('list.t'), 'dg-t', 16, 'middle') + lines(183, 412, P('list.s').replace('|', ' '), 'dg-s', 15, 'middle');
+  t += '<text class="dg-cap" x="30" y="452">' + esc(P('sinks')) + '</text>';
+  const TY = (i) => 474 + i * 100;
+  t += edge(Tn, 'M30 398 H14 V' + (TY(6) + 46), 'pat', '');
   SINKS.forEach(([k, st], i) => {
     const y = TY(i);
     t += box(30, y, 306, 92, cls(st)) + lines(42, y + 22, P(k + '.t'), 'dg-t', 16, 'start') + lines(42, y + 42, P(k + '.s'), 'dg-s', 15, 'start') + tag(42, y + 80, st, 'start');
     t += edge(Tn, 'M14 ' + (y + 46) + ' H30', 'pat', 'e');
   });
-  t += edge(Tn, 'M183 ' + (TY(6) + 92) + ' V' + (TY(6) + 114) + ' H350 V220 H336', 'act', 'e');
-  t += lines(183, TY(6) + 134, P('events'), 'dg-lbl', 15, 'middle');
+  // events: stubs from the interactive sinks join a spine on the right that climbs to the core
+  t += edge(Tn, 'M350 ' + (TY(5) + 46) + ' V236 H336', 'act', 'e');
+  INTERACTIVE.forEach((i) => { t += edge(Tn, 'M336 ' + (TY(i) + 46) + ' H350', 'act', ''); });
   t += '</g></svg>';
   return '<figure class="pipeline">' + w + t + '</figure>';
 }

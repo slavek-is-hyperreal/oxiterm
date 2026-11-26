@@ -273,7 +273,7 @@
               ],
               [
                 "Framebuffer Linuksa (OxiDE)",
-                "Odbiornik programowy rysuje stronę na ekran framebuffer lub DRM (wymaga jawnej zgody); pętli wejścia jeszcze brak (7.2b)",
+                "Działa tam renderer, a odbiornik programowy rysuje stronę na ekran framebuffer lub DRM (wymaga jawnej zgody); pętla zdarzeń rdzenia jeszcze tam nie działa, więc bez wejścia (7.2b)",
                 "częściowo"
               ],
               [
@@ -558,9 +558,10 @@
         "s": "znaczniki THTML|style TCSS"
       },
       "core": {
-        "t": "Rdzeń (oxiterm-core)",
+        "t": "Rdzeń",
+        "s": "oxiterm-renderer|+ oxiterm-core",
         "parse": "Analiza|THTML + kaskada TCSS",
-        "state": "Stan i zdarzenia|inc:, toggle:, set:",
+        "state": "Stan i zdarzenia|inc:, dec:, toggle:, set:",
         "layout": "Układ|flex, całe komórki"
       },
       "list": {
@@ -601,7 +602,7 @@
         "s": "dowolny język|przez HTTP"
       },
       "appEdge": "akcja tam,|łatka stanu z powrotem",
-      "events": "Zdarzenia: kliknięcia, klawisze, rozmiar, zegar",
+      "events": "Zdarzenia: kliknięcia i klawisze",
       "status": {
         "done": "działa",
         "partial": "częściowo",
