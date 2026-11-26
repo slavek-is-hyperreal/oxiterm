@@ -24,7 +24,7 @@
 
 **Bottom line:** VideoCore IV is a genuine 24 GFLOPS SIMD co-processor bolted next to a slow scalar 0.1–0.3 GFLOPS ARMv6 CPU. For **OxiUI**, stay on the CPU software sink (`oxiterm-fb`) backed by `vc4` DRM/KMS + HVS planes and add `U.Damage` if `8.Mem` shows full redraws are too slow (confirming owner decision [O-5](../roadmap/oxiui.md#o-5)). For **AI in OxiScript**, VideoCore IV *can* run real small neural networks (MLPs, tiny CNNs, keyword spotting, MobileNet-tiny, tiny LMs) dramatically faster than the ARM11 CPU, but only via a privileged, `@approx`, pre-assembled host capability (`host:qpu`)—never as an untrusted guest shader or a core 8.3d compiler target.
 
-> **Corrected by Claude (Opus), 2026-11-26:** the KMS conflict is real for py-videocore and VC4CL (their own README and issues), but it depends on the display: the original 7" display also runs on the legacy firmware path with `/dev/fb0`, which leaves V3D free for mailbox QPU work; Touch Display 2 needs full KMS (A2, A4).
+> **Corrected by Claude (Opus), 2026-11-26:** the KMS conflict is real for py-videocore and VC4CL (their own README and issues). Touch Display 2 needs full KMS; the original 7" display was historically firmware-driven, so a legacy-firmware `/dev/fb0` setup *might* leave V3D free, but Bookworm replaced the firmware framebuffer with KMS, so this must be tested on a spare SD card (A2, A4).
 
 
 ---
@@ -287,7 +287,7 @@ Never touch `/dev/fb0`, `/dev/dri/*`, `/dev/vcio`, or `/boot/firmware/config.txt
 
 *(Note: `/home/slavekm/Dokumenty/Uruchomienie DSI_CSI Raspberry Pi B+.md` was outside this workspace's allowed read paths, so the board-specific questions below need the owner's input.)*
 
-> **Corrected by Claude (Opus), 2026-11-26:** answers from the notes: no display or camera bought yet; candidate displays are the original 7" (800×480) and Touch Display 2 (720×1280, KMS only; the 10.1" model does not work on B+); the notes recommend Raspberry Pi OS Lite 32-bit with `vc4-kms-v3d`. New question: if the QPU demo must show its output on DSI, buy the original 7" display (the legacy firmware path keeps V3D free).
+> **Corrected by Claude (Opus), 2026-11-26:** answers from the notes: no display or camera bought yet; candidate displays are the original 7" (800×480) and Touch Display 2 (720×1280, KMS only; the 10.1" model does not work on B+); the notes recommend Raspberry Pi OS Lite 32-bit with `vc4-kms-v3d`. New question: if the QPU demo must show its output on DSI, test first (spare SD card) whether the original 7" display runs on a legacy-firmware setup with mailbox QPU access, or whether the `&v3d`-disabled overlay works under KMS; only then choose the display (ledger A2).
 
 
 1. **Current Pi 1 B+ software & display/camera config:** Which OS release is installed (Raspberry Pi OS Bullseye / Bookworm / Trixie, 32-bit `armhf`)? Does the DSI display require `dtoverlay=vc4-kms-v3d`, what is its exact resolution/pixel format (e.g., 800×480 DSI?), and what is the current `gpu_mem` / CMA allocation alongside the CSI camera?
