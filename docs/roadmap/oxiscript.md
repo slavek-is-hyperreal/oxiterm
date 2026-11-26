@@ -484,6 +484,7 @@ Design: `docs/research/oxiscript-simd-gpu-design.md` and its verification ledger
 <a id="s-8-w2"></a>
 #### 8.W2 Playground lessons and course levels 0-2 (todo)
 
+- Generated from the docs (owner 2026-11-26), never hand-copied: changelog page from `CHANGELOG.md`, standard library reference from `docs/oxiscript/std.md`, one page per reason code from `oxiscript-abi/registry/codes.txt` (linked from playground diagnostics), "differences from TypeScript" from the AGENTS.md template core, `/llms.txt` served as is; English with a note on the Polish site until the course is translated.
 - Scope: playground runs code (Run exists, [8.Run](#s-8-run)); 3-5 level-0 lessons then levels 0-2 (Zero, Apprentice, Craftsman) in PL and EN (LA after owner review), each lesson text + editor + run + grading by tests and laws; every solution checked in CI; playground limits fixed: per-call panic isolation, live output, `${f64}` after 8.M-link, compiler messages in the page language [R2-130, R2-132]; Lighthouse and PageSpeed measurements are `U.Sites` ([oxiui.md](oxiui.md#s-u-sites)) [R2-129]. Site infrastructure (deploy, CSP, HSTS, roadmap generator) is [U.Sites](oxiui.md#s-u-sites).
 - Gate: level-0 lessons pass the CI check of their solutions; works on a phone. Depends on: [8.Std](#s-8-std), [8.M-link](#s-8-m-link). Status: todo.
 
