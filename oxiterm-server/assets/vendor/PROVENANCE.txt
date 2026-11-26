@@ -1,0 +1,17 @@
+Vendored third-party files (served at /oxiui/vendor/)
+
+lottie_light.min.js
+  Project   lottie-web ("bodymovin"), light build (SVG renderer only)
+  Version   5.12.2 (the `lottie.version` string embedded in the file)
+  Upstream  https://github.com/airbnb/lottie-web  (npm package `lottie-web`, file build/player/lottie_light.min.js)
+  Licence   MIT, Copyright (c) 2015 Bodymovin  (full text: LICENSE-lottie-web.txt)
+  SHA-256   23cd2c01be3d4da8bb664645d03afaff40879c62dc5f8dfe075ab3aa35c108f3
+  Size      168236 bytes
+
+LICENSE-lottie-web.txt
+  SHA-256   9d8d4d8b4bb99572ee8b51025a30b8493d949798cac465c6c15b1b29420bcb06
+
+The SHA-256 values were computed from the files in this repository (`sha256sum`). They were NOT
+cross-checked against the upstream release or the npm tarball (no network access when this note was
+written): before a release, download lottie-web 5.12.2 and compare the hash of
+build/player/lottie_light.min.js, and check the project's security advisories for 5.12.2.

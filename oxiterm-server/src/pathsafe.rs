@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-pub use oxiterm_proto::pathsafe::is_within_base;
+pub use oxiterm_proto::pathsafe::{is_within_base, meta_multi_linked, resolve_media};
 
 /// A regular file with more than one hard link. A hard link inside the base to a file outside it
 /// passes every canonical-path containment check (it *is* a path inside the base), so the page
@@ -8,23 +8,6 @@ pub use oxiterm_proto::pathsafe::is_within_base;
 /// --link-dest` deployments hard-link every file; set `OXITERM_ALLOW_HARDLINKS=1` to accept them.
 pub fn is_multi_linked(path: &Path) -> bool {
     std::fs::metadata(path).map_or(false, |m| meta_multi_linked(&m))
-}
-
-/// [`is_multi_linked`] for already opened metadata (no path race between check and use).
-pub fn meta_multi_linked(m: &std::fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if std::env::var("OXITERM_ALLOW_HARDLINKS").map_or(false, |v| v == "1") {
-            return false;
-        }
-        m.is_file() && m.nlink() > 1
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = m;
-        false
-    }
 }
 
 /// Resolves mobile variant of the source path if it exists on disk, else returns the original path.

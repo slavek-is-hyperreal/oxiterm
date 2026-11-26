@@ -25,9 +25,9 @@ size 120x40
 ||
 ||
 ||
-||
-|                                                      Rive Procedural|
-||
+|                                         ▄▀▀▀▀▀▀▀▀▀▀▄|
+|                                         ████████████ Rive Procedural|
+|                                         ▀▀▀▀▀▀▀▀▀▀▀▀|
 ||
 ||
 ||
@@ -67,9 +67,9 @@ size 120x40
 22: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
 23: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
 24: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
-25: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
-26: 0-39 fg=c15 bg=c0 | 40-53 fg=c15 bg=#0f172a | 54-68 fg=#64748b bg=#0f172a | 69-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
-27: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
+25: 0-39 fg=c15 bg=c0 | 40-40 fg=c15 bg=#0f172a | 41-41 fg=#2a2a2a bg=reset | 42-42 fg=#2a2a2a bg=#525252 | 43-44 fg=#2d2d2d bg=#aeaeae | 45-45 fg=#292929 bg=#4d4d4d | 46-50 fg=#292929 bg=#282828 | 51-51 fg=#2a2a2a bg=#2d2d2d | 52-52 fg=#2a2a2a bg=reset | 53-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
+26: 0-39 fg=c15 bg=c0 | 40-40 fg=c15 bg=#0f172a | 41-41 fg=#2d2d2d bg=reset | 42-42 fg=#aeaeae bg=reset | 43-44 fg=#fefefe bg=reset | 45-45 fg=#a9a9a9 bg=reset | 46-46 fg=#272727 bg=reset | 47-50 fg=#232323 bg=reset | 51-51 fg=#282828 bg=reset | 52-52 fg=#292929 bg=reset | 53-53 fg=c15 bg=#0f172a | 54-68 fg=#64748b bg=#0f172a | 69-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
+27: 0-39 fg=c15 bg=c0 | 40-40 fg=c15 bg=#0f172a | 41-41 fg=#2a2a2a bg=reset | 42-42 fg=#525252 bg=#2a2a2a | 43-44 fg=#aeaeae bg=#2d2d2d | 45-45 fg=#4d4d4d bg=#292929 | 46-50 fg=#282828 bg=#292929 | 51-51 fg=#2d2d2d bg=#2a2a2a | 52-52 fg=#2a2a2a bg=reset | 53-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
 28: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
 29: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0
 30: 0-39 fg=c15 bg=c0 | 40-79 fg=c15 bg=#0f172a | 80-119 fg=c15 bg=c0

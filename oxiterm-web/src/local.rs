@@ -41,7 +41,7 @@ pub const TAG_OPEN_URL: u8 = 0x33;
 pub const TAG_ERROR_CHIP: u8 = 0x34;
 pub const TAG_APP_TOKEN: u8 = 0x35;
 pub const TAG_A11Y: u8 = 0x37;
-/// Local-mode only: `[0xE0, hash:u32le, rel_path]` asks the page to fetch a media asset.
+/// Local-mode only: `[0xE0, key:u64le, rel_path]` asks the page to fetch a media asset.
 pub const TAG_ASSET_REQUEST: u8 = 0xE0;
 
 /// Parked, unanswered action replies are bounded: an App Server that never answers cannot grow
@@ -171,42 +171,15 @@ pub fn encode_notice(notice: &ClientNotice) -> Vec<u8> {
     frame
 }
 
-/// Same hash the server uses to key media (`web.rs::hash_path`).
-pub fn hash_path(path: &str) -> u32 {
-    let mut hash: u32 = 5381;
-    for c in path.chars() {
-        hash = ((hash << 5).wrapping_add(hash)).wrapping_add(c as u32);
-    }
-    hash
+/// The key of a media file on the wire: the one the server uses (`oxiterm_proto::pathsafe::media_key`)
+/// of the file's path relative to the app base, i.e. of the page-resolved `rel`, never of the raw `src`.
+pub fn hash_path(rel: &str) -> u64 {
+    oxiterm_proto::pathsafe::media_key(rel)
 }
 
 /// Lexical `dir(page)/src` with `.`/`..` collapsed; `None` when it would leave the app base or
-/// is absolute (the same containment the page source applies to navigation).
-pub fn media_rel_path(current_page: &str, src: &str) -> Option<String> {
-    if src.starts_with('/') || src.starts_with('\\') || src.contains('\0') || src.contains("://") {
-        return None;
-    }
-    // A file name is required: `""`, `.`, `..` and `dir/` name directories.
-    if matches!(src.rsplit('/').next(), None | Some("") | Some(".") | Some("..")) {
-        return None;
-    }
-    let mut parts: Vec<&str> = Vec::new();
-    let dir = current_page.rsplit_once('/').map_or("", |(d, _)| d);
-    for seg in dir.split('/').chain(src.split('/')) {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            s => parts.push(s),
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join("/"))
-    }
-}
+/// is not a plain relative path. One rule for the server, the renderer and this client.
+pub use oxiterm_proto::pathsafe::media_rel_path;
 
 /// One in-browser session. All times are host milliseconds (`performance.now()`).
 pub struct LocalSession {
@@ -246,6 +219,9 @@ impl LocalSession {
         session.is_web_client.store(true, on);
         session.is_mobile.store(cfg.mobile, on);
         session.attach_identity(oxiterm_core::identity::UserIdentity::guest());
+        // Empty app base = a virtual root with no file system: media `src` are checked lexically
+        // (`pathsafe::resolve_media`) and files live in the renderer's VIRTUAL_FS.
+        *session.app_base_dir.write() = Some(std::path::PathBuf::new());
 
         let source = Arc::new(MemPageSource::with_dirs(pages, dirs));
         let page = source.resolve(None, &cfg.start_page, cfg.mobile).map_err(|_| "start page unavailable".to_string())?;
@@ -363,6 +339,9 @@ impl LocalSession {
             self.emit_media(&media);
             self.sent_media = media;
         }
+        if doc_changed {
+            self.request_diagram_files();
+        }
         // ARIA mirror.
         let a11y = std::mem::take(&mut self.out.lock().a11y);
         for json in a11y {
@@ -378,7 +357,7 @@ impl LocalSession {
         let page = self.session.current_page.read().clone().unwrap_or_default();
         for m in media {
             let Some(rel) = media_rel_path(&page, &m.path) else { continue };
-            let h = hash_path(&m.path);
+            let h = hash_path(&rel);
             if self.requested_assets.insert(rel.clone()) {
                 let mut req = vec![TAG_ASSET_REQUEST];
                 req.extend_from_slice(&h.to_le_bytes());
@@ -393,6 +372,47 @@ impl LocalSession {
             msg.extend_from_slice(&m.height.to_le_bytes());
             self.messages.push(msg);
         }
+    }
+
+    /// `<diagram src>` is drawn by the core into cells (not by the browser), so its `.mmd` text
+    /// must be in the core's virtual file system: ask the page to fetch it (`0xE0`, same message
+    /// as for media) and [`mount_asset`](Self::mount_asset) it.
+    fn request_diagram_files(&mut self) {
+        let page = self.session.current_page.read().clone().unwrap_or_default();
+        let srcs: Vec<String> = self
+            .el
+            .doc
+            .arena
+            .iter()
+            .filter(|(_, n)| n.tag == oxiterm_proto::dom::NodeTag::Diagram)
+            .filter_map(|(_, n)| n.attrs.src.clone())
+            .collect();
+        for src in srcs {
+            let Some(rel) = media_rel_path(&page, &src) else { continue };
+            if self.requested_assets.insert(rel.clone()) {
+                let mut req = vec![TAG_ASSET_REQUEST];
+                req.extend_from_slice(&hash_path(&rel).to_le_bytes());
+                req.extend_from_slice(rel.as_bytes());
+                self.messages.push(req);
+            }
+        }
+    }
+
+    /// Hands a fetched file (a `.mmd` diagram) to the core's virtual file system and re-renders.
+    /// Only text-sized files are accepted (256 KiB each), at most 64 files and 4 MiB in all.
+    pub fn mount_asset(&mut self, rel: &str, bytes: &[u8]) -> bool {
+        const MAX_MOUNT: usize = 256 * 1024;
+        const MAX_FILES: usize = 64;
+        const MAX_TOTAL: usize = 4 * 1024 * 1024;
+        if bytes.len() > MAX_MOUNT || media_rel_path("", rel).as_deref() != Some(rel) {
+            return false;
+        }
+        if !oxiterm_renderer::render::renderer::VIRTUAL_FS.insert_capped(std::path::PathBuf::from(rel), bytes.to_vec(), MAX_FILES, MAX_TOTAL) {
+            return false;
+        }
+        let d = *self.session.dims.read();
+        self.queue.push(InputEvent::Resize { cols: d.cols, rows: d.rows });
+        true
     }
 
     /// Re-emits the media coordinates (after the page cached a requested asset).
@@ -485,8 +505,9 @@ mod tests {
 
     #[test]
     fn hash_matches_the_server_function() {
-        // djb2 over chars, as oxiterm-server's `hash_path`.
-        assert_eq!(hash_path(""), 5381);
-        assert_eq!(hash_path("a"), 5381u32.wrapping_mul(33).wrapping_add('a' as u32));
+        // FNV-1a 64 of the app-relative path, one definition in oxiterm-proto.
+        assert_eq!(hash_path(""), 0xcbf2_9ce4_8422_2325);
+        assert_ne!(hash_path("Ez.png"), hash_path("FY.png"));
+        assert_ne!(hash_path("a/logo.png"), hash_path("b/logo.png"));
     }
 }

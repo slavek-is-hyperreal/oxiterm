@@ -168,6 +168,70 @@ for (const site of ['home', 'oxiui', 'oxiscript']) {
       if (msgs.length) fail(`${lang}: console: ${msgs.slice(0, 3).join(' | ')}`);
       if (process.env.SHOT_DIR) await page.screenshot({ path: path.join(process.env.SHOT_DIR, `pg${lang.replace(/\//g, '_')}.png`) });
       await page.close();
+
+      // ---- Check feedback, tip, Run (worker, fuel, timeout), Stop, hashchange: a fresh page on the default example
+      const pg = await ctx.newPage();
+      watch(pg);
+      msgs.length = 0;
+      await pg.goto(base + lang, { waitUntil: 'load' });
+      await pg.waitForFunction(() => !document.getElementById('pg-check').disabled, null, { timeout: 15000 });
+      const labels = await pg.evaluate(() => JSON.parse(document.getElementById('pg-labels').textContent));
+      const pgStatus = () => pg.$eval('#pg-status', (e) => e.textContent);
+      const sameBar = await pg.evaluate(() => document.getElementById('pg-check').parentElement === document.getElementById('pg-status').parentElement);
+      if (!sameBar) fail(`${lang}: status line is not next to the buttons`);
+      if (!(await pg.$eval('#pg-hint', (e) => !e.hidden && e.querySelector('button') !== null))) fail(`${lang}: tip not visible on load`);
+      await pg.waitForTimeout(1100); // the status carries a time with seconds: the click must land in a later second than the load-time check
+      const st0 = await pgStatus();
+      await pg.click('#pg-check');
+      await pg.waitForFunction((b) => document.getElementById('pg-status').textContent !== b && /\d:\d\d/.test(document.getElementById('pg-status').textContent), st0, { timeout: 3000 });
+      const inView = await pg.$eval('#pg-status', (e) => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+      console.log(`  ${lang} check on the clean default example: "${await pgStatus()}" (in view: ${inView})`);
+      if (!inView) fail(`${lang}: status line not in the first screen`);
+      // the tip loads mistakes.oxs; Check then shows diagnostics and the tip goes away
+      await pg.click('#pg-hint-btn');
+      await pg.waitForFunction(() => document.getElementById('pg-src').value.includes('=='), null, { timeout: 3000 });
+      await pg.click('#pg-check');
+      await pg.waitForSelector('#pg-diags li', { timeout: 3000 });
+      if (!(await pg.$eval('#pg-hint', (e) => e.hidden))) fail(`${lang}: tip still shown after diagnostics`);
+      // Run is refused while there are errors, with the diagnostics visible
+      await pg.click('#pg-run');
+      await pg.waitForFunction((t) => document.getElementById('pg-status').textContent === t, labels.cannotRun, { timeout: 3000 });
+      // Run hello: the runner loads in a worker, the log line shows up
+      await pg.selectOption('#pg-ex', 'hello');
+      await pg.waitForFunction(() => document.getElementById('pg-src').value.includes('Hello'), null, { timeout: 3000 });
+      await pg.click('#pg-run');
+      await pg.waitForFunction(() => document.getElementById('pg-out').textContent.includes('Hello from OxiScript'), null, { timeout: 60000 });
+      console.log(`  ${lang} run hello: ok, status "${await pgStatus()}"`);
+      // an endless loop ends with the fuel (or timeout) message and the page stays usable
+      const spin = 'import { Log } from "host:log";\nexport function main(log: Log): void {\n  let i: i32 = 0;\n  while (true) { i = i +% 1; }\n}\n';
+      await pg.$eval('#pg-src', (t, v) => { t.value = v; t.dispatchEvent(new Event('input')); }, spin);
+      await pg.waitForSelector('#pg-diags li', { state: 'detached', timeout: 3000 }).catch(() => {});
+      const tSpin = Date.now();
+      await pg.click('#pg-run');
+      await pg.waitForFunction((a) => { const t = document.getElementById('pg-status').textContent; return t.includes(a[0]) || t.includes(a[1]); }, [labels.trap_out_of_fuel, labels.timeout.split('{s}')[1].slice(0, 12)], { timeout: 20000 }).catch(async (e) => { console.log('  DEBUG status=' + JSON.stringify(await pgStatus()) + ' note=' + JSON.stringify(await pg.$eval('#pg-out-note', (n) => n.textContent)) + ' run.disabled=' + (await pg.$eval('#pg-run', (b) => b.disabled)) + ' msgs=' + JSON.stringify(msgs)); throw e; });
+      console.log(`  ${lang} endless loop: "${await pgStatus()}" after ${Date.now() - tSpin} ms`);
+      // Stop button ends a running program
+      await pg.click('#pg-run');
+      await pg.click('#pg-stop');
+      // Stop is synchronous: the status says "stopped" at once and the fuel message never appears
+      await pg.waitForFunction((t) => document.getElementById('pg-status').textContent === t, labels.stopped, { timeout: 500 });
+      await pg.waitForTimeout(1500);
+      if ((await pgStatus()) !== labels.stopped) fail(`${lang}: status changed after Stop: ${await pgStatus()}`);
+      if (!(await pg.$eval('#pg-stop', (e) => e.hidden))) fail(`${lang}: Stop button still shown after Stop`);
+      // run again after a stop/timeout: a fresh worker works
+      await pg.$eval('#pg-src', (t) => { t.value = 'import { Log } from "host:log";\nexport function main(log: Log): void {\n  log.write(2, "again");\n}\n'; t.dispatchEvent(new Event('input')); });
+      await pg.click('#pg-run');
+      await pg.waitForFunction(() => document.getElementById('pg-out').textContent.includes('again'), null, { timeout: 60000 });
+      // hashchange loads an example (clean editor: no prompt; edited editor: the prompt)
+      await pg.evaluate(() => { location.hash = '#ex=counter'; });
+      await pg.waitForFunction(() => document.getElementById('pg-src').value.includes('counter') || !document.getElementById('pg-confirm').hidden, null, { timeout: 3000 });
+      if (!(await pg.$eval('#pg-confirm', (e) => !e.hidden))) fail(`${lang}: hashchange over edits did not ask`);
+      await pg.click('#pg-confirm button:first-of-type');
+      await pg.waitForFunction(() => document.getElementById('pg-src').value.includes('counter'), null, { timeout: 3000 });
+      const v2 = await pg.evaluate(() => window.__csp);
+      if (v2.length) fail(`${lang}: CSP violations during Run: ${v2.join(' | ')}`);
+      if (msgs.length) fail(`${lang}: console during Run: ${msgs.slice(0, 3).join(' | ')}`);
+      await pg.close();
     }
   }
   await ctx.close();

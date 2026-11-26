@@ -2899,6 +2899,8 @@ dependencies = [
  "clap",
  "oxiscript-abi",
  "oxiscript-check",
+ "oxiscript-lower",
+ "oxiscript-playground",
  "oxiscript-syntax",
  "serde_json",
  "toml",
@@ -2929,6 +2931,8 @@ version = "0.1.0"
 dependencies = [
  "oxiscript-abi",
  "oxiscript-check",
+ "oxiscript-lower",
+ "oxiscript-runtime",
  "oxiscript-syntax",
  "serde_json",
  "wasm-bindgen",
@@ -3049,6 +3053,7 @@ name = "oxiterm-proto"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "libc",
  "serde",
  "serde_json",
  "tracing",
@@ -3094,6 +3099,7 @@ dependencies = [
  "resvg",
  "rlottie",
  "serde",
+ "serde_json",
  "taffy",
  "tracing",
  "unicode-width",
@@ -3105,6 +3111,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "flate2",
  "futures",
  "http-body-util",
@@ -3119,6 +3126,7 @@ dependencies = [
  "russh",
  "serde",
  "serde_json",
+ "sha2",
  "subtle",
  "tokio",
  "tokio-tungstenite",

@@ -1,7 +1,14 @@
+import { Log } from "host:log";
+
 function add(a: i32, b: i32): i32 {
   return a + b;
 }
 
 law add_commutes(a: i32, b: i32) when a > -1000 && b > -1000 {
   add(a, b) === add(b, a)
+}
+
+export function main(log: Log): void {
+  log.write(2, `add(2, 3) = ${add(2, 3)}`);
+  log.write(2, `add(3, 2) = ${add(3, 2)}`);
 }

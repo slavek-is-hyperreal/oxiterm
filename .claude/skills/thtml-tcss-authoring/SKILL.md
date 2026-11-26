@@ -211,7 +211,7 @@ Optional preview modes: `preview="minimap"` (default), `preview="fit"`, `preview
 `preview-anchor="node_id"` is allowed ONLY when `preview="crop"`.
 
 ```html
-<diagram src="examples/assets/flow.mmd" alt="System Flowchart" preview="minimap" style="width: 40; height: 12;" />
+<diagram src="../assets/flow.mmd" alt="System Flowchart" preview="minimap" style="width: 40; height: 12;" />
 ```
 
 ---

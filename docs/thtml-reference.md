@@ -269,14 +269,14 @@ OxiTerm supports interactive mouse dragging for floating windows, modals, toolba
 The `<diagram>` tag renders Mermaid flowchart diagrams as character cell grids:
 
 ```html
-<diagram src="examples/assets/flow.mmd" alt="System Architecture" preview="minimap" style="width: 40; height: 12;" />
+<diagram src="../assets/flow.mmd" alt="System Architecture" preview="minimap" style="width: 40; height: 12;" />
 ```
 
 ### Attributes
 
 | Attribute | Required | Values | Description |
 |---|---|---|---|
-| `src` | Yes | Path | Path to `.mmd` Mermaid source file (must pass `is_within_base` relative to `app_base_dir`). |
+| `src` | Yes | Path | Path to `.mmd` Mermaid source file relative to the directory of the page that contains the tag (like `<img src>`), e.g. `../assets/flow.mmd` from `demos/diagram.thtml`; it must stay inside the app base (traversal, absolute paths, URLs and encoded `..` are refused). |
 | `alt` | Yes | String | Alternative text description for accessibility and header title. |
 | `width` | Yes | Number / Style | Explicit width in character cells (required via style or inline). |
 | `height` | Yes | Number / Style | Explicit height in character cells (required via style or inline). |
