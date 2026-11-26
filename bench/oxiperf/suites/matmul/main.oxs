@@ -1,0 +1,31 @@
+// OxiPerf p06 matmul (base track): dense n x n f64 matrix multiply, i-j-k loop order, flat arrays.
+// Inputs are multiples of 1/4, so every product and partial sum is exact in f64 and the
+// checksum does not depend on summation order or fused multiply-add.
+
+@host export function run(n: i32): u32 {
+  const a: f64[] = [];
+  const b: f64[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      a.push((((i * 31 + j * 17) % 13) as f64) / 4.0);
+      b.push((((i * 7 + j * 29) % 11) as f64) / 4.0);
+    }
+  }
+  const c: f64[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let acc = 0.0;
+      for (let k = 0; k < n; k++) {
+        acc = acc + a[i * n + k] * b[k * n + j];
+      }
+      c.push(acc);
+    }
+  }
+  let total = 0.0;
+  for (let i = 0; i < n * n; i++) {
+    total = total + c[i];
+  }
+  return (total * 16.0) as u32;
+}
+
+export function main(): void {}

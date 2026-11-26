@@ -18,12 +18,13 @@ Two separate benchmarks with separate names, methods and reports (owner, 2026-11
 |---|---|
 | Name and scope | decided (this file) |
 | Methodology of fair cross-language comparison | **written and verified** (Gemini draft, Opus verification 2026-11-26: 95 claims, 3 wrong, corrections inline); waiting for owner approval (Q-OP-1..7) |
-| Harness crate `oxiscript-bench` (one command, table + JSON, machine description) | **not started** (stage 8.Bench) |
-| Workloads | **not started** as a suite. Existing pieces: fuel-per-operation probes in `oxiscript-lower/tests/bad_actor_link_perf.rs` (on branch `gemini-rtlink`, merging soon; numbers in `docs/stages/8.M-link/`), OxiUI frame cost in `oxiterm-server/benches/frame_cost.rs` |
-| Reference implementations in other languages | **not started** |
+| Harness crate `oxiscript-bench` (binary `oxiperf`: one command, table + JSON, machine description) | **v0 done** (2026-11-26): wasmi, Wasmtime, Rust, C, Node; manifest, raw.jsonl, summary.json, report.md; statistics unit-tested; repetition counts derived from a pilot (Kalibera & Jones); see [oxiperf.md](oxiperf.md). Dev tier only (capped at 10 invocations, no controlled DVFS, unfrozen). Part 1 of 8.Bench (SIMD/GPU workloads, browser, GPU targets) not started |
+| Workloads | **2 Are We Fast Yet** (Mandelbrot, Sieve; JavaScript = upstream verbatim, pinned; Rust/C/OxiScript = our ports) as the headline candidate group, plus **6 own** workloads reported separately (sort, Map/Set on the stdlib track, string template, JSON tokenizer, tree alloc, matmul f64). Checksums verified across all languages. Not yet: the other AWFY benchmarks (Storage, Json, NBody, ...; DeltaBlue not copied until its licence is cleared), the SIMD/GPU workloads of the harness part. Existing pieces: fuel-per-operation probes in `oxiscript-lower/tests/bad_actor_link_perf.rs` (on branch `gemini-rtlink`), OxiUI frame cost in `oxiterm-server/benches/frame_cost.rs` |
+| Reference implementations in other languages | **Rust, C, JavaScript (Node)** for the 8 workloads (AWFY JS is upstream; all other code one author, no independent audit yet). Not yet Go, AssemblyScript, Python, Lua; w2c2 is not installed (TODO row) |
 | Real GPU | the dev machine has an AMD Radeon R7 260X (Vulkan via RADV); used only with the owner's consent because it drives the owner's display |
 | Boards | Raspberry Pi 1 B+ waiting for setup (8.Mem); ESP32-S3 after 2026-12-10 (8.S3) |
-| First frozen report | none |
+| Runtime mode measured | `stub` (bump allocator, no memory reuse); re-run after 8.M-link merges (`Linked` mode, f64 to text) |
+| First frozen report | none (a dev-tier harness run exists under `bench/oxiperf/results/`; it is not publishable) |
 
 ### OxiBench
 
