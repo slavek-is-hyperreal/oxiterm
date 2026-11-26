@@ -24,7 +24,7 @@ Non-goals (owner, plan section 1): full W3C HTML/CSS, a JavaScript engine, Flutt
 
 ## 2. Principles and owner decisions that bind OxiUI
 
-Numbering `O-n` is local to this file (`oxiui.md#o-n`). OxiScript principles and decisions have their own sets (`oxiscript.md#p-n`, `#d-n`).
+Numbering `O-n` is local to this file (anchors `o-1`...). OxiScript principles and decisions have their own sets (`p-1`.. and `d-1`.. in oxiscript.md).
 
 | Id | Decision | Date | Source |
 |---|---|---|---|
@@ -50,7 +50,7 @@ Numbering `O-n` is local to this file (`oxiui.md#o-n`). OxiScript principles and
 | <a id="o-20"></a>O-20 | Sites: Polish and English first, Latin after the owner's review (in memoriam dedication); Polish copy is a draft until the owner reviews; no trackers; HSTS only as a Cloudflare dashboard switch, never preload by default; sites are Cloudflare **Workers static assets**, not Pages (2026-11-26). | 2026-11-25/26 | oxi-ui.md:648; sites/DEPLOY.md; commit ddad8b3 |
 | <a id="o-21"></a>O-21 | Language of work: the owner writes Polish and gets Polish answers; code, docs and commits are English. Dev blog posts only by the owner or the lead, each signed by its author. | standing | HANDOFF.md; memory |
 | <a id="o-22"></a>O-22 | Hardware: ESP32-S3 4.3" 800x480 touch (N16R8) is bought after 2026-12-10; device work waits for it; no public server yet (a VPS with port-22 SSH comes later). | 2026-11-26 | HANDOFF.md section 5; memory |
-| <a id="o-23"></a>O-23 | Compilation targets `device`, `web`, `server` are a build concept distinct from language profiles (owned by [8.Tgt](oxiscript.md#s-8-tgt), done). | 2026-11-26 | oxi-ui.md:655 |
+| <a id="o-23"></a>O-23 | Compilation targets `device`, `web`, `server` are a build concept distinct from language profiles (owned by [8.2a](oxiscript.md#s-8-2a), done). | 2026-11-26 | oxi-ui.md:655 |
 
 Overtaken by events (not revoked by the owner; owner to confirm, see Q-1):
 - **Execution order of 2026-11-22** (5.0-5.1, then 6, then 7, then 5.2-5.7 last, Phase 8 after Phase 7). In fact Phase 8 ran in parallel with Phase 7 from 2026-11-24 (plan "Parallel schedule"), and 5.2 was pulled forward (as the plan itself foresaw in oxi-ui.md:759). 5.3-5.7 remain last. Sources: R2-09, R4-30.
@@ -98,7 +98,7 @@ Notes on dates: the CHANGELOG-based rows predate the plan; no single merge commi
 
 ## 4. In progress
 
-**No OxiUI work is in progress.** Every 5.x and 7.x stage that was started is merged. The three branches that carry unmerged work are OxiScript stages, listed in [oxiscript.md section 4](oxiscript.md#in-progress): `gemini-rtlink` ([8.M-link](oxiscript.md#s-8-m-link)), `gemini-std` ([8.Std](oxiscript.md#s-8-std)) and `gemini-memres` ([8.Perf](oxiscript.md#s-8-perf) research). The worktree `.claude/worktrees/roadmaps` holds this documentation work. The remaining 19 `worktree-agent-*` worktrees and `gemini-5.2`, `gemini-simd`, `integ-sites`, `worktree-targets` are fully merged leftovers (cleanup item U.Hygiene). Sources: R2-89, R4-80, R4 "Unmerged worktrees".
+**No OxiUI work is in progress.** Every 5.x and 7.x stage that was started is merged. The three branches that carry unmerged work are OxiScript stages, listed in [oxiscript.md section 4](oxiscript.md): `gemini-rtlink` ([8.M-link](oxiscript.md#s-8-m-link)), `gemini-std` ([8.Std](oxiscript.md#s-8-std)) and `gemini-memres` ([8.Perf](oxiscript.md#s-8-perf) research). The worktree `.claude/worktrees/roadmaps` holds this documentation work. The remaining 19 `worktree-agent-*` worktrees and `gemini-5.2`, `gemini-simd`, `integ-sites`, `worktree-targets` are fully merged leftovers (cleanup item U.Hygiene). Sources: R2-89, R4-80, R4 "Unmerged worktrees".
 
 ---
 
@@ -395,3 +395,36 @@ Owned jointly: language part in [8.3d](oxiscript.md#s-8-3d). Status: idea. Sourc
 - **Scratch and disk:** `/` is nearly full; agent TMPDIR and scratch go to `/vectorlegis_ssd_pool/oxiterm/scratch`, never `/tmp`.
 - **Shared files** (plan/roadmap, root `Cargo.toml`, CI workflows) are edited by the lead only; skills are checked against code, docs are not; where a skill and a document disagree, code decides.
 - **Deploy:** the server is `oxiterm-cli serve`, deployed by copying that binary to the admin host with a manual restart; sites are Workers static assets deployed by the lead with `wrangler` after the gate.
+
+---
+
+## 9. Traceability appendix
+
+Inventory ids that are not cited in a row above, and where each one is handled. Ids not listed here are cited in the `Sources:` cells. Counts are in the final report of the writer.
+
+| Inventory ids | Destination |
+|---|---|
+| R1-01, R1-02, R1-18, R1-19, R1-22, R1-29, R1-46, R1-49 | Done, "Terminal baseline" row (thin client SSR, THTML tag set, bounded channel, XON/XOFF, synchronized updates, reattach/takeover, dynamic tick); the three tick numbers are a doc fix in consistency.md; release-loss recovery of SGR 1006 is part of U.Term |
+| R1-31, R1-43, R1-44 | Done (7.1, 7.2, 5.2 and ARCHITECTURE sections 3-4 reference; Android shell 7.3, native window 5.3) |
+| R1-37, R1-38, R1-40, R2-10, R2-21, R2-156, R2-158, R2-164 | sections 2 and 8 (O-8, O-14, O-17, O-18) |
+| R1-42, R1-86, R1-87, R1-90..94, R1-97 | U.Docs and consistency.md (README layout table, guide wording, spring/position/units statements, skills) |
+| R1-51, R1-52 | Done, "OxiDESK window features" row |
+| R1-59 | U.Screens |
+| R1-108, R1-110 | U.Sites (CSP/no trackers kept as O-20; PageSpeed checklist) |
+| R1-33, R1-34, R1-35, R1-36, R1-50, R1-98, R1-32 | OxiScript: [oxiscript.md](oxiscript.md) (laws overclaim R1-33 and `oxi` scope R1-34 are in its consistency half) |
+| R2-03 | section 1 non-goals |
+| R2-04, R2-05, R2-06, R2-07, R2-08 | Done rows 3-4 and 7.1; O-4, O-5; D3 wording in consistency.md |
+| R2-18 | U.Media (native media replacement is covered by 7.6; video not) |
+| R2-24, R2-41, R2-43, R2-49 | Done rows (5.1, 6), 7.5 |
+| R2-26, R2-174 | U.Quirks, U.Cpu |
+| R2-51 | Run, identity, showcase: [oxiscript.md](oxiscript.md) (8.Run, 8.Id) and Done "Showcase" |
+| R2-52..R2-85, R2-87, R2-90..R2-94, R2-96..R2-99, R2-100..R2-123, R2-125, R2-132..R2-134, R2-138, R2-139, R2-160, R2-163 | OxiScript stages and decisions: [oxiscript.md](oxiscript.md) (R2-87 risks table: its OxiUI risks are all obsolete; new risks: wgpu churn, lavapipe golden drift, Cloudflare header semantics, usage limits) |
+| R2-130, R2-131 | [8.W2/8.W3](oxiscript.md#s-8-w2), [8.Blog](oxiscript.md#s-8-blog); infra half in U.Sites |
+| R2-166 | O-5, 5.2 Done |
+| R2-175 | rule: research numbers marked unverified (NVENC, patents, Zed/Warp/Ghostty details) are not repeated as facts (9.2 text) |
+| R4-01..R4-12, R4-16..R4-20, R4-50..R4-54, R4-56..R4-59, R4-61..R4-69, R4-71 | OxiScript (8.3a-e, 8.Bench, 8.M-link, 8.Std, 8.Perf, 8.S*, decisions): [oxiscript.md](oxiscript.md) |
+| R4-32 | O-5 |
+| R4-35 | U.Quirks (filesystem users), U.Media; CI wasm32/Android job is done (`ci.yml`) |
+| R4-36 | Done (7.1, 7.2, 7.6) |
+| R4-42 | U.Quirks (`0x21`), U.Cpu (CellGrid capture) |
+| R4-81 | section 8 (scratch/disk) |
