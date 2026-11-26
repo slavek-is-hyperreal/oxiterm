@@ -69,6 +69,10 @@ Superseded design decisions from the original concept documents (kept for histor
 
 ---
 
+### Owner answers of 2026-11-26 (batch)
+
+Q-1 yes (the old execution order is replaced). Q-2 8.S1 first, then 7.3-7.5, native window 5.3-5.7 last. Q-3, Q-4 (OxiTerm/OxiUI versions follow the OxiScript rule, next `v0.7.0`), Q-5 closed (the roadmaps are the public roadmap), Q-6 (linear `--a11y` in v1, AT-SPI as an idea), Q-7 (keep avoiding ambiguous-width glyphs; drop the Mint/emulator matrix), Q-9 (VPS after 8.S1), Q-10 (OxiScreens, OxiDE desktop and 3D wait for the ESP32 board), Q-12 (linter warning for `box-shadow` now), Q-15 (remove unmeasured numbers until 8.Mem measures them): as the lead recommended. Q-8: **no Latin site version for now; only the in memoriam dedication stays** (shown on the home page once the owner writes its text and the teacher's name; a Latin version may come later); HSTS 6 months without `includeSubDomains`; Polish copy review when the owner has time. Gemini rule: [D-31](oxiscript.md#d-31).
+
 ## 3. Done (verified)
 
 All hashes below were checked with `git merge-base --is-ancestor <hash> main`. Format chosen so a generator can parse it: first cell starts with the stage id, last cell holds a date and a 7-hex hash.

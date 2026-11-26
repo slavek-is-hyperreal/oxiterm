@@ -310,7 +310,10 @@ function pipelineSvg(lang) {
 }
 
 // ---------------------------------------------------------------- HTML blocks
-const LATIN_WIDGETS = new Set(['dedication', 'latinnote']); // hidden while Latin is unpublished
+const LATIN_WIDGETS = new Set(['latinnote']); // hidden while Latin is unpublished
+// Owner 2026-11-26: no Latin site for now; only the in memoriam dedication stays, shown once the owner
+// has written its text and name (placeholders start with '[' and keep it hidden).
+const dedicationReady = (lang) => !T(lang, 'home.dedication.text').startsWith('[') && !T(lang, 'home.dedication.name').startsWith('[');
 function renderBlock(site, lang, b, ctx) {
   const I = (s) => inline(site, lang, s);
   switch (b.t) {
@@ -327,7 +330,7 @@ function renderBlock(site, lang, b, ctx) {
       return `<div class="compare"><figure><figcaption>TypeScript</figcaption>${pre(readTs(b.cmp), 'ts')}</figure><figure><figcaption>OxiScript</figcaption>${pre(readExample(b.cmp), 'oxs')}</figure></div>`;
     case 'links':
       return `<p class="links">${b.items.map((i) => { const u = resolveLink(site, lang, i.href); return `<a class="btn${i.primary ? ' primary' : ''}" href="${esc(u)}"${isExternal(u) ? ' rel="noopener"' : ''}>${esc(i.label)}</a>`; }).join(' ')}</p>`;
-    case 'widget': return LATIN_WIDGETS.has(b.id) && !LATIN_ON ? '' : widget(site, lang, b.id, b, ctx);
+    case 'widget': return (LATIN_WIDGETS.has(b.id) && !LATIN_ON) || (b.id === 'dedication' && !dedicationReady(lang)) ? '' : widget(site, lang, b.id, b, ctx);
     default: throw new Error(`unknown block type ${b.t}`);
   }
 }
@@ -553,7 +556,7 @@ ${sc ? sc.css : ''}</style>
           btn(i.label, u.startsWith('/') ? `open:${ORIGIN[site]}${u}` : `open:${u}`);
         }
         break;
-      case 'widget': if (!(LATIN_WIDGETS.has(b.id) && !LATIN_ON)) thtmlWidget(b.id); break;
+      case 'widget': if (!(LATIN_WIDGETS.has(b.id) && !LATIN_ON) && !(b.id === 'dedication' && !dedicationReady(lang))) thtmlWidget(b.id); break;
     }
   }
   function thtmlWidget(wid) {
