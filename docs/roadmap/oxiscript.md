@@ -561,6 +561,7 @@ Nothing here has an owning stage today. Each can be promoted by the owner; the s
 | Idea | Source ids |
 |---|---|
 | Unicode identifiers (needs an edition bump, lexer-only; homoglyph policy UAX#31 + NFC + UTS#39 if ever) | R3-02, R3-102, R3-202 |
+| "Transcendental magic" (owner idea, 2026-11-26): fast approximations of transcendental functions in the spirit of Quake's inverse square root (bit-trick initial guess + Newton steps; Schraudolph-style fast `exp`, minimax polynomials), as an explicit `std/math/approx` module with a documented and tested error bound per function, never a silent replacement of `std/math` (P-9, D-29 rule); cards in 8.Lab; natural fit for `micro`/`device` and for executors whose hardware already approximates (VideoCore IV SFU `recip`, `rsqrt`, `exp2`, `log2`) | owner 2026-11-26 |
 | Firmware packaging with a built-in wasmi interpreter for `micro`, only for loading programs without reflashing (OTA updates, downloaded scripts, user plug-ins); not a separate target ([D-28](#d-28)) | owner 2026-11-26 |
 | Host-to-guest bulk data above 4096 bytes (chunking, ABI 1.1) | R3-41 |
 | Array destructuring, tuples, fixed arrays `[T; N]` (reserved syntax) | R3-04, R3-05 |
