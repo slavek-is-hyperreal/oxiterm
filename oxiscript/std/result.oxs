@@ -1,0 +1,132 @@
+// OxiScript standard library: std/result
+// Helpers for working with Result<T, E>.
+
+export function isOk<T, E>(r: Result<T, E>): bool {
+  switch (r.kind) {
+    case "ok":
+      return true;
+    case "err":
+      return false;
+  }
+}
+
+export function isErr<T, E>(r: Result<T, E>): bool {
+  switch (r.kind) {
+    case "ok":
+      return false;
+    case "err":
+      return true;
+  }
+}
+
+export function unwrapOr<T, E>(r: Result<T, E>, fallback: T): T {
+  switch (r.kind) {
+    case "ok":
+      return r.value;
+    case "err":
+      return fallback;
+  }
+}
+
+export function unwrapOrElse<T, E>(r: Result<T, E>, f: (err: E) => T): T {
+  switch (r.kind) {
+    case "ok":
+      return r.value;
+    case "err":
+      return f(r.error);
+  }
+}
+
+export function unwrapErrOr<T, E>(r: Result<T, E>, fallback: E): E {
+  switch (r.kind) {
+    case "ok":
+      return fallback;
+    case "err":
+      return r.error;
+  }
+}
+
+export function okValue<T, E>(r: Result<T, E>): T | null {
+  switch (r.kind) {
+    case "ok":
+      return r.value;
+    case "err":
+      return null;
+  }
+}
+
+export function errValue<T, E>(r: Result<T, E>): E | null {
+  switch (r.kind) {
+    case "ok":
+      return null;
+    case "err":
+      return r.error;
+  }
+}
+
+export function map<T, U, E>(r: Result<T, E>, f: (v: T) => U): Result<U, E> {
+  switch (r.kind) {
+    case "ok":
+      return Ok(f(r.value));
+    case "err":
+      return Err(r.error);
+  }
+}
+
+export function mapErr<T, E, F>(r: Result<T, E>, f: (e: E) => F): Result<T, F> {
+  switch (r.kind) {
+    case "ok":
+      return Ok(r.value);
+    case "err":
+      return Err(f(r.error));
+  }
+}
+
+export function mapOr<T, U, E>(r: Result<T, E>, fallback: U, f: (v: T) => U): U {
+  switch (r.kind) {
+    case "ok":
+      return f(r.value);
+    case "err":
+      return fallback;
+  }
+}
+
+export function andThen<T, U, E>(r: Result<T, E>, f: (v: T) => Result<U, E>): Result<U, E> {
+  switch (r.kind) {
+    case "ok":
+      return f(r.value);
+    case "err":
+      return Err(r.error);
+  }
+}
+
+export function orElse<T, E, F>(r: Result<T, E>, f: (e: E) => Result<T, F>): Result<T, F> {
+  switch (r.kind) {
+    case "ok":
+      return Ok(r.value);
+    case "err":
+      return f(r.error);
+  }
+}
+
+export function flatten<T, E>(r: Result<Result<T, E>, E>): Result<T, E> {
+  switch (r.kind) {
+    case "ok":
+      return r.value;
+    case "err":
+      return Err(r.error);
+  }
+}
+
+export function all<T, E>(rs: Result<T, E>[]): Result<T[], E> {
+  const out: T[] = [];
+  for (const r of rs) {
+    switch (r.kind) {
+      case "ok":
+        out.push(r.value);
+      case "err":
+        return Err(r.error);
+    }
+  }
+  return Ok(out);
+}

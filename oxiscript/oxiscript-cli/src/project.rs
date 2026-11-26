@@ -390,6 +390,13 @@ impl ModuleLoader for FsLoader {
         }
         Some((name, src))
     }
+
+    fn on_std_loaded(&mut self, name: &str, src: &str) {
+        if !self.names.iter().any(|n| n == name) {
+            self.names.push(name.to_string());
+            self.files.push(SourceFile::new(name.to_string(), src.to_string()));
+        }
+    }
 }
 
 /// The result of checking one entry file.

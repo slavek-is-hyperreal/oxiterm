@@ -1,0 +1,260 @@
+// OxiScript standard library: std/array
+// Stable deterministic merge sort, searching, reversing, and joining.
+
+import { Eq } from "std/collections";
+import { bitsOf } from "std/math";
+import { byteAt, compare } from "std/string";
+
+@intrinsic("str_from_utf8")
+function strFromUtf8Raw(bytes: u8[], len: i32): string {
+  return "";
+}
+
+export function isEmpty<T>(xs: T[]): bool {
+  return xs.length === 0;
+}
+
+export function first<T>(xs: T[]): T | null {
+  if (xs.length === 0) {
+    return null;
+  }
+  return xs[0];
+}
+
+export function last<T>(xs: T[]): T | null {
+  if (xs.length === 0) {
+    return null;
+  }
+  return xs[xs.length - 1];
+}
+
+// Stable bottom-up merge sort with a fixed, deterministic comparison sequence.
+export function sortBy<T>(xs: T[], cmp: (a: T, b: T) => i32): T[] {
+  const n = xs.length;
+  if (n <= 1) {
+    return xs.slice(0, n);
+  }
+  let src: T[] = xs.slice(0, n);
+  let dst: T[] = xs.slice(0, n);
+  let width: i32 = 1;
+  while (width < n) {
+    let lo: i32 = 0;
+    while (lo < n) {
+      const mid = (lo + width < n) ? lo + width : n;
+      const hi = (lo + width * 2 < n) ? lo + width * 2 : n;
+      let i = lo;
+      let j = mid;
+      let k = lo;
+      while (i < mid && j < hi) {
+        if (cmp(src[i], src[j]) <= 0) {
+          dst[k] = src[i];
+          i++;
+        } else {
+          dst[k] = src[j];
+          j++;
+        }
+        k++;
+      }
+      while (i < mid) {
+        dst[k] = src[i];
+        i++;
+        k++;
+      }
+      while (j < hi) {
+        dst[k] = src[j];
+        j++;
+        k++;
+      }
+      lo += width * 2;
+    }
+    const tmp = src;
+    src = dst;
+    dst = tmp;
+    width *= 2;
+  }
+  return src;
+}
+
+export function sortI32(xs: i32[]): i32[] {
+  return sortBy(xs, (a: i32, b: i32): i32 => a < b ? -1 : (a > b ? 1 : 0));
+}
+
+export function sortI64(xs: i64[]): i64[] {
+  return sortBy(xs, (a: i64, b: i64): i32 => a < b ? -1 : (a > b ? 1 : 0));
+}
+
+export function sortU32(xs: u32[]): u32[] {
+  return sortBy(xs, (a: u32, b: u32): i32 => a < b ? -1 : (a > b ? 1 : 0));
+}
+
+export function sortU64(xs: u64[]): u64[] {
+  return sortBy(xs, (a: u64, b: u64): i32 => a < b ? -1 : (a > b ? 1 : 0));
+}
+
+function cmpF64Total(a: f64, b: f64): i32 {
+  const aNaN = a !== a;
+  const bNaN = b !== b;
+  if (aNaN && bNaN) {
+    return 0;
+  }
+  if (aNaN) {
+    return 1;
+  }
+  if (bNaN) {
+    return -1;
+  }
+  if (a < b) {
+    return -1;
+  }
+  if (a > b) {
+    return 1;
+  }
+  // Distinguish -0.0 and +0.0 deterministically: -0.0 < +0.0.
+  const ba = bitsOf(a);
+  const bb = bitsOf(b);
+  if (ba === bb) {
+    return 0;
+  }
+  return ba > bb ? -1 : 1;
+}
+
+export function sortF64(xs: f64[]): f64[] {
+  return sortBy(xs, cmpF64Total);
+}
+
+export function sortString(xs: string[]): string[] {
+  return sortBy(xs, compare);
+}
+
+export function isSortedBy<T>(xs: T[], cmp: (a: T, b: T) => i32): bool {
+  const n = xs.length;
+  let i: i32 = 1;
+  while (i < n) {
+    if (cmp(xs[i - 1], xs[i]) > 0) {
+      return false;
+    }
+    i++;
+  }
+  return true;
+}
+
+export function reverse<T>(xs: T[]): T[] {
+  const out: T[] = [];
+  let i = xs.length - 1;
+  while (i >= 0) {
+    out.push(xs[i]);
+    i--;
+  }
+  return out;
+}
+
+export function reverseInPlace<T>(xs: T[]): void {
+  let lo: i32 = 0;
+  let hi = xs.length - 1;
+  while (lo < hi) {
+    const tmp = xs[lo];
+    xs[lo] = xs[hi];
+    xs[hi] = tmp;
+    lo++;
+    hi--;
+  }
+}
+
+export function indexOf<T extends Eq<T>>(xs: T[], target: T): i32 {
+  const n = xs.length;
+  let i: i32 = 0;
+  while (i < n) {
+    if (xs[i].equals(target)) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+export function includes<T extends Eq<T>>(xs: T[], target: T): bool {
+  return indexOf(xs, target) >= 0;
+}
+
+export function find<T>(xs: T[], pred: (x: T) => bool): T | null {
+  const n = xs.length;
+  let i: i32 = 0;
+  while (i < n) {
+    const x = xs[i];
+    if (pred(x)) {
+      return x;
+    }
+    i++;
+  }
+  return null;
+}
+
+export function findIndex<T>(xs: T[], pred: (x: T) => bool): i32 {
+  const n = xs.length;
+  let i: i32 = 0;
+  while (i < n) {
+    if (pred(xs[i])) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+export function join(xs: string[], sep: string): string {
+  const n = xs.length;
+  if (n === 0) {
+    return "";
+  }
+  if (n === 1) {
+    return xs[0];
+  }
+  const buf: u8[] = [];
+  const sepLen = sep.byteLength;
+  let i: i32 = 0;
+  while (i < n) {
+    if (i > 0) {
+      let j: i32 = 0;
+      while (j < sepLen) {
+        buf.push(byteAt(sep, j));
+        j++;
+      }
+    }
+    const s = xs[i];
+    const slen = s.byteLength;
+    let k: i32 = 0;
+    while (k < slen) {
+      buf.push(byteAt(s, k));
+      k++;
+    }
+    i++;
+  }
+  return strFromUtf8Raw(buf, buf.length);
+}
+
+export function fill<T>(value: T, count: i32): T[] {
+  const out: T[] = [];
+  let i: i32 = 0;
+  while (i < count) {
+    out.push(value);
+    i++;
+  }
+  return out;
+}
+
+export function flatMap<T, U>(xs: T[], f: (x: T) => U[]): U[] {
+  const out: U[] = [];
+  const n = xs.length;
+  let i: i32 = 0;
+  while (i < n) {
+    const part = f(xs[i]);
+    const m = part.length;
+    let j: i32 = 0;
+    while (j < m) {
+      out.push(part[j]);
+      j++;
+    }
+    i++;
+  }
+  return out;
+}
