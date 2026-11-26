@@ -92,6 +92,7 @@ mod stmt;
 mod typeexpr;
 
 pub mod output;
+pub mod std_lib;
 pub mod ty;
 
 use oxiscript_abi::idl::Interface;
@@ -132,6 +133,9 @@ pub trait ModuleLoader {
     /// `importer` is the canonical name of the importing module, `spec` the import string.
     /// Returns the imported module's canonical name and its source.
     fn load(&mut self, importer: &str, spec: &str) -> Option<(String, String)>;
+    /// Called whenever `check_program` loads a bundled `std/...` module into a new `FileId` slot,
+    /// so loaders that mirror `FileId`s (e.g. CLI source maps) stay in sync.
+    fn on_std_loaded(&mut self, _name: &str, _src: &str) {}
 }
 
 /// A loader with no modules.
@@ -183,6 +187,7 @@ pub fn check_program(
 ) -> Checked {
     let mut names: Vec<String> = vec![entry_name.to_string()];
     let mut srcs: Vec<String> = vec![entry_src.to_string()];
+    let mut is_std: Vec<bool> = vec![false];
     let mut parsed: Vec<Parsed> = Vec::new();
     let mut targets: Vec<HashMap<String, usize>> = Vec::new();
     let mut diags: Vec<Diagnostic> = Vec::new();
@@ -222,6 +227,34 @@ pub fn check_program(
                 ));
                 continue;
             }
+            if std_lib::is_std_spec(&spec) {
+                match std_lib::source(&spec) {
+                    Some(src) => {
+                        let idx = if let Some(&k) = by_name.get(&spec) {
+                            k
+                        } else {
+                            let k = names.len();
+                            by_name.insert(spec.clone(), k);
+                            names.push(spec.clone());
+                            srcs.push(src.to_string());
+                            is_std.push(true);
+                            state.push(0);
+                            loader.on_std_loaded(&spec, src);
+                            k
+                        };
+                        targets[i].insert(spec, idx);
+                    }
+                    None => diags.push(Diagnostic::new(
+                        "OXS-E0302",
+                        span,
+                        format!(
+                            "cannot resolve import `{spec}`: unknown standard library module (available: {})",
+                            std_lib::AVAILABLE_LIST
+                        ),
+                    )),
+                }
+                continue;
+            }
             match loader.load(&names[i], &spec) {
                 Some((canon, src)) => {
                     let idx = if let Some(&k) = by_name.get(&canon) {
@@ -231,6 +264,7 @@ pub fn check_program(
                         by_name.insert(canon.clone(), k);
                         names.push(canon);
                         srcs.push(src);
+                        is_std.push(false);
                         state.push(0);
                         k
                     };
@@ -317,9 +351,10 @@ pub fn check_program(
     asts.push(&prelude.module);
     let mut all_names = names.clone();
     all_names.push("std/prelude".to_string());
+    is_std.push(true);
     let mut check_order = vec![prelude_idx];
     check_order.extend(order.iter().copied());
-    ck.run(&asts, &all_names, &targets, &check_order);
+    ck.run(&asts, &all_names, &is_std, &targets, &check_order);
     let mut checked = ck.finish(diags);
     checked.sources = srcs.clone();
     checked.sources.push(PRELUDE_SRC.to_string());
@@ -382,6 +417,7 @@ pub(crate) struct ModData<'a> {
     pub local_fn: Vec<u32>,
     #[allow(dead_code)]
     pub is_prelude: bool,
+    pub is_std: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -840,11 +876,13 @@ impl<'a> Checker<'a> {
         &mut self,
         asts: &[&'a Module],
         names: &[String],
+        is_std: &[bool],
         targets: &[HashMap<String, usize>],
         order: &[usize],
     ) {
         let total = asts.len();
         for (fid, ast) in asts.iter().enumerate() {
+            let std_mod = is_std.get(fid).copied().unwrap_or(false);
             self.mods.push(ModData {
                 ast: Some(ast),
                 top: HashMap::new(),
@@ -853,6 +891,7 @@ impl<'a> Checker<'a> {
                 out: ModuleInfo {
                     name: names[fid].clone(),
                     file: FileId(fid as u32),
+                    is_std: std_mod,
                     items: Vec::new(),
                     expr_ty: Vec::new(),
                     res: HashMap::new(),
@@ -871,6 +910,7 @@ impl<'a> Checker<'a> {
                 },
                 local_fn: Vec::new(),
                 is_prelude: fid == total - 1,
+                is_std: std_mod,
             });
         }
         self.prelude = total - 1;

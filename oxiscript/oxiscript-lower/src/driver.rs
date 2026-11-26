@@ -363,6 +363,13 @@ impl<'c, 'a> Lw<'c, 'a> {
             let wasm_name = fx.lw.ck.modules[m].attrs.get(&info.node).and_then(|v| v.iter().find(|(n, _)| n == "export_name")).and_then(|(_, a)| a.first().cloned()).unwrap_or_else(|| name.clone());
             fx.fb.attr("export_name", &[&wasm_name]);
         }
+        if let Some(iname) = fx.lw.ck.intrinsic_of(def).map(str::to_string) {
+            let pvals: Vec<ValueId> = fx.fb.f.params.iter().map(|p| p.value).collect();
+            let o = fx.emit_intrinsic(&iname, &pvals, ret, Some(info.span));
+            let v = fx.own_of(o);
+            fx.emit_return(v);
+            return Some(fx.finish());
+        }
         fx.block_stmts(body);
         Some(fx.finish())
     }

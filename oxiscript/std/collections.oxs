@@ -1,0 +1,506 @@
+// OxiScript standard library: std/collections
+// Hash and Eq interfaces, hash helpers, and deterministic insertion-ordered
+// open-addressing Map<K, V> and Set<T>.
+
+// -----------------------------------------------------------------------------
+// Interfaces (implemented directly by all primitive types, string, and user types)
+// -----------------------------------------------------------------------------
+
+export interface Hash {
+  hash(): u64;
+}
+
+export interface Eq<T> {
+  equals(other: T): bool;
+}
+
+export interface HashEq<T> extends Hash, Eq<T> {}
+
+// -----------------------------------------------------------------------------
+// Hash utilities for user structs / classes
+// -----------------------------------------------------------------------------
+
+export function hashCombine(seed: u64, value: u64): u64 {
+  return seed ^ (value +% 0x9e37_79b9_7f4a_7c15u64 +% (seed << 6u64) +% (seed >> 2u64));
+}
+
+// -----------------------------------------------------------------------------
+// Interface consistency laws:
+// - Integers, bool, string: equals matches `===` and hash is consistent with equals.
+// - Floats (f32, f64): SameValueZero (`NaN.equals(NaN)` is true, `(-0.0).equals(0.0)`
+//   is true), and hash is consistent with equals (both -0.0 and NaN canonicalised).
+// -----------------------------------------------------------------------------
+
+law i32_hash_eq_consistent(a: i32, b: i32) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+law i64_hash_eq_consistent(a: i64, b: i64) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+law u32_hash_eq_consistent(a: u32, b: u32) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+law u64_hash_eq_consistent(a: u64, b: u64) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+law f64_equals_same_value_zero(a: f64, b: f64) {
+  a.equals(b) === (a === b || (a !== a && b !== b))
+}
+
+law f64_hash_eq_consistent(a: f64, b: f64) {
+  !a.equals(b) || a.hash() === b.hash()
+}
+
+law f32_equals_same_value_zero(a: f32, b: f32) {
+  a.equals(b) === (a === b || (a !== a && b !== b))
+}
+
+law f32_hash_eq_consistent(a: f32, b: f32) {
+  !a.equals(b) || a.hash() === b.hash()
+}
+
+law bool_hash_eq_consistent(a: bool, b: bool) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+law string_hash_eq_consistent(a: string, b: string) {
+  !(a === b) || (a.equals(b) && a.hash() === b.hash())
+}
+
+// -----------------------------------------------------------------------------
+// MapEntry<K, V>
+// -----------------------------------------------------------------------------
+
+export struct MapEntry<K, V> {
+  key: K;
+  value: V;
+}
+
+// -----------------------------------------------------------------------------
+// Map<K, V> — open addressing with linear probing, deterministic insertion order
+// -----------------------------------------------------------------------------
+
+export class Map<K extends HashEq<K>, V> {
+  private entryKeys: K[] = [];
+  private entryVals: V[] = [];
+  private entryHashes: u64[] = [];
+  private entryAlive: bool[] = [];
+  // Bucket table: -1 = empty, -2 = tombstone, >= 0 = index into entry arrays.
+  private buckets: i32[] = [];
+  private liveCount: i32 = 0;
+  private usedSlots: i32 = 0;
+
+  constructor() {}
+
+  size(): i32 {
+    return this.liveCount;
+  }
+
+  isEmpty(): bool {
+    return this.liveCount === 0;
+  }
+
+  private findBucket(key: K, h: u64): i32 {
+    const cap = this.buckets.length;
+    if (cap === 0) {
+      return -1;
+    }
+    const mask: u64 = (cap - 1) as u64;
+    let slot: i32 = (h & mask) as i32;
+    let probed: i32 = 0;
+    while (probed < cap) {
+      const idx = this.buckets[slot];
+      if (idx === -1) {
+        return -1;
+      }
+      if (idx >= 0 && this.entryHashes[idx] === h && this.entryKeys[idx].equals(key)) {
+        return slot;
+      }
+      slot = (slot + 1) & (cap - 1);
+      probed++;
+    }
+    return -1;
+  }
+
+  private rehash(newCap: i32): void {
+    const newKeys: K[] = [];
+    const newVals: V[] = [];
+    const newHashes: u64[] = [];
+    const newAlive: bool[] = [];
+    const newBuckets: i32[] = [];
+    let b: i32 = 0;
+    while (b < newCap) {
+      newBuckets.push(-1);
+      b++;
+    }
+    const mask: u64 = (newCap - 1) as u64;
+    const oldLen = this.entryKeys.length;
+    let i: i32 = 0;
+    while (i < oldLen) {
+      if (this.entryAlive[i]) {
+        const idx = newKeys.length;
+        const h = this.entryHashes[i];
+        newKeys.push(this.entryKeys[i]);
+        newVals.push(this.entryVals[i]);
+        newHashes.push(h);
+        newAlive.push(true);
+        let slot: i32 = (h & mask) as i32;
+        while (newBuckets[slot] !== -1) {
+          slot = (slot + 1) & (newCap - 1);
+        }
+        newBuckets[slot] = idx;
+      }
+      i++;
+    }
+    this.entryKeys = newKeys;
+    this.entryVals = newVals;
+    this.entryHashes = newHashes;
+    this.entryAlive = newAlive;
+    this.buckets = newBuckets;
+    this.usedSlots = this.liveCount;
+  }
+
+  private ensureCapacity(): void {
+    const cap = this.buckets.length;
+    if (cap === 0) {
+      this.rehash(8);
+      return;
+    }
+    // Load factor threshold: 70% of buckets occupied (including tombstones).
+    if ((this.usedSlots + 1) * 10 >= cap * 7) {
+      const nextCap = (this.liveCount * 2 >= cap) ? cap * 2 : cap;
+      this.rehash(nextCap);
+    }
+  }
+
+  has(key: K): bool {
+    const h = key.hash();
+    return this.findBucket(key, h) >= 0;
+  }
+
+  get(key: K): V | null {
+    const h = key.hash();
+    const slot = this.findBucket(key, h);
+    if (slot < 0) {
+      return null;
+    }
+    return this.entryVals[this.buckets[slot]];
+  }
+
+  getOr(key: K, fallback: V): V {
+    const h = key.hash();
+    const slot = this.findBucket(key, h);
+    if (slot < 0) {
+      return fallback;
+    }
+    return this.entryVals[this.buckets[slot]];
+  }
+
+  set(key: K, value: V): void {
+    this.ensureCapacity();
+    const h = key.hash();
+    const cap = this.buckets.length;
+    const mask: u64 = (cap - 1) as u64;
+    let slot: i32 = (h & mask) as i32;
+    let firstTomb: i32 = -1;
+    let probed: i32 = 0;
+    while (probed < cap) {
+      const idx = this.buckets[slot];
+      if (idx === -1) {
+        const target = firstTomb >= 0 ? firstTomb : slot;
+        const entryIdx = this.entryKeys.length;
+        this.entryKeys.push(key);
+        this.entryVals.push(value);
+        this.entryHashes.push(h);
+        this.entryAlive.push(true);
+        this.buckets[target] = entryIdx;
+        this.liveCount++;
+        if (firstTomb < 0) {
+          this.usedSlots++;
+        }
+        return;
+      }
+      if (idx === -2) {
+        if (firstTomb < 0) {
+          firstTomb = slot;
+        }
+      } else if (this.entryHashes[idx] === h && this.entryKeys[idx].equals(key)) {
+        this.entryVals[idx] = value;
+        return;
+      }
+      slot = (slot + 1) & (cap - 1);
+      probed++;
+    }
+    // Fallback if table was filled exclusively with tombstones: compact and insert.
+    this.rehash(cap);
+    this.set(key, value);
+  }
+
+  remove(key: K): bool {
+    const h = key.hash();
+    const slot = this.findBucket(key, h);
+    if (slot < 0) {
+      return false;
+    }
+    const idx = this.buckets[slot];
+    this.entryAlive[idx] = false;
+    this.buckets[slot] = -2;
+    this.liveCount--;
+    // Compact when dead entries outnumber live entries so deleted refs are released.
+    if (this.entryKeys.length > 16 && this.liveCount * 2 < this.entryKeys.length) {
+      const cap = this.buckets.length;
+      const targetCap = (cap > 8 && this.liveCount * 4 < cap) ? cap / 2 : cap;
+      this.rehash(targetCap);
+    }
+    return true;
+  }
+
+  clear(): void {
+    this.entryKeys = [];
+    this.entryVals = [];
+    this.entryHashes = [];
+    this.entryAlive = [];
+    this.buckets = [];
+    this.liveCount = 0;
+    this.usedSlots = 0;
+  }
+
+  keys(): K[] {
+    const out: K[] = [];
+    const n = this.entryKeys.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        out.push(this.entryKeys[i]);
+      }
+      i++;
+    }
+    return out;
+  }
+
+  values(): V[] {
+    const out: V[] = [];
+    const n = this.entryVals.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        out.push(this.entryVals[i]);
+      }
+      i++;
+    }
+    return out;
+  }
+
+  entries(): MapEntry<K, V>[] {
+    const out: MapEntry<K, V>[] = [];
+    const n = this.entryKeys.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        out.push({ key: this.entryKeys[i], value: this.entryVals[i] });
+      }
+      i++;
+    }
+    return out;
+  }
+
+  forEach(f: (key: K, value: V) => void): void {
+    const n = this.entryKeys.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        f(this.entryKeys[i], this.entryVals[i]);
+      }
+      i++;
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Set<T> — open addressing with linear probing, deterministic insertion order
+// -----------------------------------------------------------------------------
+
+export class Set<T extends HashEq<T>> {
+  private entryItems: T[] = [];
+  private entryHashes: u64[] = [];
+  private entryAlive: bool[] = [];
+  private buckets: i32[] = [];
+  private liveCount: i32 = 0;
+  private usedSlots: i32 = 0;
+
+  constructor() {}
+
+  size(): i32 {
+    return this.liveCount;
+  }
+
+  isEmpty(): bool {
+    return this.liveCount === 0;
+  }
+
+  private findBucket(item: T, h: u64): i32 {
+    const cap = this.buckets.length;
+    if (cap === 0) {
+      return -1;
+    }
+    const mask: u64 = (cap - 1) as u64;
+    let slot: i32 = (h & mask) as i32;
+    let probed: i32 = 0;
+    while (probed < cap) {
+      const idx = this.buckets[slot];
+      if (idx === -1) {
+        return -1;
+      }
+      if (idx >= 0 && this.entryHashes[idx] === h && this.entryItems[idx].equals(item)) {
+        return slot;
+      }
+      slot = (slot + 1) & (cap - 1);
+      probed++;
+    }
+    return -1;
+  }
+
+  private rehash(newCap: i32): void {
+    const newItems: T[] = [];
+    const newHashes: u64[] = [];
+    const newAlive: bool[] = [];
+    const newBuckets: i32[] = [];
+    let b: i32 = 0;
+    while (b < newCap) {
+      newBuckets.push(-1);
+      b++;
+    }
+    const mask: u64 = (newCap - 1) as u64;
+    const oldLen = this.entryItems.length;
+    let i: i32 = 0;
+    while (i < oldLen) {
+      if (this.entryAlive[i]) {
+        const idx = newItems.length;
+        const h = this.entryHashes[i];
+        newItems.push(this.entryItems[i]);
+        newHashes.push(h);
+        newAlive.push(true);
+        let slot: i32 = (h & mask) as i32;
+        while (newBuckets[slot] !== -1) {
+          slot = (slot + 1) & (newCap - 1);
+        }
+        newBuckets[slot] = idx;
+      }
+      i++;
+    }
+    this.entryItems = newItems;
+    this.entryHashes = newHashes;
+    this.entryAlive = newAlive;
+    this.buckets = newBuckets;
+    this.usedSlots = this.liveCount;
+  }
+
+  private ensureCapacity(): void {
+    const cap = this.buckets.length;
+    if (cap === 0) {
+      this.rehash(8);
+      return;
+    }
+    if ((this.usedSlots + 1) * 10 >= cap * 7) {
+      const nextCap = (this.liveCount * 2 >= cap) ? cap * 2 : cap;
+      this.rehash(nextCap);
+    }
+  }
+
+  has(item: T): bool {
+    const h = item.hash();
+    return this.findBucket(item, h) >= 0;
+  }
+
+  add(item: T): bool {
+    this.ensureCapacity();
+    const h = item.hash();
+    const cap = this.buckets.length;
+    const mask: u64 = (cap - 1) as u64;
+    let slot: i32 = (h & mask) as i32;
+    let firstTomb: i32 = -1;
+    let probed: i32 = 0;
+    while (probed < cap) {
+      const idx = this.buckets[slot];
+      if (idx === -1) {
+        const target = firstTomb >= 0 ? firstTomb : slot;
+        const entryIdx = this.entryItems.length;
+        this.entryItems.push(item);
+        this.entryHashes.push(h);
+        this.entryAlive.push(true);
+        this.buckets[target] = entryIdx;
+        this.liveCount++;
+        if (firstTomb < 0) {
+          this.usedSlots++;
+        }
+        return true;
+      }
+      if (idx === -2) {
+        if (firstTomb < 0) {
+          firstTomb = slot;
+        }
+      } else if (this.entryHashes[idx] === h && this.entryItems[idx].equals(item)) {
+        return false;
+      }
+      slot = (slot + 1) & (cap - 1);
+      probed++;
+    }
+    this.rehash(cap);
+    return this.add(item);
+  }
+
+  remove(item: T): bool {
+    const h = item.hash();
+    const slot = this.findBucket(item, h);
+    if (slot < 0) {
+      return false;
+    }
+    const idx = this.buckets[slot];
+    this.entryAlive[idx] = false;
+    this.buckets[slot] = -2;
+    this.liveCount--;
+    if (this.entryItems.length > 16 && this.liveCount * 2 < this.entryItems.length) {
+      const cap = this.buckets.length;
+      const targetCap = (cap > 8 && this.liveCount * 4 < cap) ? cap / 2 : cap;
+      this.rehash(targetCap);
+    }
+    return true;
+  }
+
+  clear(): void {
+    this.entryItems = [];
+    this.entryHashes = [];
+    this.entryAlive = [];
+    this.buckets = [];
+    this.liveCount = 0;
+    this.usedSlots = 0;
+  }
+
+  values(): T[] {
+    const out: T[] = [];
+    const n = this.entryItems.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        out.push(this.entryItems[i]);
+      }
+      i++;
+    }
+    return out;
+  }
+
+  forEach(f: (item: T) => void): void {
+    const n = this.entryItems.length;
+    let i: i32 = 0;
+    while (i < n) {
+      if (this.entryAlive[i]) {
+        f(this.entryItems[i]);
+      }
+      i++;
+    }
+  }
+}

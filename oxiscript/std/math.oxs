@@ -1,0 +1,2065 @@
+// OxiScript standard library: std/math
+// Hardware-mapped intrinsics, numeric constants, bit operations, and integer math.
+
+// -----------------------------------------------------------------------------
+// Float intrinsics (1:1 OxiIR / Wasm ops)
+// -----------------------------------------------------------------------------
+
+@intrinsic("abs")
+export function abs(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("sqrt")
+export function sqrt(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("floor")
+export function floor(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("ceil")
+export function ceil(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("trunc")
+export function trunc(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("nearest")
+export function round(x: f64): f64 {
+  return x;
+}
+
+@intrinsic("min")
+export function min(a: f64, b: f64): f64 {
+  return a;
+}
+
+@intrinsic("max")
+export function max(a: f64, b: f64): f64 {
+  return a;
+}
+
+@intrinsic("bitcast")
+export function bitsOf(x: f64): u64 {
+  return 0u64;
+}
+
+@intrinsic("bitcast")
+export function fromBits(bits: u64): f64 {
+  return 0.0;
+}
+
+@intrinsic("abs")
+export function absF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("sqrt")
+export function sqrtF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("floor")
+export function floorF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("ceil")
+export function ceilF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("trunc")
+export function truncF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("nearest")
+export function roundF32(x: f32): f32 {
+  return x;
+}
+
+@intrinsic("min")
+export function minF32(a: f32, b: f32): f32 {
+  return a;
+}
+
+@intrinsic("max")
+export function maxF32(a: f32, b: f32): f32 {
+  return a;
+}
+
+@intrinsic("bitcast")
+export function bitsOfF32(x: f32): u32 {
+  return 0u32;
+}
+
+@intrinsic("bitcast")
+export function fromBitsF32(bits: u32): f32 {
+  return 0.0f32;
+}
+
+// -----------------------------------------------------------------------------
+// Integer bit-count intrinsics (1:1 OxiIR / Wasm ops)
+// -----------------------------------------------------------------------------
+
+@intrinsic("clz")
+export function clz8(x: u8): u8 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctz8(x: u8): u8 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcnt8(x: u8): u8 {
+  return x;
+}
+
+@intrinsic("clz")
+export function clz16(x: u16): u16 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctz16(x: u16): u16 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcnt16(x: u16): u16 {
+  return x;
+}
+
+@intrinsic("clz")
+export function clz32(x: u32): u32 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctz32(x: u32): u32 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcnt32(x: u32): u32 {
+  return x;
+}
+
+@intrinsic("clz")
+export function clz64(x: u64): u64 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctz64(x: u64): u64 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcnt64(x: u64): u64 {
+  return x;
+}
+
+@intrinsic("clz")
+export function clzI32(x: i32): i32 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctzI32(x: i32): i32 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcntI32(x: i32): i32 {
+  return x;
+}
+
+@intrinsic("clz")
+export function clzI64(x: i64): i64 {
+  return x;
+}
+
+@intrinsic("ctz")
+export function ctzI64(x: i64): i64 {
+  return x;
+}
+
+@intrinsic("popcnt")
+export function popcntI64(x: i64): i64 {
+  return x;
+}
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+export const PI: f64 = 3.141592653589793;
+export const TAU: f64 = 6.283185307179586;
+export const E: f64 = 2.718281828459045;
+export const LN2: f64 = 0.6931471805599453;
+export const LN10: f64 = 2.302585092994046;
+export const LOG2E: f64 = 1.4426950408889634;
+export const LOG10E: f64 = 0.4342944819032518;
+export const SQRT2: f64 = 1.4142135623730951;
+export const FRAC_1_SQRT2: f64 = 0.7071067811865476;
+export const FRAC_PI_2: f64 = 1.5707963267948966;
+export const FRAC_PI_4: f64 = 0.7853981633974483;
+
+export const INF: f64 = fromBits(0x7ff0_0000_0000_0000u64);
+export const NEG_INF: f64 = fromBits(0xfff0_0000_0000_0000u64);
+export const NAN: f64 = fromBits(0x7ff8_0000_0000_0000u64);
+export const EPSILON: f64 = 2.220446049250313e-16;
+export const F64_MAX: f64 = 1.7976931348623157e308;
+export const F64_MIN: f64 = -1.7976931348623157e308;
+export const F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;
+
+export const F32_INF: f32 = fromBitsF32(0x7f80_0000u32);
+export const F32_NEG_INF: f32 = fromBitsF32(0xff80_0000u32);
+export const F32_NAN: f32 = fromBitsF32(0x7fc0_0000u32);
+export const F32_EPSILON: f32 = 1.1920929e-7f32;
+export const F32_MAX: f32 = 3.40282347e38f32;
+export const F32_MIN: f32 = -3.40282347e38f32;
+export const F32_MIN_POSITIVE: f32 = 1.17549435e-38f32;
+
+export const I8_MIN: i8 = -128i8;
+export const I8_MAX: i8 = 127i8;
+export const U8_MIN: u8 = 0u8;
+export const U8_MAX: u8 = 255u8;
+
+export const I16_MIN: i16 = -32768i16;
+export const I16_MAX: i16 = 32767i16;
+export const U16_MIN: u16 = 0u16;
+export const U16_MAX: u16 = 65535u16;
+
+export const I32_MIN: i32 = -2147483648i32;
+export const I32_MAX: i32 = 2147483647i32;
+export const U32_MIN: u32 = 0u32;
+export const U32_MAX: u32 = 4294967295u32;
+
+export const I64_MIN: i64 = -9223372036854775808i64;
+export const I64_MAX: i64 = 9223372036854775807i64;
+export const U64_MIN: u64 = 0u64;
+export const U64_MAX: u64 = 18446744073709551615u64;
+
+// -----------------------------------------------------------------------------
+// Float helpers (copysign, predicates, clamp, sign)
+// -----------------------------------------------------------------------------
+
+export function copysign(x: f64, y: f64): f64 {
+  const mag = bitsOf(x) & 0x7fff_ffff_ffff_ffffu64;
+  const sgn = bitsOf(y) & 0x8000_0000_0000_0000u64;
+  return fromBits(mag | sgn);
+}
+
+export function copysignF32(x: f32, y: f32): f32 {
+  const mag = bitsOfF32(x) & 0x7fff_ffffu32;
+  const sgn = bitsOfF32(y) & 0x8000_0000u32;
+  return fromBitsF32(mag | sgn);
+}
+
+export function isNaN(x: f64): bool {
+  return x !== x;
+}
+
+export function isFinite(x: f64): bool {
+  return (bitsOf(x) & 0x7ff0_0000_0000_0000u64) !== 0x7ff0_0000_0000_0000u64;
+}
+
+export function isInfinite(x: f64): bool {
+  return (bitsOf(x) & 0x7fff_ffff_ffff_ffffu64) === 0x7ff0_0000_0000_0000u64;
+}
+
+export function isNaNF32(x: f32): bool {
+  return x !== x;
+}
+
+export function isFiniteF32(x: f32): bool {
+  return (bitsOfF32(x) & 0x7f80_0000u32) !== 0x7f80_0000u32;
+}
+
+export function isInfiniteF32(x: f32): bool {
+  return (bitsOfF32(x) & 0x7fff_ffffu32) === 0x7f80_0000u32;
+}
+
+export function clamp(x: f64, lo: f64, hi: f64): f64 {
+  return min(max(x, lo), hi);
+}
+
+export function clampF32(x: f32, lo: f32, hi: f32): f32 {
+  return minF32(maxF32(x, lo), hi);
+}
+
+export function sign(x: f64): f64 {
+  if (x !== x) {
+    return x;
+  }
+  if (x === 0.0) {
+    return x;
+  }
+  return x < 0.0 ? -1.0 : 1.0;
+}
+
+// -----------------------------------------------------------------------------
+// Bit rotations
+// -----------------------------------------------------------------------------
+
+export function rotl8(x: u8, n: u8): u8 {
+  const k = n & 7u8;
+  if (k === 0u8) {
+    return x;
+  }
+  return (x << k) | (x >> (8u8 - k));
+}
+
+export function rotr8(x: u8, n: u8): u8 {
+  const k = n & 7u8;
+  if (k === 0u8) {
+    return x;
+  }
+  return (x >> k) | (x << (8u8 - k));
+}
+
+export function rotl16(x: u16, n: u16): u16 {
+  const k = n & 15u16;
+  if (k === 0u16) {
+    return x;
+  }
+  return (x << k) | (x >> (16u16 - k));
+}
+
+export function rotr16(x: u16, n: u16): u16 {
+  const k = n & 15u16;
+  if (k === 0u16) {
+    return x;
+  }
+  return (x >> k) | (x << (16u16 - k));
+}
+
+export function rotl32(x: u32, n: u32): u32 {
+  const k = n & 31u32;
+  if (k === 0u32) {
+    return x;
+  }
+  return (x << k) | (x >> (32u32 - k));
+}
+
+export function rotr32(x: u32, n: u32): u32 {
+  const k = n & 31u32;
+  if (k === 0u32) {
+    return x;
+  }
+  return (x >> k) | (x << (32u32 - k));
+}
+
+export function rotl64(x: u64, n: u64): u64 {
+  const k = n & 63u64;
+  if (k === 0u64) {
+    return x;
+  }
+  return (x << k) | (x >> (64u64 - k));
+}
+
+export function rotr64(x: u64, n: u64): u64 {
+  const k = n & 63u64;
+  if (k === 0u64) {
+    return x;
+  }
+  return (x >> k) | (x << (64u64 - k));
+}
+
+// -----------------------------------------------------------------------------
+// Integer min / max / abs / clamp / wrapping / saturating
+// -----------------------------------------------------------------------------
+
+export function minI32(a: i32, b: i32): i32 {
+  return a < b ? a : b;
+}
+
+export function maxI32(a: i32, b: i32): i32 {
+  return a > b ? a : b;
+}
+
+export function absI32(x: i32): i32 {
+  return x < 0 ? -x : x;
+}
+
+export function clampI32(x: i32, lo: i32, hi: i32): i32 {
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
+  return x;
+}
+
+export function minI64(a: i64, b: i64): i64 {
+  return a < b ? a : b;
+}
+
+export function maxI64(a: i64, b: i64): i64 {
+  return a > b ? a : b;
+}
+
+export function absI64(x: i64): i64 {
+  return x < 0i64 ? -x : x;
+}
+
+export function clampI64(x: i64, lo: i64, hi: i64): i64 {
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
+  return x;
+}
+
+export function minU32(a: u32, b: u32): u32 {
+  return a < b ? a : b;
+}
+
+export function maxU32(a: u32, b: u32): u32 {
+  return a > b ? a : b;
+}
+
+export function clampU32(x: u32, lo: u32, hi: u32): u32 {
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
+  return x;
+}
+
+export function minU64(a: u64, b: u64): u64 {
+  return a < b ? a : b;
+}
+
+export function maxU64(a: u64, b: u64): u64 {
+  return a > b ? a : b;
+}
+
+export function clampU64(x: u64, lo: u64, hi: u64): u64 {
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
+  return x;
+}
+
+export function wrappingAddI32(a: i32, b: i32): i32 {
+  return a +% b;
+}
+
+export function wrappingSubI32(a: i32, b: i32): i32 {
+  return a -% b;
+}
+
+export function wrappingMulI32(a: i32, b: i32): i32 {
+  return a *% b;
+}
+
+export function wrappingAbsI32(x: i32): i32 {
+  return x < 0 ? 0 -% x : x;
+}
+
+export function saturatingAddI32(a: i32, b: i32): i32 {
+  return a +| b;
+}
+
+export function saturatingSubI32(a: i32, b: i32): i32 {
+  return a -| b;
+}
+
+export function saturatingMulI32(a: i32, b: i32): i32 {
+  return a *| b;
+}
+
+export function saturatingAbsI32(x: i32): i32 {
+  if (x === I32_MIN) {
+    return I32_MAX;
+  }
+  return x < 0 ? -x : x;
+}
+
+export function wrappingAddI64(a: i64, b: i64): i64 {
+  return a +% b;
+}
+
+export function wrappingSubI64(a: i64, b: i64): i64 {
+  return a -% b;
+}
+
+export function wrappingMulI64(a: i64, b: i64): i64 {
+  return a *% b;
+}
+
+export function wrappingAbsI64(x: i64): i64 {
+  return x < 0i64 ? 0i64 -% x : x;
+}
+
+export function saturatingAddI64(a: i64, b: i64): i64 {
+  return a +| b;
+}
+
+export function saturatingSubI64(a: i64, b: i64): i64 {
+  return a -| b;
+}
+
+export function saturatingMulI64(a: i64, b: i64): i64 {
+  return a *| b;
+}
+
+export function saturatingAbsI64(x: i64): i64 {
+  if (x === I64_MIN) {
+    return I64_MAX;
+  }
+  return x < 0i64 ? -x : x;
+}
+
+export function wrappingAddU32(a: u32, b: u32): u32 {
+  return a +% b;
+}
+
+export function wrappingSubU32(a: u32, b: u32): u32 {
+  return a -% b;
+}
+
+export function wrappingMulU32(a: u32, b: u32): u32 {
+  return a *% b;
+}
+
+export function saturatingAddU32(a: u32, b: u32): u32 {
+  return a +| b;
+}
+
+export function saturatingSubU32(a: u32, b: u32): u32 {
+  return a -| b;
+}
+
+export function saturatingMulU32(a: u32, b: u32): u32 {
+  return a *| b;
+}
+
+export function wrappingAddU64(a: u64, b: u64): u64 {
+  return a +% b;
+}
+
+export function wrappingSubU64(a: u64, b: u64): u64 {
+  return a -% b;
+}
+
+export function wrappingMulU64(a: u64, b: u64): u64 {
+  return a *% b;
+}
+
+export function saturatingAddU64(a: u64, b: u64): u64 {
+  return a +| b;
+}
+
+export function saturatingSubU64(a: u64, b: u64): u64 {
+  return a -| b;
+}
+
+export function saturatingMulU64(a: u64, b: u64): u64 {
+  return a *| b;
+}
+
+// -----------------------------------------------------------------------------
+// Deterministic transcendental functions (f64)
+//
+// Algorithms and minimax/rational coefficients ported from Sun Microsystems
+// FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence):
+//   Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//   Copyright (C) 2005-2020 Rich Felker, et al. (musl libc, MIT licence).
+// Implemented in pure OxiScript (IEEE-754 binary64, no FMA, no host libm)
+// so results are bit-identical across device, web, and server targets.
+// -----------------------------------------------------------------------------
+
+export function scalbn(x: f64, n: i32): f64 {
+  let y = x;
+  let k = n;
+  const two1023 = fromBits(0x7fe0_0000_0000_0000u64);
+  const twoNeg969 = fromBits(0x0360_0000_0000_0000u64);
+  if (k > 1023) {
+    y = y * two1023;
+    k -= 1023;
+    if (k > 1023) {
+      y = y * two1023;
+      k -= 1023;
+      if (k > 1023) {
+        k = 1023;
+      }
+    }
+  } else if (k < -1022) {
+    y = y * twoNeg969;
+    k += 969;
+    if (k < -1022) {
+      y = y * twoNeg969;
+      k += 969;
+      if (k < -1022) {
+        k = -1022;
+      }
+    }
+  }
+  const scale = fromBits(((1023 + k) as u64) << 52u64);
+  return y * scale;
+}
+
+// -----------------------------------------------------------------------------
+// cbrt(x) — FDLIBM / musl cbrt.c (<= 1 ULP)
+// -----------------------------------------------------------------------------
+
+export function cbrt(x: f64): f64 {
+  if (x === 0.0 || !isFinite(x)) {
+    return x;
+  }
+  const B1: u32 = 715094163u32;
+  const B2: u32 = 696219795u32;
+  const P0: f64 = fromBits(0x3ffc_0000_0000_0000u64); // 1.75
+  const P1: f64 = fromBits(0x3ff0_0000_0000_0000u64); // 1.0
+  const ax = abs(x);
+  const u = bitsOf(ax);
+  let hx: u32 = (u >> 32u64) as u32;
+  let t: f64 = 0.0;
+  if (hx < 0x0010_0000u32) {
+    // Subnormal: scale by 2^54.
+    const scaled = ax * fromBits(0x4350_0000_0000_0000u64);
+    const shx: u32 = (bitsOf(scaled) >> 32u64) as u32;
+    t = fromBits(((shx / 3u32 + B2) as u64) << 32u64);
+  } else {
+    t = fromBits(((hx / 3u32 + B1) as u64) << 32u64);
+  }
+  // Refine ~5-bit initial guess to ~45 bits via two Halley steps before rounding t to 21 bits.
+  const r1 = (t * t) * (t / ax);
+  t = t * ((P1 + P1 + r1) / (P1 + r1 + r1));
+  const r2 = (t * t) * (t / ax);
+  t = t * ((P1 + P1 + r2) / (P1 + r2 + r2));
+  // Round t to 21 bits (upper 32 bits) so t*t is exact, then one final Halley step (~63 bits).
+  const th: u64 = ((bitsOf(t) >> 32u64) + 1u64) & 0xffff_ffff_ffff_fffeu64;
+  t = fromBits(th << 32u64);
+  const s = t * t;
+  let r = ax / s;
+  const w = t + t;
+  r = (r - t) / (w + r);
+  t = t + t * r;
+  const _ = P0;
+  return copysign(t, x);
+}
+
+// -----------------------------------------------------------------------------
+// hypot(x, y) — Dekker split compensated sum + scaling (<= 1 ULP)
+// -----------------------------------------------------------------------------
+
+export function hypot(x: f64, y: f64): f64 {
+  if (isInfinite(x) || isInfinite(y)) {
+    return INF;
+  }
+  if (isNaN(x) || isNaN(y)) {
+    return NAN;
+  }
+  let a = abs(x);
+  let b = abs(y);
+  if (a < b) {
+    const tmp = a;
+    a = b;
+    b = tmp;
+  }
+  if (b === 0.0) {
+    return a;
+  }
+  if (a * fromBits(0x3c90_0000_0000_0000u64) > b) {
+    // a / b > 2^54: b^2 cannot affect the rounded result.
+    return a;
+  }
+  let scale: f64 = 1.0;
+  const two500 = fromBits(0x5f30_0000_0000_0000u64);
+  const twoNeg500 = fromBits(0x20b0_0000_0000_0000u64);
+  const two600 = fromBits(0x6570_0000_0000_0000u64);
+  const twoNeg600 = fromBits(0x1a70_0000_0000_0000u64);
+  if (a > two500) {
+    a = a * twoNeg600;
+    b = b * twoNeg600;
+    scale = two600;
+  } else if (a < twoNeg500) {
+    a = a * two600;
+    b = b * two600;
+    scale = twoNeg600;
+  }
+  // Veltkamp split for exact squaring (a*a = a2Hi + a2Lo, b*b = b2Hi + b2Lo).
+  const splitC: f64 = 134217729.0; // 2^27 + 1
+  const ac = a * splitC;
+  const aHi = ac - (ac - a);
+  const aLo = a - aHi;
+  const a2Hi = a * a;
+  const a2Lo = ((aHi * aHi - a2Hi) + 2.0 * aHi * aLo) + aLo * aLo;
+
+  const bc = b * splitC;
+  const bHi = bc - (bc - b);
+  const bLo = b - bHi;
+  const b2Hi = b * b;
+  const b2Lo = ((bHi * bHi - b2Hi) + 2.0 * bHi * bLo) + bLo * bLo;
+
+  // FastTwoSum (a2Hi >= b2Hi).
+  const sHi = a2Hi + b2Hi;
+  const sLo = ((a2Hi - sHi) + b2Hi) + (a2Lo + b2Lo);
+  return sqrt(sHi + sLo) * scale;
+}
+
+// -----------------------------------------------------------------------------
+// exp(x) — FDLIBM / musl e_exp.c (<= 1 ULP)
+// -----------------------------------------------------------------------------
+
+export function exp(x: f64): f64 {
+  if (isNaN(x)) {
+    return NAN;
+  }
+  const O_THRESH = fromBits(0x4086_2e42_fefa_39efu64); // 709.78271289338397
+  const U_THRESH = fromBits(0xc087_4910_d52d_3051u64); // -745.1332191019411
+  if (x > O_THRESH) {
+    return INF;
+  }
+  if (x < U_THRESH) {
+    return 0.0;
+  }
+  const ax = abs(x);
+  if (ax < fromBits(0x3c90_0000_0000_0000u64)) {
+    return 1.0 + x;
+  }
+  const LN2_HI = fromBits(0x3fe6_2e42_fee0_0000u64);
+  const LN2_LO = fromBits(0x3dea_39ef_3579_3c76u64);
+  const INV_LN2 = fromBits(0x3ff7_1547_652b_82feu64);
+  const P1 = fromBits(0x3fc5_5555_5555_553eu64);
+  const P2 = fromBits(0xbf66_c16c_16be_bd93u64);
+  const P3 = fromBits(0x3f11_566a_af25_de2cu64);
+  const P4 = fromBits(0xbebb_bd41_c5d2_6bf1u64);
+  const P5 = fromBits(0x3e66_3769_72be_a4d0u64);
+
+  let k: i32 = 0;
+  let hi: f64 = x;
+  let lo: f64 = 0.0;
+  if (ax >= fromBits(0x3fd6_2e42_fefa_39efu64)) {
+    // |x| >= 0.5 * ln(2)
+    if (ax < fromBits(0x3ff0_a2b2_3f3b_ab73u64)) {
+      // |x| < 1.5 * ln(2)
+      k = x < 0.0 ? -1 : 1;
+      hi = x < 0.0 ? x + LN2_HI : x - LN2_HI;
+      lo = x < 0.0 ? -LN2_LO : LN2_LO;
+    } else {
+      k = (INV_LN2 * x + (x < 0.0 ? -0.5 : 0.5)) as i32;
+      const t = k as f64;
+      hi = x - t * LN2_HI;
+      lo = t * LN2_LO;
+    }
+  }
+  const r = hi - lo;
+  const t = r * r;
+  const c = r - t * (P1 + t * (P2 + t * (P3 + t * (P4 + t * P5))));
+  if (k === 0) {
+    return 1.0 - ((r * c) / (c - 2.0) - r);
+  }
+  const y = 1.0 - ((lo - (r * c) / (2.0 - c)) - hi);
+  return scalbn(y, k);
+}
+
+// -----------------------------------------------------------------------------
+// log(x), log2(x), log10(x) — FDLIBM / musl e_log.c, e_log2.c, e_log10.c (<= 1-2 ULP)
+// Zero heap allocations (pure scalar computation).
+// -----------------------------------------------------------------------------
+
+// mode: 0 = ln, 1 = log2, 2 = log10
+function logCore(x: f64, mode: i32): f64 {
+  if (isNaN(x) || x < 0.0) {
+    return NAN;
+  }
+  if (x === 0.0) {
+    return NEG_INF;
+  }
+  if (x === INF) {
+    return INF;
+  }
+  if (x === 1.0) {
+    return 0.0;
+  }
+  let y = x;
+  let k: i32 = 0;
+  let u = bitsOf(y);
+  if (u < 0x0010_0000_0000_0000u64) {
+    // Subnormal: scale by 2^54.
+    y = y * fromBits(0x4350_0000_0000_0000u64);
+    k = -54;
+    u = bitsOf(y);
+  }
+  let hx: u32 = (u >> 32u64) as u32;
+  k += ((hx >> 20u32) as i32) - 1023;
+  hx = hx & 0x000f_ffffu32;
+  const bump = ((hx + 0x0009_5f64u32) & 0x0010_0000u32) !== 0u32;
+  const expBits: u32 = bump ? 0x3fe0_0000u32 : 0x3ff0_0000u32;
+  if (bump) {
+    k += 1;
+  }
+  const norm = fromBits((((hx | expBits) as u64) << 32u64) | (u & 0xffff_ffffu64));
+  const f = norm - 1.0;
+  const hfsq = 0.5 * f * f;
+  const s = f / (2.0 + f);
+  const z = s * s;
+  const w = z * z;
+  const LG1 = fromBits(0x3fe5_5555_5555_5593u64);
+  const LG2 = fromBits(0x3fd9_9999_9997_fa04u64);
+  const LG3 = fromBits(0x3fd2_4924_9422_9359u64);
+  const LG4 = fromBits(0x3fcc_71c5_1d8e_78afu64);
+  const LG5 = fromBits(0x3fc7_4664_96cb_03deu64);
+  const LG6 = fromBits(0x3fc3_9a09_d078_c69fu64);
+  const LG7 = fromBits(0x3fc2_f112_df3e_5244u64);
+  const t1 = w * (LG2 + w * (LG4 + w * LG6));
+  const t2 = z * (LG1 + w * (LG3 + w * (LG5 + w * LG7)));
+  const r = t2 + t1;
+  const dk = k as f64;
+  if (mode === 0) {
+    const LN2_HI = fromBits(0x3fe6_2e42_fee0_0000u64);
+    const LN2_LO = fromBits(0x3dea_39ef_3579_3c76u64);
+    return dk * LN2_HI - ((hfsq - (s * (hfsq + r) + dk * LN2_LO)) - f);
+  }
+  const fHi = fromBits(bitsOf(f - hfsq) & 0xffff_ffff_0000_0000u64);
+  const fLo = (f - fHi) - hfsq + s * (hfsq + r);
+  if (mode === 1) {
+    const IVLN2_HI = fromBits(0x3ff7_1547_6520_0000u64);
+    const IVLN2_LO = fromBits(0x3de7_05fc_2eef_a200u64);
+    const valHi = fHi * IVLN2_HI;
+    let valLo = (fLo + fHi) * IVLN2_LO + fLo * IVLN2_HI;
+    const sum = dk + valHi;
+    valLo += (valHi - (sum - dk));
+    return sum + valLo;
+  }
+  const IVLN10_HI = fromBits(0x3fdb_cb7b_1520_0000u64);
+  const IVLN10_LO = fromBits(0x3dbb_9438_ca9a_add5u64);
+  const LOG10_2HI = fromBits(0x3fd3_4413_509f_6000u64);
+  const LOG10_2LO = fromBits(0x3d59_fef3_11f1_2b36u64);
+  const hi = fHi * IVLN10_HI;
+  const lo = (fLo + fHi) * IVLN10_LO + fLo * IVLN10_HI;
+  return (dk * LOG10_2LO + lo) + (hi + dk * LOG10_2HI);
+}
+
+export function log(x: f64): f64 {
+  return logCore(x, 0);
+}
+
+export function log2(x: f64): f64 {
+  return logCore(x, 1);
+}
+
+export function log10(x: f64): f64 {
+  return logCore(x, 2);
+}
+
+// -----------------------------------------------------------------------------
+// Trigonometric range reduction & kernels: sin, cos, tan
+// Ported from Sun FDLIBM / musl (__rem_pio2, __rem_pio2_large, __sin, __cos, __tan)
+// -----------------------------------------------------------------------------
+
+// 24-bit words of 2/pi (Sun FDLIBM / musl two_over_pi table, 66 words = 1584 bits).
+function twoOverPiWord(i: i32): i32 {
+  switch (i) {
+    case 0: return 0xa2f983;
+    case 1: return 0x6e4e44;
+    case 2: return 0x1529fc;
+    case 3: return 0x2757d1;
+    case 4: return 0xf534dd;
+    case 5: return 0xc0db62;
+    case 6: return 0x95993c;
+    case 7: return 0x439041;
+    case 8: return 0xfe5163;
+    case 9: return 0xabdebb;
+    case 10: return 0xc561b7;
+    case 11: return 0x246e3a;
+    case 12: return 0x424dd2;
+    case 13: return 0xe00649;
+    case 14: return 0x2eea09;
+    case 15: return 0xd1921c;
+    case 16: return 0xfe1deb;
+    case 17: return 0x1cb129;
+    case 18: return 0xa73ee8;
+    case 19: return 0x8235f5;
+    case 20: return 0x2ebb44;
+    case 21: return 0x84e99c;
+    case 22: return 0x7026b4;
+    case 23: return 0x5f7e41;
+    case 24: return 0x3991d6;
+    case 25: return 0x398353;
+    case 26: return 0x39f49c;
+    case 27: return 0x845f8b;
+    case 28: return 0xbdf928;
+    case 29: return 0x3b1ff8;
+    case 30: return 0x97ffde;
+    case 31: return 0x05980f;
+    case 32: return 0xef2f11;
+    case 33: return 0x8b5a0a;
+    case 34: return 0x6d1f6d;
+    case 35: return 0x367ecf;
+    case 36: return 0x27cb09;
+    case 37: return 0xb74f46;
+    case 38: return 0x3f669e;
+    case 39: return 0x5fea2d;
+    case 40: return 0x7527ba;
+    case 41: return 0xc7ebe5;
+    case 42: return 0xf17b3d;
+    case 43: return 0x0739f7;
+    case 44: return 0x8a5292;
+    case 45: return 0xea6bfb;
+    case 46: return 0x5fb11f;
+    case 47: return 0x8d5d08;
+    case 48: return 0x560330;
+    case 49: return 0x46fc7b;
+    case 50: return 0x6babf0;
+    case 51: return 0xcfbc20;
+    case 52: return 0x9af436;
+    case 53: return 0x1da9e3;
+    case 54: return 0x91615e;
+    case 55: return 0xe61b08;
+    case 56: return 0x659985;
+    case 57: return 0x5f14a0;
+    case 58: return 0x68408d;
+    case 59: return 0xffd880;
+    case 60: return 0x4d7327;
+    case 61: return 0x310606;
+    case 62: return 0x1556ca;
+    case 63: return 0x73a8c9;
+    case 64: return 0x60e27b;
+    case 65: return 0xc08c6b;
+    default: return 0;
+  }
+}
+
+function pio2Table(i: i32): f64 {
+  switch (i) {
+    case 0: return 1.57079625129699707031e+00;
+    case 1: return 7.54978941586159635335e-08;
+    case 2: return 5.39030252995776476554e-15;
+    case 3: return 3.28200341580791294123e-22;
+    case 4: return 1.27065575308067607349e-29;
+    case 5: return 1.22933308981111328932e-36;
+    case 6: return 2.73370053816464559624e-44;
+    default: return 2.16741683877804819444e-51;
+  }
+}
+
+function twoOverPiF64(idx: i32): f64 {
+  return idx < 0 ? 0.0 : (twoOverPiWord(idx) as f64);
+}
+
+function remPio2Dot(jv: i32, k: i32, tx0: f64, tx1: f64, tx2: f64): f64 {
+  let fw: f64 = tx0 * twoOverPiF64(jv + k);
+  if (tx1 !== 0.0) {
+    fw += tx1 * twoOverPiF64(jv + k - 1);
+  }
+  if (tx2 !== 0.0) {
+    fw += tx2 * twoOverPiF64(jv + k - 2);
+  }
+  return fw;
+}
+
+// Pure-scalar (zero-allocation) Payne-Hanek multi-word reduction for |x| >= 2^19 * (pi/2)
+// (FDLIBM __rem_pio2_large). Uses fixed scalar locals instead of heap arrays/structs so
+// sin/cos/tan never allocate even under the bump-allocating Stub runtime.
+function remPio2Large(x: f64, mode: i32): f64 {
+  const neg = x < 0.0;
+  const ax = abs(x);
+  const u = bitsOf(ax);
+  const exp: i32 = (((u >> 52u64) & 0x7ffu64) as i32) - 1023;
+  // Break ax into 3 24-bit integer chunks (scaled so lowest chunk has exponent e0).
+  const e0 = exp - 23;
+  const mant: u64 = (u & 0x000f_ffff_ffff_ffffu64) | 0x0010_0000_0000_0000u64;
+  // Value = (tx0 + tx1*2^-24 + tx2*2^-48) * 2^(exp - 23).
+  const tx0: f64 = (mant >> 29u64) as f64;
+  const tx1: f64 = ((mant >> 5u64) & 0x00ff_ffffu64) as f64;
+  const tx2: f64 = ((mant & 0x1fu64) << 19u64) as f64;
+  const jk: i32 = 4; // double precision (prec = 2 -> jk = 4)
+  const jv0 = (e0 - 3) / 24;
+  const jv = jv0 < 0 ? 0 : jv0;
+  let q0 = e0 - 24 * (jv + 1);
+  // 12 scalar slots (288 bits of 2/pi product; worst-case IEEE f64 cancellation is 61 bits).
+  let jz = jk;
+  let q00: f64 = remPio2Dot(jv, 0, tx0, tx1, tx2);
+  let q01: f64 = remPio2Dot(jv, 1, tx0, tx1, tx2);
+  let q02: f64 = remPio2Dot(jv, 2, tx0, tx1, tx2);
+  let q03: f64 = remPio2Dot(jv, 3, tx0, tx1, tx2);
+  let q04: f64 = remPio2Dot(jv, 4, tx0, tx1, tx2);
+  let q05: f64 = 0.0;
+  let q06: f64 = 0.0;
+  let q07: f64 = 0.0;
+  let q08: f64 = 0.0;
+  let q09: f64 = 0.0;
+  let q10: f64 = 0.0;
+  let q11: f64 = 0.0;
+
+  let iq00: i32 = 0;
+  let iq01: i32 = 0;
+  let iq02: i32 = 0;
+  let iq03: i32 = 0;
+  let iq04: i32 = 0;
+  let iq05: i32 = 0;
+  let iq06: i32 = 0;
+  let iq07: i32 = 0;
+  let iq08: i32 = 0;
+  let iq09: i32 = 0;
+  let iq10: i32 = 0;
+  let iq11: i32 = 0;
+
+  const two24: f64 = 16777216.0;
+  const twon24: f64 = fromBits(0x3e70_0000_0000_0000u64); // 2^-24
+
+  // Distill q into 24-bit integers iq, recomputing extra words if leading bits cancel.
+  let n: i32 = 0;
+  let needRecompute = true;
+  while (needRecompute) {
+    needRecompute = false;
+    let ii: i32 = 0;
+    let jj = jz;
+    let z: f64 = switch (jz) {
+      case 0: q00,
+      case 1: q01,
+      case 2: q02,
+      case 3: q03,
+      case 4: q04,
+      case 5: q05,
+      case 6: q06,
+      case 7: q07,
+      case 8: q08,
+      case 9: q09,
+      case 10: q10,
+      default: q11,
+    };
+    while (jj > 0) {
+      const fw = floor(twon24 * z);
+      const iv: i32 = (z - two24 * fw) as i32;
+      switch (ii) {
+        case 0: iq00 = iv;
+        case 1: iq01 = iv;
+        case 2: iq02 = iv;
+        case 3: iq03 = iv;
+        case 4: iq04 = iv;
+        case 5: iq05 = iv;
+        case 6: iq06 = iv;
+        case 7: iq07 = iv;
+        case 8: iq08 = iv;
+        case 9: iq09 = iv;
+        case 10: iq10 = iv;
+        default: iq11 = iv;
+      }
+      const prevQ: f64 = switch (jj - 1) {
+        case 0: q00,
+        case 1: q01,
+        case 2: q02,
+        case 3: q03,
+        case 4: q04,
+        case 5: q05,
+        case 6: q06,
+        case 7: q07,
+        case 8: q08,
+        case 9: q09,
+        case 10: q10,
+        default: q11,
+      };
+      z = prevQ + fw;
+      ii++;
+      jj--;
+    }
+    // Extract integer part n (mod 8) and fractional bits.
+    z = scalbn(z, q0);
+    z = z - 8.0 * floor(z * 0.125);
+    n = z as i32;
+    z = z - (n as f64);
+    let ih: i32 = 0;
+    const topIdx = jz - 1;
+    let topIq: i32 = switch (topIdx) {
+      case 0: iq00,
+      case 1: iq01,
+      case 2: iq02,
+      case 3: iq03,
+      case 4: iq04,
+      case 5: iq05,
+      case 6: iq06,
+      case 7: iq07,
+      case 8: iq08,
+      case 9: iq09,
+      case 10: iq10,
+      default: iq11,
+    };
+    if (q0 > 0) {
+      const shift = 24 - q0;
+      const carry = topIq >> shift;
+      n += carry;
+      topIq = topIq - (carry << shift);
+      switch (topIdx) {
+        case 0: iq00 = topIq;
+        case 1: iq01 = topIq;
+        case 2: iq02 = topIq;
+        case 3: iq03 = topIq;
+        case 4: iq04 = topIq;
+        case 5: iq05 = topIq;
+        case 6: iq06 = topIq;
+        case 7: iq07 = topIq;
+        case 8: iq08 = topIq;
+        case 9: iq09 = topIq;
+        case 10: iq10 = topIq;
+        default: iq11 = topIq;
+      }
+      ih = topIq >> (shift - 1);
+    } else if (q0 === 0) {
+      ih = topIq >> 23;
+    } else if (z >= 0.5) {
+      ih = 2;
+    }
+    if (ih > 0) {
+      n += 1;
+      let carry: i32 = 0;
+      let k: i32 = 0;
+      while (k < jz) {
+        const jv2: i32 = switch (k) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        let nv = jv2;
+        if (carry === 0) {
+          if (jv2 !== 0) {
+            carry = 1;
+            nv = 0x100_0000 - jv2;
+          }
+        } else {
+          nv = 0xff_ffff - jv2;
+        }
+        switch (k) {
+          case 0: iq00 = nv;
+          case 1: iq01 = nv;
+          case 2: iq02 = nv;
+          case 3: iq03 = nv;
+          case 4: iq04 = nv;
+          case 5: iq05 = nv;
+          case 6: iq06 = nv;
+          case 7: iq07 = nv;
+          case 8: iq08 = nv;
+          case 9: iq09 = nv;
+          case 10: iq10 = nv;
+          default: iq11 = nv;
+        }
+        k++;
+      }
+      if (q0 > 0) {
+        let masked: i32 = switch (topIdx) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        if (q0 === 1) {
+          masked = masked & 0x7f_ffff;
+        } else if (q0 === 2) {
+          masked = masked & 0x3f_ffff;
+        }
+        switch (topIdx) {
+          case 0: iq00 = masked;
+          case 1: iq01 = masked;
+          case 2: iq02 = masked;
+          case 3: iq03 = masked;
+          case 4: iq04 = masked;
+          case 5: iq05 = masked;
+          case 6: iq06 = masked;
+          case 7: iq07 = masked;
+          case 8: iq08 = masked;
+          case 9: iq09 = masked;
+          case 10: iq10 = masked;
+          default: iq11 = masked;
+        }
+      }
+      if (ih === 2) {
+        z = 1.0 - z;
+        if (carry !== 0) {
+          z = z - scalbn(1.0, q0);
+        }
+      }
+    }
+    if (z === 0.0) {
+      let mask: i32 = 0;
+      let k = jz - 1;
+      while (k >= jk) {
+        const vk: i32 = switch (k) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        mask = mask | vk;
+        k--;
+      }
+      if (mask === 0 && jz + 2 < 12) {
+        // Cancellation: fetch more words of 2/pi.
+        let extra: i32 = 1;
+        while (jk - extra >= 0) {
+          const checkIq: i32 = switch (jk - extra) {
+            case 0: iq00,
+            case 1: iq01,
+            case 2: iq02,
+            case 3: iq03,
+            default: iq04,
+          };
+          if (checkIq !== 0) {
+            break;
+          }
+          extra++;
+        }
+        let kk = jz + 1;
+        let newJz = jz;
+        while (kk <= jz + extra && kk < 11) {
+          const fw = remPio2Dot(jv, kk, tx0, tx1, tx2);
+          switch (kk) {
+            case 5: q05 = fw;
+            case 6: q06 = fw;
+            case 7: q07 = fw;
+            case 8: q08 = fw;
+            case 9: q09 = fw;
+            case 10: q10 = fw;
+            default: q11 = fw;
+          }
+          newJz = kk;
+          kk++;
+        }
+        if (newJz > jz) {
+          jz = newJz;
+          needRecompute = true;
+          continue;
+        }
+      }
+    }
+    // Chop zero tail of iq and build floating-point remainder directly without heap arrays.
+    if (z === 0.0) {
+      while (jz > 0) {
+        const lastIq: i32 = switch (jz - 1) {
+          case 0: iq00,
+          case 1: iq01,
+          case 2: iq02,
+          case 3: iq03,
+          case 4: iq04,
+          case 5: iq05,
+          case 6: iq06,
+          case 7: iq07,
+          case 8: iq08,
+          case 9: iq09,
+          case 10: iq10,
+          default: iq11,
+        };
+        if (lastIq !== 0) {
+          break;
+        }
+        jz--;
+        q0 -= 24;
+      }
+    } else {
+      z = scalbn(z, -q0);
+      if (z >= two24) {
+        const fw = floor(twon24 * z);
+        const iv0: i32 = (z - two24 * fw) as i32;
+        switch (jz) {
+          case 0: iq00 = iv0;
+          case 1: iq01 = iv0;
+          case 2: iq02 = iv0;
+          case 3: iq03 = iv0;
+          case 4: iq04 = iv0;
+          case 5: iq05 = iv0;
+          case 6: iq06 = iv0;
+          case 7: iq07 = iv0;
+          case 8: iq08 = iv0;
+          case 9: iq09 = iv0;
+          case 10: iq10 = iv0;
+          default: iq11 = iv0;
+        }
+        jz += 1;
+        q0 += 24;
+        const iv1: i32 = fw as i32;
+        switch (jz) {
+          case 0: iq00 = iv1;
+          case 1: iq01 = iv1;
+          case 2: iq02 = iv1;
+          case 3: iq03 = iv1;
+          case 4: iq04 = iv1;
+          case 5: iq05 = iv1;
+          case 6: iq06 = iv1;
+          case 7: iq07 = iv1;
+          case 8: iq08 = iv1;
+          case 9: iq09 = iv1;
+          case 10: iq10 = iv1;
+          default: iq11 = iv1;
+        }
+      } else {
+        const iv0: i32 = z as i32;
+        switch (jz) {
+          case 0: iq00 = iv0;
+          case 1: iq01 = iv0;
+          case 2: iq02 = iv0;
+          case 3: iq03 = iv0;
+          case 4: iq04 = iv0;
+          case 5: iq05 = iv0;
+          case 6: iq06 = iv0;
+          case 7: iq07 = iv0;
+          case 8: iq08 = iv0;
+          case 9: iq09 = iv0;
+          case 10: iq10 = iv0;
+          default: iq11 = iv0;
+        }
+      }
+    }
+    // Multiply fractional 2/pi remainder by pi/2 (pio2Table) and accumulate (sHi, sLo).
+    let fw = scalbn(1.0, q0);
+    let kk = jz;
+    while (kk >= 0) {
+      const iv: i32 = switch (kk) {
+        case 0: iq00,
+        case 1: iq01,
+        case 2: iq02,
+        case 3: iq03,
+        case 4: iq04,
+        case 5: iq05,
+        case 6: iq06,
+        case 7: iq07,
+        case 8: iq08,
+        case 9: iq09,
+        case 10: iq10,
+        default: iq11,
+      };
+      const qv = fw * (iv as f64);
+      switch (kk) {
+        case 0: q00 = qv;
+        case 1: q01 = qv;
+        case 2: q02 = qv;
+        case 3: q03 = qv;
+        case 4: q04 = qv;
+        case 5: q05 = qv;
+        case 6: q06 = qv;
+        case 7: q07 = qv;
+        case 8: q08 = qv;
+        case 9: q09 = qv;
+        case 10: q10 = qv;
+        default: q11 = qv;
+      }
+      fw = fw * twon24;
+      kk--;
+    }
+    let sHi: f64 = 0.0;
+    let sLo: f64 = 0.0;
+    const lim = jz < 7 ? jz : 7;
+    let p: i32 = 0;
+    while (p <= lim) {
+      let sum: f64 = 0.0;
+      let r: i32 = 0;
+      while (r <= p) {
+        const qi: f64 = switch (jz - p + r) {
+          case 0: q00,
+          case 1: q01,
+          case 2: q02,
+          case 3: q03,
+          case 4: q04,
+          case 5: q05,
+          case 6: q06,
+          case 7: q07,
+          case 8: q08,
+          case 9: q09,
+          case 10: q10,
+          default: q11,
+        };
+        sum += pio2Table(r) * qi;
+        r++;
+      }
+      if (p === 0) {
+        sHi = sum;
+      } else {
+        const t = sHi + sum;
+        sLo += (sHi - t) + sum;
+        sHi = t;
+      }
+      p++;
+    }
+    let y0 = sHi + sLo;
+    let y1 = (sHi - y0) + sLo;
+    if (ih !== 0) {
+      y0 = -y0;
+      y1 = -y1;
+    }
+    if (neg) {
+      return trigDispatch(-n, -y0, -y1, mode);
+    }
+    return trigDispatch(n, y0, y1, mode);
+  }
+  return trigDispatch(0, 0.0, 0.0, mode);
+}
+
+function trigDispatch(n: i32, y0: f64, y1: f64, mode: i32): f64 {
+  if (mode === 0) {
+    switch (n & 3) {
+      case 0:
+        return kernelSin(y0, y1);
+      case 1:
+        return kernelCos(y0, y1);
+      case 2:
+        return -kernelSin(y0, y1);
+      default:
+        return -kernelCos(y0, y1);
+    }
+  }
+  if (mode === 1) {
+    switch (n & 3) {
+      case 0:
+        return kernelCos(y0, y1);
+      case 1:
+        return -kernelSin(y0, y1);
+      case 2:
+        return -kernelCos(y0, y1);
+      default:
+        return kernelSin(y0, y1);
+    }
+  }
+  return kernelTan(y0, y1, (n & 1) !== 0);
+}
+
+// Zero-allocation range reduction for |x| < 823549.6; falls back to Payne-Hanek for huge |x|.
+function trigEval(x: f64, mode: i32): f64 {
+  const PIO4 = fromBits(0x3fe9_21fb_5444_2d18u64);
+  const ax = abs(x);
+  if (ax <= PIO4) {
+    return trigDispatch(0, x, 0.0, mode);
+  }
+  const PIO2_1 = fromBits(0x3ff9_21fb_5440_0000u64);
+  const PIO2_1T = fromBits(0x3dd0_b461_1a62_6331u64);
+  const PIO2_2 = fromBits(0x3dd0_b461_1a60_0000u64);
+  const PIO2_2T = fromBits(0x3ba3_198a_2e03_7073u64);
+  const PIO2_3 = fromBits(0x3ba3_198a_2e00_0000u64);
+  const PIO2_3T = fromBits(0x397b_839a_2520_49c1u64);
+  const INV_PIO2 = fromBits(0x3fe4_5f30_6dc9_c883u64);
+
+  if (ax < 823549.6) {
+    const fn0 = floor(ax * INV_PIO2 + 0.5);
+    const n = fn0 as i32;
+    let r = ax - fn0 * PIO2_1;
+    let w = fn0 * PIO2_1T;
+    let y0 = r - w;
+    const uax = bitsOf(ax);
+    const uy0 = bitsOf(y0);
+    const exDiff: i32 = ((((uax >> 52u64) & 0x7ffu64) as i32) - (((uy0 >> 52u64) & 0x7ffu64) as i32));
+    if (exDiff > 16) {
+      const t = r;
+      w = fn0 * PIO2_2;
+      r = t - w;
+      w = fn0 * PIO2_2T - ((t - r) - w);
+      y0 = r - w;
+      const exDiff2: i32 = ((((uax >> 52u64) & 0x7ffu64) as i32) - (((bitsOf(y0) >> 52u64) & 0x7ffu64) as i32));
+      if (exDiff2 > 49) {
+        const t2 = r;
+        w = fn0 * PIO2_3;
+        r = t2 - w;
+        w = fn0 * PIO2_3T - ((t2 - r) - w);
+        y0 = r - w;
+      }
+    }
+    const y1 = (r - y0) - w;
+    if (x < 0.0) {
+      return trigDispatch(-n, -y0, -y1, mode);
+    }
+    return trigDispatch(n, y0, y1, mode);
+  }
+  return remPio2Large(x, mode);
+}
+
+function kernelSin(x: f64, y: f64): f64 {
+  const S1 = fromBits(0xbfc5_5555_5555_5549u64);
+  const S2 = fromBits(0x3f81_1111_1110_f8a6u64);
+  const S3 = fromBits(0xbf2a_01a0_19c1_61d5u64);
+  const S4 = fromBits(0x3ec7_1de3_57b1_fe7du64);
+  const S5 = fromBits(0xbe5a_e5e6_8a2b_9cebu64);
+  const S6 = fromBits(0x3de5_d93a_5acf_d57cu64);
+  const z = x * x;
+  const v = z * x;
+  const r = S2 + z * (S3 + z * (S4 + z * (S5 + z * S6)));
+  if (y === 0.0) {
+    return x + v * (S1 + z * r);
+  }
+  return x - ((z * (0.5 * y - v * r) - y) - v * S1);
+}
+
+function kernelCos(x: f64, y: f64): f64 {
+  const C1 = fromBits(0x3fa5_5555_5555_554cu64);
+  const C2 = fromBits(0xbf56_c16c_16c1_5177u64);
+  const C3 = fromBits(0x3efa_01a0_19cb_1590u64);
+  const C4 = fromBits(0xbe92_7e4f_809c_52adu64);
+  const C5 = fromBits(0x3e21_ee9e_bdb4_b1c4u64);
+  const C6 = fromBits(0xbda8_fae9_be88_38d4u64);
+  const z = x * x;
+  const r = z * (C1 + z * (C2 + z * (C3 + z * (C4 + z * (C5 + z * C6)))));
+  const hz = 0.5 * z;
+  const w = 1.0 - hz;
+  return w + (((1.0 - w) - hz) + (z * r - x * y));
+}
+
+function kernelTan(xIn: f64, yIn: f64, odd: bool): f64 {
+  const PIO4 = fromBits(0x3fe9_21fb_5444_2d18u64);
+  const PIO4LO = fromBits(0x3c81_a626_3314_5c07u64);
+  const T0 = fromBits(0x3fd5_5555_5555_555cu64);
+  const T1 = fromBits(0x3fc1_1111_1110_fe7au64);
+  const T2 = fromBits(0x3fab_a1ba_1bb3_41feu64);
+  const T3 = fromBits(0x3f96_64f4_8406_d637u64);
+  const T4 = fromBits(0x3f82_26e3_e96e_8493u64);
+  const T5 = fromBits(0x3f6d_6d22_c956_0328u64);
+  const T6 = fromBits(0x3f57_dbc8_fee0_8315u64);
+  const T7 = fromBits(0x3f43_44d8_f2f2_6501u64);
+  const T8 = fromBits(0x3f30_26f7_1a8d_1068u64);
+  const T9 = fromBits(0x3f14_7e88_a037_92a6u64);
+  const T10 = fromBits(0x3f12_b80f_32f0_a7e9u64);
+  const T11 = fromBits(0xbef3_75cb_db60_5373u64);
+  const T12 = fromBits(0x3efb_2a70_74bf_7ad4u64);
+
+  let x = xIn;
+  let y = yIn;
+  const neg = x < 0.0;
+  if (neg) {
+    x = -x;
+    y = -y;
+  }
+  let reflected = false;
+  if (x >= 0.67434) {
+    reflected = true;
+    const tx = PIO4 - x;
+    const ty = PIO4LO - y;
+    x = tx + ty;
+    y = 0.0;
+  }
+  const z = x * x;
+  const w = z * z;
+  const r = T1 + w * (T3 + w * (T5 + w * (T7 + w * (T9 + w * T11))));
+  const v = z * (T2 + w * (T4 + w * (T6 + w * (T8 + w * (T10 + w * T12)))));
+  const s = z * x;
+  let res = y + z * (s * (r + v) + y);
+  res = res + T0 * s;
+  const w2 = x + res;
+  if (reflected) {
+    const t = res - (w2 - x);
+    const v2 = w2;
+    const a = -1.0;
+    const b = 1.0;
+    if (!odd) {
+      // (1 - v2 - t) / (1 + v2 + t)
+      const num = 1.0 - (v2 + t);
+      const den = 1.0 + (v2 + t);
+      const out = num / den;
+      return neg ? -out : out;
+    } else {
+      // -1 / tan(pi/4 - u) = -(1 + v2 + t) / (1 - v2 - t)
+      const num = 1.0 + (v2 + t);
+      const den = 1.0 - (v2 + t);
+      const _ = a + b;
+      const out = -num / den;
+      return neg ? -out : out;
+    }
+  }
+  if (!odd) {
+    return neg ? -w2 : w2;
+  }
+  // -1 / (x + res) with high-precision reciprocal (FDLIBM __tan.c).
+  const a = -1.0 / w2;
+  const aHi = fromBits(bitsOf(a) & 0xffff_ffff_0000_0000u64);
+  const t = res - (w2 - x);
+  const zHi = fromBits(bitsOf(w2) & 0xffff_ffff_0000_0000u64);
+  const zLo = (x - zHi) + (res - t) + t;
+  const out = aHi + a * (1.0 + aHi * zHi + aHi * zLo);
+  return neg ? -out : out;
+}
+
+export function sin(x: f64): f64 {
+  if (!isFinite(x)) {
+    return NAN;
+  }
+  if (x === 0.0) {
+    return x;
+  }
+  return trigEval(x, 0);
+}
+
+export function cos(x: f64): f64 {
+  if (!isFinite(x)) {
+    return NAN;
+  }
+  if (x === 0.0) {
+    return 1.0;
+  }
+  return trigEval(x, 1);
+}
+
+export function tan(x: f64): f64 {
+  if (!isFinite(x)) {
+    return NAN;
+  }
+  if (x === 0.0) {
+    return x;
+  }
+  return trigEval(x, 2);
+}
+
+// -----------------------------------------------------------------------------
+// atan(x), atan2(y, x), asin(x), acos(x) — FDLIBM / musl (<= 1 ULP)
+// -----------------------------------------------------------------------------
+
+export function atan(x: f64): f64 {
+  if (isNaN(x)) {
+    return NAN;
+  }
+  const ax = abs(x);
+  if (ax === 0.0) {
+    return x;
+  }
+  const ATANHI0 = fromBits(0x3fdd_ac67_0561_bb4fu64); // atan(0.5)
+  const ATANHI1 = fromBits(0x3fe9_21fb_5444_2d18u64); // atan(1.0)
+  const ATANHI2 = fromBits(0x3fef_730b_d281_f69bu64); // atan(1.5)
+  const ATANHI3 = fromBits(0x3ff9_21fb_5444_2d18u64); // atan(inf) = pi/2
+  const ATANLO0 = fromBits(0x3c7a_2b7f_222f_65e2u64);
+  const ATANLO1 = fromBits(0x3c81_a626_3314_5c07u64);
+  const ATANLO2 = fromBits(0x3c70_0788_7af0_cbbdu64);
+  const ATANLO3 = fromBits(0x3c91_a626_3314_5c07u64);
+
+  if (ax >= fromBits(0x4410_0000_0000_0000u64)) {
+    // |x| >= 2^66 (includes INF)
+    return copysign(ATANHI3 + ATANLO3, x);
+  }
+  let id: i32 = -1;
+  let y = ax;
+  if (ax < 0.4375) {
+    if (ax < fromBits(0x3e40_0000_0000_0000u64)) {
+      // |x| < 2^-27
+      return x;
+    }
+    id = -1;
+  } else if (ax < 1.1875) {
+    if (ax < 0.6875) {
+      id = 0;
+      y = (2.0 * ax - 1.0) / (2.0 + ax);
+    } else {
+      id = 1;
+      y = (ax - 1.0) / (ax + 1.0);
+    }
+  } else if (ax < 2.4375) {
+    id = 2;
+    y = (ax - 1.5) / (1.0 + 1.5 * ax);
+  } else {
+    id = 3;
+    y = -1.0 / ax;
+  }
+
+  const AT0 = fromBits(0x3fd5_5555_5555_550du64);
+  const AT1 = fromBits(0xbfc9_9999_9998_ebc4u64);
+  const AT2 = fromBits(0x3fc2_4924_9200_83ffu64);
+  const AT3 = fromBits(0xbfbc_71c6_fe23_1671u64);
+  const AT4 = fromBits(0x3fb7_45cd_c54c_206eu64);
+  const AT5 = fromBits(0xbfb3_b0f2_af74_9a6du64);
+  const AT6 = fromBits(0x3fb1_0d66_a0d0_3d51u64);
+  const AT7 = fromBits(0xbfad_de2d_52de_fd9au64);
+  const AT8 = fromBits(0x3fa9_7b4b_2476_0debu64);
+  const AT9 = fromBits(0xbfa2_b444_2c6a_6c2fu64);
+  const AT10 = fromBits(0x3f90_ad3a_e322_da11u64);
+
+  const z = y * y;
+  const w = z * z;
+  const s1 = z * (AT0 + w * (AT2 + w * (AT4 + w * (AT6 + w * (AT8 + w * AT10)))));
+  const s2 = w * (AT1 + w * (AT3 + w * (AT5 + w * (AT7 + w * AT9))));
+  if (id < 0) {
+    return copysign(y - y * (s1 + s2), x);
+  }
+  const hi = switch (id) {
+    case 0: ATANHI0,
+    case 1: ATANHI1,
+    case 2: ATANHI2,
+    default: ATANHI3,
+  };
+  const lo = switch (id) {
+    case 0: ATANLO0,
+    case 1: ATANLO1,
+    case 2: ATANLO2,
+    default: ATANLO3,
+  };
+  const res = hi - ((y * (s1 + s2) - lo) - y);
+  return copysign(res, x);
+}
+
+export function atan2(y: f64, x: f64): f64 {
+  if (isNaN(x) || isNaN(y)) {
+    return NAN;
+  }
+  const PI_LO = fromBits(0x3ca1_a626_3314_5c07u64);
+  const yNeg = (bitsOf(y) >> 63u64) !== 0u64;
+  const xNeg = (bitsOf(x) >> 63u64) !== 0u64;
+  if (x === 1.0) {
+    return atan(y);
+  }
+  if (y === 0.0) {
+    if (xNeg) {
+      return yNeg ? -PI : PI;
+    }
+    return y;
+  }
+  if (x === 0.0) {
+    return yNeg ? -FRAC_PI_2 : FRAC_PI_2;
+  }
+  if (isInfinite(x)) {
+    if (isInfinite(y)) {
+      if (xNeg) {
+        return yNeg ? -3.0 * FRAC_PI_4 : 3.0 * FRAC_PI_4;
+      }
+      return yNeg ? -FRAC_PI_4 : FRAC_PI_4;
+    }
+    if (xNeg) {
+      return yNeg ? -PI : PI;
+    }
+    return yNeg ? -0.0 : 0.0;
+  }
+  if (isInfinite(y)) {
+    return yNeg ? -FRAC_PI_2 : FRAC_PI_2;
+  }
+  const z = atan(abs(y / x));
+  if (!xNeg) {
+    return yNeg ? -z : z;
+  }
+  const r = PI - (z - PI_LO);
+  return yNeg ? -r : r;
+}
+
+function asinRational(z: f64): f64 {
+  const PS0 = fromBits(0x3fc5_5555_5555_5555u64);
+  const PS1 = fromBits(0xbfd4_d612_03eb_6f7du64);
+  const PS2 = fromBits(0x3fc9_c155_0e88_4455u64);
+  const PS3 = fromBits(0xbfa4_8228_b568_8f3bu64);
+  const PS4 = fromBits(0x3f49_efe0_7501_b288u64);
+  const PS5 = fromBits(0x3f02_3de1_0dfd_7709u64);
+  const QS1 = fromBits(0xc003_3a27_1c8a_2d4bu64);
+  const QS2 = fromBits(0x4000_2ae5_9c59_8ac8u64);
+  const QS3 = fromBits(0xbfe6_066c_1b8d_0159u64);
+  const QS4 = fromBits(0x3fb3_b8c5_b12e_9282u64);
+  const p = z * (PS0 + z * (PS1 + z * (PS2 + z * (PS3 + z * (PS4 + z * PS5)))));
+  const q = 1.0 + z * (QS1 + z * (QS2 + z * (QS3 + z * QS4)));
+  return p / q;
+}
+
+export function asin(x: f64): f64 {
+  if (isNaN(x)) {
+    return NAN;
+  }
+  const ax = abs(x);
+  if (ax > 1.0) {
+    return NAN;
+  }
+  if (ax === 1.0) {
+    return copysign(FRAC_PI_2, x);
+  }
+  if (ax < 0.5) {
+    if (ax < fromBits(0x3e40_0000_0000_0000u64)) {
+      return x;
+    }
+    return x + x * asinRational(x * x);
+  }
+  const PIO2_HI = fromBits(0x3ff9_21fb_5444_2d18u64);
+  const PIO2_LO = fromBits(0x3c91_a626_3314_5c07u64);
+  const w = 1.0 - ax;
+  const t = w * 0.5;
+  const r = asinRational(t);
+  const s = sqrt(t);
+  if (ax > 0.975) {
+    const res = PIO2_HI - (2.0 * (s + s * r) - PIO2_LO);
+    return copysign(res, x);
+  }
+  const sHi = fromBits(bitsOf(s) & 0xffff_ffff_0000_0000u64);
+  const c = (t - sHi * sHi) / (s + sHi);
+  const p = 2.0 * s * r - (PIO2_LO - 2.0 * c);
+  const q = (PIO2_HI * 0.5) - 2.0 * sHi;
+  const res = (PIO2_HI * 0.5) - (p - q);
+  return copysign(res, x);
+}
+
+export function acos(x: f64): f64 {
+  if (isNaN(x)) {
+    return NAN;
+  }
+  const ax = abs(x);
+  if (ax > 1.0) {
+    return NAN;
+  }
+  if (x === 1.0) {
+    return 0.0;
+  }
+  if (x === -1.0) {
+    return PI;
+  }
+  const PIO2_HI = fromBits(0x3ff9_21fb_5444_2d18u64);
+  const PIO2_LO = fromBits(0x3c91_a626_3314_5c07u64);
+  if (ax < 0.5) {
+    if (ax < fromBits(0x3c60_0000_0000_0000u64)) {
+      return PIO2_HI + PIO2_LO;
+    }
+    return PIO2_HI - (x - (PIO2_LO - x * asinRational(x * x)));
+  }
+  if (x < 0.0) {
+    const z = (1.0 + x) * 0.5;
+    const r = asinRational(z);
+    const s = sqrt(z);
+    const w = r * s - PIO2_LO;
+    return PI - 2.0 * (s + w);
+  }
+  const z = (1.0 - x) * 0.5;
+  const s = sqrt(z);
+  const sHi = fromBits(bitsOf(s) & 0xffff_ffff_0000_0000u64);
+  const c = (z - sHi * sHi) / (s + sHi);
+  const r = asinRational(z);
+  const w = r * s + c;
+  return 2.0 * (sHi + w);
+}
+
+// -----------------------------------------------------------------------------
+// pow(x, y) — FDLIBM / musl e_pow.c (double-double log2 * y -> exp2, <= 1 ULP)
+// -----------------------------------------------------------------------------
+
+// Returns 0 = not integer, 1 = odd integer, 2 = even integer.
+function classifyIntF64(y: f64): i32 {
+  const ay = abs(y);
+  if (!isFinite(ay)) {
+    return 0;
+  }
+  if (ay >= fromBits(0x4340_0000_0000_0000u64)) {
+    // >= 2^53: always an even integer.
+    return 2;
+  }
+  if (ay >= fromBits(0x4330_0000_0000_0000u64)) {
+    // [2^52, 2^53): integer; LSB of mantissa is parity.
+    return (bitsOf(ay) & 1u64) !== 0u64 ? 1 : 2;
+  }
+  const fy = floor(ay);
+  if (fy !== ay) {
+    return 0;
+  }
+  const iv: u64 = fy as u64;
+  return (iv & 1u64) !== 0u64 ? 1 : 2;
+}
+
+export function pow(x: f64, y: f64): f64 {
+  // IEEE-754 special values.
+  if (y === 0.0) {
+    return 1.0;
+  }
+  if (x === 1.0) {
+    return 1.0;
+  }
+  if (isNaN(x) || isNaN(y)) {
+    return NAN;
+  }
+  if (y === 1.0) {
+    return x;
+  }
+  if (y === 2.0) {
+    return x * x;
+  }
+  if (y === -1.0) {
+    return 1.0 / x;
+  }
+  const yInt = classifyIntF64(y);
+  if (isInfinite(y)) {
+    const ax = abs(x);
+    if (ax === 1.0) {
+      return 1.0;
+    }
+    if (ax > 1.0) {
+      return y > 0.0 ? INF : 0.0;
+    }
+    return y < 0.0 ? INF : 0.0;
+  }
+  if (x === 0.0) {
+    if (y < 0.0) {
+      return yInt === 1 ? copysign(INF, x) : INF;
+    }
+    return yInt === 1 ? x : 0.0;
+  }
+  if (isInfinite(x)) {
+    if (x > 0.0) {
+      return y > 0.0 ? INF : 0.0;
+    }
+    if (y > 0.0) {
+      return yInt === 1 ? NEG_INF : INF;
+    }
+    return yInt === 1 ? -0.0 : 0.0;
+  }
+  if (x < 0.0 && yInt === 0) {
+    return NAN;
+  }
+  const negRes = x < 0.0 && yInt === 1;
+  const ax = abs(x);
+  if (ax === 1.0) {
+    return negRes ? -1.0 : 1.0;
+  }
+  if (y === 0.5) {
+    return sqrt(ax);
+  }
+  if (y === -0.5) {
+    return 1.0 / sqrt(ax);
+  }
+
+  // Normalize ax into [1, 2) with exponent n.
+  let nx: f64 = ax;
+  let n: i32 = 0;
+  let ux = bitsOf(nx);
+  if (ux < 0x0010_0000_0000_0000u64) {
+    nx = nx * fromBits(0x4350_0000_0000_0000u64);
+    n = -54;
+    ux = bitsOf(nx);
+  }
+  let hx: u32 = (ux >> 32u64) as u32;
+  n += ((hx >> 20u32) as i32) - 1023;
+  let j: u32 = hx & 0x000f_ffffu32;
+  // Determine interval: [1, sqrt(3/2)] vs [sqrt(3/2), 2) via BP[0]=1.0, BP[1]=1.5.
+  let k: i32 = 0;
+  let bp: f64 = 1.0;
+  let dpH: f64 = 0.0;
+  let dpL: f64 = 0.0;
+  const DP_H1 = fromBits(0x3fe2_b803_4000_0000u64); // log2(1.5) hi
+  const DP_L1 = fromBits(0x3e4c_fdeb_43cf_d006u64); // log2(1.5) lo
+  if (j < 0x0003_988eu32) {
+    // ax < sqrt(3/2)
+    k = 0;
+  } else if (j < 0x000b_b67au32) {
+    // sqrt(3/2) <= ax < sqrt(3)
+    k = 1;
+    bp = 1.5;
+    dpH = DP_H1;
+    dpL = DP_L1;
+  } else {
+    // ax >= sqrt(3): scale down by 2 -> [sqrt(3)/2, 1)
+    k = 0;
+    n += 1;
+    j = j -% 0x0010_0000u32;
+  }
+  const _ = k;
+  const scaled = fromBits((((((j +% 0x3ff0_0000u32) as u64) << 32u64)) | (ux & 0xffff_ffffu64)));
+
+  // Compute s = (scaled - bp) / (scaled + bp) in double-double (sHi, sLo).
+  const u0 = scaled - bp;
+  const v0 = 1.0 / (scaled + bp);
+  const ss = u0 * v0;
+  const sHi = fromBits(bitsOf(ss) & 0xffff_ffff_0000_0000u64);
+  const tHi = fromBits(bitsOf(scaled + bp) & 0xffff_ffff_0000_0000u64);
+  const tLo = scaled - (tHi - bp);
+  const sLo = v0 * ((u0 - sHi * tHi) - sHi * tLo);
+  const s2 = ss * ss;
+
+  // Taylor series for (3/2)*log(scaled/bp) - 3*s - s^3 = s^5*(3/5 + s^2*(3/7 + ...)).
+  // Since |s| <= 0.10102, 9 terms have truncation error < 2^-66.
+  const L1: f64 = 0.6;
+  const L2: f64 = 3.0 / 7.0;
+  const L3: f64 = 1.0 / 3.0;
+  const L4: f64 = 3.0 / 11.0;
+  const L5: f64 = 3.0 / 13.0;
+  const L6: f64 = 0.2;
+  const L7: f64 = 3.0 / 17.0;
+  const L8: f64 = 3.0 / 19.0;
+  const L9: f64 = 1.0 / 7.0;
+  let r = s2 * s2 * (L1 + s2 * (L2 + s2 * (L3 + s2 * (L4 + s2 * (L5 + s2 * (L6 + s2 * (L7 + s2 * (L8 + s2 * L9))))))));
+  r = r + sLo * (sHi + ss);
+  const s2Hi = sHi * sHi;
+  const t3Hi = fromBits(bitsOf(3.0 + s2Hi + r) & 0xffff_ffff_0000_0000u64);
+  const t3Lo = r - ((t3Hi - 3.0) - s2Hi);
+
+  // u = s * (3 + s^2 + r) -> uHi + uLo = 3/2 * log(scaled / bp).
+  const uHi = sHi * t3Hi;
+  const uLo = sLo * t3Hi + ss * t3Lo;
+
+  // Multiply by 2 / (3 * ln(2)) = CP = CP_H + CP_L to get log2(scaled / bp).
+  const CP = fromBits(0x3fee_c709_dc3a_03fdu64); // 2/(3*ln2)
+  const CP_H = fromBits(0x3fee_c709_e000_0000u64);
+  const CP_L = fromBits(0xbe3e_2fe0_145b_01f5u64);
+  const pHi = fromBits(bitsOf(uHi + uLo) & 0xffff_ffff_0000_0000u64);
+  const pLo = uLo - (pHi - uHi);
+  let t1 = CP_H * pHi;
+  let t2 = CP_L * pHi + pLo * CP + dpL;
+  // Combine with n + dpH to form log2(ax) = (zHi, zLo).
+  const dn = n as f64;
+  let zHi = fromBits(bitsOf(t1 + t2 + (dn + dpH)) & 0xffff_ffff_0000_0000u64);
+  let zLo = t2 - (((zHi - dn) - dpH) - t1);
+
+  // Double-double product: y * (zHi + zLo) = (p1, p2).
+  const yHi = fromBits(bitsOf(y) & 0xffff_ffff_0000_0000u64);
+  const yLo = y - yHi;
+  const p1 = yHi * zHi;
+  const p2 = yLo * zHi + y * zLo;
+  const z = p1 + p2;
+
+  // Overflow / underflow check on log2(|result|) = z.
+  if (z >= 1024.0) {
+    return negRes ? NEG_INF : INF;
+  }
+  if (z <= -1075.0) {
+    return negRes ? -0.0 : 0.0;
+  }
+
+  // Split z = k2 + (rHi + rLo) with |rHi + rLo| <= 0.5.
+  const k2: i32 = round(z) as i32;
+  const dk2 = k2 as f64;
+  const rHi = p1 - dk2;
+  const rFrac = rHi + p2;
+  // Convert base-2 fractional exponent to base-e: t = rFrac * ln(2) in high precision.
+  const LN2_HI = fromBits(0x3fe6_2e42_fee0_0000u64);
+  const LN2_LO = fromBits(0x3dea_39ef_3579_3c76u64);
+  const rFracHi = fromBits(bitsOf(rFrac) & 0xffff_ffff_0000_0000u64);
+  const rFracLo = (rHi - rFracHi) + p2;
+  const tHi2 = rFracHi * LN2_HI;
+  const tLo2 = rFracLo * LN2_HI + rFrac * LN2_LO;
+  const t = tHi2 + tLo2;
+  // Evaluate exp(t) via FDLIBM Padé kernel.
+  const P1 = fromBits(0x3fc5_5555_5555_553eu64);
+  const P2 = fromBits(0xbf66_c16c_16be_bd93u64);
+  const P3 = fromBits(0x3f11_566a_af25_de2cu64);
+  const P4 = fromBits(0xbebb_bd41_c5d2_6bf1u64);
+  const P5 = fromBits(0x3e66_3769_72be_a4d0u64);
+  const tt = t * t;
+  const c = t - tt * (P1 + tt * (P2 + tt * (P3 + tt * (P4 + tt * P5))));
+  const expFrac = 1.0 - (((-tLo2) - (t * c) / (2.0 - c)) - tHi2);
+  const mag = scalbn(expFrac, k2);
+  return negRes ? -mag : mag;
+}

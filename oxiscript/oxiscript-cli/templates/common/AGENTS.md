@@ -170,12 +170,19 @@ export function widen(n: i32): f64 {
 const p = { x: 1.0, y: 2.0 };
 ```
 
-## Built-in members (the whole standard library today)
+## Standard library and built-in members
 
-* arrays `T[]`: `length`, `push`, `pop` (returns `T | null`), `map`, `filter`, `reduce`, `forEach`, `slice`, `some`, `every`, `concat`
-* strings: `byteLength`, `bytes()`, `chars()`, `slice`, `startsWith`, `endsWith`, `includes`, `indexOf`
-* numbers: `toString()`, `x.wrapping<u8>()`, `x.saturating<u8>()`; unions: `x.downcast<Variant>()`
-* `Result`, `Ok`, `Err`, and `range(a, b)` for `for (const i of range(0, n))`. Nothing else is global.
+* **Built-in members (no import needed):**
+  * arrays `T[]`: `length`, `push`, `pop` (returns `T | null`), `map`, `filter`, `reduce`, `forEach`, `slice`, `some`, `every`, `concat`
+  * strings: `byteLength`, `bytes()`, `chars()`, `slice`, `startsWith`, `endsWith`, `includes`, `indexOf`, `hash()`, `equals(other)`
+  * numbers: `toString()`, `x.wrapping<u8>()`, `x.saturating<u8>()`, `hash()`, `equals(other)`; bools: `toString()`, `hash()`, `equals(other)`; unions: `x.downcast<Variant>()`
+  * prelude: `Result`, `Ok`, `Err`, and `range(a, b)` for `for (const i of range(0, n))`.
+* **Bundled standard library modules (`import { ... } from "std/...";`, reference in `docs/oxiscript/std.md`):**
+  * `std/math`: float intrinsics (`abs`, `sqrt`, `floor`, `ceil`, `trunc`, `round`, `min`, `max`, `copysign`, `bitsOf`, `fromBits`, `isNaN`, `isFinite`, `isInfinite`, `clamp`, `sign`, `scalbn`, plus `*F32` variants), deterministic transcendentals (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `log2`, `log10`, `pow`, `cbrt`, `hypot`), integer bit/math helpers (`clz*`, `ctz*`, `popcnt*`, `rotl*`, `rotr*`, `min*`, `max*`, `abs*`, `clamp*`, `wrapping*`, `saturating*`), constants (`PI`, `TAU`, `E`, `LN2`, `SQRT2`, `INF`, `NEG_INF`, `NAN`, `EPSILON`, type `MIN`/`MAX`).
+  * `std/string`: `isEmpty`, `charCount`, `byteAt`, `compare`, `fromUtf8`, `fromCodePoint`, `trim`, `trimStart`, `trimEnd`, `split`, `replace`, `replaceAll`, `repeat`, `padStart`, `padEnd`, `toUpperAscii`, `toLowerAscii`, `lastIndexOf`, `parseInt`, `parseInt32`, `parseFloat`, `toRadix`, `toRadixU64`, `toRadixI32`, `toFixed`.
+  * `std/array`: `isEmpty`, `first`, `last`, stable merge sort `sortBy`, `sortI32`, `sortI64`, `sortU32`, `sortU64`, `sortF64`, `sortString`, `isSortedBy`, `reverse`, `reverseInPlace`, `indexOf`, `includes`, `find`, `findIndex`, `join`, `fill`, `flatMap`.
+  * `std/result`: `isOk`, `isErr`, `unwrapOr`, `unwrapOrElse`, `unwrapErrOr`, `okValue`, `errValue`, `map`, `mapErr`, `mapOr`, `andThen`, `orElse`, `flatten`, `all`.
+  * `std/collections`: `Hash`, `Eq<T>`, `HashEq<T>`, `hashCombine`, `MapEntry<K, V>`, insertion-ordered `Map<K, V>` and `Set<T>` (`size`, `isEmpty`, `has`, `get`, `getOr`, `set`/`add`, `remove`, `clear`, `keys`, `values`, `entries`, `forEach`).
 <!-- oxs-core:end -->
 
 ## Where things live

@@ -84,6 +84,8 @@ impl Checker<'_> {
                 "endsWith" => self.bcallee(Builtin::StrEndsWith, vec![], vec![STR], BOOL),
                 "includes" => self.bcallee(Builtin::StrIncludes, vec![], vec![STR], BOOL),
                 "indexOf" => self.bcallee(Builtin::StrIndexOf, vec![], vec![STR], I32),
+                "hash" => self.bcallee(Builtin::PrimHash, vec![], vec![], num(NumTy::U64)),
+                "equals" => self.bcallee(Builtin::PrimEquals, vec![], vec![STR], BOOL),
                 _ => return None,
             }),
             TyKind::Num(_) => {
@@ -93,11 +95,15 @@ impl Checker<'_> {
                     "toString" => self.bcallee(Builtin::NumToString, vec![], vec![], STR),
                     "wrapping" => self.bcallee(Builtin::NumWrapping, vec![u], vec![], ut),
                     "saturating" => self.bcallee(Builtin::NumSaturating, vec![u], vec![], ut),
+                    "hash" => self.bcallee(Builtin::PrimHash, vec![], vec![], num(NumTy::U64)),
+                    "equals" => self.bcallee(Builtin::PrimEquals, vec![], vec![base], BOOL),
                     _ => return None,
                 })
             }
             TyKind::Bool => match name {
                 "toString" => Some(self.bcallee(Builtin::BoolToString, vec![], vec![], STR)),
+                "hash" => Some(self.bcallee(Builtin::PrimHash, vec![], vec![], num(NumTy::U64))),
+                "equals" => Some(self.bcallee(Builtin::PrimEquals, vec![], vec![BOOL], BOOL)),
                 _ => None,
             },
             _ => {

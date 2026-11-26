@@ -380,6 +380,40 @@ mod tests {
     }
 
     #[test]
+    fn std_modules_resolve_and_run_in_playground() {
+        let src = r#"
+import { Log } from "host:log";
+import { sqrt, sin, PI } from "std/math";
+import { trim, toUpperAscii, toFixed } from "std/string";
+import { sortI32, join } from "std/array";
+import { unwrapOr } from "std/result";
+import { Map } from "std/collections";
+
+export function main(log: Log): void {
+  const s = toUpperAscii(trim("  oxi  "));
+  const xs = sortI32([3, 1, 2]);
+  const m = new Map<string, i32>();
+  m.set(s, xs[0] + xs[2]);
+  const v = unwrapOr(Ok<i32, string>(m.getOr(s, 0)), 0);
+  const parts = [s, toFixed(sqrt(9.0) + sin(PI * 0.5), 1)];
+  log.write(2, `${join(parts, ":")}=${v}`);
+}
+"#;
+        let v = parse(&check_json(src));
+        assert_eq!(v["ok"], true, "{v}");
+        let bad = parse(&check_json("import { x } from \"std/unknown\";\n"));
+        assert_eq!(bad["ok"], false, "{bad}");
+        assert_eq!(bad["diagnostics"][0]["code"], "OXS-E0302");
+        #[cfg(feature = "run")]
+        {
+            let r = parse(&run::run_json(src, run::DEFAULT_FUEL));
+            assert_eq!(r["ok"], true, "{r}");
+            assert!(r["stop"].is_null(), "{r}");
+            assert_eq!(r["lines"][0]["msg"], "OXI:4.0=4");
+        }
+    }
+
+    #[test]
     fn hostile_inputs_do_not_panic() {
         for s in [
             "",
