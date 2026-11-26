@@ -13,5 +13,6 @@ pub mod emitter;
 pub mod renderer;
 pub mod kitty;
 pub mod sixel;
+pub mod rive;
 pub mod cache;
 pub mod wire;

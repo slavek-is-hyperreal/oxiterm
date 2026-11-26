@@ -385,6 +385,11 @@ pub struct TerminalProfile {
     /// True if the client is a web client using DOM media overlays.
     #[serde(default)]
     pub is_web: bool,
+    /// Who owns interactive media state (the Rive toggle's hover/click/toggled bits, Lottie
+    /// pacing): the session id, set by the event loop per frame. Never on the wire. Sessions with
+    /// different scopes do not see each other's state (BAD ACTOR 7.6 F-12).
+    #[serde(skip)]
+    pub playback_scope: u64,
 }
 
 impl TerminalProfile {

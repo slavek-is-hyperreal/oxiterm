@@ -50,6 +50,10 @@ pub mod web_impl {
     // oxiterm_local`): served only when local mode is on, loaded by the page only for `?local=1`.
     const LOCAL_JS_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local.js");
     const LOCAL_WASM_ASSET: &[u8] = include_bytes!("../assets/pkg/oxiterm_local_bg.wasm");
+    /// Lottie player (lottie-web "light" build, MIT, SVG renderer only), served same-origin: the
+    /// client never loads scripts from a CDN. The licence text is served next to it.
+    const LOTTIE_JS_ASSET: &[u8] = include_bytes!("../assets/vendor/lottie_light.min.js");
+    const LOTTIE_LICENSE_ASSET: &[u8] = include_bytes!("../assets/vendor/LICENSE-lottie-web.txt");
     /// Client-side coordinate round-trip tests. Compiled into the binary but injected into
     /// the served page ONLY in web-test mode (`OXITERM_WEB_TEST`), so real users never load it.
     const WEB_TEST_JS: &str = include_str!("../assets/web_coord_tests.js");
@@ -86,12 +90,86 @@ pub mod web_impl {
         oxiterm_proto::input::wire::decode_pointer(bytes)
     }
 
-    pub fn hash_path(path: &str) -> u32 {
-        let mut hash: u32 = 5381;
-        for c in path.chars() {
-            hash = ((hash << 5).wrapping_add(hash)).wrapping_add(c as u32);
+    /// SHA-256 CSP sources (`'sha256-...'`) of the inline `<tag>...</tag>` blocks of `html`
+    /// (blocks with a `src` attribute are external and skipped).
+    pub fn inline_block_hashes(html: &str, tag: &str) -> Vec<String> {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        let (open, close) = (format!("<{tag}"), format!("</{tag}>"));
+        let mut out = Vec::new();
+        let mut rest = html;
+        while let Some(i) = rest.find(&open) {
+            let after = &rest[i + open.len()..];
+            // the tag name must end here (`<script>` / `<script type=..>`, not `<scripted>`)
+            if !after.starts_with(|c: char| c == '>' || c.is_ascii_whitespace()) {
+                rest = after;
+                continue;
+            }
+            let Some(gt) = after.find('>') else { break };
+            let (attrs, body_and_rest) = (&after[..gt], &after[gt + 1..]);
+            let Some(end) = body_and_rest.find(&close) else { break };
+            if !attrs.contains("src=") {
+                let digest = Sha256::digest(body_and_rest[..end].as_bytes());
+                out.push(format!("'sha256-{}'", base64::engine::general_purpose::STANDARD.encode(digest.as_slice())));
+            }
+            rest = &body_and_rest[end + close.len()..];
         }
-        hash
+        out
+    }
+
+    /// The page's Content-Security-Policy. No `'unsafe-inline'`: the page's own inline `<script>`
+    /// and `<style>` are allowed by hash, computed from the bytes served. What it still needs:
+    /// `'wasm-unsafe-eval'` (the WebAssembly core), `https://fonts.googleapis.com` /
+    /// `https://fonts.gstatic.com` (the Google Fonts stylesheet and faces), `blob:` for media
+    /// object URLs. Element `.style` writes (CSSOM) are not restricted by CSP.
+    pub fn content_security_policy(html: &str) -> String {
+        let hashes = |tag: &str| inline_block_hashes(html, tag).join(" ");
+        format!(
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' {}; style-src 'self' https://fonts.googleapis.com {}; \
+             font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; \
+             object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+            hashes("script"),
+            hashes("style")
+        )
+    }
+
+    /// Security headers of the static routes: `nosniff`, no referrer, no framing by other sites;
+    /// the HTML page also gets the CSP (the vendored script gets a locked-down one).
+    pub fn apply_security_headers(headers: &mut hyper::HeaderMap, path: &str, body: &[u8]) {
+        use hyper::header::HeaderValue;
+        headers.insert("X-Content-Type-Options", HeaderValue::from_static("nosniff"));
+        headers.insert("Referrer-Policy", HeaderValue::from_static("no-referrer"));
+        headers.insert("X-Frame-Options", HeaderValue::from_static("SAMEORIGIN"));
+        let csp = if path == "/" || path == "/index.html" {
+            Some(content_security_policy(&String::from_utf8_lossy(body)))
+        } else if path.starts_with("/oxiui/vendor/") {
+            Some("default-src 'none'; frame-ancestors 'self'".to_string())
+        } else {
+            None
+        };
+        if let Some(v) = csp.and_then(|c| HeaderValue::from_str(&c).ok()) {
+            headers.insert("Content-Security-Policy", v);
+        }
+    }
+
+    /// The `page=` query value, percent-decoded exactly once (`%2F` -> `/`; `%252e` stays the literal
+    /// text `%2e`). `None` for a malformed escape, a NUL, a backslash, an absolute path or a `..`
+    /// segment, so an *encoded* traversal is refused after decoding, like a plain one. The caller
+    /// still applies `is_within_base` (symlinks).
+    pub fn decode_page_param(raw: &str) -> Option<String> {
+        let page = crate::local_mode::percent_decode(raw)?;
+        let bad = page.is_empty()
+            || page.starts_with('/')
+            || page.contains('\\')
+            || page.contains('\0')
+            || page.split('/').any(|seg| seg == "..");
+        (!bad).then_some(page)
+    }
+
+    /// Wire key of a media file: 64-bit FNV-1a of its path relative to the app base
+    /// (`oxiterm_proto::pathsafe::media_key`). Keyed by the resolved file, never the raw `src`.
+    pub fn hash_path(app_rel_path: &str) -> u64 {
+        oxiterm_proto::pathsafe::media_key(app_rel_path)
     }
 
     /// Core writer loop: forwards binary frames from `frame_rx` to `sink`, sending
@@ -142,8 +220,10 @@ pub mod web_impl {
     /// WebSocket Frame Sink for delivering binary cell buffers to browser clients.
     pub struct WsFrameSink {
         session: Arc<ClientSession>,
-        sent_assets: std::collections::HashSet<String>,
-        sent_coordinates: std::collections::HashMap<u32, crate::session::MediaRenderInfo>,
+        sent_assets: std::collections::HashSet<u64>,
+        /// Files already reported as not sendable on this connection (log once, not every frame).
+        warned_assets: std::collections::HashSet<u64>,
+        sent_coordinates: std::collections::HashMap<u64, crate::session::MediaRenderInfo>,
         source_path: Option<std::path::PathBuf>,
         media_base_url: Option<std::path::PathBuf>,
         sent_page: Option<String>,
@@ -162,6 +242,7 @@ pub mod web_impl {
             Self {
                 session,
                 sent_assets: std::collections::HashSet::new(),
+                warned_assets: std::collections::HashSet::new(),
                 sent_coordinates: std::collections::HashMap::new(),
                 source_path,
                 media_base_url,
@@ -192,6 +273,7 @@ pub mod web_impl {
             let epoch_changed = current_epoch != self.last_seen_epoch;
             if epoch_changed {
                 self.sent_assets.clear();
+                self.warned_assets.clear();
                 self.sent_coordinates.clear();
                 self.sent_page = None;
                 self.last_list = None;
@@ -225,66 +307,67 @@ pub mod web_impl {
             }
 
             let active_media = self.session.active_media.read().clone();
-            
-            let mut coords_changed = false;
-            if active_media.len() != self.sent_coordinates.len() {
-                coords_changed = true;
-            } else {
-                for media in &active_media {
-                    let h = hash_path(&media.path);
-                    match self.sent_coordinates.get(&h) {
-                        Some(prev) => {
-                            if prev != media {
-                                coords_changed = true;
-                                break;
-                            }
-                        }
-                        None => {
-                            coords_changed = true;
-                            break;
-                        }
-                    }
-                }
+
+            // One rule for the bytes and the coordinates (Stage 7.6): `src` is relative to the page's
+            // directory and must stay inside the app base (`pathsafe::resolve_media`). Everything
+            // below is keyed by the RESOLVED file (its path relative to the app base), not by the raw
+            // `src`: the same `logo.png` on pages in different directories is two files (F-01).
+            let app_base_dir = self.session.app_base_dir.read().clone();
+            struct Item {
+                media: crate::session::MediaRenderInfo,
+                key: u64,
+                full: std::path::PathBuf,
             }
+            let items: Vec<Item> = active_media
+                .iter()
+                .filter_map(|m| {
+                    let full = crate::pathsafe::resolve_media(base_dir.as_deref(), app_base_dir.as_deref(), &m.path);
+                    let Some(full) = full else {
+                        warn!("media src refused (outside app_base_dir or not a plain relative path): {:?}", m.path);
+                        return None;
+                    };
+                    let rel = oxiterm_proto::pathsafe::app_rel(app_base_dir.as_deref()?, &full)?;
+                    Some(Item { media: m.clone(), key: hash_path(&rel), full })
+                })
+                .collect();
+
+            let want: std::collections::HashMap<u64, &crate::session::MediaRenderInfo> = items.iter().map(|i| (i.key, &i.media)).collect();
+            let coords_changed = want.len() != self.sent_coordinates.len() || want.iter().any(|(k, m)| self.sent_coordinates.get(k) != Some(*m));
 
             if coords_changed {
                 let _ = self.send_bytes(vec![0x21]);
             }
 
-            let app_base_dir = self.session.app_base_dir.read().clone();
-            for media in &active_media {
-                let is_safe = if let (Some(ref base), Some(ref app_base)) = (&base_dir, &app_base_dir) {
-                    let full_path = base.join(&media.path);
-                    crate::pathsafe::is_within_base(app_base, &full_path)
-                } else {
-                    false
-                };
-
-                if !is_safe {
-                    // Distinguish traversal attempt from a simply missing asset.
-                    if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        if full_path.exists() {
-                            warn!("media outside app_base_dir (path traversal attempt): {:?}", full_path);
-                        } else {
-                            tracing::debug!("media not found (missing asset): {:?}", full_path);
-                        }
-                    } else {
-                        tracing::debug!("media not found (no base dir): {:?}", media.path);
+            // Bytes: only a regular, media-named, non-hidden file inside the base, opened once and
+            // checked on the descriptor (no check-then-open race, no FIFO block, 16 MiB cap, 7.1
+            // hard-link rule). Everything else is simply not sent.
+            for item in &items {
+                if self.sent_assets.contains(&item.key) {
+                    continue;
+                }
+                let Some(base) = app_base_dir.as_deref() else { continue };
+                let servable = oxiterm_proto::pathsafe::app_rel(base, &item.full).is_some_and(|rel| crate::local_mode::media_name_servable(&rel));
+                if !servable {
+                    if self.warned_assets.insert(item.key) {
+                        warn!("media file not sent (hidden or not a media type): {:?}", item.media.path);
                     }
                     continue;
                 }
-
-                if !self.sent_assets.contains(&media.path) {
-                    if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        if let Ok(file_bytes) = std::fs::read(&full_path) {
-                            let mut msg = vec![0x20];
-                            msg.extend_from_slice(&hash_path(&media.path).to_le_bytes());
-                            msg.extend_from_slice(&file_bytes);
-                            if self.send_bytes(msg).is_ok() {
-                                self.sent_assets.insert(media.path.clone());
-                            }
+                match oxiterm_proto::pathsafe::read_media_checked(base, &item.full, oxiterm_proto::pathsafe::MAX_MEDIA_BYTES) {
+                    Ok(file_bytes) => {
+                        let mut msg = vec![0x20];
+                        msg.extend_from_slice(&item.key.to_le_bytes());
+                        msg.extend_from_slice(&file_bytes);
+                        if self.send_bytes(msg).is_ok() {
+                            self.sent_assets.insert(item.key);
+                        }
+                    }
+                    // A missing file is the usual (placeholder) case; anything else (too large, hard link,
+                    // swapped, symlink) is worth one warning per connection.
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => tracing::debug!("media not found: {:?}", item.full),
+                    Err(e) => {
+                        if self.warned_assets.insert(item.key) {
+                            warn!("media file not sent ({e}): {:?}", item.full);
                         }
                     }
                 }
@@ -292,29 +375,16 @@ pub mod web_impl {
 
             if coords_changed {
                 self.sent_coordinates.clear();
-
-                for media in &active_media {
-                    let is_safe = if let Some(ref base) = base_dir {
-                        let full_path = base.join(&media.path);
-                        crate::pathsafe::is_within_base(base, &full_path)
-                    } else {
-                        false
-                    };
-
-                    if !is_safe {
-                        continue;
-                    }
-
-                    let h = hash_path(&media.path);
+                for item in &items {
+                    let media = &item.media;
                     let mut msg = vec![0x21];
-                    msg.extend_from_slice(&h.to_le_bytes());
+                    msg.extend_from_slice(&item.key.to_le_bytes());
                     msg.extend_from_slice(&media.x.to_le_bytes());
                     msg.extend_from_slice(&media.y.to_le_bytes());
                     msg.extend_from_slice(&media.width.to_le_bytes());
                     msg.extend_from_slice(&media.height.to_le_bytes());
                     let _ = self.send_bytes(msg);
-                    
-                    self.sent_coordinates.insert(h, media.clone());
+                    self.sent_coordinates.insert(item.key, media.clone());
                 }
             }
             (epoch_changed, coords_changed)
@@ -738,15 +808,26 @@ pub mod web_impl {
             return not_found();
         }
         let Some(source) = source_path else { return not_found() };
+        let source_for_open = source.clone();
         let base = lm::app_base(&source);
         let rest = req.uri().path().strip_prefix("/oxiui/local/asset/").unwrap_or("").to_string();
-        let Some(asset) = tokio::task::spawn_blocking(move || lm::resolve_asset(&base, &rest)).await.ok().flatten() else { return not_found() };
-        let Ok(file) = tokio::fs::File::open(&asset.path).await else { return not_found() };
-        // Re-check the file actually opened (the path may have been swapped since resolve).
-        let Ok(meta) = file.metadata().await else { return not_found() };
-        if !lm::check_opened_asset(&meta) {
+        let Some(asset) = tokio::task::spawn_blocking(move || {
+            // Lottie `.json` and diagram `.mmd` files are served only when a page names them.
+            let index = lm::local_index(&base);
+            lm::resolve_asset_for(&base, &rest, index.as_ref().map(|i| &*i.media_files))
+        })
+        .await
+        .ok()
+        .flatten() else { return not_found() };
+        // Open once and check the descriptor (type, size, links, and that it lies below the base:
+        // the path may have been swapped for a symlink since resolve).
+        let base_for_open = lm::app_base(source_for_open.as_path());
+        let asset_for_open = asset.clone();
+        let Some(Ok(std_file)) = tokio::task::spawn_blocking(move || lm::open_asset(&base_for_open, &asset_for_open)).await.ok().map(|r| r.map_err(|e| tracing::debug!("local asset refused: {e}"))) else {
             return not_found();
-        }
+        };
+        let file = tokio::fs::File::from_std(std_file);
+        let Ok(meta) = file.metadata().await else { return not_found() };
         let len = meta.len();
         let stream = futures::stream::unfold((file, len), |(mut f, rem)| async move {
             if rem == 0 {
@@ -956,7 +1037,12 @@ pub mod web_impl {
                 let mut parts = pair.splitn(2, '=');
                 if let (Some(k), Some(v)) = (parts.next(), parts.next()) {
                     if k == "page" {
-                        page_param = Some(v.to_string());
+                        // Percent-decoded exactly once, here (the shipped client sends
+                        // `encodeURIComponent(page)`); the traversal check below runs on the result.
+                        match decode_page_param(v) {
+                            Some(p) => page_param = Some(p),
+                            None => warn!("page parameter refused (bad escape or not a plain relative page path): {:?}", v),
+                        }
                     } else if k == "session" {
                         session_param = Some(v.to_string());
                     }
@@ -1018,6 +1104,12 @@ pub mod web_impl {
             "/oxiterm_local_bg.wasm" if crate::local_mode::enabled() => {
                 (StatusCode::OK, "application/wasm", std::borrow::Cow::Borrowed(LOCAL_WASM_ASSET))
             }
+            "/oxiui/vendor/lottie_light.min.js" => {
+                (StatusCode::OK, "application/javascript", std::borrow::Cow::Borrowed(LOTTIE_JS_ASSET))
+            }
+            "/oxiui/vendor/LICENSE-lottie-web.txt" => {
+                (StatusCode::OK, "text/plain; charset=utf-8", std::borrow::Cow::Borrowed(LOTTIE_LICENSE_ASSET))
+            }
             "/oxiui/fonts.json" => {
                 let json = serde_json::to_vec(oxiterm_renderer::text::bundle::FontBundle::metrics()).unwrap_or_default();
                 (StatusCode::OK, "application/json", std::borrow::Cow::Owned(json))
@@ -1063,6 +1155,9 @@ pub mod web_impl {
 
         if content_encoding {
             res.headers_mut().insert("Content-Encoding", hyper::header::HeaderValue::from_static("gzip"));
+        }
+        if status == StatusCode::OK {
+            apply_security_headers(res.headers_mut(), path, &body);
         }
         if status == StatusCode::OK && path.starts_with("/oxiui/fonts/") {
             // The embedded bytes only change with a new server build; a year, immutable.
@@ -1228,9 +1323,11 @@ pub mod web_impl {
         client_session.death_reason.store(2, std::sync::atomic::Ordering::SeqCst);
         let _ = client_session.event_tx.try_send(InputEvent::Refresh);
 
-        // K3: reattach honors page param
-        if let Some(ref page) = page_param {
-            let target_path = app_base_dir.join(page);
+        // K3: reattach honors page param. Only for a loop that is already running: a loop spawned
+        // below starts on that page itself (a base-relative NavigateTo from inside it would resolve
+        // `demos/media.thtml` to `demos/demos/media.thtml`).
+        if let Some(page) = page_param.clone().filter(|_| client_session.event_loop_running.load(std::sync::atomic::Ordering::SeqCst)) {
+            let target_path = app_base_dir.join(&page);
             if crate::pathsafe::is_within_base(&app_base_dir, &target_path) {
                 let current_p = client_session.current_page.read().clone();
                 if Some(page.clone()) != current_p {
@@ -1392,7 +1489,13 @@ pub mod web_impl {
                     }
                     0x31 => {
                         if let Some(rel_path) = oxiterm_proto::input::wire::decode_navigate(&bytes) {
-                            let _ = client_session.event_tx.try_send(InputEvent::NavigateTo(rel_path));
+                            // The shipped client sends its `page=` here right after connecting. When the
+                            // server already honoured it (decoded `page=`, F-11) the session is on that
+                            // page and a base-relative navigate would only fail ("demos/demos/x") and flash
+                            // an error chip.
+                            if client_session.current_page.read().as_deref() != Some(rel_path.as_str()) {
+                                let _ = client_session.event_tx.try_send(InputEvent::NavigateTo(rel_path));
+                            }
                         }
                     }
                     _ => {}
@@ -1455,6 +1558,45 @@ pub mod web_impl {
             let m = p.to_cell_mouse();
             assert_eq!((m.col, m.row), (1, 1), "negative points clamp to the first cell");
             assert_eq!((m.button, m.action), (MouseButton::Right, MouseAction::Release));
+        }
+
+        /// F-11: `page=` is percent-decoded exactly once, then the existing safety applies.
+        #[test]
+        fn test_decode_page_param_decodes_once_and_refuses_encoded_traversal() {
+            assert_eq!(decode_page_param("demos%2Fmedia.thtml").as_deref(), Some("demos/media.thtml"));
+            assert_eq!(decode_page_param("demos/media.thtml").as_deref(), Some("demos/media.thtml"));
+            assert_eq!(decode_page_param("a%20b.thtml").as_deref(), Some("a b.thtml"));
+            // double encoding is decoded once only: the result is a literal name
+            assert_eq!(decode_page_param("%252e%252e%252fx").as_deref(), Some("%2e%2e%2fx"));
+            for bad in ["..%2fx.thtml", "%2e%2e/x", "%2E%2E%2Fx", "a%2f..%2f..%2fx", "..", "%2fetc%2fpasswd", "/etc/passwd", "a%5cb", "a\\b", "a%00b", "%zz", "%2", "", "a/../b"] {
+                assert_eq!(decode_page_param(bad), None, "{bad:?}");
+            }
+        }
+
+        /// F-14: `/` and the vendor script carry nosniff, a referrer policy, framing limits and a CSP
+        /// without `'unsafe-inline'` (the inline script/style are allowed by hash).
+        #[test]
+        fn test_security_headers_on_index_and_vendor() {
+            let mut h = hyper::HeaderMap::new();
+            apply_security_headers(&mut h, "/", HTML_ASSET);
+            let csp = h["Content-Security-Policy"].to_str().unwrap().to_string();
+            assert!(!csp.contains("unsafe-inline"), "{csp}");
+            assert!(csp.contains("frame-ancestors 'self'") && csp.contains("object-src 'none'") && csp.contains("'wasm-unsafe-eval'"), "{csp}");
+            let html = String::from_utf8_lossy(HTML_ASSET);
+            assert_eq!(inline_block_hashes(&html, "script").len(), 1, "one inline module script");
+            assert_eq!(inline_block_hashes(&html, "style").len(), 1, "one inline style block");
+            for hsh in inline_block_hashes(&html, "script").iter().chain(inline_block_hashes(&html, "style").iter()) {
+                assert!(csp.contains(hsh.as_str()), "{hsh} missing from {csp}");
+            }
+            assert_eq!(h["X-Content-Type-Options"], "nosniff");
+            assert_eq!(h["Referrer-Policy"], "no-referrer");
+            assert_eq!(h["X-Frame-Options"], "SAMEORIGIN");
+            let mut v = hyper::HeaderMap::new();
+            apply_security_headers(&mut v, "/oxiui/vendor/lottie_light.min.js", LOTTIE_JS_ASSET);
+            assert!(v["Content-Security-Policy"].to_str().unwrap().contains("frame-ancestors 'self'"));
+            assert_eq!(v["X-Content-Type-Options"], "nosniff");
+            // `<scripted>` is not a script; `src=` scripts are external.
+            assert_eq!(inline_block_hashes("<scripted>x</scripted><script src=\"a.js\"></script><script>1</script>", "script").len(), 1);
         }
 
         #[test]
@@ -1633,6 +1775,51 @@ pub mod web_impl {
             assert!(rx.try_recv().is_err());
         }
 
+        /// Stage 7.6 regression: a page in `demos/` pointing at `../assets/x.png` must get both the
+        /// bytes (0x20) and the position (0x21). Since Plan 3.0 only the bytes were sent, so no
+        /// overlay ever appeared. Also: refused sources get neither message.
+        #[tokio::test]
+        async fn test_ws_frame_sink_media_in_a_sibling_directory_gets_bytes_and_coordinates() {
+            use crate::session::MediaRenderInfo;
+            let root = std::env::temp_dir().join(format!("oxi_ws_sibling_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("app/assets")).unwrap();
+            std::fs::create_dir_all(root.join("app/demos")).unwrap();
+            std::fs::create_dir_all(root.join("outside")).unwrap();
+            std::fs::write(root.join("app/assets/a.png"), b"PNG_BYTES").unwrap();
+            std::fs::write(root.join("outside/secret.png"), b"SECRET").unwrap();
+
+            let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
+            let session = reg.create_session().unwrap();
+            let info = |path: &str| MediaRenderInfo { path: path.to_string(), x: 3, y: 4, width: 16, height: 8 };
+            {
+                let mut m = session.active_media.write();
+                m.push(info("../assets/a.png"));
+                m.push(info("../../outside/secret.png"));
+                m.push(info("..%2f..%2foutside/secret.png"));
+            }
+            *session.app_base_dir.write() = Some(root.join("app"));
+            let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+            *session.web_frame_tx.write() = Some((1, tx));
+            session.connection_epoch.store(1, std::sync::atomic::Ordering::SeqCst);
+            let mut sink = WsFrameSink::new(session.clone(), Some(root.join("app/demos/p.thtml")));
+            let _ = sink.send_frame(&CellBuffer::new(80, 24), &CellBuffer::new(80, 24));
+
+            let mut blobs = Vec::new();
+            let mut coords = Vec::new();
+            while let Ok(m) = rx.try_recv() {
+                match m[0] {
+                    0x20 => blobs.push(m[9..].to_vec()),
+                    0x21 if m.len() > 1 => coords.push(m),
+                    _ => {}
+                }
+            }
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(blobs, vec![b"PNG_BYTES".to_vec()], "only the contained file is sent");
+            assert_eq!(coords.len(), 1, "exactly one position (the contained file)");
+            assert_eq!(coords[0][1..9], hash_path("assets/a.png").to_le_bytes(), "the position is for the same key as the bytes (the resolved file, relative to the app base)");
+        }
+
         #[test]
         fn test_sec_path_traversal_media_blocked() {
             let reg = SessionRegistry::new(Arc::new(prometheus::Registry::new()), 20);
@@ -1661,13 +1848,16 @@ pub mod web_impl {
 
             let _ = sink.send_frame(&front, &back);
 
-            let msg0 = rx.try_recv().unwrap();
-            assert_eq!(msg0[0], 0x21); // clear
-            
-            // Drain the full repaint rendering commands frame
-            let _ = rx.try_recv().unwrap();
-
-            assert!(rx.try_recv().is_err());
+            // Only the repaint: a refused src sends neither bytes (0x20) nor a position (0x21). (It
+            // used to also send an empty 0x21 "clear" on every frame, because the refused entry made
+            // the coordinate bookkeeping think something had changed; the bookkeeping now only counts
+            // files that can be shown.)
+            let mut n = 0;
+            while let Ok(m) = rx.try_recv() {
+                assert!(m[0] != 0x20 && m[0] != 0x21, "unexpected media message {:#x}", m[0]);
+                n += 1;
+            }
+            assert_eq!(n, 1, "exactly the repaint frame");
         }
 
         #[tokio::test]
@@ -1698,12 +1888,12 @@ pub mod web_impl {
             let back = CellBuffer::new(80, 24);
 
             let _ = sink.send_frame(&front, &back);
-            assert!(!sink.sent_assets.contains("test_media_20.png"));
+            assert!(!sink.sent_assets.contains(&hash_path("test_media_20.png")));
 
             while rx.try_recv().is_ok() {}
 
             let _ = sink.send_frame(&front, &back);
-            assert!(sink.sent_assets.contains("test_media_20.png"));
+            assert!(sink.sent_assets.contains(&hash_path("test_media_20.png")));
 
             let _ = std::fs::remove_file(test_file);
         }

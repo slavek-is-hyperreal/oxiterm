@@ -30,6 +30,8 @@ ureq = { version = "2", features = ["json"] }
 tokio-tungstenite = { version = "0.21", optional = true }
 subtle = { workspace = true }
 url = { workspace = true }
+sha2 = "0.11"
+base64 = "0.22"
 
 
 [features]

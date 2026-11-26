@@ -26,6 +26,29 @@ fn get_global_virtual_fs() -> &'static RwLock<HashMap<PathBuf, Vec<u8>>> {
 pub struct VirtualFsProxy;
 
 impl VirtualFsProxy {
+    /// The bytes of `path`, read straight from the global map (no whole-map clone).
+    pub fn get(&self, path: &Path) -> Option<Vec<u8>> {
+        get_global_virtual_fs().read().ok()?.get(path).cloned()
+    }
+
+    /// Is `path` mounted (no clone).
+    pub fn contains(&self, path: &Path) -> bool {
+        get_global_virtual_fs().read().is_ok_and(|g| g.contains_key(path))
+    }
+
+    /// Mounts `bytes` at `path` unless that would exceed `max_files` entries or `max_total` bytes
+    /// in all (the replaced entry does not count). Returns whether it was mounted.
+    pub fn insert_capped(&self, path: PathBuf, bytes: Vec<u8>, max_files: usize, max_total: usize) -> bool {
+        let Ok(mut g) = get_global_virtual_fs().write() else { return false };
+        let old = g.get(&path).map_or(0, Vec::len);
+        let total: usize = g.values().map(Vec::len).sum::<usize>() - old + bytes.len();
+        if (!g.contains_key(&path) && g.len() >= max_files) || total > max_total {
+            return false;
+        }
+        g.insert(path, bytes);
+        true
+    }
+
     /// Executes a closure with access to the thread-local virtual file system.
     pub fn with<F, R>(&self, f: F) -> R
     where
@@ -62,10 +85,7 @@ pub struct Renderer;
 impl Renderer {
     pub fn read_asset(path: &Path) -> Result<Vec<u8>, anyhow::Error> {
         let path_str = path.to_string_lossy().into_owned();
-        let local_bytes = VIRTUAL_FS.with(|fs| {
-            fs.borrow().get(path).cloned()
-        });
-        if let Some(bytes) = local_bytes {
+        if let Some(bytes) = VIRTUAL_FS.get(path) {
             return Ok(bytes);
         }
         
@@ -75,7 +95,46 @@ impl Renderer {
         }
         #[cfg(feature = "native-media")]
         {
+            // A regular file of sane size only: `std::fs::read` on a FIFO blocks forever (and
+            // `SvgCache` holds its global lock across this call), a device or a huge file is no image.
+            const MAX_READ: u64 = 32 * 1024 * 1024;
+            match std::fs::metadata(path) {
+                Ok(m) if m.is_file() && m.len() <= MAX_READ => {}
+                Ok(_) => return Err(anyhow::anyhow!("AssetRefused: {}: not a regular file or too large", path_str)),
+                Err(e) => return Err(anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e)),
+            }
             std::fs::read(path).map_err(|e| anyhow::anyhow!("AssetNotFound: {}, system error: {}", path_str, e))
+        }
+    }
+
+    /// Resolves a media `src` (page-relative, contained in the app base; see
+    /// `oxiterm_proto::pathsafe::resolve_media`). A refused `src` is logged and draws nothing.
+    pub(crate) fn resolve_src(src: &str, base_dir: Option<&Path>, app_base_dir: Option<&Path>) -> Option<PathBuf> {
+        let resolved = oxiterm_proto::pathsafe::resolve_media(base_dir, app_base_dir, src);
+        if resolved.is_none() {
+            tracing::warn!("renderer: media src {:?} refused (outside the app base or not a plain relative path)", src);
+        }
+        resolved
+    }
+
+    /// The app base is the empty path: the browser's local mode, where files live in
+    /// [`VIRTUAL_FS`] (or only in the page's DOM) and the real filesystem is never consulted.
+    fn is_virtual_root(app_base_dir: Option<&Path>) -> bool {
+        app_base_dir.is_some_and(|b| b.as_os_str().is_empty())
+    }
+
+    /// Does the asset exist: in the virtual file system, or (native media) on disk.
+    pub(crate) fn asset_exists(path: &Path) -> bool {
+        if VIRTUAL_FS.contains(path) {
+            return true;
+        }
+        #[cfg(feature = "native-media")]
+        {
+            path.exists()
+        }
+        #[cfg(not(feature = "native-media"))]
+        {
+            false
         }
     }
 
@@ -407,29 +466,9 @@ impl Renderer {
     ) {
 
         if let Some(ref src) = node.attrs.src {
-            let resolved_path = if let Some(base) = base_dir {
-                base.join(src)
-            } else {
-                std::path::PathBuf::from(src)
-            };
-
-            let is_safe = if let Some(app_base) = app_base_dir {
-                if resolved_path.exists() {
-                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
-                } else if let Some(parent) = resolved_path.parent() {
-                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
-                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if !is_safe {
-                tracing::warn!("renderer: blocked path traversal or file access outside app_base_dir: {:?}", resolved_path);
+            let Some(resolved_path) = Self::resolve_src(src, base_dir, app_base_dir) else {
                 return;
-            }
+            };
             
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;
@@ -438,12 +477,18 @@ impl Renderer {
             }
 
             let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Image");
-            if !resolved_path.exists() {
+            // The browser's local mode has no file system to ask: its DOM overlay shows the file
+            // (or nothing), so no placeholder is drawn there.
+            if !Self::is_virtual_root(app_base_dir) && !Self::asset_exists(&resolved_path) {
                 Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
                 return;
             }
 
-            if profile.is_web {
+            // Web clients show raster/SVG/Lottie as DOM overlays above the canvas (media layer),
+            // fed by the 0x20/0x21 messages. The procedural Rive widget is the exception: it is
+            // drawn here as cells (half blocks) so it works in every web mode and stays interactive.
+            let is_rive_src = resolved_path.extension().is_some_and(|e| e.eq_ignore_ascii_case("riv"));
+            if profile.is_web && !is_rive_src {
                 return;
             }
 
@@ -464,7 +509,7 @@ impl Renderer {
             if is_lottie {
                 #[cfg(feature = "native-media")]
                 {
-                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                    let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(profile.playback_scope, &resolved_path);
                     if let Some(safe_anim) = crate::render::cache::PlaybackRegistry::get().get_or_load_lottie(&resolved_path) {
                         let lock = safe_anim.lock().unwrap();
                         let total_frames = lock.anim.totalframe();
@@ -485,7 +530,7 @@ impl Renderer {
                     frame_idx = Some(0);
                 }
             } else if is_rive {
-                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(&resolved_path);
+                let playback = crate::render::cache::PlaybackRegistry::get().get_or_create(profile.playback_scope, &resolved_path);
                 let mut bits = 0;
                 if playback.hover { bits |= 1; }
                 if playback.click_active { bits |= 2; }
@@ -602,93 +647,14 @@ impl Renderer {
                     })()
                 }
             } else if is_rive {
-                #[cfg(not(feature = "native-media"))]
-                {
-                    Err(anyhow::anyhow!("Rive rendering not supported on WASM"))
-                }
-                #[cfg(feature = "native-media")]
-                {
-                    // Procedural Rive Toggle Button widget simulation.
-                    // We run interactive state updates on the CPU to avoid heavyweight web/GPU dependencies.
-                    (|| -> anyhow::Result<image::RgbaImage> {
-                        let mut pixmap = resvg::tiny_skia::Pixmap::new(pixel_w, pixel_h)
-                            .ok_or_else(|| anyhow::anyhow!("Failed to create pixmap"))?;
-                        
-                        let bits = frame_idx.unwrap_or(0);
-                        let hover = (bits & 1) != 0;
-                        let click_active = (bits & 2) != 0;
-                        let toggled = (bits & 4) != 0;
-                        
-                        let pad = 6.0;
-                        let rect_w = pixel_w as f32 - pad * 2.0;
-                        let rect_h = pixel_h as f32 - pad * 2.0;
-                        
-                        let rect = resvg::tiny_skia::Rect::from_xywh(pad, pad, rect_w, rect_h)
-                            .ok_or_else(|| anyhow::anyhow!("Failed to create Rect"))?;
-                        let mut pb = resvg::tiny_skia::PathBuilder::new();
-                        pb.push_rect(rect);
-                        let bg_path = pb.finish().ok_or_else(|| anyhow::anyhow!("Failed to finish path"))?;
-                        
-                        // Track background
-                        let mut bg_paint = resvg::tiny_skia::Paint::default();
-                        bg_paint.anti_alias = true;
-                        
-                        let bg_color = if toggled {
-                            resvg::tiny_skia::Color::from_rgba8(0, 120, 255, 255)
-                        } else if hover {
-                            resvg::tiny_skia::Color::from_rgba8(70, 70, 70, 255)
-                        } else {
-                            resvg::tiny_skia::Color::from_rgba8(35, 35, 35, 255)
-                        };
-                        bg_paint.set_color(bg_color);
-                        
-                        pixmap.fill_path(&bg_path, &bg_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                        
-                        // Outline border
-                        let mut border_paint = resvg::tiny_skia::Paint::default();
-                        border_paint.anti_alias = true;
-                        
-                        let border_color = if click_active {
-                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                        } else if hover {
-                            resvg::tiny_skia::Color::from_rgba8(220, 220, 220, 255)
-                        } else {
-                            resvg::tiny_skia::Color::from_rgba8(90, 90, 90, 255)
-                        };
-                        border_paint.set_color(border_color);
-                        
-                        let mut stroke = resvg::tiny_skia::Stroke::default();
-                        stroke.width = 3.0;
-                        
-                        pixmap.stroke_path(&bg_path, &border_paint, &stroke, resvg::tiny_skia::Transform::identity(), None);
-
-                        // Sliding knob
-                        let mut knob_paint = resvg::tiny_skia::Paint::default();
-                        knob_paint.anti_alias = true;
-                        
-                        let knob_color = if click_active {
-                            resvg::tiny_skia::Color::from_rgba8(0, 255, 255, 255)
-                        } else {
-                            resvg::tiny_skia::Color::from_rgba8(255, 255, 255, 255)
-                        };
-                        knob_paint.set_color(knob_color);
-                        
-                        let knob_radius = rect_h / 2.0 - 4.0;
-                        let knob_x = if toggled {
-                            pixel_w as f32 - pad - knob_radius - 4.0
-                        } else {
-                            pad + knob_radius + 4.0
-                        };
-                        let knob_y = pixel_h as f32 / 2.0;
-                        
-                        let mut knob_builder = resvg::tiny_skia::PathBuilder::new();
-                        knob_builder.push_circle(knob_x, knob_y, knob_radius);
-                        if let Some(knob_path) = knob_builder.finish() {
-                            pixmap.fill_path(&knob_path, &knob_paint, resvg::tiny_skia::FillRule::Winding, resvg::tiny_skia::Transform::identity(), None);
-                        }
-                        
-                        Ok(Self::pixmap_to_rgba_image(pixmap))
-                    })()
+                // Procedural Rive toggle (pure Rust, see `render::rive`). Web clients get it as half
+                // blocks, so it is rasterized at 1 x 2 pixels per cell and the fallback maps it 1:1.
+                let bits = frame_idx.unwrap_or(0);
+                if profile.is_web {
+                    // Cached per (size, state) and capped (F-13): not re-rasterised on every frame.
+                    Ok((*super::rive::toggle_half_block_image(u32::from(width), u32::from(height), bits)).clone())
+                } else {
+                    Ok(super::rive::toggle_image(pixel_w, pixel_h, bits))
                 }
             } else {
                 // Standard image rendering
@@ -707,7 +673,9 @@ impl Renderer {
 
             match img_result {
                 Ok(img) => {
-                    if profile.supports_kitty_gfx {
+                    if profile.is_web {
+                        Self::unicode_block_fallback(&img, abs_x, abs_y, width, height, buffer);
+                    } else if profile.supports_kitty_gfx {
                         let payload = super::kitty::KittyImageManager::transmit_image(
                             pixel_w,
                             pixel_h,
@@ -796,29 +764,9 @@ impl Renderer {
         app_base_dir: Option<&Path>,
     ) {
         if let Some(ref src) = node.attrs.src {
-            let resolved_path = if let Some(base) = base_dir {
-                base.join(src)
-            } else {
-                std::path::PathBuf::from(src)
-            };
-
-            let is_safe = if let Some(app_base) = app_base_dir {
-                if resolved_path.exists() {
-                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
-                } else if let Some(parent) = resolved_path.parent() {
-                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
-                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if !is_safe {
-                tracing::warn!("renderer: blocked video path traversal or file access outside app_base_dir: {:?}", resolved_path);
+            let Some(resolved_path) = Self::resolve_src(src, base_dir, app_base_dir) else {
                 return;
-            }
+            };
 
             let pixel_w = width as u32 * 10;
             let pixel_h = height as u32 * 20;
@@ -827,7 +775,7 @@ impl Renderer {
             }
 
             let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Video");
-            if !resolved_path.exists() {
+            if !Self::is_virtual_root(app_base_dir) && !Self::asset_exists(&resolved_path) {
                 Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
                 return;
             }
@@ -928,33 +876,17 @@ impl Renderer {
         }
 
         if let Some(ref src) = node.attrs.src {
-            let resolved_path = if let Some(base) = base_dir {
-                base.join(src)
-            } else {
-                std::path::PathBuf::from(src)
-            };
-
-            let is_safe = if let Some(app_base) = app_base_dir {
-                if resolved_path.exists() {
-                    oxiterm_proto::pathsafe::is_within_base(app_base, &resolved_path)
-                } else if let Some(parent) = resolved_path.parent() {
-                    let parent_dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
-                    oxiterm_proto::pathsafe::is_within_base(app_base, parent_dir)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if !is_safe {
-                tracing::warn!("renderer: diagram path traversal blocked outside app_base_dir: {:?}", resolved_path);
+            let Some(resolved_path) = Self::resolve_src(src, base_dir, app_base_dir) else {
                 return;
-            }
+            };
 
             let filename = resolved_path.file_name().and_then(|n| n.to_str()).unwrap_or("Diagram");
-            if !resolved_path.exists() {
-                Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
+            if !Self::asset_exists(&resolved_path) {
+                // Local mode: the page fetches the file after the first frame (see `LocalSession`),
+                // so for now there is nothing to say; the next frame has it.
+                if !Self::is_virtual_root(app_base_dir) {
+                    Self::draw_missing_placeholder(abs_x, abs_y, width, height, filename, buffer);
+                }
                 return;
             }
 

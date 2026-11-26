@@ -798,7 +798,7 @@ mod tests {
 
         // Simulate run exit via Drop guard
         {
-            let _guard = EventLoopGuard { host: session.clone() };
+            let _guard = EventLoopGuard { host: session.clone(), scope: u64::MAX };
         }
 
         // Should be false again

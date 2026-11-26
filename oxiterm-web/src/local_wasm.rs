@@ -122,6 +122,11 @@ impl LocalApp {
         self.s.action_failed(id);
     }
 
+    /// Hands a fetched diagram file (`assets/flow.mmd`) to the core's virtual file system.
+    pub fn mount_asset(&mut self, rel: &str, bytes: &[u8]) -> bool {
+        self.s.mount_asset(rel, bytes)
+    }
+
     /// Re-emits media coordinates after the page cached a requested asset.
     pub fn media_refresh(&mut self) {
         self.s.media_refresh();

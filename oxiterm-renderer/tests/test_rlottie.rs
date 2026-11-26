@@ -65,11 +65,11 @@ mod tests {
     #[test]
     fn test_26_full_path_render_node() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let bell_path = manifest_dir.parent().unwrap().join("examples").join("assets").join("bell.json");
         
         let mut doc = THTMLDocument::new();
         let mut img_node = Node::new(NodeTag::Img);
-        img_node.attrs.src = Some(bell_path.to_string_lossy().to_string());
+        // `src` is relative to the page directory (here: the repository root).
+        img_node.attrs.src = Some("examples/assets/bell.json".to_string());
         img_node.style.width = Some(15.0);
         img_node.style.height = Some(5.0);
         
@@ -84,7 +84,7 @@ mod tests {
         profile.supports_kitty_gfx = true;
         
         let app_base = manifest_dir.parent().unwrap();
-        Renderer::render_node(&doc, &layout, &mut buffer, &profile, None, Some(app_base), 0);
+        Renderer::render_node(&doc, &layout, &mut buffer, &profile, Some(app_base), Some(app_base), 0);
 
         // CellBuffer.graphics should not be empty
         assert!(!buffer.graphics.is_empty());

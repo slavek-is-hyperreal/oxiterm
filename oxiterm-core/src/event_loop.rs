@@ -210,10 +210,13 @@ enum EventOutcome {
 
 pub struct EventLoopGuard {
     pub host: Arc<dyn LoopHost>,
+    /// The session's playback scope: its media state is forgotten when the loop ends.
+    pub scope: u64,
 }
 
 impl Drop for EventLoopGuard {
     fn drop(&mut self) {
+        oxiterm_renderer::render::cache::PlaybackRegistry::get().drop_scope(self.scope);
         self.host.loop_exited();
     }
 }
@@ -1166,7 +1169,7 @@ impl EventLoop {
     /// with its own wait and calls `handle_event` / `tick` / `next_deadline` directly.
     pub fn run(&mut self) {
         // Must stay in `run()`: dropping it is what reports `loop_exited()` to the host.
-        let _guard = EventLoopGuard { host: self.host.clone() };
+        let _guard = EventLoopGuard { host: self.host.clone(), scope: self.session.id as u64 };
         self.prepare_session();
         self.first_frame = true;
         self.render_carry = false;
@@ -1662,7 +1665,9 @@ impl EventLoop {
                     let content_h = if has_border { rect.height.saturating_sub(2) } else { rect.height };
 
                     if node.tag == oxiterm_proto::dom::NodeTag::Img || node.tag == oxiterm_proto::dom::NodeTag::Video {
-                        if let Some(ref src) = node.attrs.src {
+                        // `.riv` is the procedural widget the renderer draws into the cells itself;
+                        // it is not a file for the browser to show.
+                        if let Some(src) = node.attrs.src.as_ref().filter(|s| !s.to_ascii_lowercase().ends_with(".riv")) {
                             // Keep the true (possibly negative) position so media
                             // scrolled partly out of view is clipped by the client
                             // instead of sticking to row/column 0; skip media that
@@ -1709,6 +1714,7 @@ impl EventLoop {
 
         let mut profile = self.session.terminal_profile.read().clone();
         profile.is_web = self.session.is_web_client.load(std::sync::atomic::Ordering::SeqCst);
+        profile.playback_scope = self.session.id as u64;
         let base_dir = self.source_path.as_ref().and_then(|p| p.parent());
         let app_base_dir = self.session.app_base_dir.read().clone();
         self.buffer.back.clear();
@@ -1958,18 +1964,19 @@ impl EventLoop {
                                     && mouse.row >= rect.y
                                     && mouse.row < rect.y + rect.height;
                                 
-                                let resolved_path = if let Some(ref base) = self.source_path.as_ref().and_then(|p| p.parent()) {
-                                    base.join(src)
-                                } else {
-                                    std::path::PathBuf::from(src)
+                                // The same resolution the renderer keys the playback state by.
+                                let app_base = self.session.app_base_dir.read().clone();
+                                let Some(resolved_path) = oxiterm_proto::pathsafe::resolve_media(self.source_path.as_ref().and_then(|p| p.parent()), app_base.as_deref(), src) else {
+                                    continue;
                                 };
-                                
+
                                 let registry = oxiterm_renderer::render::cache::PlaybackRegistry::get();
-                                registry.set_hover(&resolved_path, is_inside);
+                                let scope = self.session.id as u64;
+                                registry.set_hover(scope, &resolved_path, is_inside);
                                 if is_inside && mouse.action == oxiterm_proto::input::MouseAction::Press {
-                                    registry.set_click(&resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
+                                    registry.set_click(scope, &resolved_path, true, Some((mouse.col - rect.x, mouse.row - rect.y)));
                                 } else if mouse.action == oxiterm_proto::input::MouseAction::Release {
-                                    registry.set_click(&resolved_path, false, None);
+                                    registry.set_click(scope, &resolved_path, false, None);
                                 }
                             }
                         }
