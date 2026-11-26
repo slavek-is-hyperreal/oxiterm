@@ -64,7 +64,7 @@ Notes (no change of meaning; conflicts go to the lists named):
 
 - <a id="d-1"></a>**D-1.** **Memory model:** reference counting with compiler elision (Perceus-style) plus a cycle collector (Nim ORC-style). GC-like convenience for closures in event handlers, mostly deterministic freeing; the `realtime`/`safety` profiles forbid allocation on hot paths. Stage 8.0 measures it (counter overhead, atomics across threads mitigated by per-isolate data, code size on ESP32) but does not reopen the choice.
 - <a id="d-2"></a>**D-2.** **Grammar:** our own grammar, files `.oxs`, designed so that a TypeScript developer simply *reads* it without learning it (same keywords, braces, arrow functions, `import`/`export`, type annotations after `:`; differences only where soundness requires them, and then with familiar spellings). Real TypeScript is not parsed (no accepting syntax we then reject).
-- <a id="d-3"></a>**D-3.** **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted.
+- <a id="d-3"></a>**D-3.** **On-device live engine:** wasmi (pure Rust like the core, fastest interpreter in the treVM measurements). Its larger flash footprint is accepted. *(Superseded for microcontrollers by [D-27](#d-27), 2026-11-26: w2c2 native builds on MCUs; wasmi stays on servers, in the browser and the simulator.)*
 - <a id="d-4"></a>**D-4.** **GPU in v1:** no, and the `kernel` profile is not in the MVP either. But the language must be designed so that adding it later is easy, not hard: no feature in the MVP may make data-parallel kernels or device buffers awkward to add (the GPU backend comes in 8.3d).
 - <a id="d-5"></a>**D-5.** **Tools in v1:** web flasher (WebSerial) yes; blocks editor later.
 - <a id="d-6"></a>**D-6.** **First standards target:** IEC 62443 and the EU CRA (the business model); IEC 61508 as the first functional-safety standard, later.
@@ -114,6 +114,7 @@ Each is stated in the plan rows, specs or commit messages of the date shown; wor
 | <a id="d-24"></a>D-24 | 2026-11-25 | Wasm exception handling (`exnref`) is "nice to have, later": an opt-in ABI minor version, never required by the language, keeping a lowering without EH. | old plan "Later stages" |
 | <a id="d-25"></a>D-25 | 2026-11-26 | Implementation flow: Gemini may write a stage, Sonnet with the advisor reviews it, then BAD ACTOR, then the lead merges. (HANDOFF; pilot done with 5.2, rtlink, std, simd, memres.) Whether Gemini becomes the default implementer is still open ([Q-PROC-1](#q-proc)). | `docs/HANDOFF.md` |
 | <a id="d-26"></a>D-26 | 2026-11-25 | Sites in Polish and English first; Latin only after the owner reviews it (in memoriam of the owner's Latin teacher); identity: rust orange + bronze patina, "Oxi cell" mark, mascot Oxi the axolotl. | old plan row 8.W |
+| <a id="d-27"></a>D-27 | 2026-11-26 | **Engine on microcontrollers is w2c2, not wasmi.** On MCUs (ESP32 and similar) the program is translated wasm to C (w2c2, MIT) and compiled by the board C compiler into native firmware, for development and for release; the wasmi interpreter is too slow on a microcontroller and is not shipped there. Reflashing on every change is accepted ("flash is not a tragedy"); instant iteration happens in the browser simulator (wasmi on the wasm32 core). Consequences: no fuel on the device, so the compiler inserts budget checks ([8.2b](#s-8-2b)); interpreted and w2c2 builds must give identical results (differential tests). wasmi stays the engine on servers, in the browser and in the playground. Supersedes [D-3](#d-3) for microcontrollers; answers [Q-ENG-1](#q-eng). | owner, conversation 2026-11-26 |
 
 ### 2.5 Superseded
 
@@ -447,7 +448,7 @@ Design: `docs/research/oxiscript-simd-gpu-design.md` and its verification ledger
 <a id="s-8-s3"></a>
 #### 8.S3 First board: ESP32 (todo; hardware after 2026-12-10)
 
-- Scope: `oxi flash` in one command to an ESP32-S3 4.3" 800x480 touch board (N16R8), USB live reload; Xtensa toolchain (`espup`, not installed); on-device engine per [D-3](#d-3) (wasmi; w2c2 for the release path); real flash and heap numbers for [8.0](#s-8-0) part 0b; SIMD default for the board stays scalar until benchmarked ([Q-SIMD-9](#q-simd)); simulator panel for GPIO/sensors; the OxiScreens thin client (cell-diff decoder) is [U.Screens](oxiui.md#s-u-screens) [R2-64, R3-107, R3-239, R4-08].
+- Scope: `oxi flash` in one command to an ESP32-S3 4.3" 800x480 touch board (N16R8), fast reflash over USB per edit (no on-device interpreter, [D-27](#d-27)) and instant iteration in the browser simulator; Xtensa toolchain (`espup`, not installed); on-device engine w2c2 + the ESP-IDF C compiler ([D-27](#d-27)), budget checks from [8.2b](#s-8-2b) instead of fuel; real flash and heap numbers for [8.0](#s-8-0) part 0b; SIMD default for the board stays scalar until benchmarked ([Q-SIMD-9](#q-simd)); simulator panel for GPIO/sensors; the OxiScreens thin client (cell-diff decoder) is [U.Screens](oxiui.md#s-u-screens) [R2-64, R3-107, R3-239, R4-08].
 - Gate: a toy demo on the real board; flash size and edit-to-visible latency measured. Depends on: [8.S1](#s-8-s1), hardware. Status: todo (waiting for the purchase).
 
 <a id="s-8-s3w"></a>
@@ -603,7 +604,7 @@ Ids are prefixed by source so numbers never collide. Each question names its sou
 
 ### 7.1 Answered by an owner decision (not asked again)
 
-Memory model prototype of both RC and GC [R3-103, R3-121] -> [D-1](#d-1) (RC chosen; [8.0](#s-8-0) measures, does not reopen). Real TypeScript or own grammar [R3-122] -> [D-2](#d-2). On-device engine wasmi against WAMR for the live engine [R3-107] -> [D-3](#d-3) (the release engine for ESP32 stays open: [Q-ENG-1](#q-eng)). GPU scope in v1 [R3-126] -> [D-4](#d-4). Web flasher and blocks editor [R3-127] -> [D-5](#d-5). First safety standard [R3-124] -> [D-6](#d-6) (IEC 62443 and the EU CRA first, IEC 61508 later). Compiler ownership in this repository [R3-125] -> [D-7](#d-7) (residue [Q-SAFE-4](#q-safe)). npm positioning [R3-131] -> [D-8](#d-8). Hot reload scope [R3-132] -> [D-9](#d-9). Plan B bytecode [R3-133] -> [D-10](#d-10). Default integer width and overflow trap [R3-128]: i32 and trap, in force. UTF-8 strings without O(1) index [R3-129]: in force. Semicolons stay mandatory [Q-DX-5 of the DX research]: in force de facto. Pointer width [D-13](#d-13).
+Memory model prototype of both RC and GC [R3-103, R3-121] -> [D-1](#d-1) (RC chosen; [8.0](#s-8-0) measures, does not reopen). Real TypeScript or own grammar [R3-122] -> [D-2](#d-2). On-device engine wasmi against WAMR for the live engine [R3-107] -> [D-3](#d-3) (for microcontrollers superseded by [D-27](#d-27): w2c2). GPU scope in v1 [R3-126] -> [D-4](#d-4). Web flasher and blocks editor [R3-127] -> [D-5](#d-5). First safety standard [R3-124] -> [D-6](#d-6) (IEC 62443 and the EU CRA first, IEC 61508 later). Compiler ownership in this repository [R3-125] -> [D-7](#d-7) (residue [Q-SAFE-4](#q-safe)). npm positioning [R3-131] -> [D-8](#d-8). Hot reload scope [R3-132] -> [D-9](#d-9). Plan B bytecode [R3-133] -> [D-10](#d-10). Default integer width and overflow trap [R3-128]: i32 and trap, in force. UTF-8 strings without O(1) index [R3-129]: in force. Semicolons stay mandatory [Q-DX-5 of the DX research]: in force de facto. Pointer width [D-13](#d-13).
 
 ### 7.2 Open
 
@@ -649,7 +650,7 @@ Memory model prototype of both RC and GC [R3-103, R3-121] -> [D-1](#d-1) (RC cho
 - Q-MCU-1 "Write once, run on a microcontroller" as a v1 promise or "same compiler, MCU backend later". Q-MCU-2 First MCU class: ESP32 with PSRAM only (the planned N16R8 board) or also the 64-256 kB class.
 
 <a id="q-eng"></a>
-- **Q-ENG-1** ESP32 release engine: wasmi interpreter or w2c2 AOT (P-7 text against D-3 and the 8.Mem measurement) [R2 inconsistency 11].
+- **Q-ENG-1** ESP32 release engine: wasmi interpreter or w2c2 AOT [R2 inconsistency 11]. **Answered 2026-11-26: w2c2 ([D-27](#d-27)).**
 
 <a id="q-lang"></a>
 **Language (Q-LANG-n and the implemented-but-unsigned lists)**
