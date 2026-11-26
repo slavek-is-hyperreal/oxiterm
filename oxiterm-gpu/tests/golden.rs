@@ -27,6 +27,11 @@ const MAX_DIFF_PERCENT: f64 = 0.25;
 /// LLVM major and Mesa major.minor. SRU patch bumps (25.2.8 -> 25.2.9) do not change the gate.
 const BLESSED_LLVM_MAJOR: u32 = 20;
 const BLESSED_MESA: (u32, u32) = (25, 2);
+/// llvmpipe builds on which the blessed goldens were shown to match within the tolerance:
+/// the owner's machine (LLVM 20 / Mesa 25.2) and GitHub's ubuntu-latest (LLVM 21 / Mesa 26.0,
+/// CI run 45781692407, advisory step: 6/6 goldens within tolerance). Add a pair only after such
+/// evidence; any other build skips loudly and the advisory CI step compares anyway.
+const VERIFIED_LLVMPIPE: [(u32, (u32, u32)); 2] = [(BLESSED_LLVM_MAJOR, BLESSED_MESA), (21, (26, 0))];
 
 #[derive(Debug, PartialEq, Eq)]
 enum Gate {
@@ -62,14 +67,13 @@ fn golden_gate(name: &str, driver_info: &str, required: bool, any_version: bool)
     }
     let llvm = number_after(name, "LLVM ");
     let mesa = mesa_major_minor(driver_info);
-    if any_version || (llvm == Some(BLESSED_LLVM_MAJOR) && mesa == Some(BLESSED_MESA)) {
+    if any_version || VERIFIED_LLVMPIPE.iter().any(|&(l, m)| llvm == Some(l) && mesa == Some(m)) {
         return Gate::Run;
     }
     Gate::Skip(format!(
-        "goldens are blessed on llvmpipe LLVM {BLESSED_LLVM_MAJOR} / Mesa {}.{}; this is {name:?} \
-         (driver {driver_info:?}). Set OXI_GPU_GOLDEN_ANY_LLVM=1 to compare anyway. The \
-         CPU-vs-GPU differential tests still ran.",
-        BLESSED_MESA.0, BLESSED_MESA.1
+        "goldens are verified on llvmpipe {VERIFIED_LLVMPIPE:?} (LLVM major, Mesa major.minor); this is \
+         {name:?} (driver {driver_info:?}). Set OXI_GPU_GOLDEN_ANY_LLVM=1 to compare anyway. The \
+         CPU-vs-GPU differential tests still ran."
     ))
 }
 
@@ -223,6 +227,13 @@ mod gate_tests {
     fn blessed_llvmpipe_runs_and_patch_bumps_do_not_change_it() {
         assert_eq!(golden_gate(LP, MESA, true, false), Gate::Run);
         assert_eq!(golden_gate("llvmpipe (LLVM 20.1.8, 256 bits)", "Mesa 25.2.9-1", true, false), Gate::Run);
+        // GitHub ubuntu-latest, verified in CI run 45781692407.
+        assert_eq!(
+            golden_gate("llvmpipe (LLVM 21.1.8, 256 bits)", "llvmpipe Mesa 26.0.8-1ubuntu0.3 (LLVM 21.1.8)", true, false),
+            Gate::Run
+        );
+        // An unverified pairing (LLVM 21 with Mesa 25.2) still skips.
+        assert!(matches!(golden_gate("llvmpipe (LLVM 21.1.8, 256 bits)", "Mesa 25.2.8", true, false), Gate::Skip(_)));
     }
 
     #[test]

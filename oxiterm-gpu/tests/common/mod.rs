@@ -14,7 +14,7 @@ pub fn gpu_required() -> bool {
 }
 
 pub fn required_from(value: Option<&str>) -> bool {
-    matches!(value.map(|v| v.trim().to_ascii_lowercase()).as_deref(), Some("1") | Some("true"))
+    matches!(value.map(|v| v.trim().to_ascii_lowercase()).as_deref(), Some("1" | "true"))
 }
 
 /// Turn a context-creation result into `Some(ctx)`, a printed skip (`None`), or a panic.
@@ -31,12 +31,11 @@ pub fn ctx_or_skip(label: &str, result: Result<GpuContext, GpuError>) -> Option<
 
 /// Skip with a note, or panic when `OXI_GPU_REQUIRED` is set.
 pub fn skip_or_fail(label: &str, reason: &str) {
-    if gpu_required() {
-        panic!(
-            "{label}: {reason}. OXI_GPU_REQUIRED is set, so skipping is not allowed. \
-             Install a Vulkan software driver (Mesa lavapipe) and set VK_ICD_FILENAMES, \
-             or unset OXI_GPU_REQUIRED."
-        );
-    }
+    assert!(
+        !gpu_required(),
+        "{label}: {reason}. OXI_GPU_REQUIRED is set, so skipping is not allowed. \
+         Install a Vulkan software driver (Mesa lavapipe) and set VK_ICD_FILENAMES, \
+         or unset OXI_GPU_REQUIRED."
+    );
     eprintln!("SKIP {label}: {reason}");
 }
