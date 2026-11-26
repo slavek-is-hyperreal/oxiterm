@@ -1,55 +1,50 @@
-# Handoff: OxiTerm / OxiUI / OxiScript — state as of 2026-11-25
+# Handoff: OxiTerm / OxiUI / OxiScript — state as of 2026-11-26
 
-This file lets another Claude account (or a person) take over without the previous session's memory. Read it top to bottom, then `docs/oxi-ui.md` (the plan; source of truth for phases, decisions and the wave log).
+This file lets another Claude account (or a person) take over without the previous session's memory. Read it top to bottom, then [oxi-ui.md](oxi-ui.md) (the plan; source of truth for phases, decisions and the wave log).
 
 ## 1. The owner and how to work with them
-- **Language:** the owner writes in Polish; answer in Polish, write code/docs/commits in English.
-- **Repository:** github.com/slavek-is-hyperreal/oxiterm, branch `main`. Every change is committed and pushed to `main` ("wszystkie zmiany muszą być na repo"). Commit messages end with `Co-Authored-By: Claude …`.
-- **Licence and business:** MIT OR Apache-2.0. Revenue only from support and compliance certification (IEC 62443, EU CRA). **Dependencies: permissive licences only** (MIT/Apache/BSD/Zlib; MPL acceptable if recorded; fonts OFL/Apache fine; never GPL/AGPL/LGPL).
-- **Decisiveness:** the owner prefers decisions taken now ("YOLO") over long option lists. They delegated taste decisions (fonts, serif vs sans, visual calls) to the assistant after looking at screenshots. Stop only for decisions with real consequences (licence policy, money, scope).
-- **Don't claim a gap without checking the repo** (grep code and docs first; e.g. a11y existed when it was once wrongly listed as missing).
-- **Delegation model (owner's explicit wish):** the main conversation runs on the strongest model (Opus) as lead: design, briefs, review, merges. Implementation goes to subagents on Sonnet that use their `advisor` tool before committing to an approach and before reporting.
-- **BAD ACTOR gate (owner, 2026-11-24, ALL stages from then on):** after every finished stage, before its commit is admitted, a separate adversarial agent tries to break it (fuzzing, sandbox/path escapes, malformed protocol input, resource exhaustion, crashes, wrong output, differential checks). It writes failing tests + a report and never fixes code; the implementing agent then fixes everything; findings become regression tests. So far every BAD ACTOR pass found serious bugs (see the wave log).
-- **Wave timing (owner):** measure every slice (implementation / BAD ACTOR / fixes) and keep the "Wave log" table in `docs/oxi-ui.md` current; re-estimate OxiScript from measured throughput and report old vs new.
-- **Golden files:** subagents never set `OXI_BLESS`, `OXI_BLESS_DL`, `OXI_BLESS_FB` or `OXI_TRACE_BLESS` and never edit baselines; new expected files are blessed by the lead after review.
+- **Language:** the owner writes in Polish; answer in Polish, write code, docs and commits in English.
+- **Repository:** github.com/slavek-is-hyperreal/oxiterm (public), branch `main`. Every change is committed and pushed. Commit messages end with a `Co-Authored-By:` line for the model that made them.
+- **Licence and business:** MIT OR Apache-2.0. Revenue from support, compliance certification (IEC 62443, EU CRA) and voluntary donations (buycoffee.to/smajcher). **Dependencies: permissive licences only** (MIT/Apache/BSD/Zlib/ISC; MPL only if recorded; fonts OFL/Apache; never GPL/AGPL/LGPL).
+- **Decisiveness:** the owner prefers decisions now over long option lists, and delegates taste decisions (fonts, colours, visual calls) to the lead after screenshots. Stop only for decisions with real consequences (licence, money, scope, language semantics).
+- **Inform, don't forbid:** useful trade-offs that weaken a guarantee (e.g. linking an `unsafe` Rust crate) are documented in the spec, announced at build time and forbiddable by a profile, not banned.
+- **Don't claim a gap without checking the repo** (grep code and docs first).
+- **Report outcomes from independent evidence:** after every push check GitHub CI (`gh run list`) and report its result with the link; a local "all green" from an agent is a claim, not proof (on 2026-11-25 CI was red for hours unnoticed, and an agent reported green while two test files failed).
 
-## 2. Product in one paragraph
-OxiTerm renders THTML/TCSS (HTML/CSS-like) on the server and streams it to SSH terminals and the browser; app logic lives in an "App Server" in any language (HTTP events + state patches). OxiUI generalises it to real GUIs from the same source: a `DisplayList` (fills, borders, paths, positioned glyph runs) sent to a canvas thin client (server-driven mode), or the portable `oxiterm-core` running on the device (local mode: browser WASM, Android, Linux framebuffer "OxiDE", later native GPU). OxiScript (Phase 8) is a new TS-readable, soundly typed, general-purpose language compiled to WebAssembly, with OxiUI as its first host.
+## 2. How work is done
+- **Lead:** the main conversation (Opus) designs, writes briefs, reviews, merges, keeps the plan.
+- **Implementers:** Sonnet subagents in their own git worktrees, using their `advisor` tool (Opus) before starting and before reporting. Optional since 2026-11-26: **Gemini as implementer** through `/vectorlegis_ssd_pool/gemini-oxi` (MCP server `gemini-oxi`, auto-policy in `zadania/oxi-kod-polityka.json`: `cargo` allowed, writes only in the worktree, no network, no subagents); flow = Gemini writes → Sonnet+advisor reviews → BAD ACTOR → lead merges. A pilot on one small stage comes first.
+- **BAD ACTOR gate (every stage):** a separate adversarial agent writes failing tests and a report, never fixes code; then a fix agent fixes everything; findings stay as regression tests. Notes of each stage go to [stages/](stages/).
+- **Gates before every merge and push:** `scripts/oxiscript-gate.sh merge` (each crate, clippy `-D warnings`, a CI-equivalent unified run, release with `OXI_FULL_FUZZ=1`, the long fuzz campaigns). Nightly on GitHub: `.github/workflows/oxiscript-fuzz.yml` with date seeds.
+- **Machine:** old 4-core box, ~12 GB free RAM → at most 3 concurrent agents, `CARGO_BUILD_JOBS=2`, per-package cargo in worktrees (a workspace-wide build in a worktree fails on the missing web bundle). Shared files (`docs/oxi-ui.md`, root `Cargo.toml`, CI workflows) are edited only by the lead.
+- **Usage limits** stop agents mid-work: every agent keeps a HANDOFF file current; on a stop, snapshot-commit its worktree and resume it with SendMessage.
+- **Golden files:** agents never set `OXI_BLESS*`; the lead blesses after review.
+- **Dev blog:** posts only by the owner or the lead, each signed by its real author.
 
-## 3. Status (see `docs/oxi-ui.md` for details)
-- **Done and on `main`:** Phases 0–4, 5.0–5.1 (perf), 6 (proportional text: Noto Sans/Mono, cosmic-text shaping, wire v3 glyph runs, fractional pointer, demo pages sans in GUI), 7.1 (WASM local mode, hardened), 8.C (OxiScript contracts, hardened).
-- **In progress on pushed branches (worktrees under `.claude/worktrees/`):**
-  | Branch | What | State | Next step |
-  |---|---|---|---|
-  | `worktree-agent-a6017513dcb858da6` | 7.2 OxiDE software sink (`oxiterm-fb`) | Implementation done (PNG output looks right; 3–4 ms/frame at 80×24). BAD ACTOR found 19 failing + 2 ignored tests (`oxiterm-fb/tests/bad_actor.rs`, fuzz harness `tests/bad_actor_fuzz.rs`). Fixes were IN PROGRESS when stopped (WIP commit). | Resume fixes per the lead decisions below, then bless goldens with `OXI_BLESS_FB=1 cargo test -p oxiterm-fb --test golden`, review PNGs, merge. |
-  | `worktree-agent-a72b9ecc8e38909a3` | 8.P OxiScript lexer/parser/formatter (`oxiscript-syntax`) | Done (45 valid / 49 invalid corpus, ~14k fuzz cases, ~7 MB/s). BAD ACTOR was running and stopped (partial `tests/bad_actor_8p*.rs` may exist). | Re-run BAD ACTOR (focus: stack use on wasm32 without threads and on small ESP32 stacks — the parser re-parses deep input on a 128 MB-stack thread, which doesn't exist there), then fixes, merge. |
-  | `worktree-agent-a1cdc4c2eebac9a97` | 8.R OxiScript runtime (`oxiscript-runtime`, wasmi 2.0.3) | Done (load ~1 ms/10 KB, ~12 ms/100 KB; reload ~0.26 ms; host call ~200 ns). BAD ACTOR was running and stopped (partial `tests/bad_actor_8r*.rs` may exist). | Re-run BAD ACTOR (sandbox escape first), fixes, merge. Contract note: `trunc_sat` is not allowed (8.G must not emit it). |
-  Merging: commit on the branch, `git merge --no-ff` into `main` from the main checkout, run the full gates serially, push. `Cargo.lock` conflicts: take main's and rebuild.
-- **Lead decisions pending application on 7.2** (already sent to the implementing agent; re-send to a new one): sanitise every DisplayList number at the rasterizer boundary (non-finite → skip; clamp coords to surface ± 1e5 px; stroke ≤ 1e4 px; shaped size×scale within [0.5, 512]); integer loop counters over the visible range only; i64/saturating maths; surface ≤ 64M pixels and page cols/rows capped before allocating; glyph/cluster caches bounded by bytes (~64 MiB); device guard at type level (fbdev/drm `present` need a token only `check_opt_in` can create); SIGINT-safe DRM CRTC restore; 200k fuzz cases with zero crashes/hangs. **Never let an agent touch `/dev/fb0`, `/dev/dri/*` or `/dev/input/*` — they are the owner's real display.**
+## 3. Status
+- **Done and on `main`:** OxiUI Phases 0–6, 7.1 (WASM local mode), 7.2 (OxiDE software sink). OxiScript 8.C contracts, 8.P parser/formatter, 8.R runtime, 8.M memory, 8.T type checker, 8.G Wasm codegen, **8.L lowering: the compiler works end to end**, 8.D DevKit v0 (`oxi` CLI, VS Code extension, AGENTS.md, skill, llms.txt, semicolon assistant), 8.W websites step 1 (three static sites + browser playground; not yet deployed: the owner deploys per [../sites/DEPLOY.md](../sites/DEPLOY.md)). All hardened by BAD ACTOR.
+- **Owner decisions of 2026-11-25/26 now in the code or the plan:** `export` = module visibility as in TS, host entry points are explicit `@host` (grammar 2.1); C-style `for (let …)` gives each iteration a fresh binding (as JS); Rust crates linked into the program as the main road to libraries (grammar 2.7, stage 8.N); versioning 0.0.1, `c += 1` per 5555 changed `src/` lines ([oxiscript/VERSIONING.md](oxiscript/VERSIONING.md)); sites in PL + EN, Latin later after the owner's review; mascot Oxi the axolotl, Physarum for the bug-shape engine.
+- **Open items (owner):** OxiBench methodology approval and API keys ([research/oxibench-methodology.md](research/oxibench-methodology.md) §10); the home page "about" text; review of the Polish site copy (banner "draft" until then); Latin review.
+- **Known gaps:** real linking with the 8.M runtime (`RuntimeMode::Import`) is not done yet (tests use the Stub runtime; `f64` to string needs it); Wasm local reuse (~6000 statements per function); closure cycles leak until the cycle collector is linked; two 8.P oracles (comment re-attachment, an E0006 no-op fix) passed at seed 1 on 2026-11-26 and need a multi-seed check before they are called fixed.
 
-### Live handoff notes (agents kept working after this file was written)
-- Each running agent keeps a progress file in its worktree: `oxiterm-fb/HANDOFF-7.2.md`, `oxiscript/oxiscript-syntax/HANDOFF-badactor-8p.md`, `oxiscript/oxiscript-runtime/HANDOFF-badactor-8r.md`. Read these first on each branch.
-- A background job committed and pushed a WIP snapshot of each worktree every 20 minutes (`wip: automatic handoff snapshot …`), so the pushed branches are at most ~20 min behind the agents' last state.
-
-## 4. Plan from here
-- **Wave schedule and slices:** `docs/oxi-ui.md` → Phase 7 stages (7.1 ✅, 7.2, 7.2b OxiDE runner, 7.3 Android WebView shell, 7.4 touch/IME/viewport, 7.5 close) and Phase 8 "Deliverable slices" (8.C ✅, 8.P, 8.R, 8.M memory, 8.T type checker, 8.G codegen, 8.L lowering, 8.S1 first visible slice `<script lang="oxs">`, 8.S2 LSP, 8.S3 first board, 8.S4 laws + placement report). Critical path: 8.C → 8.P → 8.T → 8.L → 8.S1.
-- **Machine limits:** 4 cores, ~12 GB free RAM → at most 3 concurrent agents (BAD ACTOR included), `CARGO_BUILD_JOBS=2` per agent, per-package tests in agents; full `--workspace` gates only by the lead, serially, after each merge. Each agent works in its own git worktree; shared files (`docs/oxi-ui.md`, `docs/ARCHITECTURE.md`, `.github/workflows/ci.yml`, root `Cargo.toml`) are edited only by the lead.
-- **Reuse before writing** (list in `docs/oxi-ui.md`): `ena` for 8.T, `wasm-encoder`/`wasmparser` for 8.G, `dlmalloc`/`talc` under our RC for 8.M, `lsp-server`/`lsp-types` for 8.S2, `wasm-smith`/`arbitrary` for BAD ACTOR, `salsa` to evaluate. Light deps may enter the core; heavy ones stay in the toolchain (SBOM matters for CRA).
-- **OxiScript decisions are final** (Phase 8 "Decisions" 1–12 in `docs/oxi-ui.md`): RC + elision + cycle collector; own grammar a TS developer reads without learning (TS precedence, must-parenthesise errors, one whitespace rule for `?`); wasmi live engine; no GPU/kernel in the MVP but nothing may make them hard later; web flasher in v1, blocks later; IEC 62443/CRA first; compiler in this repo; npm idea not compatibility; module state resets on reload; WASM only; `law` declarations (tested / SMT-proven in safety profile / AI or hand proofs); AI-friendliness. Don't reopen them; Stage 8.0-type work only measures. Primary persona: a JS/TS developer building a toy with their kid on an ESP32 must feel at home; rocket-grade use must remain possible ("no artificial limits").
-- **Hardware:** the owner buys one ESP32-S3 board with a 4.3" 800×480 capacitive touch screen and PSRAM (N16R8; e.g. Waveshare ESP32-S3-Touch-LCD-4.3 or Sunton ESP32-8048S043) **after 2026-12-10**. Device work (8.S3, real wasmi measurements) waits until then; Xtensa needs the esp-rs `espup` toolchain (not installed). Android SDK 34 + Java 17 are installed at `/vectorlegis_ssd_pool/android_sdk`; no device attached.
-- **Estimate (2026-11-25):** after 8.C and 8.P the remaining MVP is ~15–35 active agent-hours, i.e. ~10–25 usage windows, ~1.5–3 calendar weeks to 8.S1 at the observed pace; usage limits, not agent speed, set the pace. Re-check after 8.T.
+## 4. Next steps (in order)
+1. Bump all OxiScript crates, the extension and the playground to **0.0.1**, add the version script, tag `v0.0.1`, write CHANGELOG.
+2. Wire `oxi run` / `oxi build` and the playground's Run button to `oxiscript_lower::compile_source`.
+3. Gemini pilot on a small stage, then decide whether implementation moves to Gemini.
+4. Link with the real 8.M runtime (decide the two open ABI questions from 8.G: heap base / static end, runtime trap cell), then **8.S1** `<script lang="oxs">` in an OxiUI page (end of the critical path).
+5. In parallel: 8.S2 LSP, 8.S4 laws + report + bug shapes + sign vocabulary + interface laws, 8.N Rust crates, identity sketches, course level 0, dev blog.
+6. After 2026-12-10: the ESP32-S3 4.3" touch board (8.S3).
 
 ## 5. Operational facts
-- **Run locally:** `.claude/launch.json` → `oxiterm-site` (examples on web port 8087) and `oxiterm-sans` (Phase 6 fixture on 8091). Release build first (`cargo build --release -p oxiterm-cli`).
-- **Web bundles (since 7.1):** build both before any server build — `wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features` and `wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local`. CI does the same.
-- **Local mode is off by default:** enable with `--local-mode` / `OXITERM_LOCAL_MODE=1`. Other env: `OXITERM_ALLOWED_HOSTS`, `OXITERM_ALLOW_HARDLINKS=1`, `OXITERM_LOCAL_PROXY_TIMEOUT_MS`. Grid is clamped to 500×200.
-- **Deploy (when there is a target again):** the live server is `oxiterm-cli serve …` (not the standalone server binary); `index.html` is embedded in the binary; no systemd unit on the old host. Note: since 7.1, `FsPageSource` refuses hard-linked files unless `OXITERM_ALLOW_HARDLINKS=1` (matters for `rsync --link-dest` deploys). The old Mikrus demo (`ssh.slavekm.pl -p 20236`) is dead; a VPS with port-22 SSH (`ssh mojadomena.pl`) is to be bought at the end of development.
-- **Click-miss debugging:** three historical causes — East-Asian ambiguous-width glyphs in labels, SSH emitter cursor desync after an ambiguous glyph earlier on the row, web canvas pixel↔cell mapping; identify SSH vs web path first.
-- **Browser pane quirk:** screenshots of the hidden pane can show a stale "Establishing connection" overlay or half-erased borders; check the DOM (`#loading-overlay` opacity) before believing it.
-- **Ideas (not scheduled):** `docs/IDEAS.md` #8 server-rendered high-risk surfaces (login/PIN/approvals: zero DOM, shuffled keypad, WebAuthn bridge; Remote Browser Isolation is the same architecture). Strategy page for the project site awaits a decision. OxiScreens (ESP32 dumb screens) blueprint in `docs/iot-screens.md`.
+- **Run locally:** `.claude/launch.json` → `oxiterm-site` (examples on web port 8087) and `oxiterm-sans` (8091). Build the two web bundles first (commands in the README; CI does the same).
+- **Local mode is off by default:** `--local-mode` / `OXITERM_LOCAL_MODE=1`. Other env: `OXITERM_ALLOWED_HOSTS`, `OXITERM_ALLOW_HARDLINKS=1`, `OXITERM_LOCAL_PROXY_TIMEOUT_MS`. Grid clamped to 500×200.
+- **Deploy:** the live server is `oxiterm-cli serve …`; no public server today (a VPS with port-22 SSH comes later). The websites are static (Cloudflare Pages, domain `slavekm.pl` on Cloudflare).
+- **Never let an agent touch `/dev/fb0`, `/dev/dri/*` or `/dev/input/*`**: they are the owner's real display.
+- **Hardware:** ESP32-S3 4.3" 800×480 touch (N16R8) bought after 2026-12-10; Xtensa needs `espup` (not installed). Android SDK 34 + Java 17 at `/vectorlegis_ssd_pool/android_sdk`; no device.
+- **Click-miss debugging:** three historical causes: ambiguous-width glyphs in labels, SSH emitter cursor desync, web canvas pixel↔cell mapping.
 
 ## 6. First steps for the next lead
-1. Read `docs/oxi-ui.md` (status line, Phase 7 stages, Phase 8 sections incl. Decisions, slices, wave log, reuse list).
-2. `git fetch` and look at the three `worktree-agent-*` branches; the worktrees are still on disk under `.claude/worktrees/` on the owner's machine.
-3. Finish 7.2 (fixes → bless → review PNGs → merge), then re-run BAD ACTOR for 8.P and 8.R, fix, merge.
-4. Continue the wave schedule (8.M, 8.T, 8.G, 7.3, 7.4, 7.2b …), keeping the BAD ACTOR gate and the wave log.
+1. Read this file, then [oxi-ui.md](oxi-ui.md) (status, Phase 8 decisions, stages, wave log), then [../AGENTS.md](../AGENTS.md).
+2. `gh run list -L 5`: is `main` green? If not, that is the first job.
+3. `git worktree list`: unmerged agent worktrees under `.claude/worktrees/` may hold work.
+4. Continue with section 4.

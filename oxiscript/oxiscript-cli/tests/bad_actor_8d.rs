@@ -1,5 +1,5 @@
 //! BAD ACTOR 8.D: each test asserts the SAFE / documented behaviour; a failing test is a finding
-//! (see HANDOFF-badactor-8d.md). `held_up_*` tests pass and pin behaviour that survived attack.
+//! (see docs/stages/8.D/bad-actor.md). `held_up_*` tests pass and pin behaviour that survived attack.
 //! The binary runs as a subprocess with a timeout so a hang or crash cannot hide the other repros.
 #![allow(clippy::too_many_lines, clippy::format_collect, clippy::needless_pass_by_value)]
 

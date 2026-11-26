@@ -16,15 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-    - uses: actions/checkout@v4
-    - uses: Swatinem/rust-cache@v2
+    - uses: actions/checkout@v7
+    - uses: Swatinem/rust-cache@v2.9.3
     - name: OxiScript gate (nightly level)
       run: |
         mkdir -p "$RUNNER_TEMP/gate"
         TMPDIR="$RUNNER_TEMP/gate" CARGO_BUILD_JOBS=4 scripts/oxiscript-gate.sh nightly
     - name: Upload logs on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: oxiscript-gate-logs
         path: ${{ runner.temp }}/gate/gate-*.log

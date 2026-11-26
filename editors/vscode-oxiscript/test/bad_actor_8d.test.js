@@ -1,6 +1,6 @@
 "use strict";
 // BAD ACTOR 8.D attack tests for the VS Code extension. Each test asserts the SAFE behaviour; a failing
-// test is a finding (see oxiscript/oxiscript-cli/HANDOFF-badactor-8d.md). Tests named `held_up_*` pass.
+// test is a finding (see docs/stages/8.D/bad-actor.md). Tests named `held_up_*` pass.
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs");

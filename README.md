@@ -1,44 +1,33 @@
-# 🚀 OxiTerm — Build TUI like a Website
+# OxiTerm · OxiUI · OxiScript
 
-OxiTerm is a high-performance TUI (Terminal User Interface) platform that lets you host interactive terminal applications over SSH and Web (Canvas/WASM). No client installation required — connect via `ssh yourdomain.com` or open a web browser.
+[![CI](https://github.com/slavek-is-hyperreal/oxiterm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/slavek-is-hyperreal/oxiterm/actions/workflows/ci.yml)
+[![OxiScript fuzz (nightly)](https://github.com/slavek-is-hyperreal/oxiterm/actions/workflows/oxiscript-fuzz.yml/badge.svg)](https://github.com/slavek-is-hyperreal/oxiterm/actions/workflows/oxiscript-fuzz.yml)
 
-### 🌟 "TUI as a Website"
-Why build complex terminal apps with low-level libraries when you can use **THTML**?
-- **HTML-like Syntax**: Define layouts, colors, and buttons in THTML files.
-- **HTMX-style Interactivity**: Simple `event-htmx` and `bind-state` attributes for real-time interaction.
-- **Hot Reload**: Change a `.thtml` file and see the terminal update instantly.
+One repository, three layers:
 
-### 🛠 Developer Workflow
+| Layer | What it is | State |
+|---|---|---|
+| **OxiTerm** | Build terminal UIs like a website: THTML/TCSS (HTML/CSS-like) rendered on the server and streamed to SSH terminals and the browser; app logic in an "App Server" in any language. | Working; the base everything else builds on |
+| **OxiUI** | The same pages as a real GUI: a display list (fills, borders, paths, glyph runs) to a browser canvas, or the portable `oxiterm-core` running on the device (browser WASM without a server, Linux framebuffer "OxiDE", later Android and a native GPU window). | Phases 0–6 and 7.1–7.2 done, see [docs/oxi-ui.md](docs/oxi-ui.md) |
+| **OxiScript** | A general-purpose, statically typed language that a TypeScript developer reads without learning, compiled to WebAssembly, with OxiUI as its first host. Integers and floats, `Result` instead of exceptions, capabilities instead of ambient authority, laws (property tests in the language). | **0.0.x: the compiler works end to end** (`.oxs` → type check → OxiIR → Wasm → wasmi). Nothing is guaranteed before 1.0.0, see [docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md) |
+
+Websites: [slavekm.pl](https://slavekm.pl) · [oxiui.slavekm.pl](https://oxiui.slavekm.pl) · [oxiscript.slavekm.pl](https://oxiscript.slavekm.pl) (built from [sites/](sites/), deployed by hand, see [sites/DEPLOY.md](sites/DEPLOY.md)).
+
+How it is built: by AI agents under one owner's supervision. Every stage is attacked by a separate adversarial agent ("BAD ACTOR") before it is merged; its findings become regression tests. The plan, the decisions and a measured log of every stage are in [docs/oxi-ui.md](docs/oxi-ui.md).
+
+## OxiTerm / OxiUI quick start
+
 ```bash
-# 1. Clone the repository and build from source
 git clone https://github.com/slavek-is-hyperreal/oxiterm.git
 cd oxiterm
+# the server embeds the web client bundle, build it first (needs wasm-pack)
+wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features
+wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
 cargo build --release -p oxiterm-cli
-
-# 2. Start local project website & TUI server
-./run_site.sh
-
-# 3. Connect from any terminal or web browser
-ssh localhost -p 2222
-# or navigate to http://localhost:8087
+./run_site.sh                      # examples on SSH :2222 and http://localhost:8087
+ssh localhost -p 2222              # or open the browser; ?gui=1 for the GUI client
 ```
-*(Publishing `oxiterm-cli` to crates.io is planned for a future release).*
 
-### 💎 Key Features
-- **App Server Integration**: Connect external backends (Python, Node.js, Rust) via `event-htmx` HTTP requests (`POST /events`) and receive real-time state patches or push updates (`POST /sessions/{id}/patch`). See [app-server-guide.md](docs/app-server-guide.md).
-- **Vector Graphics & Animations**: Native support for SVG, Lottie (.json) frame-ticking loops, and a built-in procedural toggle widget for `.riv` sources (no Rive runtime involved).
-- **Auto-Negotiated Rendering**: Dynamic detection of terminal capabilities (Kitty Graphics Protocol, Sixel, Unicode half-blocks) with automatic fallbacks.
-- **Interactive Mouse Mapping**: Direct translation of cell grid hover/click events to relative coordinates inside canvas nodes.
-- **Mobile-Responsive Layouts**: Viewport-aware routing and server-side device detection with dynamic `_mobile.thtml` template resolution.
-- **Bounded Backpressure**: Secure `BoundedFrameChannel` architecture prevents memory exhaustion.
-- **PUA-B Unicode Stabilization**: Pixel-perfect layouts across different terminal emulators.
-- **Predictive Echo**: Zero-latency feedback for keyboard input.
-
-### 📁 Repository Layout
-- `examples/` — Isolated single-feature demonstrations of the OxiTerm engine (THTML tags, SVG, Lottie, input fields).
-- `spotify-app-server/` — Complete, end-to-end multi-user Spotify Control Center application showing full App Server integration (FastAPI, OAuth 2.0, background push patches, web/SSH/mobile UI). See [spotify-demo.md](docs/spotify-demo.md).
-
-### 🚀 Quick Start (THTML Example)
 ```html
 <box style="bg: #1e293b; padding: 2; flex-direction: column;">
   <box style="flex-direction: row;">
@@ -46,26 +35,69 @@ ssh localhost -p 2222
     <text bind-state="count" style="fg: #38bdf8; height: 1;">0</text>
   </box>
   <button event-htmx="inc:count" style="fg: #4ade80; height: 1;">[ + ] Increment</button>
-  <img src="mascot.svg" style="width: 20; height: 10;" />
 </box>
 ```
 
-### 💡 Architectural Concepts & Roadmaps
-Looking to explore where OxiTerm is heading? Check out our concept blueprints:
-- **[OxiTerm Ideas & Strategic Roadmaps](docs/IDEAS.md)** — Master index of architectural experiments and future directions.
-  - 🐧 **[OxiDESK / OxiDE](docs/retro-desktop-environment.md)**: Transforming OxiTerm into a responsive desktop environment for vintage Linux PCs (Pentium II/III/4, 64–512 MB RAM).
-  - ⚡ **[OxiTerm Embedded & IoT](docs/embedded-iot-platform.md)**: Ultra-lightweight HMI and headless dashboard for SBCs, industrial machinery, and edge routers.
+Docs: [getting started](docs/getting-started.md) · [THTML](docs/thtml-reference.md) · [TCSS](docs/tcss-reference.md) · [App Server guide](docs/app-server-guide.md) · [architecture](docs/ARCHITECTURE.md) · [Spotify demo](docs/spotify-demo.md).
 
+## OxiScript quick start
 
----
+```bash
+cargo install --path oxiscript/oxiscript-cli     # installs `oxi`
+oxi new blinky --template touch-button
+cd blinky && oxi check && oxi fmt --check
+oxi explain OXS-E0005                            # every diagnostic has a stable code
+```
 
-### 📜 License
+```ts
+import { Log } from "host:log";
 
-OxiTerm is dual-licensed under either of
+function parsePort(n: i32): Result<u16, string> {
+  if (n < 1 || n > 65535) {
+    return Err("port out of range");
+  }
+  return Ok(n as u16);
+}
 
-- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
-- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
+export function main(log: Log): void {
+  switch (parsePort(8080).kind) {
+    case "ok":
+      log.write(2, "valid port");
+    case "err":
+      log.write(4, "invalid port");
+  }
+}
+```
 
-at your option.
+- What differs from TypeScript, for people and for AI agents: [AGENTS.md](AGENTS.md) (every example in it is compiled by the test suite).
+- Spec: [grammar](docs/oxiscript/grammar.md) · [IR](docs/oxiscript/ir.md) · [ABI](docs/oxiscript/abi.md) · [contracts between compiler stages](docs/oxiscript/contracts.md).
+- VS Code extension: [editors/vscode-oxiscript](editors/vscode-oxiscript/) (diagnostics, quick fixes, format and semicolons on save).
+- Browser playground: on [oxiscript.slavekm.pl](https://oxiscript.slavekm.pl) (check and format now, run next).
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual-licensed as above, without any additional terms or conditions.
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `oxiterm-proto`, `oxiterm-renderer` | THTML/TCSS parsing, layout (Taffy), rendering to cells and to the display list |
+| `oxiterm-core` | Host-independent session logic (no transport, threads, clock or filesystem); runs on the server, in the browser (local mode) and in OxiDE |
+| `oxiterm-server`, `oxiterm-cli` | SSH and WebSocket server, App Server dispatch; the `oxiterm` binary |
+| `oxiterm-web` | Browser client (Rust → Wasm): cell canvas, GUI display-list painter, local mode |
+| `oxiterm-fb` | OxiDE software rasterizer (PNG, `/dev/fb0`, DRM) |
+| `oxiterm-a11y` | Accessibility tree, linear screen-reader output, ARIA mirror |
+| `oxiscript/*` | The OxiScript toolchain: `syntax` (parser, formatter), `check` (types), `lower` (→ OxiIR), `ir`, `wasm` (→ Wasm), `abi`, `rc` (memory runtime), `runtime` (wasmi host), `cli` (`oxi`), `playground` (compiler in the browser) |
+| `editors/`, `sites/` | VS Code extension; the three websites |
+| `examples/`, `apps/`, `spotify-app-server/` | THTML examples, an e-book reader app, a full App Server demo |
+| `docs/` | Plan, references, research, [stage records](docs/stages/) |
+
+## Contributing and checks
+
+```bash
+scripts/oxiscript-gate.sh quick    # OxiScript: every crate + clippy
+scripts/oxiscript-gate.sh merge    # + CI-equivalent unified run, release fuzzing, long fuzz campaigns
+```
+
+CI runs the whole workspace on every push; the long OxiScript fuzz campaigns run nightly. Dependencies must have permissive licences (MIT, Apache-2.0, BSD, Zlib, ISC; no GPL/AGPL/LGPL).
+
+## License
+
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual-licensed as above, without any additional terms or conditions.

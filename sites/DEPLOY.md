@@ -73,7 +73,7 @@ Not a `_headers` line: set it in the dashboard, zone `slavekm.pl`, **SSL/TLS, Ed
 ## After deploy
 
 - Open each site, start the live demo (OxiUI) and press Check in the playground (OxiScript).
-- Run PageSpeed Insights (pagespeed.web.dev) for each URL; Lighthouse was not available on the build machine, so the numbers in HANDOFF-8w.md are page weights only.
+- Run PageSpeed Insights (pagespeed.web.dev) for each URL; Lighthouse was not available on the build machine, so the numbers in docs/stages/8.W/implementation.md are page weights only.
 - Submit `https://<site>/sitemap.xml` in Search Console if you want indexing sooner.
 
 ## What changes later

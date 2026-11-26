@@ -24,8 +24,8 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: Swatinem/rust-cache@v2
+    - uses: actions/checkout@v7
+    - uses: Swatinem/rust-cache@v2.9.3
     # oxiterm-server embeds the web client bundle with include_bytes!, and the bundle is
     # generated (gitignored), so it must be built before the workspace.
     - name: Install wasm target
@@ -70,7 +70,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || !inputs.coverage
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     # Plain cargo-audit against the committed Cargo.lock: fails on vulnerabilities, reports
     # unmaintained crates as warnings. (rustsec/audit-check needed check-run write access and
     # failed with "Resource not accessible by integration" even with a clean audit.)
@@ -83,8 +83,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.coverage
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: Swatinem/rust-cache@v2
+    - uses: actions/checkout@v7
+    - uses: Swatinem/rust-cache@v2.9.3
     - name: Install wasm target
       run: rustup target add wasm32-unknown-unknown
     - name: Install wasm-pack
@@ -104,7 +104,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
@@ -116,7 +116,7 @@ jobs:
       - name: Build
         run: cargo build --release
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             target/release/oxiterm-cli

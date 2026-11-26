@@ -1,6 +1,6 @@
 # OxiTerm Architecture
 
-This document details the architecture of the OxiTerm system — a TUI (Terminal User Interface) framework operating in a Server-Side Rendering (SSR) model.
+This document details the architecture of the OxiTerm system — a TUI (Terminal User Interface) framework operating in a Server-Side Rendering (SSR) model — and of what grew on top of it: the portable core and local mode (§10) and the OxiScript toolchain (§11).
 
 ---
 
@@ -166,3 +166,41 @@ OxiTerm manages connections separately from persistent interactive sessions:
 
 For a detailed blueprint on adapting OxiTerm as a standalone Desktop Environment (GUI/DE) for vintage and resource-constrained Linux hardware (direct `/dev/fb0`, DRM/KMS, raw TTY console, multi-window compositing, and D-Bus system integration), see [docs/retro-desktop-environment.md](retro-desktop-environment.md).
 
+
+---
+
+## 10. Portable core and local mode (OxiUI phases 4 and 7)
+
+The session logic lives in **`oxiterm-core`**: state, events and actions, animation, page loading from a `PageSource`, throttling and the event loop. It has no transport, threads, real clock or filesystem; hosts supply time and I/O. The event loop is driven either by `run()` (the server, with a blocking `EventSource`) or by the **step API** (`handle_event` / `tick` / `next_deadline`), which a browser, desktop or framebuffer host calls itself. `oxiterm-server` re-exports the core modules and keeps only what needs a real host (sessions, filesystem page source, host clock and queue, HTTP App Server dispatch, path safety). A boundary test (`oxiterm-core/tests/core_boundary.rs`) fails if a forbidden dependency or host API enters the core, and CI builds the core alone for `wasm32-unknown-unknown` and `aarch64-linux-android`.
+
+* **Server-driven mode** (the default): the core runs on the server; terminals get ANSI cell diffs, `?gui=1` browsers get the display list (§7b).
+* **Local mode** (phase 7.1, `--local-mode` / `OXITERM_LOCAL_MODE=1`, `?local=1` in the client): the core runs in the browser inside `oxiterm-web` (`src/local.rs`, `src/local_wasm.rs`); pages and assets come from an in-memory page source, timers drive the step API, and App Server actions are proxied. The static websites under `sites/` use this mode with no server at all.
+* **OxiDE** (phase 7.2, crate `oxiterm-fb`): a software rasterizer that draws a display list into RGBA (fills, rounded borders, paths, glyphs from the bundled fonts) and writes PNG, `/dev/fb0` or a DRM dumb buffer. Device output needs an explicit opt-in; tests only write PNG.
+
+Plan, measurements and remaining phases (Android shell, native GPU window): [oxi-ui.md](oxi-ui.md).
+
+---
+
+## 11. OxiScript toolchain (phase 8)
+
+OxiScript programs (`.oxs`) are compiled to Core WebAssembly and run in the **wasmi** interpreter with fuel limits and capabilities. Each compiler stage is its own crate, and what each may rely on is fixed in [oxiscript/contracts.md](oxiscript/contracts.md):
+
+```mermaid
+graph LR
+    Src[.oxs source] --> Syntax[oxiscript-syntax<br/>lexer, parser, formatter]
+    Syntax --> Check[oxiscript-check<br/>types, effects, laws]
+    Check --> Lower[oxiscript-lower<br/>typed AST to OxiIR]
+    Lower --> IR[oxiscript-ir<br/>verifier]
+    IR --> Wasm[oxiscript-wasm<br/>OxiIR to Wasm]
+    Wasm --> Run[oxiscript-runtime<br/>wasmi host]
+    RC[oxiscript-rc<br/>RC + cycle collector] -. linked into .-> Wasm
+    ABI[oxiscript-abi<br/>layout, IDL, codes] -. used by all .-> Check
+```
+
+* **`oxiscript-abi`** fixes the memory layout, the host interface language (IDL), the manifest and the registry of stable diagnostic codes (`OXS-E…`, append-only).
+* **`oxiscript-ir`** (OxiIR) is a typed SSA IR with explicit reference counting; every module is verified before code generation.
+* **`oxiscript-rc`** is the memory runtime (reference counting with elision hooks and a cycle collector) compiled to Wasm. Today the compiler's tests link a small stub runtime instead; linking the real one is the next step.
+* **`oxiscript-runtime`** loads modules under strict limits (own pre-scan of the binary first, then wasmi), binds host capabilities from the IDL and supports hot reload by instance swap.
+* **Tools:** `oxiscript-cli` (the `oxi` command: check with JSON diagnostics and fixes, fmt, explain, new; run/build next), `oxiscript-playground` (the compiler built for the browser, used by oxiscript.slavekm.pl) and the VS Code extension in `editors/vscode-oxiscript`.
+
+Language reference: [oxiscript/grammar.md](oxiscript/grammar.md); IR: [oxiscript/ir.md](oxiscript/ir.md); ABI: [oxiscript/abi.md](oxiscript/abi.md).
