@@ -21,7 +21,7 @@
     "supportButton": "Cafeum mihi dona",
     "repo": "Codex fontis in GitHub",
     "footerFine": "Sine vestigiis, sine crustulis, sine scriptis alienis, nihil in perlustratore tuo servatur. Codex sub licentia MIT vel Apache-2.0 est.",
-    "demoHint": "Hoc OxiUI intra perlustratorem tuum agit, sine servo. Circiter 1,5 MB deponit.",
+    "demoHint": "Hoc OxiUI intra perlustratorem tuum agit, sine servo. Circiter 2 MB deponit.",
     "runDemo": "Demonstrationem vivam incipe",
     "demoWeight": "Nihil usquam mittitur: pagina a WebAssembly in instrumento tuo pingitur.",
     "demoTitle": "Demonstratio OxiUI viva",
@@ -50,7 +50,8 @@
       "title": "Non inventum",
       "lead": "Haec pagina non exstat.",
       "home": "Domus"
-    }
+    },
+    "mascotAlt": "Oxi, axolotl, mascotta incepti"
   },
   "home": {
     "nav": {
@@ -135,6 +136,15 @@
       "text": "[LOCUS VACUUS: dedicatio, verbis ipsius domini]",
       "name": "[LOCUS VACUUS: nomen magistri]",
       "note": "[LOCUS VACUUS: versus optionalis]"
+    },
+    "showcase": {
+      "hint": "Tabulam incepti preme ut aperiatur, iterum preme ut claudatur.",
+      "tag": {
+        "oxiui": "Interfacies pro terminalibus, navigatris et WebAssembly",
+        "oxiscript": "Lingua typis instructa in WebAssembly compilata"
+      },
+      "closed": "aperi",
+      "opened": "claude"
     }
   },
   "oxiui": {
@@ -480,19 +490,53 @@
         "desc": "Plura quae fieri possunt in una pagina."
       }
     },
-    "demo": {
-      "heading": "demonstratio viva",
-      "intro": "Haec pagina in perlustratore tuo agit. Bullas preme.",
-      "counter": "Numerator: status in pagina vivit.",
-      "toggle": "Ostende et cela: nodus cum statu coniunctus.",
-      "toggleButton": "Nuntium ostende vel cela",
-      "revealed": "Salve. Hic textus apparet cum status ita iubet.",
-      "mode": "Modum elige: series litterarum in statu.",
-      "modeA": "quietus",
-      "modeB": "clarus",
-      "modeC": "sonorus",
-      "modeIs": "Modus:",
-      "footer": "[Tab] focum move  [Enter] preme"
+    "showcase": {
+      "desktop": {
+        "title": "Parva mensa",
+        "intro": "Fenestram per titulum trahe, fenestram preme ut in prima parte sit. Haec omnia sunt simplex THTML et TCSS, sine scripto.",
+        "introPhone": "Bullas preme. In lato velo fenestrae trahi possunt.",
+        "winCounter": "Numerator",
+        "winToggle": "Commutator",
+        "winDash": "Tabula",
+        "counterLabel": "Status in pagina vivit:",
+        "toggleLabel": "Elementum statui ligatum:",
+        "toggleBtn": "Muta",
+        "toggleOn": "Accensum. Hic textus apparet dum status verus est.",
+        "dashNote": "Numeri exempli, non vera machina. Vectes elastice labuntur.",
+        "cpu": "Processor",
+        "mem": "Memoria",
+        "disk": "Discus",
+        "quiet": "Quies",
+        "busy": "Opus",
+        "spike": "Saltus"
+      },
+      "fx": {
+        "title": "Pinacotheca effectuum",
+        "intro": "Margines, color, imagines vectoriales, animatio et parvum instrumentum. Eadem pagina ea in omni modo ostendit.",
+        "borders": "Margines",
+        "single": "simplex",
+        "double": "duplex",
+        "rounded": "rotundus",
+        "colors": "Color",
+        "text": "Textus",
+        "bold": "crassus",
+        "italic": "obliquus",
+        "plain": "simplex",
+        "svg": "Imago SVG",
+        "svgAlt": "Oxi, axolotl, ut imago vectorialis",
+        "lottie": "Animatio Lottie",
+        "lottieAlt": "Tintinnabulum sonans, animatio Lottie",
+        "lottieHint": "Per se agitur.",
+        "rive": "Commutator Rive",
+        "riveAlt": "Commutator a motore pictus",
+        "riveHint": "Commutatorem preme."
+      },
+      "ssh": {
+        "title": "Eadem pagina per SSH",
+        "p1": "Haec pagina est una charta .thtml. Mandato infra incepta, eadem charta per SSH ad terminale et etiam ad navigatrum praebetur. In hoc situ navigator nucleum OxiUI localiter exsequitur, ut WebAssembly.",
+        "cmd": "oxiterm-cli serve index.thtml",
+        "p2": "Servitor SSH publicus nondum operatur. Eum in machina tua exsequere."
+      }
     }
   },
   "oxiscript": {
@@ -891,6 +935,79 @@
           "text": "celeritas et prima intellegentia artificialis: perceptron, cognitor numerorum vivus doctus, parvum exemplar linguae."
         }
       ]
+    },
+    "showcase": {
+      "pipeline": {
+        "title": "Ab fonte ad programma currens",
+        "intro": "Charta .oxs per quinque gradus it. Omnia usque ad Wasm sunt compilator. wasmi, parvus interpres WebAssembly, eventum exsequitur.",
+        "alt": "Series",
+        "nodes": {
+          "src": "Fons .oxs",
+          "parse": "Analysis",
+          "check": "Probatio typorum",
+          "ir": "OxiIR",
+          "wasm": "Wasm",
+          "run": "wasmi"
+        }
+      },
+      "status": {
+        "title": "Quid hodie operatur et quid non",
+        "worksTitle": "Hodie operatur",
+        "works": [
+          "Analysator et formator",
+          "Probatio typorum cum codicibus errorum stabilibus",
+          "Emendationes mechanicae errorum communium",
+          "Exsecutio in navigatro, cum limite combustibilis",
+          "Facultates hospitis: log et state"
+        ],
+        "notyetTitle": "Nondum",
+        "notyet": [
+          "Bibliotheca regularis et fasciculi",
+          "Servitor linguae",
+          "f64 ut textus scribere",
+          "Instrumenta, ut ESP32"
+        ]
+      },
+      "tabs": {
+        "title": "Tria parva programmata",
+        "hint": "Tabulam preme. Haec sunt vera exempla campi probationis.",
+        "names": [
+          "Salve",
+          "Errores",
+          "Formae"
+        ],
+        "captions": [
+          "Facultates per main intrant: log est interfacies hospitis.",
+          "Errores sunt valores: Result et switch, sine exceptionibus.",
+          "Unio formarum et switch plenus."
+        ]
+      },
+      "diff": {
+        "title": "In quo a TypeScript differt",
+        "hint": "Versum preme ut aperiatur vel claudatur.",
+        "items": [
+          {
+            "head": "Numeri: nullus typus number est",
+            "body": "Integri sunt i8 usque ad u64, fluitantes sunt f32 et f64. Numquam per se miscentur: per as muta. Superfluxus integri trap facit."
+          },
+          {
+            "head": "Aequalitas: === solum",
+            "body": "== error est et probator emendationem offert. === non definitur in structuris, ordinibus, unionibus: campos compara."
+          },
+          {
+            "head": "Errores sunt valores, non exceptiones",
+            "body": "Nullum throw, try, catch. Functio quae deficere potest Result de T et E reddit, et suffixum ? errorem sursum tradit."
+          },
+          {
+            "head": "struct est valor, class est referentia",
+            "body": "Struct in assignatione copiatur. Identitas communis et mutabilis class requirit. Nullum extends est: interfacies et compositionem utere."
+          },
+          {
+            "head": "Nihil globale est: facultates per main intrant",
+            "body": "Nullum console, fetch, Math est. Programma ad mundum externum tantum per interfacies hospitis quas main accipit pervenit."
+          }
+        ]
+      }
     }
   }
 }

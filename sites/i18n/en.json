@@ -21,7 +21,7 @@
     "supportButton": "Buy me a coffee",
     "repo": "Source code on GitHub",
     "footerFine": "No trackers, no cookies, no third-party scripts, and nothing is stored in your browser. Code is MIT or Apache-2.0.",
-    "demoHint": "This runs OxiUI inside your browser, with no server. It downloads about 1.5 MB.",
+    "demoHint": "This runs OxiUI inside your browser, with no server. It downloads about 2 MB.",
     "runDemo": "Start the live demo",
     "demoWeight": "Nothing is sent anywhere: the page is rendered by WebAssembly on your device.",
     "demoTitle": "OxiUI live demo",
@@ -50,7 +50,8 @@
       "title": "Not found",
       "lead": "This page does not exist.",
       "home": "Home"
-    }
+    },
+    "mascotAlt": "Oxi the axolotl, the project mascot"
   },
   "home": {
     "nav": {
@@ -135,6 +136,15 @@
       "text": "[PLACEHOLDER: the dedication, in the owner's own words]",
       "name": "[PLACEHOLDER: the teacher's name]",
       "note": "[PLACEHOLDER: optional line]"
+    },
+    "showcase": {
+      "hint": "Click a project card to open it, click again to close it.",
+      "tag": {
+        "oxiui": "A UI for terminals, browsers and WebAssembly",
+        "oxiscript": "A typed language that compiles to WebAssembly"
+      },
+      "closed": "open",
+      "opened": "close"
     }
   },
   "oxiui": {
@@ -480,19 +490,53 @@
         "desc": "Several features on one page."
       }
     },
-    "demo": {
-      "heading": "live demo",
-      "intro": "This page is running in your browser. Click the buttons.",
-      "counter": "A counter: state lives in the page.",
-      "toggle": "Show and hide: a node bound to state.",
-      "toggleButton": "Show or hide a message",
-      "revealed": "Hello. This text appears when the state says so.",
-      "mode": "Pick a mode: a string in the state.",
-      "modeA": "calm",
-      "modeB": "bright",
-      "modeC": "loud",
-      "modeIs": "Mode:",
-      "footer": "[Tab] move focus  [Enter] press"
+    "showcase": {
+      "desktop": {
+        "title": "A small desktop",
+        "intro": "Drag a window by its title bar and click a window to bring it to the front. All of it is plain THTML and TCSS, no script.",
+        "introPhone": "Tap the buttons. On a wide screen the windows can be dragged.",
+        "winCounter": "Counter",
+        "winToggle": "Switch",
+        "winDash": "Dashboard",
+        "counterLabel": "State lives in the page:",
+        "toggleLabel": "A node bound to state:",
+        "toggleBtn": "Toggle",
+        "toggleOn": "On. This text is shown while the state is true.",
+        "dashNote": "Demo numbers, not a real machine. The bars glide with a spring.",
+        "cpu": "CPU",
+        "mem": "Memory",
+        "disk": "Disk",
+        "quiet": "Quiet",
+        "busy": "Busy",
+        "spike": "Spike"
+      },
+      "fx": {
+        "title": "Effects gallery",
+        "intro": "Borders, colour, vector art, animation and a small widget. The same page shows them in every mode.",
+        "borders": "Borders",
+        "single": "single",
+        "double": "double",
+        "rounded": "rounded",
+        "colors": "Colour",
+        "text": "Text",
+        "bold": "bold",
+        "italic": "italic",
+        "plain": "plain",
+        "svg": "SVG image",
+        "svgAlt": "Oxi the axolotl as a vector image",
+        "lottie": "Lottie animation",
+        "lottieAlt": "A ringing bell, a Lottie animation",
+        "lottieHint": "Plays by itself.",
+        "rive": "Rive toggle",
+        "riveAlt": "A toggle switch drawn by the engine",
+        "riveHint": "Click the switch."
+      },
+      "ssh": {
+        "title": "The same page over SSH",
+        "p1": "This page is a single .thtml file. Started with the command below, the very same file is served over SSH to a terminal and also to a browser. On this website the browser runs the OxiUI core locally, as WebAssembly.",
+        "cmd": "oxiterm-cli serve index.thtml",
+        "p2": "No public SSH server is running yet. Run it on your own machine."
+      }
     }
   },
   "oxiscript": {
@@ -891,6 +935,79 @@
           "text": "performance and a first AI: a perceptron, a digit recogniser trained live, a tiny language model."
         }
       ]
+    },
+    "showcase": {
+      "pipeline": {
+        "title": "From source to running program",
+        "intro": "A .oxs file goes through five steps. Everything up to Wasm is the compiler. wasmi, a small WebAssembly interpreter, runs the result.",
+        "alt": "Pipeline",
+        "nodes": {
+          "src": "Source .oxs",
+          "parse": "Parse",
+          "check": "Type check",
+          "ir": "OxiIR",
+          "wasm": "Wasm",
+          "run": "wasmi"
+        }
+      },
+      "status": {
+        "title": "What works today, and what does not",
+        "worksTitle": "Works today",
+        "works": [
+          "Parser and formatter",
+          "Type checker with stable error codes",
+          "Mechanical fixes for common mistakes",
+          "Run in your browser, with a fuel limit",
+          "Host capabilities: log and state"
+        ],
+        "notyetTitle": "Not yet",
+        "notyet": [
+          "Standard library and packages",
+          "Language server",
+          "Printing an f64 as text",
+          "Devices such as ESP32"
+        ]
+      },
+      "tabs": {
+        "title": "Three small programs",
+        "hint": "Click a tab. These are the real examples of the playground.",
+        "names": [
+          "Hello",
+          "Errors",
+          "Shapes"
+        ],
+        "captions": [
+          "Capabilities come in through main: log is a host interface.",
+          "Errors are values: Result and a switch, no exceptions.",
+          "A union of shapes and an exhaustive switch."
+        ]
+      },
+      "diff": {
+        "title": "Where it differs from TypeScript",
+        "hint": "Click a row to open or close it.",
+        "items": [
+          {
+            "head": "Numbers: there is no number type",
+            "body": "Integers are i8 to u64, floats are f32 and f64. They never mix by themselves: convert with as. Integer overflow traps."
+          },
+          {
+            "head": "Equality: === only",
+            "body": "== is an error and the checker offers the fix. === is not defined on structs, arrays or unions: compare fields."
+          },
+          {
+            "head": "Errors are values, not exceptions",
+            "body": "No throw, try or catch. A function that can fail returns Result of T and E, and the postfix ? passes an error up."
+          },
+          {
+            "head": "struct is a value, class is a reference",
+            "body": "A struct is copied on assignment. Shared, mutable identity needs a class. There is no extends: use interfaces and composition."
+          },
+          {
+            "head": "Nothing is global: capabilities come through main",
+            "body": "There is no console, fetch or Math. A program reaches the outside world only through the host interfaces its main function receives."
+          }
+        ]
+      }
     }
   }
 }
