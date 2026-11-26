@@ -416,10 +416,7 @@ impl<'a> Checker<'a> {
             return false;
         }
         let owner = self.mods[self.cm].local_fn[l.0 as usize] as usize;
-        if owner + 1 < self.fnctx.len() && (ctx.assigned.contains(name) || ctx.assigned.contains("*")) {
-            return false;
-        }
-        true
+        !(owner + 1 < self.fnctx.len() && (ctx.assigned.contains(name) || ctx.assigned.contains("*")))
     }
 
     /// Use of local `l` at `node`: capture bookkeeping, definite assignment, narrowing.
