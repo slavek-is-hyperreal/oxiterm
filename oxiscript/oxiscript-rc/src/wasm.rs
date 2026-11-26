@@ -81,8 +81,116 @@ unsafe impl Allocator for WasmSys {
 
 pub struct WasmHeap;
 
+/// Fast size-class free-list allocator in front of `dlmalloc` for small
+/// 8-aligned allocations (`8..=256` bytes, 32 classes). Freed small blocks
+/// return directly to their class list in O(1) without touching `dlmalloc`;
+/// misses carve from 4 KiB slabs obtained from `dlmalloc` (falling back to
+/// exact-size `dlmalloc` near OOM so headroom is never wasted).
+const SMALL_MAX: u32 = 256;
+const SMALL_CLASSES: usize = (SMALL_MAX as usize) / 8;
+const SLAB_SIZE: u32 = 4096;
+
+struct SmallPool {
+    heads: [u32; SMALL_CLASSES],
+    slab_cur: u32,
+    slab_end: u32,
+}
+
+impl SmallPool {
+    const fn new() -> Self {
+        SmallPool {
+            heads: [0; SMALL_CLASSES],
+            slab_cur: 0,
+            slab_end: 0,
+        }
+    }
+
+    #[inline(always)]
+    fn alloc_small(&mut self, sz: u32) -> u32 {
+        let idx = ((sz - 1) >> 3) as usize;
+        // SAFETY: callers only call `alloc_small` with `8 <= sz <= SMALL_MAX` (8-aligned),
+        // so `idx < SMALL_CLASSES` (32) always holds; unchecked avoids a panic block in hot path.
+        let slot = unsafe { self.heads.get_unchecked_mut(idx) };
+        let head = *slot;
+        if head != 0 {
+            // SAFETY: free blocks in `heads[idx]` are valid 8-aligned allocations >= 8 bytes.
+            *slot = unsafe { core::ptr::read(head as usize as *const u32) };
+            return head;
+        }
+        self.alloc_small_slow(sz)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn alloc_small_slow(&mut self, sz: u32) -> u32 {
+        if self.slab_end.wrapping_sub(self.slab_cur) >= sz {
+            let p = self.slab_cur;
+            self.slab_cur = p + sz;
+            return p;
+        }
+        // Recycle any leftover slab tail into its matching size class.
+        let rem = self.slab_end.wrapping_sub(self.slab_cur);
+        if (8..=SMALL_MAX).contains(&rem) {
+            let ridx = ((rem - 1) >> 3) as usize;
+            let p = self.slab_cur;
+            // SAFETY: `p` is an 8-aligned slice of `rem` bytes from the current slab.
+            unsafe {
+                let slot = self.heads.get_unchecked_mut(ridx);
+                core::ptr::write(p as usize as *mut u32, *slot);
+                *slot = p;
+            }
+        }
+        self.slab_cur = 0;
+        self.slab_end = 0;
+        // Carve a fresh 4 KiB slab from dlmalloc.
+        let slab = dl_malloc(SLAB_SIZE);
+        if slab != 0 {
+            self.slab_cur = slab + sz;
+            self.slab_end = slab + SLAB_SIZE;
+            return slab;
+        }
+        // Near OOM: fall back to an exact-size block so we never waste headroom.
+        dl_malloc(sz)
+    }
+
+    #[inline(always)]
+    fn free_small(&mut self, a: u32, sz: u32) {
+        let idx = ((sz - 1) >> 3) as usize;
+        // SAFETY: callers only call `free_small` with `8 <= sz <= SMALL_MAX` (8-aligned),
+        // so `idx < SMALL_CLASSES` (32) always holds; `a` is an 8-aligned block of `sz >= 8` bytes.
+        unsafe {
+            let slot = self.heads.get_unchecked_mut(idx);
+            core::ptr::write(a as usize as *mut u32, *slot);
+            *slot = a;
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn dl_malloc(sz: u32) -> u32 {
+    // SAFETY: single-threaded; valid size/align.
+    unsafe { (*addr_of_mut!(DL)).malloc(sz as usize, 8) as usize as u32 }
+}
+
+#[cold]
+#[inline(never)]
+fn dl_calloc(sz: u32) -> u32 {
+    // SAFETY: single-threaded; valid size/align.
+    unsafe { (*addr_of_mut!(DL)).calloc(sz as usize, 8) as usize as u32 }
+}
+
+#[cold]
+#[inline(never)]
+fn dl_free(a: u32, sz: u32) {
+    // SAFETY: single-threaded; `a` was returned by `dl_malloc`/`dl_calloc`.
+    unsafe { (*addr_of_mut!(DL)).free(a as usize as *mut u8, sz as usize, 8) }
+}
+
 static mut DL: Dlmalloc<WasmSys> = Dlmalloc::new_with_allocator(WasmSys { cur: Cell::new(0) });
+static mut POOL: SmallPool = SmallPool::new();
 static mut RT: Rt<WasmHeap> = Rt::new(WasmHeap);
+static mut RT_INITED: bool = false;
 
 #[repr(C, align(8))]
 pub struct Scratch(pub [u8; 4096]);
@@ -120,13 +228,43 @@ impl Heap for WasmHeap {
         // SAFETY: see ld32; ptr::copy is memmove.
         unsafe { core::ptr::copy(src as usize as *const u8, dst as usize as *mut u8, len as usize) }
     }
+    #[inline(always)]
     fn alloc(&mut self, size: u32) -> u32 {
-        // SAFETY: single-threaded; valid size/align.
-        unsafe { (*addr_of_mut!(DL)).calloc(size as usize, 8) as usize as u32 }
+        let sz = (size + 7) & !7;
+        if sz <= SMALL_MAX {
+            // SAFETY: single-threaded.
+            let p = unsafe { (*addr_of_mut!(POOL)).alloc_small(sz) };
+            if p != 0 {
+                // SAFETY: `p` is an 8-aligned block of `sz` bytes.
+                unsafe { core::ptr::write_bytes(p as usize as *mut u8, 0, sz as usize) };
+            }
+            return p;
+        }
+        dl_calloc(sz)
     }
+    #[inline(always)]
+    fn alloc_uninit(&mut self, size: u32) -> u32 {
+        let sz = (size + 7) & !7;
+        if sz <= SMALL_MAX {
+            // SAFETY: single-threaded.
+            return unsafe { (*addr_of_mut!(POOL)).alloc_small(sz) };
+        }
+        dl_malloc(sz)
+    }
+    #[inline(always)]
     fn free(&mut self, a: u32, size: u32) {
-        // SAFETY: `a` was returned by `alloc`.
-        unsafe { (*addr_of_mut!(DL)).free(a as usize as *mut u8, size as usize, 8) }
+        let sz = (size + 7) & !7;
+        if sz <= SMALL_MAX {
+            // SAFETY: single-threaded; `a` was returned by `alloc`/`alloc_uninit`.
+            unsafe { (*addr_of_mut!(POOL)).free_small(a, sz) };
+            return;
+        }
+        dl_free(a, sz);
+    }
+    #[inline(always)]
+    fn st8(&mut self, a: u32, v: u8) {
+        // SAFETY: wasm bounds-checks the access; addresses come from the runtime.
+        unsafe { core::ptr::write(a as usize as *mut u8, v) }
     }
     fn mem_size(&self) -> u64 {
         core::arch::wasm32::memory_size(0) as u64 * 65536
@@ -220,6 +358,10 @@ pub extern "C" fn oxi_str_from_f64(v: f64) -> u32 {
     rt().str_from_f64(v)
 }
 #[no_mangle]
+pub extern "C" fn oxi_str_from_f32(v: f32) -> u32 {
+    rt().str_from_f32(v)
+}
+#[no_mangle]
 pub extern "C" fn oxi_array_new(type_id: u32, len: u32) -> u32 {
     rt().array_new(type_id, len)
 }
@@ -231,7 +373,9 @@ pub extern "C" fn oxi_array_grow(a: u32, min_cap: u32) {
 /// `oxi_rt_init(typedesc_base, typedesc_count, heap_base)`: must run before
 /// any other runtime call (the compiler's `oxi_init` calls it first).
 /// `heap_base` is the 8-aligned end of the compiler's static data (`0` keeps
-/// the runtime's default start at `__heap_base`).
+/// the runtime's default start at `__heap_base` in standalone builds; linked
+/// modules additionally guard against any `heap_base < static_end`).
+/// Calling `oxi_rt_init` a second time with valid arguments is a harmless no-op.
 #[no_mangle]
 pub extern "C" fn oxi_rt_init(base: u32, count: u32, heap_base: u32) {
     if heap_base != 0 {
@@ -240,6 +384,10 @@ pub extern "C" fn oxi_rt_init(base: u32, count: u32, heap_base: u32) {
         if !heap_base.is_multiple_of(8) || heap_base < rt_end || u64::from(heap_base) > mem {
             rt().heap.trap(T_BAD_TYPEDESC);
         }
+    }
+    // SAFETY: single-threaded.
+    if unsafe { *addr_of!(RT_INITED) } {
+        return;
     }
     rt().init(base, count);
     if heap_base != 0 {
@@ -250,6 +398,10 @@ pub extern "C" fn oxi_rt_init(base: u32, count: u32, heap_base: u32) {
                 alloc.cur.set(heap_base as usize);
             }
         }
+    }
+    // SAFETY: single-threaded.
+    unsafe {
+        *addr_of_mut!(RT_INITED) = true;
     }
 }
 

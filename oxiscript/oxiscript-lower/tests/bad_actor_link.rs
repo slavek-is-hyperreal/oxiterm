@@ -87,6 +87,7 @@ export function main(log: Log): void {
 /// automatic trigger inside a call. With the default 16 MiB limit this runs out of memory instead of
 /// collecting -- document how far it gets.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy (2M cycles): runs in release and in the GitHub nightly; the lead times it in release to rule out quadratic collection")]
 fn cycles_without_a_host_collect_hit_the_memory_limit() {
     let src = format!(
         "{HDR}{}",

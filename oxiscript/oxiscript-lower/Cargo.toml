@@ -14,3 +14,4 @@ oxiscript-wasm = { path = "../oxiscript-wasm" }
 
 [dev-dependencies]
 oxiscript-runtime = { path = "../oxiscript-runtime" }
+oxiscript-wasm = { path = "../oxiscript-wasm", features = ["debug-runtime"] }

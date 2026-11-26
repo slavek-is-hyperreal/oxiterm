@@ -178,6 +178,10 @@ pub struct CompileOptions {
     /// validator allows). No code path emits a non-Device feature today, so
     /// every target yields the same code; only the manifest differs.
     pub target: Target,
+    /// When `runtime == RuntimeMode::Linked`, link the debug build of `oxiscript-rc`
+    /// (with `stale_object` trap 65 and freed-memory poisoning). Requires the
+    /// `debug-runtime` Cargo feature of `oxiscript-wasm`.
+    pub debug_runtime: bool,
 }
 
 impl Default for CompileOptions {
@@ -190,6 +194,7 @@ impl Default for CompileOptions {
             validate_output: true,
             allow_raw_exports: false,
             target: Target::Device,
+            debug_runtime: false,
         }
     }
 }
@@ -279,7 +284,7 @@ pub fn compile_with_stats(module: &Module, opts: &CompileOptions) -> Result<Outp
 
 fn compile_inner(m: &Module, opts: &CompileOptions) -> Result<Output, Diagnostic> {
     let (lay, table_base, scratch_ptr) = if opts.runtime == RuntimeMode::Linked {
-        let rt = link::runtime_layout()?;
+        let rt = link::runtime_layout(opts.debug_runtime)?;
         let lay = modlayout::Layout::build_at(m, rt.p_data_base)?;
         (lay, rt.table_len, rt.scratch_ptr)
     } else {
@@ -294,7 +299,7 @@ fn compile_inner(m: &Module, opts: &CompileOptions) -> Result<Output, Diagnostic
     let mut functions = cx.defs.len();
     let raw_wasm = cx.assemble(static_end)?;
     let wasm = if opts.runtime == RuntimeMode::Linked {
-        let (merged, n_fns) = link::merge(&raw_wasm)?;
+        let (merged, n_fns) = link::merge(&raw_wasm, static_end, opts.debug_runtime)?;
         functions = n_fns;
         merged
     } else {

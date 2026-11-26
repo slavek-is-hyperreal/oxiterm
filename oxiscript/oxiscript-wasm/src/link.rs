@@ -19,6 +19,8 @@
 //!   `oxi_trap_kind`. No `oxi:rt` imports remain in the merged module.
 
 use crate::cx::RT_MODULE;
+#[cfg(not(feature = "debug-runtime"))]
+use crate::E_CONFIG;
 use crate::{Diagnostic, E_LIMIT, I_INTERNAL};
 use oxiscript_abi::exports::{self, ExportKind as AbiKind, Provider};
 use oxiscript_abi::layout::RESERVED_LOW_BYTES;
@@ -29,10 +31,10 @@ use std::convert::Infallible;
 use std::sync::OnceLock;
 use wasm_encoder::reencode::{self, Reencode};
 use wasm_encoder::{
-    CodeSection, ConstExpr, CustomSection, DataCountSection, DataSection, ElementSection,
-    ElementSegment, Elements, EntityType, ExportKind, ExportSection, Function, FunctionSection,
-    GlobalSection, GlobalType, ImportSection, MemorySection, MemoryType, Module, RefType,
-    TableSection, TableType, TypeSection, ValType,
+    BlockType, CodeSection, ConstExpr, CustomSection, DataCountSection, DataSection,
+    ElementSection, ElementSegment, Elements, EntityType, ExportKind, ExportSection, Function,
+    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemorySection,
+    MemoryType, Module, RefType, TableSection, TableType, TypeSection, ValType,
 };
 use wasmparser::{
     CompositeInnerType, DataKind, ElementItems, ElementKind, ExternalKind, FunctionBody, Operator,
@@ -42,6 +44,13 @@ use wasmparser::{
 /// Embedded `oxiscript-rc` compiled to `wasm32-unknown-unknown` (`--release`)
 /// with the exact ABI 1.0 Core Wasm feature set by `build.rs`.
 pub(crate) const RUNTIME_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/oxiscript_rc.wasm"));
+
+/// Embedded debug build of `oxiscript-rc` (`debug_assertions` enabled: `stale_object`
+/// trap 65 + 0xDD freed-memory poisoning), built only when the `debug-runtime`
+/// Cargo feature is active.
+#[cfg(feature = "debug-runtime")]
+pub(crate) const RUNTIME_WASM_DEBUG: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/oxiscript_rc_debug.wasm"));
 
 /// Temporary export emitted by the compiler in `RuntimeMode::Linked` so the
 /// merger can wire the runtime's `("oxi:rt", "oxi_set_trap")` import to it;
@@ -302,15 +311,26 @@ fn parse_module(bytes: &[u8]) -> Result<ParsedModule<'_>, Diagnostic> {
     Ok(m)
 }
 
-fn inspect_runtime() -> Result<RuntimeLayout, String> {
+struct PreparsedBody {
+    locals: Vec<(u32, ValType)>,
+    ops: Vec<Operator<'static>>,
+}
+
+struct CachedRuntime {
+    parsed: ParsedModule<'static>,
+    bodies: Vec<PreparsedBody>,
+    layout: RuntimeLayout,
+}
+
+fn inspect_and_cache(wasm: &'static [u8]) -> Result<CachedRuntime, String> {
     // `libcore` in modern Rust toolchains may emit reference-types-encoded
     // element/table metadata; the merger normalizes sections and `compile_inner`
     // validates the final merged module with strict `allowed_features()`.
     let rt_feats = crate::allowed_features() | wasmparser::WasmFeatures::REFERENCE_TYPES;
     wasmparser::Validator::new_with_features(rt_feats)
-        .validate_all(RUNTIME_WASM)
+        .validate_all(wasm)
         .map_err(|e| format!("embedded runtime failed validation: {e}"))?;
-    let r = parse_module(RUNTIME_WASM).map_err(|d| d.message)?;
+    let r = parse_module(wasm).map_err(|d| d.message)?;
     if r.func_imports.len() != 1
         || r.func_imports[0].0 != RT_MODULE
         || r.func_imports[0].1 != "oxi_set_trap"
@@ -373,19 +393,66 @@ fn inspect_runtime() -> Result<RuntimeLayout, String> {
         }
     }
 
+    let mut bodies = Vec::with_capacity(r.bodies.len());
+    for body in &r.bodies {
+        let mut locals = Vec::new();
+        let lr = body
+            .get_locals_reader()
+            .map_err(|e| format!("embedded runtime locals: {e}"))?;
+        for l in lr {
+            let (cnt, vt) = l.map_err(|e| format!("embedded runtime local: {e}"))?;
+            locals.push((cnt, conv_val_type(vt).map_err(|d| d.message)?));
+        }
+        let mut ops = Vec::new();
+        let reader = body
+            .get_operators_reader()
+            .map_err(|e| format!("embedded runtime ops: {e}"))?;
+        for op in reader {
+            ops.push(op.map_err(|e| format!("embedded runtime op: {e}"))?);
+        }
+        bodies.push(PreparsedBody { locals, ops });
+    }
+
     let p_data_base = ((rt_heap_base + 15) & !15).max(RESERVED_LOW_BYTES);
-    Ok(RuntimeLayout {
+    let layout = RuntimeLayout {
         p_data_base,
         table_len: r.table_len,
         scratch_ptr,
+    };
+    Ok(CachedRuntime {
+        parsed: r,
+        bodies,
+        layout,
     })
 }
 
-pub(crate) fn runtime_layout() -> Result<RuntimeLayout, Diagnostic> {
-    static INFO: OnceLock<Result<RuntimeLayout, String>> = OnceLock::new();
-    INFO.get_or_init(inspect_runtime)
-        .clone()
-        .map_err(err)
+fn cached_runtime(debug_runtime: bool) -> Result<&'static CachedRuntime, Diagnostic> {
+    if debug_runtime {
+        #[cfg(feature = "debug-runtime")]
+        {
+            static DEBUG_INFO: OnceLock<Result<CachedRuntime, String>> = OnceLock::new();
+            return DEBUG_INFO
+                .get_or_init(|| inspect_and_cache(RUNTIME_WASM_DEBUG))
+                .as_ref()
+                .map_err(|e| err(e.clone()));
+        }
+        #[cfg(not(feature = "debug-runtime"))]
+        {
+            return Err(Diagnostic::new(
+                E_CONFIG,
+                "debug_runtime requires the `debug-runtime` Cargo feature of `oxiscript-wasm`",
+                None,
+            ));
+        }
+    }
+    static INFO: OnceLock<Result<CachedRuntime, String>> = OnceLock::new();
+    INFO.get_or_init(|| inspect_and_cache(RUNTIME_WASM))
+        .as_ref()
+        .map_err(|e| err(e.clone()))
+}
+
+pub(crate) fn runtime_layout(debug_runtime: bool) -> Result<RuntimeLayout, Diagnostic> {
+    Ok(cached_runtime(debug_runtime)?.layout)
 }
 
 struct Remapper<'a> {
@@ -441,11 +508,34 @@ fn reencode_body(
     Ok(func)
 }
 
+fn reencode_preparsed(
+    rm: &mut Remapper<'_>,
+    body: &PreparsedBody,
+) -> Result<Function, Diagnostic> {
+    let mut func = Function::new(body.locals.iter().copied());
+    for op in &body.ops {
+        let ins = rm
+            .instruction(op.clone())
+            .map_err(|e| err(format!("linker: reencode instruction: {e}")))?;
+        func.instruction(&ins);
+    }
+    Ok(func)
+}
+
 /// Merge a compiler-generated program module (compiled with `RuntimeMode::Linked`
-/// offsets) and [`RUNTIME_WASM`] into one Core Wasm module.
-pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic> {
+/// offsets) and the cached embedded runtime into one Core Wasm module.
+///
+/// Wraps `oxi_rt_init` with a guard rejecting any `heap_base < static_end`
+/// (trap 64 / `T_BAD_TYPEDESC`) so a direct or repeated host call can never
+/// point the allocator into program static data (BL03).
+pub(crate) fn merge(
+    program_wasm: &[u8],
+    static_end: u32,
+    debug_runtime: bool,
+) -> Result<(Vec<u8>, usize), Diagnostic> {
     let p = parse_module(program_wasm)?;
-    let r = parse_module(RUNTIME_WASM)?;
+    let cached = cached_runtime(debug_runtime)?;
+    let r = &cached.parsed;
 
     // 1. Deduplicated types.
     let mut merged_types: Vec<(Vec<ValType>, Vec<ValType>)> = Vec::new();
@@ -461,6 +551,7 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
     };
     let p_type_map: Vec<u32> = p.types.iter().map(&mut intern).collect();
     let r_type_map: Vec<u32> = r.types.iter().map(&mut intern).collect();
+    let rt_init_guard_ty = intern(&(vec![ValType::I32, ValType::I32, ValType::I32], vec![]));
 
     // 2. Partition P's imports into host imports (kept) and `oxi:rt` imports (resolved).
     let mut host_imports: Vec<(String, String, u32)> = Vec::new();
@@ -482,7 +573,7 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
     let r_n_imports = r.func_imports.len() as u32;
     let p_n_defs = p.def_func_types.len() as u32;
     let r_n_defs = r.def_func_types.len() as u32;
-    let total_funcs = (m_n_imports + p_n_defs + r_n_defs) as usize;
+    let total_funcs = (m_n_imports + p_n_defs + r_n_defs + 1) as usize;
     let total_globals = p.globals.len() + r.globals.len();
     if total_funcs > crate::LIMIT_FUNCS || total_globals > crate::LIMIT_GLOBALS {
         return Err(Diagnostic::new(
@@ -494,6 +585,7 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
 
     let p_def_base = m_n_imports;
     let r_def_base = m_n_imports + p_n_defs;
+    let rt_init_guard_idx = r_def_base + r_n_defs;
 
     // 3. Function index maps for R and P.
     // Find P's `__oxi_set_trap` helper so R's import 0 resolves to it.
@@ -529,6 +621,11 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
             r_export_funcs.insert(name.as_str(), r_func_map[*idx as usize]);
         }
     }
+    let r_rt_init_idx = *r_export_funcs
+        .get(exports::RT_INIT)
+        .ok_or_else(|| err("linker: runtime missing `oxi_rt_init`"))?;
+    // Route both internal and exported `oxi_rt_init` through the static_end guard (BL03).
+    r_export_funcs.insert(exports::RT_INIT, rt_init_guard_idx);
 
     let mut p_func_map: Vec<u32> = Vec::with_capacity((p_n_imports + p_n_defs) as usize);
     for (i, slot) in p_imp_target.iter().enumerate() {
@@ -606,6 +703,7 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
     for &ti in &r.def_func_types {
         fs.function(r_type_map[ti as usize]);
     }
+    fs.function(rt_init_guard_ty);
     out.section(&fs);
 
     // Table section (single funcref table covering R's slots + P's closure targets)
@@ -715,14 +813,29 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
         out.section(&DataCountSection { count: total_data });
     }
 
-    // Code section: P's bodies, then R's bodies.
+    // Code section: P's bodies, then R's bodies, then the `oxi_rt_init` guard.
     let mut cs = CodeSection::new();
     for body in &p.bodies {
         cs.function(&reencode_body(&mut p_rm, body)?);
     }
-    for body in &r.bodies {
-        cs.function(&reencode_body(&mut r_rm, body)?);
+    for body in &cached.bodies {
+        cs.function(&reencode_preparsed(&mut r_rm, body)?);
     }
+    let mut guard = Function::new([]);
+    guard.instruction(&Instruction::LocalGet(2));
+    guard.instruction(&Instruction::I32Const(static_end as i32));
+    guard.instruction(&Instruction::I32LtU);
+    guard.instruction(&Instruction::If(BlockType::Empty));
+    guard.instruction(&Instruction::I32Const(64)); // T_BAD_TYPEDESC
+    guard.instruction(&Instruction::Call(set_trap_m_idx));
+    guard.instruction(&Instruction::Unreachable);
+    guard.instruction(&Instruction::End);
+    guard.instruction(&Instruction::LocalGet(0));
+    guard.instruction(&Instruction::LocalGet(1));
+    guard.instruction(&Instruction::LocalGet(2));
+    guard.instruction(&Instruction::Call(r_rt_init_idx));
+    guard.instruction(&Instruction::End);
+    cs.function(&guard);
     out.section(&cs);
 
     // Data section: R's data segments, then P's data segments.
@@ -763,5 +876,5 @@ pub(crate) fn merge(program_wasm: &[u8]) -> Result<(Vec<u8>, usize), Diagnostic>
     if bytes.len() > (1 << 28) {
         return Err(Diagnostic::new(E_LIMIT, "output module too large", None));
     }
-    Ok((bytes, (p_n_defs + r_n_defs) as usize))
+    Ok((bytes, (p_n_defs + r_n_defs + 1) as usize))
 }

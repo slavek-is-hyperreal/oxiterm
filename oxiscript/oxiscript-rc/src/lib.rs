@@ -144,7 +144,9 @@
     clippy::needless_pass_by_value,
     clippy::struct_field_names,
     clippy::items_after_statements,
-    clippy::should_implement_trait
+    clippy::should_implement_trait,
+    clippy::inline_always,
+    clippy::struct_excessive_bools
 )]
 
 pub mod heap;

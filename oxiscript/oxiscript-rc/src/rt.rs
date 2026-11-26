@@ -43,6 +43,16 @@ pub const META_TYPE_MASK: u32 = 0x00FF_FFFF;
 pub const COLOUR_SHIFT: u32 = 24;
 pub const COLOUR_MASK: u32 = 0b111 << COLOUR_SHIFT;
 pub const BUFFERED: u32 = 1 << 27;
+/// Internal transient flag (reserved bit 28) used only inside a cycle-collector
+/// trial to avoid pushing the same node onto `stack` more than once. Always
+/// cleared before a trial returns (whether committed or undone).
+const IN_STACK: u32 = 1 << 28;
+
+/// Pre-reserved inline workspace (lives in `.bss` on wasm32, zero bytes in `.wasm`)
+/// so batched cycle collection over small/medium cycles needs zero heap headroom.
+const INLINE_STACK: usize = 2048;
+const INLINE_LOG: usize = 1024;
+const COLLECT_BATCH: u32 = 256;
 
 pub const BLACK: u32 = 0;
 pub const GRAY: u32 = 1;
@@ -196,6 +206,8 @@ pub struct Rt<H: Heap> {
     work: u32,
     limit: u32,
     in_trial: bool,
+    in_drain: bool,
+    in_oom_collect: bool,
     oom_abort: bool,
     batch: u32,
     deferred_limit: u32,
@@ -205,6 +217,8 @@ pub struct Rt<H: Heap> {
     livemap: V32,
     tdc_id: u32,
     tdc: Td,
+    inline_stack: [u32; INLINE_STACK],
+    inline_log: [u32; INLINE_LOG],
     #[cfg(debug_assertions)]
     floor: u32,
     pub cfg: Config,
@@ -238,6 +252,8 @@ impl<H: Heap> Rt<H> {
             work: 0,
             limit: u32::MAX,
             in_trial: false,
+            in_drain: false,
+            in_oom_collect: false,
             oom_abort: false,
             batch: u32::MAX,
             deferred_limit: 0,
@@ -247,6 +263,8 @@ impl<H: Heap> Rt<H> {
             livemap: V32::new(),
             tdc_id: 0,
             tdc: Td { size: 0, kind: 0, flags: 0, pcount: 0, pmap: 0 },
+            inline_stack: [0; INLINE_STACK],
+            inline_log: [0; INLINE_LOG],
             #[cfg(debug_assertions)]
             floor: u32::MAX,
             cfg: Config { drain_budget: 256, root_threshold: 1024 },
@@ -321,8 +339,16 @@ impl<H: Heap> Rt<H> {
         true
     }
 
+    #[cold]
+    #[inline(never)]
     fn trap(&mut self, kind: u32) -> ! {
         self.heap.trap(kind)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn drain_cold(&mut self) {
+        self.drain(self.cfg.drain_budget);
     }
 
     // ---- low level -------------------------------------------------------
@@ -336,16 +362,23 @@ impl<H: Heap> Rt<H> {
         self.heap.ld32(p - 4)
     }
 
-    fn td(&mut self, id: u32) -> Td {
+    /// Populate `self.tdc` for `id` in place (no 20-byte struct return / shadow stack frame).
+    #[inline(always)]
+    fn ensure_td(&mut self, id: u32) {
+        if id != self.tdc_id || id == 0 {
+            self.load_td_slow(id);
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn load_td_slow(&mut self, id: u32) {
         if id == 0 || id >= self.td_count {
             self.trap(T_UNREACHABLE);
         }
-        if id == self.tdc_id {
-            return self.tdc; // one-entry cache: descriptors are immutable after init
-        }
         let a = self.td_base + id * TD_SIZE;
         let w1 = self.heap.ld32(a + 4);
-        let td = Td {
+        self.tdc = Td {
             size: self.heap.ld32(a),
             kind: w1 & 0xFF,
             flags: (w1 >> 8) & 0xFF,
@@ -353,8 +386,12 @@ impl<H: Heap> Rt<H> {
             pmap: self.heap.ld32(a + 8),
         };
         self.tdc_id = id;
-        self.tdc = td;
-        td
+    }
+
+    #[inline(always)]
+    fn td(&mut self, id: u32) -> Td {
+        self.ensure_td(id);
+        self.tdc
     }
 
     fn vec_get(&self, w: u8) -> V32 {
@@ -374,12 +411,93 @@ impl<H: Heap> Rt<H> {
         }
     }
 
-    /// Allocate from the heap. On failure reclaim everything already known
-    /// dead (not inside a trial, where the graph is mid-colouring) and retry;
-    /// callers must not hold state across this call that a drain can change.
+    #[inline(always)]
+    fn stack_cap(&self) -> u32 {
+        if self.stack.ptr == 0 {
+            INLINE_STACK as u32
+        } else {
+            self.stack.cap
+        }
+    }
+    #[inline(always)]
+    fn log_cap(&self) -> u32 {
+        if self.log.ptr == 0 {
+            INLINE_LOG as u32
+        } else {
+            self.log.cap
+        }
+    }
+    #[inline(always)]
+    fn stack_get(&self, i: u32) -> u32 {
+        if self.stack.ptr == 0 {
+            self.inline_stack[i as usize]
+        } else {
+            self.heap.ld32(self.stack.ptr + 4 * i)
+        }
+    }
+    #[inline(always)]
+    fn stack_set(&mut self, i: u32, x: u32) {
+        if self.stack.ptr == 0 {
+            self.inline_stack[i as usize] = x;
+        } else {
+            self.heap.st32(self.stack.ptr + 4 * i, x);
+        }
+    }
+    #[inline(always)]
+    fn log_get(&self, i: u32) -> u32 {
+        if self.log.ptr == 0 {
+            self.inline_log[i as usize]
+        } else {
+            self.heap.ld32(self.log.ptr + 4 * i)
+        }
+    }
+    #[inline(always)]
+    fn log_set(&mut self, i: u32, x: u32) {
+        if self.log.ptr == 0 {
+            self.inline_log[i as usize] = x;
+        } else {
+            self.heap.st32(self.log.ptr + 4 * i, x);
+        }
+    }
+
+    /// Allocate zeroed bytes from the heap. On failure reclaim everything
+    /// already known dead, then run one cycle collection (BL02) and retry once
+    /// before trapping `out_of_memory`.
+    #[inline]
     fn raw_alloc(&mut self, size: u32) -> u32 {
-        for attempt in 0..3 {
-            let p = self.heap.alloc(size);
+        let p = self.heap.alloc(size);
+        if p != 0 {
+            #[cfg(debug_assertions)]
+            {
+                self.floor = self.floor.min(p);
+            }
+            return p;
+        }
+        self.raw_alloc_slow(size, true)
+    }
+
+    #[inline]
+    fn raw_alloc_uninit(&mut self, size: u32) -> u32 {
+        let p = self.heap.alloc_uninit(size);
+        if p != 0 {
+            #[cfg(debug_assertions)]
+            {
+                self.floor = self.floor.min(p);
+            }
+            return p;
+        }
+        self.raw_alloc_slow(size, false)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn raw_alloc_slow(&mut self, size: u32, zeroed: bool) -> u32 {
+        let do_alloc = |h: &mut H| if zeroed { h.alloc(size) } else { h.alloc_uninit(size) };
+        for attempt in 0..2 {
+            if attempt == 0 && !self.in_trial && !self.in_drain {
+                self.drain(u32::MAX);
+            }
+            let p = do_alloc(&mut self.heap);
             if p != 0 {
                 #[cfg(debug_assertions)]
                 {
@@ -387,8 +505,20 @@ impl<H: Heap> Rt<H> {
                 }
                 return p;
             }
-            if attempt == 0 && !self.in_trial {
-                self.drain(u32::MAX);
+        }
+        // BL02: run one cycle collection and retry the allocation once before trapping OOM.
+        if !self.in_trial && !self.in_drain && !self.in_oom_collect && self.roots.len > 0 {
+            self.in_oom_collect = true;
+            self.collect_cycles_inner(false);
+            self.in_oom_collect = false;
+            self.drain(u32::MAX);
+            let p = do_alloc(&mut self.heap);
+            if p != 0 {
+                #[cfg(debug_assertions)]
+                {
+                    self.floor = self.floor.min(p);
+                }
+                return p;
             }
         }
         self.trap(T_OOM)
@@ -401,10 +531,29 @@ impl<H: Heap> Rt<H> {
         let mut attempt = 0;
         loop {
             let v = self.vec_get(w);
-            if v.cap >= min_cap {
+            let cur_cap = match w {
+                1 if v.ptr == 0 => INLINE_STACK as u32,
+                2 if v.ptr == 0 => INLINE_LOG as u32,
+                _ => v.cap,
+            };
+            if cur_cap >= min_cap {
                 return true;
             }
-            let ncap = min_cap.max(v.cap.saturating_mul(2)).max(16);
+            // Prefer 2x growth on attempts 0..2. On the final attempt fall back
+            // to exact 8-byte-aligned `min_cap` for scratch/bitmap reservations
+            // (and tiny `roots` buffers) so doubling never causes a false OOM,
+            // but refuse +2-word thrashing on large `roots` buffers so
+            // `push_root` runs cycle collection (BL02) instead of copying MiBs
+            // on every push.
+            let exact_cap = min_cap.checked_add(1).map_or(min_cap, |x| x & !1).max(16);
+            let ncap = if attempt >= 2 {
+                if w == 0 && cur_cap >= 1024 {
+                    return false;
+                }
+                exact_cap
+            } else {
+                min_cap.max(cur_cap.saturating_mul(2)).max(16)
+            };
             let Some(bytes) = ncap.checked_mul(4) else { return false };
             let np = self.heap.alloc(bytes);
             if np == 0 {
@@ -412,7 +561,7 @@ impl<H: Heap> Rt<H> {
                 if attempt >= 3 {
                     return false;
                 }
-                if attempt == 1 && !self.in_trial {
+                if attempt == 1 && !self.in_trial && !self.in_drain {
                     self.drain(u32::MAX);
                 }
                 continue;
@@ -423,7 +572,17 @@ impl<H: Heap> Rt<H> {
             }
             // nothing ran since `v` was read
             if v.len > 0 {
-                self.heap.copy(np, v.ptr, v.len * 4);
+                if v.ptr != 0 {
+                    self.heap.copy(np, v.ptr, v.len * 4);
+                } else if w == 1 {
+                    for k in 0..v.len {
+                        self.heap.st32(np + 4 * k, self.inline_stack[k as usize]);
+                    }
+                } else if w == 2 {
+                    for k in 0..v.len {
+                        self.heap.st32(np + 4 * k, self.inline_log[k as usize]);
+                    }
+                }
             }
             if v.ptr != 0 {
                 self.heap.free(v.ptr, v.cap * 4);
@@ -436,42 +595,58 @@ impl<H: Heap> Rt<H> {
         }
     }
 
-    fn v32_try_push(&mut self, w: u8, x: u32) -> bool {
-        loop {
-            let v = self.vec_get(w);
-            if v.len < v.cap {
-                self.heap.st32(v.ptr + 4 * v.len, x);
-                self.vec_set(w, V32 { len: v.len + 1, ..v });
+    /// Push a candidate root onto `self.roots`. If `roots` is full and cannot
+    /// grow, run one cycle collection (while temporarily pinning `p` with `rc += 1`
+    /// so `p` itself stays live) to reclaim dead candidates and retry once.
+    fn push_root(&mut self, p: u32) -> bool {
+        if self.roots.len < self.roots.cap {
+            self.heap.st32(self.roots.ptr + 4 * self.roots.len, p);
+            self.roots.len += 1;
+            return true;
+        }
+        if self.grow_vec(0, self.roots.len + 1) {
+            self.heap.st32(self.roots.ptr + 4 * self.roots.len, p);
+            self.roots.len += 1;
+            return true;
+        }
+        if !self.in_trial && !self.in_drain && !self.in_oom_collect && self.roots.len > 0 {
+            let rc = self.heap.ld32(p - 8);
+            let pinned = rc < STICKY;
+            if pinned {
+                self.heap.st32(p - 8, rc + 1);
+            }
+            self.in_oom_collect = true;
+            self.collect_cycles_inner(false);
+            self.in_oom_collect = false;
+            if pinned {
+                let rc2 = self.heap.ld32(p - 8);
+                self.heap.st32(p - 8, rc2 - 1);
+            }
+            if self.roots.len < self.roots.cap || self.grow_vec(0, self.roots.len + 1) {
+                self.heap.st32(self.roots.ptr + 4 * self.roots.len, p);
+                self.roots.len += 1;
                 return true;
             }
-            if !self.grow_vec(w, v.len + 1) {
-                return false;
-            }
         }
+        false
     }
-    fn v32_push(&mut self, w: u8, x: u32) {
-        if !self.v32_try_push(w, x) {
-            self.trap(T_OOM);
-        }
-    }
+
     #[inline]
     fn try_push_stack(&mut self, x: u32) -> bool {
-        if self.stack.len < self.stack.cap {
-            self.heap.st32(self.stack.ptr + 4 * self.stack.len, x);
-            self.stack.len += 1;
-            true
-        } else {
-            self.v32_try_push(1, x)
+        let cap = self.stack_cap();
+        if self.stack.len >= cap && !self.grow_vec(1, self.stack.len + 1) {
+            return false;
         }
+        let i = self.stack.len;
+        self.stack_set(i, x);
+        self.stack.len = i + 1;
+        true
     }
     /// Push where capacity was reserved (trial phases 2 and 3).
     #[inline]
     fn push_stack(&mut self, x: u32) {
-        if self.stack.len < self.stack.cap {
-            self.heap.st32(self.stack.ptr + 4 * self.stack.len, x);
-            self.stack.len += 1;
-        } else {
-            self.v32_push(1, x);
+        if !self.try_push_stack(x) {
+            self.trap(T_OOM);
         }
     }
     #[inline]
@@ -480,7 +655,17 @@ impl<H: Heap> Rt<H> {
             return None;
         }
         self.stack.len -= 1;
-        Some(self.heap.ld32(self.stack.ptr + 4 * self.stack.len))
+        Some(self.stack_get(self.stack.len))
+    }
+    #[inline]
+    fn push_log1(&mut self, x: u32) {
+        let cap = self.log_cap();
+        if self.log.len >= cap && !self.grow_vec(2, self.log.len + 1) {
+            self.trap(T_OOM);
+        }
+        let i = self.log.len;
+        self.log_set(i, x);
+        self.log.len = i + 1;
     }
     fn release_vec(&mut self, w: u8) {
         let v = self.vec_get(w);
@@ -537,6 +722,7 @@ impl<H: Heap> Rt<H> {
 
     // ---- allocation ------------------------------------------------------
 
+    #[inline]
     fn new_object(&mut self, id: u32, total: u32, col: u32) -> u32 {
         let b = self.raw_alloc(total);
         self.heap.st32(b, 1);
@@ -547,6 +733,18 @@ impl<H: Heap> Rt<H> {
         b + HEADER
     }
 
+    #[inline]
+    fn new_object_uninit(&mut self, id: u32, total: u32, col: u32) -> u32 {
+        let b = self.raw_alloc_uninit(total);
+        self.heap.st32(b, 1);
+        self.heap.st32(b + 4, id | (col << COLOUR_SHIFT));
+        self.live_objects += 1;
+        self.live_bytes += u64::from(total);
+        self.live_mark(b + HEADER, true);
+        b + HEADER
+    }
+
+    #[inline]
     fn alloc_block(&mut self, size: u32) -> u32 {
         if size == 0 {
             return 0;
@@ -556,6 +754,17 @@ impl<H: Heap> Rt<H> {
         self.live_bytes += u64::from(sz);
         p
     }
+    #[inline]
+    fn alloc_block_uninit(&mut self, size: u32) -> u32 {
+        if size == 0 {
+            return 0;
+        }
+        let sz = align8(size).unwrap_or_else(|| self.trap(T_OOM));
+        let p = self.raw_alloc_uninit(sz);
+        self.live_bytes += u64::from(sz);
+        p
+    }
+    #[inline]
     fn free_block(&mut self, p: u32, size: u32) {
         if p == 0 || size == 0 {
             return;
@@ -568,23 +777,30 @@ impl<H: Heap> Rt<H> {
     }
 
     /// `oxi_alloc(type_id)`: zeroed record/closure/variant, rc 1.
+    #[inline]
     pub fn alloc(&mut self, id: u32) -> u32 {
-        self.drain(self.cfg.drain_budget);
-        let td = self.td(id);
-        if !(K_STRUCT..=K_CLOSURE).contains(&td.kind) {
+        if self.q_head != 0 {
+            self.drain_cold();
+        }
+        self.ensure_td(id);
+        if self.tdc.kind < K_STRUCT || self.tdc.kind > K_CLOSURE {
             self.trap(T_BAD_CAST);
         }
-        let payload = align8(td.size).unwrap_or_else(|| self.trap(T_OOM));
-        let total = HEADER.checked_add(payload).unwrap_or_else(|| self.trap(T_OOM));
-        let col = if td.flags & FLAG_ACYCLIC != 0 { GREEN } else { BLACK };
+        // `table_is_valid` already verified non-array `td.size` is 8-aligned and <= 0x7FFF_FFF8.
+        let total = HEADER + self.tdc.size;
+        let col = (self.tdc.flags & FLAG_ACYCLIC) << 2; // 0 => BLACK(0), 1 => GREEN(4)
         self.new_object(id, total, col)
     }
 
+    #[inline]
     pub fn alloc_bytes(&mut self, size: u32) -> u32 {
-        self.drain(self.cfg.drain_budget);
+        if self.q_head != 0 {
+            self.drain_cold();
+        }
         self.alloc_block(size)
     }
 
+    #[inline]
     pub fn free_bytes(&mut self, p: u32, size: u32) {
         self.free_block(p, size);
     }
@@ -609,6 +825,20 @@ impl<H: Heap> Rt<H> {
         let c = colour(m);
         if c != BLACK && c != GREEN {
             self.heap.st32(p - 4, with_colour(m, BLACK));
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn buffer_purple(&mut self, p: u32, m: u32) {
+        if m & BUFFERED == 0 {
+            if !self.push_root(p) {
+                self.trap(T_OOM);
+            }
+            let m2 = self.heap.ld32(p - 4);
+            self.heap.st32(p - 4, with_colour(m2, PURPLE) | BUFFERED);
+        } else {
+            self.heap.st32(p - 4, with_colour(m, PURPLE));
         }
     }
 
@@ -637,21 +867,189 @@ impl<H: Heap> Rt<H> {
         self.heap.st32(p - 8, rc - 1);
         let c = colour(m);
         if c != GREEN && !(c == PURPLE && m & BUFFERED != 0) {
-            let nm = with_colour(m, PURPLE) | BUFFERED;
-            self.heap.st32(p - 4, nm);
-            if m & BUFFERED == 0 {
-                self.v32_push(0, p);
-            }
+            self.buffer_purple(p, m);
         }
     }
 
+    #[inline(always)]
+    fn free_object_known(&mut self, p: u32, total: u32) {
+        self.live_objects -= 1;
+        self.live_bytes -= u64::from(total);
+        #[cfg(debug_assertions)]
+        self.heap.bytes_mut(p - 8, total).fill(0xDD);
+        self.heap.free(p - 8, total);
+    }
+
+    /// Fast path for `oxi_release`: non-buffered objects with `rc == 1` (the
+    /// overwhelming majority of temporaries) are freed directly with a tiny,
+    /// branch-light body; everything else (`rc != 1`, `BUFFERED`, ref arrays,
+    /// non-empty destruction queue) is outlined so wasmi basic-block fuel stays
+    /// minimal on the fast path.
+    #[inline]
     pub fn release(&mut self, p: u32) {
         if p == 0 {
             return;
         }
-        self.dec(p);
+        self.live_check(p);
+        let rc = self.heap.ld32(p - 8);
+        if rc != 1 {
+            self.release_rc_ne_1(p, rc);
+            return;
+        }
+        let m = self.heap.ld32(p - 4);
+        if m & BUFFERED != 0 {
+            self.release_queue_slow(p, m);
+            return;
+        }
+        let id = m & META_TYPE_MASK;
+        if id == TYPE_STRING {
+            self.live_mark(p, false);
+            let len = self.heap.ld32(p);
+            let total = (HEADER + 8 + len + 1 + 7) & !7;
+            self.free_object_known(p, total);
+            if self.q_head != 0 {
+                self.drain_cold();
+            }
+            return;
+        }
+        self.ensure_td(id);
+        if self.tdc.kind == K_ARRAY {
+            self.release_array_fast_or_slow(p, m);
+            return;
+        }
+        self.live_mark(p, false);
+        let total = HEADER + self.tdc.size;
+        let pcount = self.tdc.pcount;
+        if pcount > 0 {
+            self.release_record_children(p, pcount, self.tdc.pmap);
+        }
+        self.free_object_known(p, total);
         if self.q_head != 0 {
-            self.drain(self.cfg.drain_budget);
+            self.drain_cold();
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn release_record_children(&mut self, p: u32, pcount: u32, pmap: u32) {
+        let prev = self.in_drain;
+        self.in_drain = true;
+        for k in 0..pcount {
+            let c = self.heap.ld32(p + self.heap.ld32(pmap + 4 * k));
+            if c != 0 {
+                self.dec(c);
+            }
+        }
+        self.in_drain = prev;
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn release_array_fast_or_slow(&mut self, p: u32, m: u32) {
+        let elem = self.tdc.size;
+        let pcount = self.tdc.pcount;
+        let pmap = self.tdc.pmap;
+        if pcount == 0 {
+            self.live_mark(p, false);
+            let data = self.heap.ld32(p + ARR_DATA);
+            if data != 0 {
+                let cap = self.heap.ld32(p + ARR_CAP);
+                self.free_block(data, cap.wrapping_mul(elem));
+            }
+            self.free_object_known(p, ARR_OBJ_SIZE);
+            if self.q_head != 0 {
+                self.drain_cold();
+            }
+            return;
+        }
+        // Small reference-containing arrays: release elements iteratively without
+        // paying the full `drain` loop overhead when elements are leaf records.
+        let len = self.heap.ld32(p + ARR_LEN);
+        if len <= 8 {
+            self.live_mark(p, false);
+            let data = self.heap.ld32(p + ARR_DATA);
+            let cap = self.heap.ld32(p + ARR_CAP);
+            let prev = self.in_drain;
+            self.in_drain = true;
+            for i in 0..len {
+                let e = data + i * elem;
+                for k in 0..pcount {
+                    let c = self.heap.ld32(e + self.heap.ld32(pmap + 4 * k));
+                    if c != 0 {
+                        self.dec_or_free_leaf(c);
+                    }
+                }
+            }
+            self.in_drain = prev;
+            if data != 0 {
+                self.free_block(data, cap.wrapping_mul(elem));
+            }
+            self.free_object_known(p, ARR_OBJ_SIZE);
+            if self.q_head != 0 {
+                self.drain_cold();
+            }
+            return;
+        }
+        self.release_queue_slow(p, m);
+    }
+
+    /// Non-recursive child release: frees an unbuffered pointer-free leaf record
+    /// or string immediately (rc 1 -> 0) and delegates everything else to `dec`.
+    #[inline]
+    fn dec_or_free_leaf(&mut self, c: u32) {
+        self.live_check(c);
+        let rc = self.heap.ld32(c - 8);
+        if rc == 1 {
+            let cm = self.heap.ld32(c - 4);
+            if cm & BUFFERED == 0 {
+                let cid = cm & META_TYPE_MASK;
+                if cid == TYPE_STRING {
+                    self.live_mark(c, false);
+                    let slen = self.heap.ld32(c);
+                    let total = (HEADER + 8 + slen + 1 + 7) & !7;
+                    self.free_object_known(c, total);
+                    return;
+                }
+                self.ensure_td(cid);
+                if self.tdc.kind != K_ARRAY && self.tdc.pcount == 0 {
+                    self.live_mark(c, false);
+                    let total = HEADER + self.tdc.size;
+                    self.free_object_known(c, total);
+                    return;
+                }
+            }
+        }
+        self.dec(c);
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn release_queue_slow(&mut self, p: u32, m: u32) {
+        self.live_mark(p, false);
+        self.heap.st32(p - 4, with_colour(m, PENDING));
+        self.heap.st32(p - 8, self.q_head);
+        self.q_head = p;
+        self.q_len += 1;
+        self.drain(self.cfg.drain_budget);
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn release_rc_ne_1(&mut self, p: u32, rc: u32) {
+        if rc >= STICKY {
+            return;
+        }
+        if rc == 0 {
+            self.trap(T_UNREACHABLE);
+        }
+        self.heap.st32(p - 8, rc - 1);
+        let m = self.heap.ld32(p - 4);
+        let c = colour(m);
+        if c != GREEN && !(c == PURPLE && m & BUFFERED != 0) {
+            self.buffer_purple(p, m);
+        }
+        if self.q_head != 0 {
+            self.drain_cold();
         }
     }
 
@@ -721,18 +1119,16 @@ impl<H: Heap> Rt<H> {
 
     /// Children are done and the array block (if any) released: free the
     /// object, or keep it as a zombie while the candidate buffer still lists it.
-    fn finish_free(&mut self, p: u32) {
+    #[inline]
+    fn finish_free_known(&mut self, p: u32, m: u32, total: u32) {
         self.live_mark(p, false);
-        let m = self.heap.ld32(p - 4);
         if m & BUFFERED != 0 {
-            let id = m & META_TYPE_MASK;
-            let total = self.obj_total(p, id);
             self.zombie_objects += 1;
             self.zombie_bytes += u64::from(total);
             self.heap.st32(p - 4, with_colour(m, ZOMBIE));
             self.heap.st32(p - 8, 0);
         } else {
-            self.dealloc_object(p);
+            self.free_object_known(p, total);
         }
     }
 
@@ -743,16 +1139,23 @@ impl<H: Heap> Rt<H> {
     /// arrays (the array `len` is the cursor), at object granularity
     /// otherwise. Returns the unused budget.
     pub fn drain(&mut self, mut budget: u32) -> u32 {
+        let prev = self.in_drain;
+        self.in_drain = true;
         while self.q_head != 0 {
             if budget == 0 {
+                self.in_drain = prev;
                 return 0;
             }
             // Detach the head first: releasing its children pushes onto the queue.
             let p = self.q_head;
             self.q_head = self.heap.ld32(p - 8);
             self.q_len -= 1;
-            let id = self.heap.ld32(p - 4) & META_TYPE_MASK;
-            if id != TYPE_STRING {
+            let m = self.heap.ld32(p - 4);
+            let id = m & META_TYPE_MASK;
+            let total = if id == TYPE_STRING {
+                let len = self.heap.ld32(p);
+                align8(HEADER + 8 + len + 1).unwrap_or(u32::MAX)
+            } else {
                 let td = self.td(id);
                 if td.kind == K_ARRAY {
                     let data = self.heap.ld32(p + ARR_DATA);
@@ -765,6 +1168,7 @@ impl<H: Heap> Rt<H> {
                             self.heap.st32(p - 8, self.q_head);
                             self.q_head = p;
                             self.q_len += 1;
+                            self.in_drain = prev;
                             return 0;
                         }
                         i -= 1;
@@ -778,6 +1182,7 @@ impl<H: Heap> Rt<H> {
                         budget = budget.saturating_sub(1 + td.pcount);
                     }
                     self.free_array_data(p, td.size);
+                    ARR_OBJ_SIZE
                 } else {
                     for k in 0..td.pcount {
                         let c = self.heap.ld32(p + self.heap.ld32(td.pmap + 4 * k));
@@ -786,11 +1191,13 @@ impl<H: Heap> Rt<H> {
                         }
                     }
                     budget = budget.saturating_sub(1 + td.pcount);
+                    HEADER + td.size
                 }
-            }
+            };
             budget = budget.saturating_sub(1);
-            self.finish_free(p);
+            self.finish_free_known(p, m, total);
         }
+        self.in_drain = prev;
         budget
     }
 
@@ -857,22 +1264,28 @@ impl<H: Heap> Rt<H> {
     /// The work limit is checked per slot; the log records `(node, slots done)`
     /// so that [`Self::undo_gray`] re-adds exactly what was subtracted.
     fn mark_gray(&mut self, root: u32) -> Result<(), Abort> {
-        if !self.try_push_stack(root) {
-            return self.abort_oom();
+        let rm = self.heap.ld32(root - 4);
+        if rm & IN_STACK == 0 {
+            if !self.try_push_stack(root) {
+                return self.abort_oom();
+            }
+            self.heap.st32(root - 4, rm | IN_STACK);
         }
         while let Some(n) = self.pop_stack() {
-            let m = self.heap.ld32(n - 4);
+            let m = self.heap.ld32(n - 4) & !IN_STACK;
             if colour(m) == GRAY {
+                self.heap.st32(n - 4, m);
                 continue;
             }
             // log first: a node is only coloured once undo knows about it
-            if self.log.len + 2 > self.log.cap && !self.grow_vec(2, self.log.len + 2) {
+            if self.log.len + 2 > self.log_cap() && !self.grow_vec(2, self.log.len + 2) {
+                self.heap.st32(n - 4, m);
                 return self.abort_oom();
             }
-            let entry = self.log.ptr + 4 * self.log.len;
-            self.heap.st32(entry, n);
-            self.heap.st32(entry + 4, 0);
-            self.log.len += 2;
+            let entry_idx = self.log.len;
+            self.log_set(entry_idx, n);
+            self.log_set(entry_idx + 1, 0);
+            self.log.len = entry_idx + 2;
             self.heap.st32(n - 4, with_colour(m, GRAY));
             self.work = self.work.saturating_add(1);
             let mut it = self.slots_id(n, m & META_TYPE_MASK);
@@ -898,13 +1311,16 @@ impl<H: Heap> Rt<H> {
                     self.trap(T_UNREACHABLE);
                 }
                 self.heap.st32(c - 8, rc - 1);
-                if colour(cm) != GRAY && !self.try_push_stack(c) {
-                    self.oom_abort = true;
-                    res = Err(Abort::Aborted);
-                    break;
+                if colour(cm) != GRAY && (cm & IN_STACK) == 0 {
+                    if !self.try_push_stack(c) {
+                        self.oom_abort = true;
+                        res = Err(Abort::Aborted);
+                        break;
+                    }
+                    self.heap.st32(c - 4, cm | IN_STACK);
                 }
             }
-            self.heap.st32(entry + 4, done);
+            self.log_set(entry_idx + 1, done);
             res?;
         }
         Ok(())
@@ -913,11 +1329,16 @@ impl<H: Heap> Rt<H> {
     /// Exactly reverse every `mark_gray` side effect recorded in the log.
     fn undo_gray(&mut self) {
         self.aborts += 1;
-        self.stack.len = 0;
+        while let Some(n) = self.pop_stack() {
+            let m = self.heap.ld32(n - 4);
+            if m & IN_STACK != 0 {
+                self.heap.st32(n - 4, m & !IN_STACK);
+            }
+        }
         let mut i = 0;
         while i < self.log.len {
-            let n = self.heap.ld32(self.log.ptr + 4 * i);
-            let done = self.heap.ld32(self.log.ptr + 4 * i + 4);
+            let n = self.log_get(i);
+            let done = self.log_get(i + 1);
             let mut it = self.slots(n);
             for _ in 0..done {
                 let Some(sa) = it.next(&self.heap) else { break };
@@ -931,8 +1352,8 @@ impl<H: Heap> Rt<H> {
         }
         let mut i = 0;
         while i < self.log.len {
-            let n = self.heap.ld32(self.log.ptr + 4 * i);
-            let m = self.heap.ld32(n - 4);
+            let n = self.log_get(i);
+            let m = self.heap.ld32(n - 4) & !IN_STACK;
             let c = if m & BUFFERED != 0 { PURPLE } else { BLACK };
             self.heap.st32(n - 4, with_colour(m, c));
             i += 2;
@@ -968,10 +1389,16 @@ impl<H: Heap> Rt<H> {
     }
 
     fn scan(&mut self, root: u32) {
+        let rm = self.heap.ld32(root - 4);
+        if colour(rm) != GRAY || (rm & IN_STACK) != 0 {
+            return;
+        }
+        self.heap.st32(root - 4, rm | IN_STACK);
         self.push_stack(root);
         while let Some(n) = self.pop_stack() {
-            let nm = self.heap.ld32(n - 4);
+            let nm = self.heap.ld32(n - 4) & !IN_STACK;
             if colour(nm) != GRAY {
+                self.heap.st32(n - 4, nm);
                 continue;
             }
             if self.heap.ld32(n - 8) > 0 {
@@ -981,7 +1408,37 @@ impl<H: Heap> Rt<H> {
                 let mut it = self.slots_id(n, nm & META_TYPE_MASK);
                 while let Some(sa) = it.next(&self.heap) {
                     let c = self.heap.ld32(sa);
-                    if self.traced(c) {
+                    if c != 0 {
+                        let cm = self.heap.ld32(c - 4);
+                        if colour(cm) == GRAY && (cm & IN_STACK) == 0 && self.heap.ld32(c - 8) < STICKY {
+                            self.heap.st32(c - 4, cm | IN_STACK);
+                            self.push_stack(c);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Gather the white subgraph under `root` into the log (marking black on
+    /// push so each node enters the stack at most once). Never allocates: the
+    /// log holds at least one pair per marked node.
+    fn gather_white(&mut self, root: u32) {
+        let rm = self.heap.ld32(root - 4);
+        if colour(rm) != WHITE {
+            return;
+        }
+        self.heap.st32(root - 4, with_colour(rm, BLACK));
+        self.push_stack(root);
+        while let Some(n) = self.pop_stack() {
+            self.push_log1(n);
+            let mut it = self.slots(n);
+            while let Some(sa) = it.next(&self.heap) {
+                let c = self.heap.ld32(sa);
+                if c != 0 {
+                    let cm = self.heap.ld32(c - 4);
+                    if colour(cm) == WHITE {
+                        self.heap.st32(c - 4, with_colour(cm, BLACK));
                         self.push_stack(c);
                     }
                 }
@@ -989,40 +1446,18 @@ impl<H: Heap> Rt<H> {
         }
     }
 
-    /// Gather the white subgraph under `root` into the log (as black, so it
-    /// is not gathered twice). Never allocates: the log holds at least one
-    /// pair per marked node.
-    fn gather_white(&mut self, root: u32) {
-        self.push_stack(root);
-        while let Some(n) = self.pop_stack() {
-            let m = self.heap.ld32(n - 4);
-            if colour(m) != WHITE {
-                continue;
-            }
-            self.heap.st32(n - 4, with_colour(m, BLACK));
-            self.v32_push(2, n);
-            let mut it = self.slots(n);
-            while let Some(sa) = it.next(&self.heap) {
-                let c = self.heap.ld32(sa);
-                if c != 0 && colour(self.heap.ld32(c - 4)) == WHITE {
-                    self.push_stack(c);
-                }
-            }
-        }
-    }
-
     /// One trial over `roots[start..end]` (entries that are flagged are
-    /// skipped). `Ok((freed, work))`, or `Err(work)` when the work limit was hit
-    /// or an internal vector could not grow (`oom_abort`); in both cases the
-    /// heap is fully restored.
-    fn trial(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32), u32> {
+    /// skipped). `Ok((freed, work, marked))`, or `Err(work)` when the work
+    /// limit was hit or an internal vector could not grow (`oom_abort`); in
+    /// both cases the heap is fully restored.
+    fn trial(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32, u32), u32> {
         self.in_trial = true;
         let r = self.trial_inner(start, end, limit);
         self.in_trial = false;
         r
     }
 
-    fn trial_inner(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32), u32> {
+    fn trial_inner(&mut self, start: u32, end: u32, limit: u32) -> Result<(u32, u32, u32), u32> {
         self.work = 0;
         self.limit = limit;
         self.oom_abort = false;
@@ -1051,10 +1486,12 @@ impl<H: Heap> Rt<H> {
             }
         }
         let used = self.work;
-        // Phases 2 and 3 must not allocate: every push is bounded by the mark
-        // work (slots visited + nodes) plus the roots, so reserve it now.
-        let need = used.checked_mul(2).and_then(|v| v.checked_add(end - start)).and_then(|v| v.checked_add(8));
-        if need.is_none_or(|n| self.stack.cap < n && !self.grow_vec(1, n)) {
+        let marked = self.log.len / 2;
+        // Phases 2 and 3 must not allocate. Because `scan` uses `IN_STACK` and
+        // `scan_black`/`gather_white` recolour on push, `stack.len` never exceeds
+        // `2 * nodes_marked + 2` = `self.log.len + 2`.
+        let need = self.log.len.checked_add(4);
+        if need.is_none_or(|n| self.stack_cap() < n && !self.grow_vec(1, n)) {
             self.oom_abort = true;
             self.undo_gray();
             return Err(used);
@@ -1081,7 +1518,7 @@ impl<H: Heap> Rt<H> {
         let dead = self.log.len;
         // pass A: release the untraced (green / sticky) children of the dead
         for i in 0..dead {
-            let n = self.heap.ld32(self.log.ptr + 4 * i);
+            let n = self.log_get(i);
             let mut it = self.slots(n);
             while let Some(sa) = it.next(&self.heap) {
                 let c = self.heap.ld32(sa);
@@ -1092,18 +1529,25 @@ impl<H: Heap> Rt<H> {
         }
         // pass B: free
         for i in 0..dead {
-            let n = self.heap.ld32(self.log.ptr + 4 * i);
-            let id = self.heap.ld32(n - 4) & META_TYPE_MASK;
-            if id != TYPE_STRING {
+            let n = self.log_get(i);
+            let m = self.heap.ld32(n - 4);
+            let id = m & META_TYPE_MASK;
+            let total = if id == TYPE_STRING {
+                let len = self.heap.ld32(n);
+                align8(HEADER + 8 + len + 1).unwrap_or(u32::MAX)
+            } else {
                 let td = self.td(id);
                 if td.kind == K_ARRAY {
                     self.free_array_data(n, td.size);
+                    ARR_OBJ_SIZE
+                } else {
+                    HEADER + td.size
                 }
-            }
-            self.finish_free(n);
+            };
+            self.finish_free_known(n, m, total);
         }
         self.log.len = 0;
-        Ok((dead, used))
+        Ok((dead, used, marked))
     }
 
     /// A candidate entry whose object is no longer purple: unlist it; a dead
@@ -1149,9 +1593,14 @@ impl<H: Heap> Rt<H> {
     }
 
     /// `oxi_collect_cycles`: drain the destruction queue and examine every
-    /// candidate (also those a bounded step deferred). Unbounded; call it
-    /// between events. Returns the number of objects freed by cycle collection.
+    /// candidate (also those a bounded step deferred) in small batches so
+    /// collecting garbage that fits in memory needs almost no headroom.
+    /// Returns the number of objects freed by cycle collection.
     pub fn collect_cycles(&mut self) -> u32 {
+        self.collect_cycles_inner(true)
+    }
+
+    fn collect_cycles_inner(&mut self, trap_on_oom: bool) -> u32 {
         self.collections += 1;
         let mut total = 0u32;
         for i in 0..self.roots.len {
@@ -1167,20 +1616,60 @@ impl<H: Heap> Rt<H> {
             if self.roots.len == 0 {
                 break;
             }
-            let end = self.roots.len;
-            let mut r = self.trial(0, end, u32::MAX);
-            if r.is_err() {
-                // an internal vector could not grow and the trial was undone:
-                // reclaim outside the trial, then retry once
-                self.drain(u32::MAX);
-                let end = self.roots.len;
-                r = self.trial(0, end, u32::MAX);
-            }
-            match r {
-                Ok((freed, _)) => total += freed,
-                Err(_) => self.trap(T_OOM),
+            let len = self.roots.len;
+            let mut i = 0u32;
+            let mut batch = COLLECT_BATCH;
+            let mut max_batch = u32::MAX;
+            let mut sweep_freed = 0u32;
+            let mut sweep_ooms = 0u32;
+            while i < len {
+                let end = i.saturating_add(batch).min(len);
+                let mut r = self.trial(i, end, u32::MAX);
+                if r.is_err() {
+                    // Reclaim anything dead outside the trial.
+                    self.drain(u32::MAX);
+                    if end - i > 1 {
+                        batch = ((end - i) / 2).max(1);
+                        max_batch = batch;
+                        continue;
+                    }
+                    // Single root hit OOM: retry once after drain.
+                    r = self.trial(i, end, u32::MAX);
+                }
+                if let Ok((freed, _, marked)) = r {
+                    let span = end - i;
+                    total += freed;
+                    sweep_freed += freed;
+                    i = end;
+                    if marked > span.saturating_mul(2)
+                        || (batch > COLLECT_BATCH && marked > span.saturating_add(64))
+                    {
+                        // Roots reach into a shared subgraph larger than this batch
+                        // (e.g. a deep live linked list): jump batch up by at least
+                        // `marked` (and 4x) so total work stays O(N) instead of
+                        // repeatedly re-scanning the shared tail.
+                        batch = batch.saturating_mul(4).max(marked).min(max_batch);
+                    } else if batch < COLLECT_BATCH {
+                        batch = (batch * 2).min(COLLECT_BATCH);
+                    }
+                } else {
+                    sweep_ooms += 1;
+                    i = end;
+                    if sweep_ooms >= 4 && sweep_freed == 0 {
+                        break;
+                    }
+                }
             }
             self.compact_roots();
+            if sweep_ooms > 0 {
+                if sweep_freed > 0 {
+                    continue;
+                }
+                if trap_on_oom {
+                    self.trap(T_OOM);
+                }
+                break;
+            }
         }
         self.cycle_freed += u64::from(total);
         // Do not keep large scratch vectors alive between collections.
@@ -1250,7 +1739,7 @@ impl<H: Heap> Rt<H> {
             let lim = left;
             let span = lim.min(self.batch).max(1);
             let end = u32::try_from((u64::from(i) + u64::from(span)).min(u64::from(self.roots.len))).unwrap_or(self.roots.len);
-            if let Ok((freed, used)) = self.trial(i, end, lim) {
+            if let Ok((freed, used, _)) = self.trial(i, end, lim) {
                 self.cycle_freed += u64::from(freed);
                 left = left.saturating_sub(used.max(1));
                 if used < lim / 2 {
@@ -1314,56 +1803,95 @@ impl<H: Heap> Rt<H> {
         self.null_check(p);
         let id = self.heap.ld32(p - 4) & META_TYPE_MASK;
         if id == TYPE_STRING {
-            let len = self.heap.ld32(p);
-            let n = self.new_string(len);
-            self.heap.copy(n + 8, p + 8, len);
-            return n;
+            return self.clone_str_slow(p);
         }
-        let td = self.td(id);
-        let col = if td.flags & FLAG_ACYCLIC != 0 { GREEN } else { BLACK };
-        if td.kind == K_ARRAY {
-            let len = self.heap.ld32(p + ARR_LEN);
-            let data = self.heap.ld32(p + ARR_DATA);
-            let bytes = len.checked_mul(td.size).unwrap_or_else(|| self.trap(T_OOM));
-            let n = self.new_object(id, ARR_OBJ_SIZE, col);
-            let blk = self.alloc_block(bytes);
-            if bytes > 0 {
-                self.heap.copy(blk, data, bytes);
-            }
-            self.heap.st32(n + ARR_LEN, len);
-            self.heap.st32(n + ARR_CAP, len);
-            self.heap.st32(n + ARR_DATA, blk);
+        self.ensure_td(id);
+        let col = (self.tdc.flags & FLAG_ACYCLIC) << 2;
+        if self.tdc.kind == K_ARRAY {
+            return self.clone_array_slow(p, id, col);
+        }
+        let payload = self.tdc.size;
+        let pcount = self.tdc.pcount;
+        let pmap = self.tdc.pmap;
+        let n = self.new_object_uninit(id, HEADER + payload, col);
+        self.heap.copy(n, p, payload);
+        if pcount > 0 {
+            self.retain_record_children(n, pcount, pmap);
+        }
+        n
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn retain_record_children(&mut self, n: u32, pcount: u32, pmap: u32) {
+        for k in 0..pcount {
+            let c = self.heap.ld32(n + self.heap.ld32(pmap + 4 * k));
+            self.retain(c);
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn clone_str_slow(&mut self, p: u32) -> u32 {
+        let len = self.heap.ld32(p);
+        let n = self.new_string(len);
+        self.heap.copy(n + 8, p + 8, len);
+        n
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn clone_array_slow(&mut self, p: u32, id: u32, col: u32) -> u32 {
+        let elem = self.tdc.size;
+        let pcount = self.tdc.pcount;
+        let len = self.heap.ld32(p + ARR_LEN);
+        let data = self.heap.ld32(p + ARR_DATA);
+        let bytes = len.checked_mul(elem).unwrap_or_else(|| self.trap(T_OOM));
+        let n = self.new_object_uninit(id, ARR_OBJ_SIZE, col);
+        self.heap.st32(n + ARR_LEN, 0);
+        self.heap.st32(n + ARR_CAP, 0);
+        self.heap.st32(n + ARR_DATA, 0);
+        let blk = self.alloc_block_uninit(bytes);
+        if bytes > 0 {
+            self.heap.copy(blk, data, bytes);
+        }
+        self.heap.st32(n + ARR_LEN, len);
+        self.heap.st32(n + ARR_CAP, len);
+        self.heap.st32(n + ARR_DATA, blk);
+        if pcount > 0 {
             let mut it = self.slots(n);
             while let Some(sa) = it.next(&self.heap) {
                 let c = self.heap.ld32(sa);
                 self.retain(c);
             }
-            return n;
-        }
-        let payload = align8(td.size).unwrap_or_else(|| self.trap(T_OOM));
-        let n = self.new_object(id, HEADER + payload, col);
-        self.heap.copy(n, p, payload);
-        let mut it = self.slots(n);
-        while let Some(sa) = it.next(&self.heap) {
-            let c = self.heap.ld32(sa);
-            self.retain(c);
         }
         n
     }
 
+    #[inline]
     pub fn array_new(&mut self, id: u32, len: u32) -> u32 {
-        self.drain(self.cfg.drain_budget);
+        if self.q_head != 0 {
+            self.drain_cold();
+        }
         if len > ARR_MAX_LEN {
             self.trap(T_BOUNDS);
         }
-        let td = self.td(id);
-        if td.kind != K_ARRAY {
+        self.ensure_td(id);
+        if self.tdc.kind != K_ARRAY {
             self.trap(T_BAD_CAST);
         }
-        let bytes = len.checked_mul(td.size).unwrap_or_else(|| self.trap(T_OOM));
-        let col = if td.flags & FLAG_ACYCLIC != 0 { GREEN } else { BLACK };
-        let n = self.new_object(id, ARR_OBJ_SIZE, col);
-        let blk = self.alloc_block(bytes);
+        let elem = self.tdc.size;
+        let col = (self.tdc.flags & FLAG_ACYCLIC) << 2;
+        let bytes = len.checked_mul(elem).unwrap_or_else(|| self.trap(T_OOM));
+        let n = self.new_object_uninit(id, ARR_OBJ_SIZE, col);
+        let blk = if bytes == 0 {
+            0
+        } else {
+            self.heap.st32(n + ARR_LEN, 0);
+            self.heap.st32(n + ARR_CAP, 0);
+            self.heap.st32(n + ARR_DATA, 0);
+            self.alloc_block(bytes)
+        };
         self.heap.st32(n + ARR_LEN, len);
         self.heap.st32(n + ARR_CAP, len);
         self.heap.st32(n + ARR_DATA, blk);
@@ -1376,10 +1904,11 @@ impl<H: Heap> Rt<H> {
             self.trap(T_BOUNDS);
         }
         let id = self.heap.ld32(a - 4) & META_TYPE_MASK;
-        let td = self.td(id);
-        if td.kind != K_ARRAY {
+        self.ensure_td(id);
+        if self.tdc.kind != K_ARRAY {
             self.trap(T_BAD_CAST);
         }
+        let elem = self.tdc.size;
         let cap = self.heap.ld32(a + ARR_CAP);
         if min_cap <= cap {
             return;
@@ -1391,26 +1920,31 @@ impl<H: Heap> Rt<H> {
         if ncap > ARR_MAX_LEN {
             ncap = ARR_MAX_LEN;
         }
-        let bytes = ncap.checked_mul(td.size).unwrap_or_else(|| self.trap(T_OOM));
+        let bytes = ncap.checked_mul(elem).unwrap_or_else(|| self.trap(T_OOM));
         let blk = self.alloc_block(bytes);
         let len = self.heap.ld32(a + ARR_LEN);
         let old = self.heap.ld32(a + ARR_DATA);
         if len > 0 {
-            self.heap.copy(blk, old, len * td.size);
+            self.heap.copy(blk, old, len * elem);
         }
         self.heap.st32(a + ARR_CAP, ncap);
         self.heap.st32(a + ARR_DATA, blk);
-        self.free_block(old, cap * td.size);
+        self.free_block(old, cap * elem);
     }
 
+    #[inline]
     fn new_string(&mut self, len: u32) -> u32 {
-        self.drain(self.cfg.drain_budget);
+        if self.q_head != 0 {
+            self.drain_cold();
+        }
         let total = len
             .checked_add(HEADER + 8 + 1)
             .and_then(align8)
             .unwrap_or_else(|| self.trap(T_OOM));
-        let n = self.new_object(TYPE_STRING, total, GREEN);
+        let n = self.new_object_uninit(TYPE_STRING, total, GREEN);
         self.heap.st32(n, len);
+        self.heap.st32(n + 4, 0);
+        self.heap.st8(n + 8 + len, 0);
         n
     }
 
@@ -1520,6 +2054,43 @@ impl<H: Heap> Rt<H> {
             let _ = b.write_str(if v > 0.0 { "Infinity" } else { "-Infinity" });
         } else {
             // Rust's shortest round-trip form; integral values lose the ".0".
+            let _ = write!(b, "{v:?}");
+            if b.1 >= 2 && b.0[b.1 - 2] == b'.' && b.0[b.1 - 1] == b'0' {
+                b.1 -= 2;
+            }
+        }
+        let n = b.1;
+        let tmp = b.0;
+        self.string_from_bytes(&tmp[..n])
+    }
+
+    #[cfg(not(feature = "float-fmt"))]
+    pub fn str_from_f32(&mut self, _v: f32) -> u32 {
+        self.trap(T_UNREACHABLE)
+    }
+
+    #[cfg(feature = "float-fmt")]
+    pub fn str_from_f32(&mut self, v: f32) -> u32 {
+        use core::fmt::Write;
+        struct Buf([u8; 40], usize);
+        impl Write for Buf {
+            fn write_str(&mut self, s: &str) -> core::fmt::Result {
+                let b = s.as_bytes();
+                if self.1 + b.len() > self.0.len() {
+                    return Err(core::fmt::Error);
+                }
+                self.0[self.1..self.1 + b.len()].copy_from_slice(b);
+                self.1 += b.len();
+                Ok(())
+            }
+        }
+        let mut b = Buf([0; 40], 0);
+        if v.is_nan() {
+            let _ = b.write_str("NaN");
+        } else if v.is_infinite() {
+            let _ = b.write_str(if v > 0.0 { "Infinity" } else { "-Infinity" });
+        } else {
+            // Rust's shortest round-trip form for f32; integral values lose the ".0".
             let _ = write!(b, "{v:?}");
             if b.1 >= 2 && b.0[b.1 - 2] == b'.' && b.0[b.1 - 1] == b'0' {
                 b.1 -= 2;

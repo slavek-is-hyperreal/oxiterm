@@ -178,6 +178,22 @@ impl<'a> Cx<'a> {
                 cx.rt_idx.insert(e.name.to_string(), cx.imports.len() as u32);
                 cx.imports.push((RT_MODULE.to_string(), e.name.to_string(), t));
             }
+            // Internal f32-to-string helper: imported only when used so ABI 1.0 golden
+            // dumps for programs without `str.from_f32` remain byte-identical.
+            let uses_f32_fmt = m.funcs.iter().any(|f| {
+                f.blocks.iter().any(|b| {
+                    b.insts
+                        .iter()
+                        .any(|ins| matches!(ins.op, oxiscript_ir::Op::StrFromF32 { .. }))
+                })
+            });
+            if uses_f32_fmt {
+                let t = cx.sig_type(&[ValType::F32], &[ValType::I32]);
+                cx.rt_idx
+                    .insert("oxi_str_from_f32".to_string(), cx.imports.len() as u32);
+                cx.imports
+                    .push((RT_MODULE.to_string(), "oxi_str_from_f32".to_string(), t));
+            }
         }
         cx.n_imports = cx.imports.len() as u32;
         if opts.runtime == RuntimeMode::Stub {

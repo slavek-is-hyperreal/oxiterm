@@ -266,6 +266,14 @@ struct Instance {
     poisoned: bool,
     last_fuel_used: u64,
     dropped_events: u64,
+    /// Host-driven cycle collection state (BL08): checked periodically between
+    /// host->guest turns (`call_export`, `tick`, `pump`) so cyclic garbage
+    /// cannot accumulate unboundedly in long-running instances without stalling
+    /// steady-state turns.
+    calls_since_gc: u32,
+    last_gc_live_objs: u32,
+    last_gc_live_bytes: u32,
+    last_gc_pages: usize,
     /// Closure pointers the host dropped, waiting for `oxi_release`.
     pending_releases: std::collections::VecDeque<u32>,
     /// Events taken from capabilities but not yet delivered (bounded by
@@ -503,6 +511,7 @@ impl Instance {
         }
         store.data_mut().memory = Some(memory);
 
+        let init_pages = memory.data_size(&store) / PAGE;
         let mut inst = Instance {
             store,
             instance,
@@ -514,6 +523,10 @@ impl Instance {
             poisoned: false,
             last_fuel_used: 0,
             dropped_events: 0,
+            calls_since_gc: 0,
+            last_gc_live_objs: 0,
+            last_gc_live_bytes: 0,
+            last_gc_pages: init_pages,
             pending_releases: std::collections::VecDeque::new(),
             pending_events: std::collections::VecDeque::new(),
             _guard: guard,
@@ -564,6 +577,25 @@ impl Instance {
         let left = self.store.get_fuel().unwrap_or(0);
         self.last_fuel_used = fuel.saturating_sub(left);
         match r {
+            Ok(()) => Ok(results),
+            Err(e) => {
+                self.poisoned = true;
+                Err(Error::Trap(self.trap_info(&e)))
+            }
+        }
+    }
+
+    /// Internal host maintenance call (e.g. automatic cycle collection between
+    /// events): does not invoke capability `begin_turn` and preserves
+    /// `last_fuel_used` for the user's call.
+    fn invoke_internal(&mut self, f: Func, fuel_budget: u64) -> Result<Vec<Val>> {
+        if self.poisoned {
+            return Err(Error::Poisoned);
+        }
+        let _ = self.store.set_fuel(fuel_budget);
+        let ft = f.ty(&self.store);
+        let mut results = Self::zero_results(&ft);
+        match f.call(&mut self.store, &[], &mut results) {
             Ok(()) => Ok(results),
             Err(e) => {
                 self.poisoned = true;
@@ -787,6 +819,7 @@ impl Runtime {
         let ft = f.ty(&self.inst.store);
         let (vals, payload) = self.inst.expand(&ft, args)?;
         let res = self.inst.invoke(f, &vals, payload.as_deref())?;
+        self.maybe_collect_cycles()?;
         Ok(res.iter().map(from_val).collect())
     }
 
@@ -797,22 +830,113 @@ impl Runtime {
             .expect("checked by load::check")
     }
 
+    /// Threshold-based automatic cycle collection between host events (BL08;
+    /// documented in `docs/oxiscript/abi.md` section 4). Checks live heap
+    /// growth every 64 turns (or 16 under memory pressure, or immediately if
+    /// linear memory grew past `max(4, last_gc_pages / 2)` pages) and invokes
+    /// `oxi_collect_cycles` only when live objects, live bytes, or pages grew
+    /// past a geometric threshold (`max(1024, last/2)` objects or
+    /// `max(256 KiB, last/2)` bytes; tightened to 256 objects / 64 KiB / 2
+    /// pages above 50% of `max_memory_pages`). Bounded by
+    /// `pump_fuel.max(fuel_per_call)` so background collection neither stalls
+    /// indefinitely nor falsely poisons large live heaps under default call
+    /// fuel.
+    fn maybe_collect_cycles(&mut self) -> Result<()> {
+        if self.inst.poisoned {
+            return Ok(());
+        }
+        self.inst.calls_since_gc = self.inst.calls_since_gc.saturating_add(1);
+        let pages = self.memory_pages();
+        let max_pages = self.host.limits.max_memory_pages as usize;
+        let mem_pressure = max_pages > 0 && pages * 2 >= max_pages;
+        let check_interval = if mem_pressure { 16 } else { 64 };
+        let page_thresh = if mem_pressure {
+            2
+        } else {
+            4usize.max(self.inst.last_gc_pages / 2)
+        };
+        if self.inst.calls_since_gc < check_interval
+            && pages <= self.inst.last_gc_pages.saturating_add(page_thresh)
+        {
+            return Ok(());
+        }
+        self.inst.calls_since_gc = 0;
+        let budget = self
+            .host
+            .limits
+            .pump_fuel
+            .max(self.host.limits.fuel_per_call);
+        let live_f = self.rt_func(exports::LIVE_OBJECTS);
+        let bytes_f = self.rt_func(exports::LIVE_BYTES);
+        let live_objs = match self.inst.invoke_internal(live_f, budget)?.first() {
+            Some(Val::I32(n)) => *n as u32,
+            _ => 0,
+        };
+        let live_bytes = match self.inst.invoke_internal(bytes_f, budget)?.first() {
+            Some(Val::I32(n)) => *n as u32,
+            _ => 0,
+        };
+        let (obj_thresh, byte_thresh) = if mem_pressure {
+            (256u32, 64 * 1024u32)
+        } else {
+            (
+                1024u32.max(self.inst.last_gc_live_objs / 2),
+                (256 * 1024u32).max(self.inst.last_gc_live_bytes / 2),
+            )
+        };
+        let grew_objs = live_objs.saturating_sub(self.inst.last_gc_live_objs) >= obj_thresh;
+        let grew_bytes = live_bytes.saturating_sub(self.inst.last_gc_live_bytes) >= byte_thresh;
+        let grew_pages = pages > self.inst.last_gc_pages.saturating_add(page_thresh);
+        // Only run background full-heap collection when a conservative upper
+        // bound on traversal work (~1000 fuel/live object) fits inside the
+        // bounded housekeeping budget; otherwise defer to OOM recovery (BL02)
+        // and `deinit()` so background GC never stalls past the budget or
+        // falsely poisons a healthy large live heap with `OutOfFuel`.
+        let fits_budget = u64::from(live_objs).saturating_mul(1000) <= budget;
+        if (grew_objs || grew_bytes || grew_pages) && fits_budget {
+            let gc_f = self.rt_func(exports::COLLECT_CYCLES);
+            self.inst.invoke_internal(gc_f, budget)?;
+            let after_objs = match self.inst.invoke_internal(live_f, budget)?.first() {
+                Some(Val::I32(n)) => *n as u32,
+                _ => 0,
+            };
+            let after_bytes = match self.inst.invoke_internal(bytes_f, budget)?.first() {
+                Some(Val::I32(n)) => *n as u32,
+                _ => 0,
+            };
+            self.inst.last_gc_live_objs = after_objs;
+            self.inst.last_gc_live_bytes = after_bytes;
+            self.inst.last_gc_pages = self.memory_pages();
+        } else if grew_objs || grew_bytes || grew_pages {
+            // Back off checkpoints so we do not re-query live stats on every turn.
+            self.inst.last_gc_live_objs = live_objs;
+            self.inst.last_gc_live_bytes = live_bytes;
+            self.inst.last_gc_pages = pages;
+        }
+        Ok(())
+    }
+
     /// `oxi_tick(now_ms)`: returns the next deadline in ms or `-1`.
     pub fn tick(&mut self, now_ms: i64) -> Result<i64> {
         let f = self.rt_func(exports::TICK);
-        match self.inst.invoke(f, &[Val::I64(now_ms)], None)?.first() {
-            Some(Val::I64(d)) => Ok(*d),
-            _ => Ok(-1),
-        }
+        let d = match self.inst.invoke(f, &[Val::I64(now_ms)], None)?.first() {
+            Some(Val::I64(d)) => *d,
+            _ => -1,
+        };
+        self.maybe_collect_cycles()?;
+        Ok(d)
     }
 
     /// `oxi_collect_cycles()`: objects freed.
     pub fn collect_cycles(&mut self) -> Result<i32> {
         let f = self.rt_func(exports::COLLECT_CYCLES);
-        match self.inst.invoke(f, &[], None)?.first() {
-            Some(Val::I32(n)) => Ok(*n),
-            _ => Ok(0),
-        }
+        let n = match self.inst.invoke(f, &[], None)?.first() {
+            Some(Val::I32(n)) => *n,
+            _ => 0,
+        };
+        self.inst.calls_since_gc = 0;
+        self.inst.last_gc_pages = self.memory_pages();
+        Ok(n)
     }
 
     /// `oxi_live_objects()` for leak checks.
@@ -925,6 +1049,9 @@ impl Runtime {
                 }
             }
             spent = spent.saturating_add(self.inst.last_fuel_used);
+        }
+        if stats.delivered > 0 || stats.released > 0 {
+            self.maybe_collect_cycles()?;
         }
         stats.pending_events = self.inst.pending_events.len();
         stats.pending_releases = self.inst.pending_releases.len();
