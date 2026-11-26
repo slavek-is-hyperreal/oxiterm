@@ -5,7 +5,7 @@
 #            + release build with OXI_FULL_FUZZ=1 (full fuzz counts)
 #            + the long #[ignore]d fuzz campaigns with fixed seeds
 #   nightly- merge, with seeds taken from the date (new inputs every night),
-#            plus, with OXI_NIGHTLY_IGNORED=1 (local night run by the lead),
+#            plus, with OXI_NIGHTLY_IGNORED=1 (set in the GitHub nightly workflow),
 #            every #[ignore]d heavy test in release
 # Usage: scripts/oxiscript-gate.sh [quick|merge|nightly]
 # Exit code is non-zero if anything fails. A summary is printed at the end.
