@@ -98,7 +98,7 @@ export function bitSummary(x: u32, n: i32): i32 {
 
 ### Deterministic transcendental functions (`f64`)
 
-All 14 transcendental functions are implemented in pure OxiScript (IEEE-754 binary64, no FMA, no host libm, zero heap allocations including large-argument Payne-Hanek range reduction) by porting the algorithms and coefficients of Sun Microsystems FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence). Every target (`device`, `web`, `server`) produces bit-identical results and can run unbounded call counts on a single instance without allocating memory.
+All 14 transcendental functions are implemented in pure OxiScript (IEEE-754 binary64, no FMA, no host libm, zero heap allocations including large-argument Payne-Hanek range reduction) by porting the algorithms and coefficients of Sun Microsystems FDLIBM / FreeBSD msun / musl libm (MIT / permissive Sun licence). Every target (`device`, `web`, `server`) is designed to produce bit-identical results (no FMA, no host libm; a test that compares targets directly comes with stage 8.2b) and can run unbounded call counts on a single instance without allocating memory.
 
 * `sin(x: f64): f64`
 * `cos(x: f64): f64`
@@ -115,7 +115,7 @@ All 14 transcendental functions are implemented in pure OxiScript (IEEE-754 bina
 * `cbrt(x: f64): f64`
 * `hypot(x: f64, y: f64): f64`
 
-Measured maximum ULP error against Rust `std::f64` on $10^6$ seeded inputs per function (see `oxiscript-lower/tests/std_math_ulp.rs`):
+Measured maximum ULP error against Rust `std::f64` on $10^6$ seeded inputs per function (see `oxiscript-lower/tests/std_math_ulp.rs`). The reference (the host libm) is itself not correctly rounded, so the test enforces 2 ULP for every function; the 1-ULP bounds below are the measured values, not a tested guarantee:
 
 <!-- ULP_TABLE_START -->
 | Function | Documented bound | Measured max ULP ($10^6$ inputs) | Worst input |
@@ -343,3 +343,7 @@ export function countPoints(xs: Point[]): i32 {
   return counts.size() + seen.size();
 }
 ```
+
+## Rounding of `toFixed` and `round`
+
+`toFixed` and `round` round halfway cases to the even neighbour (round-half-even on the exact binary value), unlike JavaScript's `Number.prototype.toFixed` and `Math.round`: `toFixed(0.125, 2)` is `"0.12"`, `round(2.5)` is `2`.

@@ -289,7 +289,7 @@ fn array_sort_comparator_trap_propagates_and_no_leak() {
     let _ = p.rt.deinit();
 }
 #[test]
-fn array_sort_30k_within_default_fuel() {
+fn array_sort_10k_within_default_fuel_30k_within_30m() {
     // BS07: Under wasmi's per-instruction fuel metering (10M default), building 30k elements
     // via range()+push()+isSortedBy() plus sorting exceeds 10M (~26M total, ~690 fuel/elem for
     // sortI32 alone; see docs/stages/8.Std/fixes.md & docs/oxiscript/std.md). Verify 10k fits
