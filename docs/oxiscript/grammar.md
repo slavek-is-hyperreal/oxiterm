@@ -1,6 +1,6 @@
 # OxiScript MVP grammar
 
-Status: contract of slice 8.C (2026-11-24). Implemented by slice 8.P (lexer, parser, formatter). The AST it produces is `oxiscript/oxiscript-syntax/src/ast.rs`; the frozen word lists are `oxiscript-syntax/src/keywords.rs`. Source files use the extension `.oxs`.
+Status: MVP specification (originated in slice 8.C, 2026-11-24; implemented by 8.P, 8.T, 8.L, 8.D0, 8.HX, 8.2a, 8.Std v0; see [../roadmap/oxiscript.md](../roadmap/oxiscript.md)). The AST it produces is `oxiscript/oxiscript-syntax/src/ast.rs`; the frozen word lists are `oxiscript-syntax/src/keywords.rs`. Source files use the extension `.oxs`.
 
 **Design rule (owner decision 2):** a TypeScript developer must be able to *read* an OxiScript file without learning anything. Same keywords, braces, `import`/`export`, `let`/`const`, arrow functions, template strings, type annotations after `:`. Where soundness, determinism or an unambiguous grammar forces a difference, the spelling stays familiar and the difference is listed in section 6 with a side-by-side example and a reason. Real TypeScript is never parsed: nothing is accepted and then rejected later.
 
@@ -195,7 +195,7 @@ LawDecl  = "law" Ident [ TypeParams ] "(" [ Params ] ")" [ "when" Expr ] LawBloc
 LawBlock = "{" { Stmt } Expr "}" ;                                 (* the tail expression has no ";" *)
 ```
 
-A law is a declaration of a property the program must satisfy; the body's tail expression is a `bool`. `when` restricts the inputs (a precondition: counterexamples must satisfy it). Laws are checked at three levels (tested in dev builds, solver-proven under the `safety` profile, hand/AI proofs only when the solver fails) described in `docs/oxi-ui.md` decision 11; the *syntax* is the same at every level. Law bodies may call any pure function; they may not use host capabilities. `law` is a contextual keyword: it starts an item only when followed by `Ident` and `(` or `<`.
+A law is a declaration of a property the program must satisfy; the body's tail expression is a `bool`. `when` restricts the inputs (a precondition: counterexamples must satisfy it). Laws are checked at three levels (tested in dev builds, solver-proven under the `safety` profile, hand/AI proofs only when the solver fails) described in [../roadmap/oxiscript.md](../roadmap/oxiscript.md#d-11) (decision `D-11`); the *syntax* is the same at every level. Law bodies may call any pure function; they may not use host capabilities. `law` is a contextual keyword: it starts an item only when followed by `Ident` and `(` or `<`.
 ```ts
 law sorted_stays_sorted(xs: i32[]) {
   isSorted(sort(xs))
@@ -269,9 +269,9 @@ CaseClause = CaseLabel { CaseLabel } { Stmt } ;
 CaseLabel  = "case" Expr { "," Expr } ":" | "default" ":" ;
 ```
 * `ForOfStmt` iterates arrays and `range(a, b)`; the loop variable is a fresh binding per iteration. A C-style `for (let i = ...; ...; ...)` follows TypeScript/JavaScript (`CreatePerIterationEnvironment`): every iteration has its own binding of each `let` declared in the initialiser; the binding of the next iteration starts from the value of the previous one **before** the update expression runs, so a closure created in iteration *n* sees the value that iteration *n* left behind (`for (let i = 0; i < 3; i++) fs.push(() => i)` yields `0, 1, 2`), and a closure that assigns the variable changes only its own iteration's binding (and what the next iteration starts from, if it runs before the next iteration begins). `for (const k in obj)` does not exist.
-* An expression statement must have an effect: a bare `a + b;` is a warning (`OXS-W0001` family); `i++` and `--i` are valid only as expression statements and `for` updates (they yield no value).
+* An expression statement must have an effect: a bare `a + b;` is a warning (`OXS-W0004`); `i++` and `--i` are valid only as expression statements and `for` updates (they yield no value).
 * **No fall-through.** Control never runs from one case clause into the next; a clause ends at the next `case`/`default`/`}`. `break` exits the switch early and is never required. Several labels stack on one clause (`case "a": case "b": ...` or `case "a", "b":`), which replaces TypeScript's empty-case fall-through idiom. A `default` may share a clause with other labels.
-* **Termination analysis:** an exhaustive `switch` in which every clause ends in `return`/`break`-free terminating control flow (all clauses return, trap or `continue`) terminates the enclosing function body, so `area` below needs no final `return`; a function whose return type is not `void` must return on every path (`OXS-E0100`).
+* **Termination analysis:** an exhaustive `switch` in which every clause ends in `return`/`break`-free terminating control flow (all clauses return, trap or `continue`) terminates the enclosing function body, so `area` below needs no final `return`; a function whose return type is not `void` must return on every path (`OXS-E0114`).
 * **Exhaustiveness:** a `switch` over an `enum`, a discriminated union (`switch (s.kind)`), a `bool` or a `T | null` must cover every possibility or have `default`; otherwise `OXS-E0101` lists the missing cases. Cases narrow the scrutinee's owner (`s.r` is available under `case "circle":`).
 * Attributes before a statement attach to it (`@expect(simd) for (...) ...`). Reserved: `parallel for`, `arena { }`, `trusted { }`.
 
@@ -322,9 +322,9 @@ Arm        = ( "case" Expr { "," Expr } | "default" ) ":" Expr [ "," ] ;   (* ar
 Rationale: the first two are the classic JS precedence surprises (`x & 1 === 0` means `x & (1 === 0)`), and the third is already required by TS. An error keeps the TS reading available (add the parentheses you meant) while making a wrong guess impossible. Parenthesised operands are exempt, as is the same operator repeated (`a & b & c`, `a + b + c`). The formatter never removes parentheses required by these rules.
 
 * **Casts:** `x as T` converts numerics losslessly or traps if the value is out of range (float to int also traps on NaN). There is no assertion-style cast: `x as T` never lies about a type. Spellings that glue a sign onto the keyword (the wrapping, saturating and downcast variants) would differ from `as` followed by an operator only by whitespace, so those conversions are **ordinary generic method calls**, not syntax: `x.wrapping<u8>()` (two's complement truncation), `x.saturating<u8>()` (clamp; NaN gives 0) and `x.downcast<Circle>()` (checked reference downcast, yields `Circle | null`). They are lang-item methods of the standard library, readable by any TS developer, parse with the generic-call rule of 3.4, and give the checker/IR a name to hang the `conv.wrap`/`conv.sat` semantics on. `as` takes a non-union type; see 3.4 rule 8 for `x as u8 | 1`.
-* **Equality `===`/`!==`** is defined for numbers (IEEE for floats: `NaN !== NaN`), `bool`, `string` (by value), enums, `null` comparisons, and **classes by identity**. On a `struct`, a union, an array or a closure it is a compile error (`OXS-E0100`): structs have no identity under copy-on-write, so write the field comparison (or a function) instead. (A later edition may derive structural equality.)
+* **Equality `===`/`!==`** is defined for numbers (IEEE for floats: `NaN !== NaN`), `bool`, `string` (by value), enums, `null` comparisons, and **classes by identity**. On a `struct`, a union, an array or a closure it is a compile error (`OXS-E0110`): structs have no identity under copy-on-write, so write the field comparison (or a function) instead. (A later edition may derive structural equality.)
 * **Try operator `e?`:** `e` must have type `Result<T, E>` and the enclosing function must return `Result<_, E>` (the same `E` in the MVP): `e?` evaluates to the `value` if `ok`, otherwise returns the `err` from the function. Otherwise `OXS-E0104`.
-* **Optional chaining and null:** `a?.b` is `null` when `a` is `null`, else `a.b`; `a ?? b` supplies a default. There is no `undefined`, no postfix `!` assertion and no `?.` on non-nullable types (`OXS-E0105`).
+* **Optional chaining and null:** `a?.b` is `null` when `a` is `null`, else `a.b`; `a ?? b` supplies a default. There is no `undefined`, no postfix `!` assertion and no `?.` on non-nullable types (`OXS-E0127`).
 * **Object literals** `{ ... }` get their struct type from context (declared type, parameter type, return type, union expectation); with no context it is `OXS-E0103`. A `{` at the start of a statement is always a block; to start an expression statement with an object literal, parenthesise it. After `=>` a `{` is a block body; return an object literal as `=> ({ x: 1 })`.
 * **`SwitchExpr` versus `SwitchStmt`:** position decides. A `switch` at statement start is the statement form; a `switch` anywhere an expression is expected (right of `=`, after `return`, as an argument, as an arrow body, ...) is an expression and every arm is `case a, b: expr,` or `default: expr,` with exactly one expression (to use a `switch` expression as an expression statement, parenthesise it). Arms deliberately use `:` and never `=>`: a label such as `case x => v` can therefore never be mistaken for an arrow function, and `case x => v` is **not an arrow function** here, it is a syntax error (`OXS-E0001`, fix: use `:`). A label that itself contains a top-level `?:` must be parenthesised (`case (a ? b : c):`). A `switch` expression must be exhaustive.
 ```ts
@@ -357,8 +357,8 @@ Attributes attach to the following item, member or statement; `@@name(...)` at t
 
 | Attribute | Meaning |
 |---|---|
-| `@expect(simd)`, `@expect(no_alloc)`, ... | performance/safety assertion; a failed assertion is a compile error with the placement reason code (8.S4, 8.3) |
-| `@profile(realtime)` / `@@profile(safety)` | restriction set checked by the compiler (kernel is reserved) |
+| `@expect(simd)`, `@expect(no_alloc)`, ... | performance/safety assertion; a failed assertion is a compile error with the placement reason code (parsed/validated today; not yet enforced until 8.S4b / 8.3) |
+| `@profile(realtime)` / `@@profile(safety)` | restriction set checked by the compiler (`kernel` is reserved; `@profile` argument is validated today, restrictions are not yet enforced until 8.2c) |
 | `@allow("OXS-P0102", "reason")` | suppress one report/warning; the reason string is mandatory (`OXS-W0002`) |
 | `@inline`, `@noinline` | optimisation hints |
 | `@host` | on an exported function of the entry module: the host can call it; it becomes a Wasm export (2.1) |
@@ -410,6 +410,8 @@ Each row: what a TS developer would write, what OxiScript requires, and why.
 | 19 | `arr[i]` out of range gives `undefined` | traps `bounds` | Defined behaviour; no `undefined`. |
 | 20 | `str.length`, `str[i]` (UTF-16) | `str.byteLength`, iteration by code point; no O(1) code-point index | UTF-8 strings. |
 
+*(Note: rows 14 and 15 were removed; numbering is not renumbered so citations by row number stay stable.)*
+
 Side-by-side sample:
 
 ```ts
@@ -447,12 +449,14 @@ function parsePort(text: string): Result<u16, string> {
 
 ---
 
-## 7. Decisions for the owner to look at
+## 7. Language design decisions (implemented; owner sign-off status)
 
-1. **Whitespace-sensitive `?`** (section 1.5): the only whitespace-significant rule in an otherwise whitespace-free grammar. Alternatives: a different spelling for the try operator (`expr!`?, `try expr`), or dropping the ternary. Chosen because `f()?` (Rust) and `a ? b : c` (TS) both read naturally.
-2. **`===` only** (`==` rejected with a fix).
-3. **Mandatory semicolons.**
-4. **`struct` is a copy-on-write heap value** in the MVP (no scalar replacement yet); this affects performance, not syntax.
-5. **Precedence is TypeScript's, with must-parenthesise errors** for bitwise-vs-comparison, shift-vs-additive and `??`-vs-`||`/`&&` mixes (section 3.3). Changed from the first draft at the lead's review.
-6. **ASCII-only identifiers** in the MVP.
-7. **Braces optional** after `if`/`while`/`for` (TS parity; the formatter adds them). Requiring them would remove goto-fail bugs at the cost of `if (x) return;` habits.
+All seven items below are implemented in `oxiscript-syntax` and `oxiscript-check`; formal owner sign-off is tracked in `Q-LANG-1` and `Q-LANG-2` of [../roadmap/oxiscript.md](../roadmap/oxiscript.md#q-lang).
+
+1. **Whitespace-sensitive `?`** (section 1.5; `Q-LANG-1`): implemented and shipped. The only whitespace-significant rule in an otherwise whitespace-free grammar. Alternatives: a different spelling for the try operator (`expr!`?, `try expr`), or dropping the ternary. Chosen because `f()?` (Rust) and `a ? b : c` (TS) both read naturally.
+2. **`===` only** (`Q-LANG-2`): implemented (`==` rejected as `OXS-E0005` with a machine-applicable fix).
+3. **Mandatory semicolons** (`Q-LANG-2`, `Q-DX-5`): implemented and in force (`OXS-E0004` with fix-on-save in the VS Code extension).
+4. **`struct` is a copy-on-write heap value** (`Q-LANG-2`): implemented in the MVP (`is_unique`/`clone`; scalar replacement is stage `8.Perf`). Affects performance, not syntax.
+5. **Precedence is TypeScript's, with must-parenthesise errors** (`Q-LANG-2`): implemented for bitwise-vs-comparison, shift-vs-additive and `??`-vs-`||`/`&&` mixes (section 3.3).
+6. **ASCII-only identifiers** (`Q-LANG-2`): implemented in the MVP (Unicode identifiers reserved for a later edition).
+7. **Braces optional** after `if`/`while`/`for` (`Q-LANG-2`): implemented (TS parity; the formatter canonicalises by adding braces). Requiring them would remove goto-fail bugs at the cost of `if (x) return;` habits.

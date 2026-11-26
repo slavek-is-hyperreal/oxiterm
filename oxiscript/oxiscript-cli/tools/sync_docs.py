@@ -61,15 +61,46 @@ Run the tool: `cargo run -p oxiscript-cli --bin oxi -- check path/to/file.oxs --
 """
 
 
-def code_index():
+# Rule for `llms.txt` "Diagnostic codes oxi check emits":
+# every code in codes.txt with phase in (lex, parse, check) that is currently emitted
+# (excluding unimplemented future codes like OXS-E0500, which arrives in stage 8.2c),
+# plus OXS-E0400 and OXS-E0402 which `oxi check` emits for `oxi.toml` `needs`.
+UNEMITTED_CHECK_CODES = {"OXS-E0500"}
+EXTRA_CHECK_CODES = {"OXS-E0400", "OXS-E0402"}
+
+
+def registry_codes():
     out = []
     for rec in read("oxiscript/oxiscript-abi/registry/codes.txt").split("\n\n"):
         f = dict(
             l.split(" ", 1) for l in rec.splitlines() if l and not l.startswith("#") and " " in l
         )
-        if f.get("phase") in ("lex", "parse", "check") and "code" in f:
-            out.append("- %s %s" % (f["code"], f["title"]))
+        if "code" in f:
+            out.append(f)
+    return out
+
+
+def code_index():
+    out = []
+    for f in registry_codes():
+        code = f["code"]
+        if (f.get("phase") in ("lex", "parse", "check") and code not in UNEMITTED_CHECK_CODES) or code in EXTRA_CHECK_CODES:
+            out.append("- %s %s" % (code, f["title"]))
     return "\n".join(out)
+
+
+def verify_skill_codes():
+    known = {f["code"] for f in registry_codes()}
+    skill = read(".claude/skills/oxiscript-authoring/SKILL.md")
+    bad = sorted(
+        {
+            "OXS-" + m
+            for m in re.findall(r"\b([EWPLI]\d{4})\b", skill)
+            if "OXS-" + m not in known
+        }
+    )
+    if bad:
+        sys.exit("SKILL.md cites unknown reason code(s): " + ", ".join(bad))
 
 
 LLMS = """# OxiScript
@@ -82,6 +113,8 @@ LLMS = """# OxiScript
 oxi check --json [paths]   # diagnostics as JSON (schema 1): code, severity, message, file, range, fixes
 oxi check --fix            # apply every machine-applicable fix, rewrite the files
 oxi fmt [--check] [paths]  # canonical formatter, no options
+oxi run [file] [--fuel N]  # compile and run main in the sandboxed wasmi runtime
+oxi build [file] [-o out]  # compile to a .wasm module
 oxi explain OXS-E0100      # a code's meaning, example and fix
 oxi new NAME --template blink|touch-button|sensor-dashboard|oxiui-page
 ```
@@ -90,7 +123,9 @@ Loop: edit, `oxi check --json`, apply fixes with `"applicability": "machine-appl
 
 """ + core_plain + """
 
-## Diagnostic codes the checker emits
+## Diagnostic codes oxi check emits
+
+Generated from `oxiscript/oxiscript-abi/registry/codes.txt` (every emitted `lex`/`parse`/`check` code plus `OXS-E0400`/`OXS-E0402` for `oxi.toml` `needs`; unimplemented future codes such as `OXS-E0500` are omitted until emitted).
 
 """ + code_index() + """
 
@@ -102,6 +137,7 @@ Loop: edit, `oxi check --json`, apply fixes with `"applicability": "machine-appl
 """
 
 if __name__ == "__main__":
+    verify_skill_codes()
     write("AGENTS.md", ROOT_MD)
     write("docs/oxiscript/llms.txt", LLMS)
     print("wrote AGENTS.md and docs/oxiscript/llms.txt", file=sys.stderr)

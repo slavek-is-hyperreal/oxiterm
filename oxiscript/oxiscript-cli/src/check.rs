@@ -76,11 +76,12 @@ pub fn project_for<'c>(cache: &'c mut HostCache, file: &Path) -> Result<&'c Proj
 }
 
 fn fatal(json: bool, msg: &str) -> i32 {
+    let clean = oxiscript_abi::sanitize::sanitize_terminal(msg);
     if json {
-        let doc = report::document(&[], &[], Some(msg), &project::notes(), None, None);
+        let doc = report::document(&[], &[], Some(&clean), &project::notes(), None, None);
         println!("{}", serde_json::to_string_pretty(&doc).unwrap_or_default());
     } else {
-        eprintln!("error: {msg}");
+        eprintln!("error: {clean}");
     }
     EXIT_FATAL
 }
@@ -95,7 +96,7 @@ fn file_diag(path: &Path, e: &ReadError) -> Diag {
     Diag {
         code: code.to_string(),
         severity: report::severity_of(code),
-        message: format!("cannot read the file: {why}"),
+        message: oxiscript_abi::sanitize::sanitize_terminal(&format!("cannot read the file: {why}")),
         file: path.strip_prefix("./").unwrap_or(path).to_string_lossy().replace('\\', "/"),
         range: report::Range { start: p.clone(), end: p },
         fixes: Vec::new(),

@@ -13,6 +13,8 @@ OxiScript reads like TypeScript and is checked like Rust. A model that writes Ty
 oxi check --json            # one JSON document, schema 1
 oxi check --fix             # applies every machine-applicable fix, rewrites files
 oxi fmt                     # canonical format, no options
+oxi run [file] [--fuel N]   # compile and run main in the sandboxed wasmi runtime
+oxi build [file] [-o out]   # compile to a .wasm module
 oxi explain OXS-E0100       # meaning, example and fix for any code
 ```
 
@@ -20,7 +22,7 @@ oxi explain OXS-E0100       # meaning, example and fix for any code
 2. Run `oxi check --json <file or dir>`. Stop when `"ok": true`.
 3. For each diagnostic: if a fix has `"applicability": "machine-applicable"`, apply its `edits` (or run `oxi check --fix`). `maybe-incorrect` fixes are proposals; read the title and decide. `advice` has no edit; follow the text.
 4. Syntax errors hide type errors. When the syntax is clean a second wave appears. Repeat until clean.
-5. Finish with `oxi fmt`. Never tell the user the code works until `oxi check` is clean (`oxi run` is not available until the compiler back end lands).
+5. Finish with `oxi fmt`. Never tell the user the code works until `oxi check` is clean; use `oxi run` to execute `main` and `oxi build` to emit Wasm.
 
 Edit positions: `range.start.byte` / `range.end.byte` are UTF-8 byte offsets; `line` is 1-based, `col` counts characters, `utf16` counts UTF-16 units (what editors use).
 

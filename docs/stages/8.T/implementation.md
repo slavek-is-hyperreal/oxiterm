@@ -1,5 +1,7 @@
 # HANDOFF 8.T (type checker) - keep updated after every milestone
 
+> **Status (2026-11-26):** complete and merged (`3cbf1b4`; BAD ACTOR fixes recorded in `fixes.md`). Working notes below are kept as history.
+
 Worktree: `.claude/worktrees/agent-a12e57caa0984dfa6`. No git commands. CARGO_BUILD_JOBS=2.
 Verify: `cd <worktree> && CARGO_BUILD_JOBS=2 cargo test -p oxiscript-check` (and `--release`),
 `cargo clippy -p oxiscript-check --all-targets -- -D warnings`,

@@ -398,7 +398,14 @@ impl Parser<'_> {
                 "constructor".to_string(),
                 mk_span(self.file, t.lo as usize, t.hi as usize),
             );
-            let f = self.parse_fn_rest(name, FnModifiers::default(), true);
+            let mods = FnModifiers {
+                is_static,
+                mutating,
+                private,
+                kernel: false,
+                is_async: false,
+            };
+            let f = self.parse_fn_rest(name, mods, true);
             MemberKind::Constructor(f)
         } else if matches!(self.kind(), Tk::Ident | Tk::Reserved) {
             let name = self.parse_ident("a member name");

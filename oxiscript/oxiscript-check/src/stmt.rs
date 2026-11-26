@@ -179,7 +179,12 @@ impl<'a> Checker<'a> {
         self.depth += 1;
         if self.depth > MAX_EXPR_DEPTH {
             self.depth -= 1;
-            self.err("OXS-E0113", s.span, &[("detail", "statement is nested too deeply")]);
+            let snip = self.clip_snippet(s.span);
+            self.err(
+                "OXS-E0113",
+                s.span,
+                &[("detail", &format!("statement is nested too deeply at `{snip}`"))],
+            );
             return;
         }
         self.check_attrs(&s.attrs, "stmt", s.id);
@@ -388,18 +393,24 @@ impl<'a> Checker<'a> {
                 }
             }
             (None, Some(x)) => {
-                let t = self.expr(x, None);
-                let t = self.widen(t);
+                let raw_t = self.expr(x, None);
+                let t = self.widen_expr(x, raw_t);
                 match inferred {
                     None => {
+                        if t != raw_t {
+                            self.record_coercion(x.id, raw_t, t);
+                        }
                         if let Some(c) = self.fnctx.last_mut() {
                             c.inferred = Some(t);
                         }
                     }
                     Some(i) => {
                         if self.assignable(t, i) {
-                            self.record_coercion(x.id, t, i);
+                            self.record_coercion(x.id, raw_t, i);
                         } else if self.assignable(i, t) {
+                            if t != raw_t {
+                                self.record_coercion(x.id, raw_t, t);
+                            }
                             if let Some(c) = self.fnctx.last_mut() {
                                 c.inferred = Some(t);
                             }
@@ -669,7 +680,7 @@ impl<'a> Checker<'a> {
             for l in *exprs {
                 match sc.kind {
                     SwitchKind::Union => {
-                        let Some((u, uargs, _)) = &sc.union else { continue };
+                        let Some((u, uargs, mask)) = &sc.union else { continue };
                         let dty = self.unions.get(u).map_or(ERROR, |s| s.discr_ty);
                         let t = self.expr(l, Some(dty));
                         let want = match &strip_paren(l).kind {
@@ -691,6 +702,8 @@ impl<'a> Checker<'a> {
                         if let Some(i) = sig.and_then(|s| s.variants.iter().position(|v| v.value == w)) {
                             if !seen.insert(i as u32) {
                                 self.err("OXS-E0116", l.span, &[("detail", &format!("Duplicate case label {}", w.display()))]);
+                            } else if (*mask & (1u64 << i)) == 0 {
+                                self.err("OXS-W0005", l.span, &[("label", &w.display())]);
                             }
                             ls.push(CaseLabel::Variant(i as u32));
                             rows.push(Pat::Ctor(i as u32, vec![]));
@@ -751,6 +764,11 @@ impl<'a> Checker<'a> {
                         } else {
                             let t = self.expr(l, Some(inner));
                             self.coerce_to(l, t, inner);
+                            if let Some(k) = Self::lit_key(l) {
+                                if !seen_keys.insert(k) {
+                                    self.err("OXS-E0116", l.span, &[("detail", "Duplicate case label")]);
+                                }
+                            }
                             ls.push(CaseLabel::Value);
                         }
                     }

@@ -16,6 +16,7 @@
 //!   (`is_unique`/`clone`); classes are plain references.
 //! * Generics are monomorphised on demand (worklist keyed by definition and
 //!   concrete type arguments) with a budget.
+#![forbid(unsafe_code)]
 #![allow(
     clippy::needless_raw_string_hashes,
     clippy::elidable_lifetime_names,
@@ -90,7 +91,7 @@ mod types;
 use oxiscript_syntax::Span;
 use std::fmt;
 
-pub use driver::{compile_program, compile_source, compile_source_with_notes, lower, lower_full, lower_with, CompileOutput, Lowered, Options};
+pub use driver::{compile_program, compile_source, compile_source_with_notes, lower, lower_full, lower_with, lower_with_budget, CompileOutput, Lowered, Options};
 
 /// A lowering (or pipeline) diagnostic. `code` is a registry code (`OXS-E07xx` for the
 /// lowering itself; check and code generator codes are passed through).

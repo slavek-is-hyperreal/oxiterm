@@ -16,6 +16,7 @@ Working notes written by the agents during each stage, kept as history: what was
 | [identity](identity/) | [8.Id](../roadmap/oxiscript.md#s-8-id) | Site identity (palette, mark, mascot) |
 | [host-export](host-export/) | [8.HX](../roadmap/oxiscript.md#s-8-hx) | Owner decision 2026-11-26: `export` = module visibility, host entry points are `@host` |
 | [targets](targets/) | [8.2a](../roadmap/oxiscript.md#s-8-2a) | Compilation targets `device` / `web` / `server`: implementation, BAD ACTOR, fixes |
+| [8.Std](8.Std/) | [8.Std](../roadmap/oxiscript.md#s-8-std) | v0 standard library (`std/math`, `std/string`, `std/array`, `std/result`, `std/collections`): implementation, BAD ACTOR, fixes |
 | [showcase](showcase/) | Showcase (done, see [oxiui.md section 3](../roadmap/oxiui.md#3-done-verified)) | OxiUI versions of the three sites: implementation, BAD ACTOR, fixes |
 
 Stages 8.C, 8.P, 8.R and 8.M (OxiScript) and 7.1 and 7.2 (OxiUI) have no stage directory: their notes were never archived, and for the four OxiScript stages they exist in no worktree either. Their results are in the wave log (section 11 of [oxiscript.md](../roadmap/oxiscript.md)); the OxiUI Phase 0-7 narratives are in [../history/oxi-ui-plan-history.md](../history/oxi-ui-plan-history.md).

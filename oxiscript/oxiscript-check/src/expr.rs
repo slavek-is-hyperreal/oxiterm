@@ -215,7 +215,12 @@ impl<'a> Checker<'a> {
         self.depth += 1;
         if self.depth > MAX_EXPR_DEPTH {
             self.depth -= 1;
-            self.err("OXS-E0113", e.span, &[("detail", "expression is nested too deeply")]);
+            let snip = self.clip_snippet(e.span);
+            self.err(
+                "OXS-E0113",
+                e.span,
+                &[("detail", &format!("expression is nested too deeply at `{snip}`"))],
+            );
             self.set_ty(e.id, ERROR);
             return ERROR;
         }
@@ -567,6 +572,34 @@ impl<'a> Checker<'a> {
         t
     }
 
+    /// Widen an inferred return/closure expression type: in addition to `widen`,
+    /// a `null`-narrowed local/global declared with a nullable type `T | null`
+    /// widens back to `T | null` instead of leaking bare `null` into the signature.
+    pub fn widen_expr(&mut self, e: &'a Expr, t: Ty) -> Ty {
+        if t == NULL {
+            let inner = strip_paren(e);
+            if let Some(res) = self.mods[self.cm].out.res.get(&inner.id).copied() {
+                match res {
+                    Res::Local(l) => {
+                        let decl = self.mods[self.cm].out.locals[l.0 as usize].ty;
+                        if matches!(self.tys.kind(decl), TyKind::Nullable(_)) {
+                            return decl;
+                        }
+                    }
+                    Res::Def(d) if self.kind_of(d) == DefKind::Global => {
+                        if let Some(g) = self.globals.get(&d) {
+                            if matches!(self.tys.kind(g.ty), TyKind::Nullable(_)) {
+                                return g.ty;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.widen(t)
+    }
+
     fn array_lit(&mut self, e: &'a Expr, els: &'a [Expr], exp: Option<Ty>) -> Ty {
         let elem_hint = exp.map(|t| self.non_null(t)).and_then(|t| match self.tys.kind(t) {
             TyKind::Array(x) => Some(*x),
@@ -792,7 +825,9 @@ impl<'a> Checker<'a> {
         match op {
             UnOp::Not => {
                 let t = self.expr(inner, Some(BOOL));
-                if t != BOOL && t != ERROR && t != NEVER {
+                if t == NULL || matches!(self.tys.kind(t), TyKind::Nullable(_)) {
+                    self.possibly_null(inner, t);
+                } else if t != BOOL && t != ERROR && t != NEVER {
                     let s = self.show(t);
                     self.err("OXS-E0128", e.span, &[("op", "!"), ("ty", &s)]);
                 }
@@ -817,6 +852,10 @@ impl<'a> Checker<'a> {
                 match self.tys.kind(t) {
                     TyKind::Num(n) if is_signed(*n) || n.is_float() => t,
                     TyKind::Error | TyKind::Never => t,
+                    TyKind::Nullable(_) | TyKind::Null => {
+                        self.possibly_null(inner, t);
+                        ERROR
+                    }
                     _ => {
                         let s = self.show(t);
                         self.err("OXS-E0128", e.span, &[("op", "-"), ("ty", &s)]);
@@ -829,6 +868,10 @@ impl<'a> Checker<'a> {
                 match self.tys.kind(t) {
                     TyKind::Num(n) if is_int(*n) => t,
                     TyKind::Error | TyKind::Never => t,
+                    TyKind::Nullable(_) | TyKind::Null => {
+                        self.possibly_null(inner, t);
+                        ERROR
+                    }
                     _ => {
                         let s = self.show(t);
                         self.err("OXS-E0128", e.span, &[("op", "~"), ("ty", &s)]);
@@ -1010,25 +1053,37 @@ impl<'a> Checker<'a> {
                     self.check_shift_amount(rhs, acc);
                 }
                 t
-            } else if let (TyKind::Nullable(i), Some(l)) = (self.tys.kind(acc).clone(), lhs_e) {
-                if self.binary_result(*op, i, rt).is_some() {
-                    self.possibly_null(l, acc);
-                    ERROR
-                } else {
-                    self.operand_mismatch(node, *op, acc, rt, rhs);
-                    ERROR
-                }
-            } else if let TyKind::Nullable(i) = self.tys.kind(rt).clone() {
-                if self.binary_result(*op, acc, i).is_some() {
-                    self.possibly_null(rhs, rt);
-                    ERROR
-                } else {
-                    self.operand_mismatch(node, *op, acc, rt, rhs);
-                    ERROR
-                }
             } else {
-                self.operand_mismatch(node, *op, acc, rt, rhs);
-                ERROR
+                let lk = self.tys.kind(acc).clone();
+                let rk = self.tys.kind(rt).clone();
+                let l_nullish = matches!(lk, TyKind::Nullable(_) | TyKind::Null);
+                let r_nullish = matches!(rk, TyKind::Nullable(_) | TyKind::Null);
+                if l_nullish || r_nullish {
+                    let ln = self.non_null(acc);
+                    let rn = self.non_null(rt);
+                    let unwrapped_ok = match (acc == NULL, rt == NULL) {
+                        (true, true) => true,
+                        (true, false) => self.binary_result(*op, rn, rn).is_some(),
+                        (false, true) => self.binary_result(*op, ln, ln).is_some(),
+                        (false, false) => self.binary_result(*op, ln, rn).is_some(),
+                    };
+                    if unwrapped_ok {
+                        if l_nullish {
+                            if let Some(l) = lhs_e {
+                                self.possibly_null(l, acc);
+                            }
+                        }
+                        if r_nullish {
+                            self.possibly_null(rhs, rt);
+                        }
+                    } else {
+                        self.operand_mismatch(node, *op, acc, rt, rhs);
+                    }
+                    ERROR
+                } else {
+                    self.operand_mismatch(node, *op, acc, rt, rhs);
+                    ERROR
+                }
             };
             self.set_ty(node.id, res);
             acc = res;
@@ -1101,7 +1156,12 @@ impl<'a> Checker<'a> {
         self.depth += 1;
         if self.depth > MAX_EXPR_DEPTH {
             self.depth -= 1;
-            self.err("OXS-E0113", e.span, &[("detail", "expression is nested too deeply")]);
+            let snip = self.clip_snippet(e.span);
+            self.err(
+                "OXS-E0113",
+                e.span,
+                &[("detail", &format!("expression is nested too deeply at `{snip}`"))],
+            );
             return (self.flow.clone(), self.flow.clone());
         }
         let r = self.cond_inner(e);
@@ -1631,7 +1691,16 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::This => {
+                let in_closure = self.fnctx.last().is_some_and(|c| c.is_closure);
                 let (value, mutating) = self.fnctx.iter().rev().find(|c| !c.is_closure).map_or((false, true), |c| (c.this_is_value, c.mutating));
+                if value && in_closure {
+                    self.err(
+                        "OXS-E0126",
+                        t.span,
+                        &[("detail", "a closure cannot mutate a struct's `this` (a struct is a value captured by snapshot; mutations would not reach the caller)")],
+                    );
+                    return None;
+                }
                 if value && !mutating {
                     let fix = self.mutating_fix();
                     self.err_fix(
@@ -1719,16 +1788,27 @@ impl<'a> Checker<'a> {
             Some(bop) => {
                 let vt = self.expr(value, Some(tt));
                 if tt != ERROR && vt != ERROR {
-                    match self.binary_result(bop, tt, vt) {
-                        Some(r) if r == tt => {
-                            if matches!(bop, BinOp::Shl | BinOp::Shr) {
-                                self.check_shift_amount(value, tt);
-                            }
+                    let t_null = matches!(self.tys.kind(tt), TyKind::Nullable(_) | TyKind::Null);
+                    let v_null = matches!(self.tys.kind(vt), TyKind::Nullable(_) | TyKind::Null);
+                    if t_null || v_null {
+                        if t_null {
+                            self.possibly_null(target, tt);
                         }
-                        _ => {
-                            let (sl, sr) = (self.show(tt), self.show(vt));
-                            let fix = if matches!(bop, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(value, tt, vt, format!("Convert the right operand with `as {sl}`")) };
-                            self.err_fix("OXS-E0110", e.span, &[("op", &format!("{}=", Self::op_str(bop))), ("lhs", &sl), ("rhs", &sr)], fix);
+                        if v_null {
+                            self.possibly_null(value, vt);
+                        }
+                    } else {
+                        match self.binary_result(bop, tt, vt) {
+                            Some(r) if r == tt => {
+                                if matches!(bop, BinOp::Shl | BinOp::Shr) {
+                                    self.check_shift_amount(value, tt);
+                                }
+                            }
+                            _ => {
+                                let (sl, sr) = (self.show(tt), self.show(vt));
+                                let fix = if matches!(bop, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(value, tt, vt, format!("Convert the right operand with `as {sl}`")) };
+                                self.err_fix("OXS-E0110", e.span, &[("op", &format!("{}=", Self::op_str(bop))), ("lhs", &sl), ("rhs", &sr)], fix);
+                            }
                         }
                     }
                 }
@@ -1742,7 +1822,9 @@ impl<'a> Checker<'a> {
     fn update(&mut self, e: &'a Expr, target: &'a Expr) -> Ty {
         let Some(tt) = self.place(target, false) else { return ERROR };
         self.set_ty(target.id, tt);
-        if !matches!(self.tys.kind(tt), TyKind::Num(_)) && tt != ERROR {
+        if matches!(self.tys.kind(tt), TyKind::Nullable(_) | TyKind::Null) {
+            self.possibly_null(target, tt);
+        } else if !matches!(self.tys.kind(tt), TyKind::Num(_)) && tt != ERROR {
             let s = self.show(tt);
             self.err("OXS-E0128", e.span, &[("op", "++"), ("ty", &s)]);
         }
@@ -1877,7 +1959,15 @@ impl<'a> Checker<'a> {
             }
             TyKind::Error => return ERROR,
             TyKind::Str => {
-                self.err("OXS-E0128", e.span, &[("op", "[]"), ("ty", "string")]);
+                self.err_fix(
+                    "OXS-E0128",
+                    e.span,
+                    &[("op", "[]"), ("ty", "string")],
+                    Some(Fix {
+                        title: "A string has no O(1) character index: use `s.bytes()[i]` for a byte or `s.chars()[i]` for a code point.".into(),
+                        edits: Vec::new(),
+                    }),
+                );
                 return ERROR;
             }
             _ => {
@@ -2003,7 +2093,7 @@ impl<'a> Checker<'a> {
                         r
                     }
                     None => {
-                        let w = self.widen(t);
+                        let w = self.widen_expr(x, t);
                         self.record_coercion(x.id, t, w);
                         w
                     }

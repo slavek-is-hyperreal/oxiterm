@@ -33,6 +33,7 @@
 //!
 //! No dependencies; in particular no dependency on `oxiscript-ir` or on any
 //! `oxiterm-*` crate.
+#![forbid(unsafe_code)]
 #![allow(
     clippy::too_many_lines,
     clippy::many_single_char_names,

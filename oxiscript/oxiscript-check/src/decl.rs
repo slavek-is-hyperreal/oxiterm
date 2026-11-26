@@ -209,8 +209,8 @@ impl<'a> Checker<'a> {
                         MemberKind::Method(f) | MemberKind::Constructor(f) => {
                             let ck = if matches!(m.kind, MemberKind::Method(_)) { DefKind::Method } else { DefKind::Ctor };
                             let md = self.new_def(&f.name.name, ck, m.span, m.id, false, vec![], Some(d), Ast::Member(m, r));
-                            if ck == DefKind::Ctor && (!f.type_params.is_empty() || f.mods.is_static) || ck == DefKind::Method && f.name.name == "constructor" {
-                                self.err("OXS-E0123", f.name.span, &[("detail", "a constructor cannot be generic or `static`, and `constructor` is not a method name")]);
+                            if ck == DefKind::Ctor && (!f.type_params.is_empty() || f.mods.is_static || f.mods.mutating) || ck == DefKind::Method && f.name.name == "constructor" {
+                                self.err("OXS-E0123", f.name.span, &[("detail", "a constructor cannot be generic, `static`, or `mutating`, and `constructor` is not a method name")]);
                             }
                             let own = self.new_tparams(&f.type_params, md, &tps);
                             self.defs[md.0 as usize].info.tparams = own;

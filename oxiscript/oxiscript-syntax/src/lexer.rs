@@ -234,8 +234,10 @@ pub fn is_reserved_word(w: &str) -> bool {
         "arena"
             | "async"
             | "await"
+            | "decreases"
             | "dyn"
             | "ensures"
+            | "ghost"
             | "impl"
             | "inout"
             | "invariant"
@@ -244,6 +246,7 @@ pub fn is_reserved_word(w: &str) -> bool {
             | "match"
             | "move"
             | "parallel"
+            | "pure"
             | "region"
             | "requires"
             | "spawn"
@@ -455,6 +458,7 @@ impl Lexer<'_> {
                     }
                     let hi = e;
                     let is_doc = b.get(lo + 2) == Some(&b'/') && b.get(lo + 3) != Some(&b'/');
+                    self.scan_comment_invisible(lo + 2, hi);
                     self.comments.push(Comment {
                         kind: if is_doc {
                             CommentKind::Doc
@@ -490,6 +494,8 @@ impl Lexer<'_> {
                             "the block comment starting here is never closed".into(),
                         );
                     }
+                    let body_hi = if closed { e - 2 } else { e };
+                    self.scan_comment_invisible(lo + 2, body_hi);
                     self.comments.push(Comment {
                         kind: CommentKind::Block,
                         lo: lo as u32,
@@ -888,6 +894,34 @@ impl Lexer<'_> {
     }
 
     // ---- strings and templates ---------------------------------------------
+
+    /// Warn (`OXS-W0003`) on invisible or direction-changing characters inside comments
+    /// (Trojan Source / CVE-2021-42574). Line breaks (`\n`, `\r`) and `\t` are allowed.
+    fn scan_comment_invisible(&mut self, lo: usize, hi: usize) {
+        let text = &self.src[lo..hi];
+        if text.is_ascii()
+            && !text
+                .bytes()
+                .any(|b| (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r')) || b == 0x7f)
+        {
+            return;
+        }
+        for (k, c) in text.char_indices() {
+            if is_invisible(c) && !matches!(c, '\n' | '\r') {
+                let at = lo + k;
+                let sp = self.span(at, at + c.len_utf8());
+                let d = Diagnostic::new(
+                    "OXS-W0003",
+                    sp,
+                    format!(
+                        "invisible or direction-changing character U+{:04X} in a comment; remove it",
+                        c as u32
+                    ),
+                );
+                self.push_diag(d);
+            }
+        }
+    }
 
     /// Append source text `lo..hi` of a literal, warning about invisible characters.
     fn copy_run(&mut self, out: &mut String, lo: usize, hi: usize, template: bool) {

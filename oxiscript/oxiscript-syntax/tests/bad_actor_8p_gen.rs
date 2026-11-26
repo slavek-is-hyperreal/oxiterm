@@ -864,3 +864,104 @@ fn fixit_sweep() {
     }
     assert_eq!(bad.len(), 0, "{} fix-it problem classes", bad.len());
 }
+
+/// Multi-seed regression run of both 8.P oracles (`structured_roundtrip` with
+/// comments and `fixit_sweep`) across 5 independent seeds ([R2-55, R2-163, R3-204]).
+#[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: multi-seed 8.P oracles")]
+fn multi_seed_oracles() {
+    const SEEDS: &[u64] = &[
+        0xBADA_C702,
+        0x5EED_0001,
+        0x5EED_0002,
+        0x5EED_0003,
+        0x5EED_0004,
+    ];
+    for &seed in SEEDS {
+        let mut g = Gen {
+            r: Rng(seed | 1),
+            comments: true,
+        };
+        let mut fails = Vec::new();
+        for _ in 0..500 {
+            let d = 1 + g.r.below(4);
+            let prog = g.program(d);
+            let src = g.join(&prog);
+            match std::panic::catch_unwind(|| check(&src)) {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => fails.push((src, e)),
+                Err(_) => fails.push((src, "PANIC".into())),
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "structured_roundtrip seed {seed:#x} had {} failures; first: {:?}",
+            fails.len(),
+            fails.first()
+        );
+
+        let mut g2 = Gen {
+            r: Rng((seed ^ 0xF1F1_7001) | 1),
+            comments: false,
+        };
+        let mut bad_fixes = Vec::new();
+        for _ in 0..500 {
+            let d = 1 + g2.r.below(3);
+            let mut toks = g2.program(d);
+            for _ in 0..(1 + g2.r.below(2)) {
+                if toks.len() < 3 {
+                    break;
+                }
+                let i = g2.r.below(toks.len());
+                match g2.r.below(4) {
+                    0 => {
+                        toks.remove(i);
+                    }
+                    1 => {
+                        let x = toks[i].clone();
+                        toks.insert(i, x);
+                    }
+                    2 => {
+                        let j = g2.r.below(toks.len());
+                        toks.swap(i, j);
+                    }
+                    _ => {
+                        let junk = [
+                            "==", "!=", "?", " ?", "a b", ">>", "as", "|", "<", ">", "=>", ";",
+                            "{", "}", "(", ")",
+                        ];
+                        toks.insert(i, Tok(junk[g2.r.below(junk.len())].to_string(), false));
+                    }
+                }
+            }
+            let src = g2.join(&toks);
+            let p = parse(&src, FileId(0));
+            if p.diagnostics.len() != 1 {
+                continue;
+            }
+            for dg in &p.diagnostics {
+                for f in &dg.fixes {
+                    let Some(fixed) = apply_edits(&src, &f.edits) else {
+                        bad_fixes.push(format!("INAPPLICABLE {} / {}", dg.code, f.title));
+                        continue;
+                    };
+                    let p2 = parse(&fixed, FileId(0));
+                    let same_place = p2.diagnostics.iter().any(|d2| {
+                        d2.code == dg.code
+                            && d2.span.lo >= dg.span.lo.saturating_sub(2)
+                            && d2.span.lo <= dg.span.lo + 2
+                    });
+                    if p2.diagnostics.len() > p.diagnostics.len() || same_place {
+                        bad_fixes.push(format!("NOFIX {} / {} on {src}", dg.code, f.title));
+                    }
+                }
+            }
+        }
+        assert!(
+            bad_fixes.is_empty(),
+            "fixit_sweep seed {seed:#x} had {} failures; first: {:?}",
+            bad_fixes.len(),
+            bad_fixes.first()
+        );
+    }
+}

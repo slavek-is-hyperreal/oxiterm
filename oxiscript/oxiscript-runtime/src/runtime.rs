@@ -161,7 +161,13 @@ impl Host {
             .allow_start_fn(false)
             .ignore_custom_sections(false)
             .compilation_mode(CompilationMode::Eager)
-            .enforced_limits(EnforcedLimits::strict())
+            // Use default engine limits instead of `EnforcedLimits::strict()`:
+            // `strict()` adds a 40 avg-bytes/function rule that only defends lazy
+            // compilation (we use `CompilationMode::Eager`) and rejects valid
+            // modules with ~1000 tiny functions ([R2-109, R3-61]). Every structural
+            // cap from `strict()` (functions, globals, tables, segments, params,
+            // results, memories) is enforced directly in `load::reject_reexports`.
+            .enforced_limits(EnforcedLimits::default())
             .set_max_recursion_depth(limits.max_recursion_depth)
             .set_min_stack_height(limits.max_stack_height.min(1000))
             .set_max_stack_height(limits.max_stack_height);
@@ -270,6 +276,8 @@ struct Instance {
     scratch_ptr: u32,
     scratch_cap: u32,
     cap_handles: Vec<u32>,
+    /// Capability manifest keys (`host:name@N`) this instance declared in `needs`.
+    needs: Vec<String>,
     poisoned: bool,
     last_fuel_used: u64,
     dropped_events: u64,
@@ -346,6 +354,7 @@ impl Instance {
         grants: &Grants,
         namespace: &str,
         revoked: &[String],
+        allowed_needs: Option<&[String]>,
     ) -> Result<Instance> {
         let limits = &host.limits;
         if wasm.len() > limits.max_module_bytes {
@@ -372,6 +381,24 @@ impl Instance {
             .map_err(|e| Error::reject("OXS-E0408", e.to_string()))?;
         let providers = host.providers.lock().unwrap().clone();
         let plan = load::check(&module, limits, &providers, grants)?;
+        let needs: Vec<String> = plan
+            .manifest
+            .needs
+            .iter()
+            .map(|n| format!("{}@{}", n.module, n.version))
+            .collect();
+        if let Some(allowed) = allowed_needs {
+            for key in &needs {
+                if !allowed.iter().any(|a| a == key) {
+                    return Err(Error::reject(
+                        "OXS-E0400",
+                        format!(
+                            "hot reload cannot widen capabilities: `{key}` was not in the previous manifest"
+                        ),
+                    ));
+                }
+            }
+        }
 
         // Capability objects, one per `needs` line; handles seeded per
         // instance so a handle from another instance never validates.
@@ -424,6 +451,8 @@ impl Instance {
                 handles,
                 memory: None,
                 host_calls: 0,
+                clock: host.clock.clone(),
+                call_start_us: None,
             },
         );
         store.limiter(|d| &mut d.limits);
@@ -518,6 +547,7 @@ impl Instance {
             scratch_ptr,
             scratch_cap,
             cap_handles,
+            needs,
             poisoned: false,
             last_fuel_used: 0,
             dropped_events: 0,
@@ -567,11 +597,34 @@ impl Instance {
         }
         let ft = f.ty(&self.store);
         let mut results = Self::zero_results(&ft);
+        let wall_cap = self.store.data().cfg.call_wall_micros;
+        let t0 = if wall_cap > 0 {
+            self.store.data().clock.as_ref().map(|c| c())
+        } else {
+            None
+        };
+        self.store.data_mut().call_start_us = t0;
         let r = f.call(&mut self.store, args, &mut results);
+        self.store.data_mut().call_start_us = None;
         let left = self.store.get_fuel().unwrap_or(0);
         self.last_fuel_used = fuel.saturating_sub(left);
         match r {
-            Ok(()) => Ok(results),
+            Ok(()) => {
+                if wall_cap > 0 {
+                    if let (Some(start), Some(clk)) = (t0, self.store.data().clock.as_ref()) {
+                        if clk().saturating_sub(start) >= wall_cap {
+                            self.poisoned = true;
+                            return Err(Error::Trap(TrapInfo {
+                                cause: TrapCause::HostFailure("wall-clock limit exceeded".into()),
+                                guest_kind_raw: 0,
+                                guest_kind: None,
+                                fuel_used: self.last_fuel_used,
+                            }));
+                        }
+                    }
+                }
+                Ok(results)
+            }
             Err(e) => {
                 self.poisoned = true;
                 Err(Error::Trap(self.trap_info(&e)))
@@ -663,7 +716,7 @@ impl Runtime {
         namespace: String,
         anonymous: bool,
     ) -> Result<Runtime> {
-        let inst = match Instance::build(&host.inner, wasm, &grants, &namespace, &[]) {
+        let inst = match Instance::build(&host.inner, wasm, &grants, &namespace, &[], None) {
             Ok(i) => i,
             Err(e) => {
                 if anonymous {
@@ -699,6 +752,7 @@ impl Runtime {
             &self.grants,
             &self.namespace,
             &self.revoked,
+            Some(&self.inst.needs),
         )?;
         let build = match (t, self.host.clock.as_ref()) {
             (Some(t0), Some(c)) => Duration::from_micros(c().saturating_sub(t0)),

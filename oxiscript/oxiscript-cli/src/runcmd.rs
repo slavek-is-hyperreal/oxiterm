@@ -9,6 +9,7 @@ use crate::check::{project_for, HostCache, EXIT_FATAL, EXIT_FINDINGS};
 use crate::needs;
 use crate::project::{self, Entry};
 use crate::report;
+use oxiscript_abi::sanitize::sanitize_terminal;
 use oxiscript_abi::target::Target;
 use oxiscript_playground::run::{run_wasm_on, DEFAULT_FUEL};
 use std::collections::HashMap;
@@ -83,7 +84,7 @@ pub fn run(a: &Args) -> i32 {
     let src = match project::read_regular(&entry, project::MAX_SOURCE_BYTES) {
         Ok(s) => s,
         Err(project::ReadError::Skipped(e) | project::ReadError::Failed(e) | project::ReadError::TooLarge(e) | project::ReadError::NotUtf8(e)) => {
-            errln!("error: {}: {e}", entry.display());
+            errln!("error: {}: {}", sanitize_terminal(&entry.display().to_string()), sanitize_terminal(&e));
             return EXIT_FATAL;
         }
     };
@@ -91,7 +92,7 @@ pub fn run(a: &Args) -> i32 {
     let prj = match project_for(&mut cache, &entry) {
         Ok(h) => h,
         Err(e) => {
-            errln!("error: {e}");
+            errln!("error: {}", sanitize_terminal(&e));
             return EXIT_FATAL;
         }
     };
@@ -116,7 +117,7 @@ pub fn run(a: &Args) -> i32 {
         Ok(w) => w,
         Err(ds) => {
             for d in &ds.0 {
-                errln!("error[{}]: {}", d.code, d.message);
+                errln!("error[{}]: {}", d.code, sanitize_terminal(&d.message));
             }
             errln!("oxi {cmd}: the program could not be compiled");
             return EXIT_FINDINGS;
@@ -128,16 +129,16 @@ pub fn run(a: &Args) -> i32 {
         } else {
             let name = prj.manifest.as_ref().map_or_else(|| entry.file_stem().map_or_else(|| "out".to_string(), |s| s.to_string_lossy().into_owned()), |m| m.name.clone());
             if !valid_package_name(&name) {
-                errln!("error: [package] name {name:?} is not usable as a file name (allowed: A-Z a-z 0-9 _ -, 1 to 64 characters); fix oxi.toml or pass -o FILE");
+                errln!("error: [package] name {} is not usable as a file name (allowed: A-Z a-z 0-9 _ -, 1 to 64 characters); fix oxi.toml or pass -o FILE", sanitize_terminal(&format!("{name:?}")));
                 return EXIT_FATAL;
             }
             PathBuf::from(format!("{name}.wasm"))
         };
         if let Err(e) = project::write_atomic_bytes(&out, &wasm, true) {
-            errln!("error: {}: {e}", out.display());
+            errln!("error: {}: {}", sanitize_terminal(&out.display().to_string()), sanitize_terminal(&e));
             return EXIT_FATAL;
         }
-        errln!("oxi build: wrote {} ({} bytes, target {target})", out.display(), wasm.len());
+        errln!("oxi build: wrote {} ({} bytes, target {target})", sanitize_terminal(&out.display().to_string()), wasm.len());
         return 0;
     }
     let fuel = match a.fuel {
@@ -147,7 +148,8 @@ pub fn run(a: &Args) -> i32 {
     let report = run_wasm_on(&wasm, fuel, target);
     let mut pipe_closed = false;
     for l in &report.lines {
-        let r = if l.level >= 3 { emit(true, &format!("{}: {}", if l.level == 3 { "warn" } else { "error" }, l.msg)) } else { emit(false, &l.msg) };
+        let clean = sanitize_terminal(&l.msg);
+        let r = if l.level >= 3 { emit(true, &format!("{}: {clean}", if l.level == 3 { "warn" } else { "error" })) } else { emit(false, &clean) };
         match r {
             Sink::Ok => {}
             Sink::Closed => {
@@ -155,7 +157,7 @@ pub fn run(a: &Args) -> i32 {
                 break;
             }
             Sink::Failed(e) => {
-                let _ = emit(true, &format!("oxi run: cannot write output: {e}"));
+                let _ = emit(true, &format!("oxi run: cannot write output: {}", sanitize_terminal(&e)));
                 return EXIT_FATAL;
             }
         }
@@ -169,7 +171,7 @@ pub fn run(a: &Args) -> i32 {
     match report.stop {
         None => 0,
         Some(s) if s.reason == "rejected" => {
-            let _ = emit(true, &format!("error: {} (`oxi run` provides host:log@1 and host:state@1; use `oxi build` for other interfaces)", s.detail));
+            let _ = emit(true, &format!("error: {} (`oxi run` provides host:log@1 and host:state@1; use `oxi build` for other interfaces)", sanitize_terminal(&s.detail)));
             EXIT_FATAL
         }
         Some(s) => {

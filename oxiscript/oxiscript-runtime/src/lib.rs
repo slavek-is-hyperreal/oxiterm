@@ -9,6 +9,7 @@
 //! * [`caps`]: the reference `log` and `state` capabilities.
 //!
 //! Spec: `docs/oxiscript/abi.md`, `docs/oxiscript/contracts.md` (8.R).
+#![forbid(unsafe_code)]
 #![allow(
     clippy::doc_markdown,
     clippy::too_many_lines,

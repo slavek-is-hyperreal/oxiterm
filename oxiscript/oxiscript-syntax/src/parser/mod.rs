@@ -677,12 +677,60 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Statement terminator; a missing one is `OXS-E0004` with an insert fix.
+    /// Statement terminator; a missing one is `OXS-E0004` with an insert fix
+    /// unless inserting `;` here would mask a nonexistent exception construct
+    /// (`throw`/`try`/`catch`/`finally`) or alter meaning across a continuation
+    /// line (`a\n[1]`, `a\n+ b`, `let k = 2 +`).
     fn expect_semi(&mut self) {
         if self.eat(Tk::Semi) {
             return;
         }
         let at = self.prev_end_span();
+        let pos = (at.lo as usize).min(self.src.len());
+        let line_start = self.src[..pos].rfind('\n').map_or(0, |i| i + 1);
+        let before = self.src[line_start..pos].trim_start();
+        let is_exc = before
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .any(|w| matches!(w, "throw" | "try" | "catch" | "finally"));
+        if is_exc {
+            self.diag(Diagnostic::new(
+                "OXS-E0004",
+                at,
+                "OxiScript has no exceptions (`throw`, `try`, `catch`): return `Err(...)` from a function that returns `Result<T, E>` and propagate with `?`",
+            ));
+            return;
+        }
+        const CONT_STARTS: &[char] = &[
+            '(', '[', '`', '+', '-', '*', '/', '.', ',', '?', ':', '=', '<', '>', '&', '|', '%', '^',
+        ];
+        const CONT_ENDS: &[char] = &[
+            '+', '-', '*', '/', '%', '&', '|', '^', '=', '!', '?', ':', '.', ',', '(', '[', '{', '<',
+        ];
+        if before.starts_with(CONT_STARTS) {
+            if let Some((prev_end, prev_line)) = prev_nonempty_line_end(self.src, line_start) {
+                if !prev_line.ends_with([';', '{', '}', ':']) {
+                    let prev_sp = mk_span(self.file, prev_end, prev_end);
+                    self.diag(Diagnostic::new(
+                        "OXS-E0004",
+                        prev_sp,
+                        "missing `;` on this line before continuation on the next line; inserting `;` after the continuation would change meaning",
+                    ));
+                    return;
+                }
+            }
+        }
+        let trimmed_end = before.trim_end();
+        if !trimmed_end.ends_with("++")
+            && !trimmed_end.ends_with("--")
+            && (trimmed_end.ends_with(CONT_ENDS) || trimmed_end.ends_with("=>"))
+        {
+            self.diag(Diagnostic::new(
+                "OXS-E0004",
+                at,
+                "statements end with `;`, but this expression appears incomplete",
+            ));
+            return;
+        }
         let d = Diagnostic::new("OXS-E0004", at, "statements end with `;`").with_fix(Fix::insert(
             "insert `;`",
             at,
@@ -963,6 +1011,23 @@ impl<'a> Parser<'a> {
     }
 }
 
+fn prev_nonempty_line_end(src: &str, line_start: usize) -> Option<(usize, &str)> {
+    let mut end = line_start;
+    while end > 0 {
+        let mut p = end - 1;
+        if p > 0 && src.as_bytes()[p - 1] == b'\r' {
+            p -= 1;
+        }
+        let start = src[..p].rfind('\n').map_or(0, |i| i + 1);
+        let trimmed = src[start..p].trim_end();
+        if !trimmed.is_empty() {
+            return Some((start + trimmed.len(), trimmed));
+        }
+        end = start;
+    }
+    None
+}
+
 fn clip(s: &str) -> String {
     if s.chars().count() > 24 {
         let t: String = s.chars().take(24).collect();
@@ -993,7 +1058,9 @@ pub(crate) fn reserved_hint(word: &str) -> &'static str {
         "match" => "; use `switch` (it is an expression when used as a value)",
         "kernel" | "parallel" => "; the kernel/parallel profile is not available yet",
         "inout" => "; mutable value parameters are not available yet",
-        "requires" | "ensures" | "invariant" => "; use a `law` declaration for properties",
+        "requires" | "ensures" | "invariant" | "decreases" | "ghost" | "pure" => {
+            "; verification clauses are not part of this edition; use a `law` declaration for properties"
+        }
         _ => "",
     }
 }

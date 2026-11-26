@@ -62,6 +62,7 @@ pub(crate) struct Lw<'c, 'a> {
     pub globals: HashMap<GKey, GlobalIr>,
     pub counter: u32,
     pub instances: usize,
+    pub max_instances: usize,
     pub helper_done: HashSet<String>,
     pub budget_hit: bool,
     pub lower_all: bool,
@@ -156,6 +157,7 @@ impl<'c, 'a> Lw<'c, 'a> {
             globals: HashMap::new(),
             counter: 0,
             instances: 0,
+            max_instances: MAX_INSTANCES,
             helper_done: HashSet::new(),
             budget_hit: false,
             lower_all: false,
@@ -209,12 +211,15 @@ impl<'c, 'a> Lw<'c, 'a> {
     /// Count a generic instantiation against the budget.
     pub fn count_instance(&mut self, what: &str) -> bool {
         self.instances += 1;
-        if self.instances > MAX_INSTANCES {
+        if self.instances > self.max_instances {
             if !self.budget_hit {
                 self.budget_hit = true;
                 self.err(
                     "OXS-E0701",
-                    format!("more than {MAX_INSTANCES} instantiations (last: {what})"),
+                    format!(
+                        "more than {} instantiations (last: {what})",
+                        self.max_instances
+                    ),
                     None,
                 );
             }

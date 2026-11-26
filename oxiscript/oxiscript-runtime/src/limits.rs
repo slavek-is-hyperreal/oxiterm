@@ -39,6 +39,11 @@ pub struct Limits {
     /// (`Host::set_clock`); makes pump non-deterministic, leave it unset in
     /// deterministic tests.
     pub pump_wall_micros: u64,
+    /// Wall-time cap of a single guest invocation in microseconds (0 = off),
+    /// independent of fuel. Checked at host-call boundaries and on return
+    /// using the host clock (`HostOptions::clock`); exceeding it traps and
+    /// poisons the instance.
+    pub call_wall_micros: u64,
     /// Bound of the release queue (guest closures the host dropped).
     pub max_pending_releases: usize,
     /// Largest `oxi.manifest` section.
@@ -61,6 +66,7 @@ impl Default for Limits {
             max_events_per_pump: 256,
             pump_fuel: 30_000_000,
             pump_wall_micros: 50_000,
+            call_wall_micros: 0,
             max_pending_releases: 1024,
             max_manifest_bytes: 4096,
         }

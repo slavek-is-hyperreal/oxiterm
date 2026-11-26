@@ -8,6 +8,8 @@
 oxi check --json [paths]   # diagnostics as JSON (schema 1): code, severity, message, file, range, fixes
 oxi check --fix            # apply every machine-applicable fix, rewrite the files
 oxi fmt [--check] [paths]  # canonical formatter, no options
+oxi run [file] [--fuel N]  # compile and run main in the sandboxed wasmi runtime
+oxi build [file] [-o out]  # compile to a .wasm module
 oxi explain OXS-E0100      # a code's meaning, example and fix
 oxi new NAME --template blink|touch-button|sensor-dashboard|oxiui-page
 ```
@@ -184,7 +186,9 @@ const p = { x: 1.0, y: 2.0 };
   * `std/result`: `isOk`, `isErr`, `unwrapOr`, `unwrapOrElse`, `unwrapErrOr`, `okValue`, `errValue`, `map`, `mapErr`, `mapOr`, `andThen`, `orElse`, `flatten`, `all`.
   * `std/collections`: `Hash`, `Eq<T>`, `HashEq<T>`, `hashCombine`, `MapEntry<K, V>`, insertion-ordered `Map<K, V>` and `Set<T>` (`size`, `isEmpty`, `has`, `get`, `getOr`, `set`/`add`, `remove`, `clear`, `keys`, `values`, `entries`, `forEach`).
 
-## Diagnostic codes the checker emits
+## Diagnostic codes oxi check emits
+
+Generated from `oxiscript/oxiscript-abi/registry/codes.txt` (every emitted `lex`/`parse`/`check` code plus `OXS-E0400`/`OXS-E0402` for `oxi.toml` `needs`; unimplemented future codes such as `OXS-E0500` are omitted until emitted).
 
 - OXS-E0001 Unexpected token
 - OXS-E0002 Unterminated string or comment
@@ -236,13 +240,15 @@ const p = { x: 1.0, y: 2.0 };
 - OXS-E0301 Duplicate definition
 - OXS-E0302 Cannot resolve import
 - OXS-E0303 Wrong kind of name
-- OXS-E0500 Construct forbidden by profile
+- OXS-E0400 Capability not granted
+- OXS-E0402 Invalid module manifest
 - OXS-E0900 Reserved syntax
 - OXS-E0990 Internal checker inconsistency
 - OXS-W0001 Unused binding
 - OXS-W0002 Suppression needs a reason
 - OXS-W0003 Invisible or direction-changing character in a literal
 - OXS-W0004 Expression has no effect
+- OXS-W0005 Unreachable case label
 
 ## More
 

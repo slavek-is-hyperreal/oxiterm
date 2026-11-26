@@ -42,7 +42,7 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
     (
         "OXS-E0015",
         "export function f(): void {\n  1 = 2;\n}\n",
-        "export function f(): void {\n  let a: i32 = 1;\n  a = 2;\n}\n",
+        "export function f(): i32 {\n  let a: i32 = 1;\n  a = 2;\n  return a;\n}\n",
     ),
     (
         "OXS-E0016",
@@ -122,8 +122,8 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
     ),
     (
         "OXS-E0117",
-        "export function f(): void {\n  const a: Array<i32, i32> = [];\n}\n",
-        "export function f(): void {\n  const a: Array<i32> = [];\n}\n",
+        "export function f(): Array<i32> {\n  const a: Array<i32, i32> = [];\n  return a;\n}\n",
+        "export function f(): Array<i32> {\n  const a: Array<i32> = [];\n  return a;\n}\n",
     ),
     (
         "OXS-E0118",
@@ -182,8 +182,8 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
     ),
     (
         "OXS-E0303",
-        "struct P {\n  x: i32;\n}\nexport function f(): void {\n  const a = P;\n}\n",
-        "struct P {\n  x: i32;\n}\nexport function f(): void {\n  const a: P = { x: 1 };\n}\n",
+        "struct P {\n  x: i32;\n}\nexport function f(): P {\n  const a = P;\n  return a;\n}\n",
+        "struct P {\n  x: i32;\n}\nexport function f(): P {\n  const a: P = { x: 1 };\n  return a;\n}\n",
     ),
     (
         "OXS-E0400",
@@ -201,6 +201,11 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
         "interface Named {\n  name(): string;\n}\nclass A {}\nclass B {\n  a: A = new A();\n}\n",
     ),
     (
+        "OXS-W0001",
+        "export function f(): i32 {\n  const unused: i32 = 1;\n  return 0;\n}\n",
+        "export function f(): i32 {\n  return 0;\n}\n",
+    ),
+    (
         "OXS-W0002",
         "@allow(\"OXS-P0102\")\nexport function f(): void {}\n",
         "@allow(\"OXS-P0102\", \"scalar loop is fine here\")\nexport function f(): void {}\n",
@@ -209,6 +214,11 @@ pub const EXAMPLES: &[(&str, &str, &str)] = &[
         "OXS-W0004",
         "export function f(): void {\n  1 + 2;\n}\n",
         "export function f(): i32 {\n  return 1 + 2;\n}\n",
+    ),
+    (
+        "OXS-W0005",
+        "type U = { kind: \"a\" } | { kind: \"b\" };\nexport function f(u: U): i32 {\n  if (u.kind === \"a\") {\n    return 1;\n  }\n  switch (u.kind) {\n    case \"a\":\n      return 0;\n    case \"b\":\n      return 2;\n  }\n}\n",
+        "type U = { kind: \"a\" } | { kind: \"b\" };\nexport function f(u: U): i32 {\n  if (u.kind === \"a\") {\n    return 1;\n  }\n  return 2;\n}\n",
     ),
 ];
 

@@ -12,6 +12,7 @@
 //!
 //! Dependency direction: this crate depends only on `oxiscript-abi` (for
 //! `TrapKind` and the runtime export table). It does not depend on the AST.
+#![forbid(unsafe_code)]
 #![allow(
     clippy::doc_markdown,
     clippy::too_many_lines,

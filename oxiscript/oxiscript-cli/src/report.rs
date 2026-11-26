@@ -3,6 +3,7 @@
 //! stable JSON documented in `SCHEMA.md`.
 
 use crate::project::{Run, SourceFile};
+use oxiscript_abi::sanitize::sanitize_terminal;
 use oxiscript_syntax::{Diagnostic, FileId, Span};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -131,8 +132,8 @@ pub fn collect(run: &Run) -> Vec<Diag> {
         let mut diag = Diag {
             code: d.code.to_string(),
             severity: severity_of(d.code),
-            message: d.message.clone(),
-            file: run.files[fi].display.clone(),
+            message: sanitize_terminal(&d.message),
+            file: sanitize_terminal(&run.files[fi].display),
             range: r,
             fixes: fixes_of(run, d),
         };
@@ -148,10 +149,16 @@ pub fn diag_at(srcs: &[SourceFile], span: Span, code: &str, message: String, fix
     Some(Diag {
         code: code.to_string(),
         severity: severity_of(code),
-        message,
-        file: srcs[fi].display.clone(),
+        message: sanitize_terminal(&message),
+        file: sanitize_terminal(&srcs[fi].display),
         range: r,
-        fixes,
+        fixes: fixes
+            .into_iter()
+            .map(|mut f| {
+                f.title = sanitize_terminal(&f.title);
+                f
+            })
+            .collect(),
     })
 }
 
@@ -160,7 +167,7 @@ fn fixes_of(run: &Run, d: &Diagnostic) -> Vec<FixOut> {
     d.fixes
         .iter()
         .map(|f| FixOut {
-            title: f.title.clone(),
+            title: sanitize_terminal(&f.title),
             applicability: applicability(d.code, f, alts),
             edits: f
                 .edits
@@ -168,7 +175,7 @@ fn fixes_of(run: &Run, d: &Diagnostic) -> Vec<FixOut> {
                 .filter_map(|e| {
                     let (fi, r) = range(&run.files, e.span)?;
                     Some(EditOut {
-                        file: run.files[fi].display.clone(),
+                        file: sanitize_terminal(&run.files[fi].display),
                         range: r,
                         new_text: e.replacement.clone(),
                     })
@@ -242,32 +249,38 @@ pub fn render_human(d: &Diag, sources: &dyn Fn(&str) -> Option<String>, color: b
         ("", "", "", "", "")
     };
     let sev_color = if d.severity == "warning" { yel } else { red };
+    let msg = sanitize_terminal(&d.message);
+    let file = sanitize_terminal(&d.file);
     let mut s = String::new();
     let _ = writeln!(
         s,
-        "{bold}{sev_color}{}[{}]{off}{bold}: {}{off}",
-        d.severity, d.code, d.message
+        "{bold}{sev_color}{}[{}]{off}{bold}: {msg}{off}",
+        d.severity, d.code
     );
     let line = d.range.start.line;
     let w = line.to_string().len();
     let _ = writeln!(
         s,
-        "{:w$}{cyan}-->{off} {}:{}:{}",
+        "{:w$}{cyan}-->{off} {file}:{}:{}",
         "",
-        d.file,
         line,
         d.range.start.col
     );
     if let Some(src) = sources(&d.file) {
         if let Some(text) = src.lines().nth(line as usize - 1) {
-            let start = d.range.start.col as usize - 1;
-            let len = if d.range.end.line == line {
+            let start_chars = (d.range.start.col as usize).saturating_sub(1);
+            let span_chars = if d.range.end.line == line {
                 (d.range.end.col as usize).saturating_sub(d.range.start.col as usize).max(1)
             } else {
-                text.chars().count().saturating_sub(start).max(1)
+                text.chars().count().saturating_sub(start_chars).max(1)
             };
+            let prefix_raw: String = text.chars().take(start_chars).collect();
+            let span_raw: String = text.chars().skip(start_chars).take(span_chars).collect();
+            let safe_line = sanitize_terminal(text);
+            let start = sanitize_terminal(&prefix_raw).chars().count();
+            let len = sanitize_terminal(&span_raw).chars().count().max(1);
             let _ = writeln!(s, "{:w$} {cyan}|{off}", "");
-            let _ = writeln!(s, "{cyan}{line:>w$} |{off} {text}");
+            let _ = writeln!(s, "{cyan}{line:>w$} |{off} {safe_line}");
             let _ = writeln!(
                 s,
                 "{:w$} {cyan}|{off} {}{sev_color}{}{off}",
@@ -283,7 +296,7 @@ pub fn render_human(d: &Diag, sources: &dyn Fn(&str) -> Option<String>, color: b
             MAYBE_INCORRECT => "fix, check it",
             _ => "help",
         };
-        let _ = writeln!(s, "{:w$} {cyan}={off} {bold}{tag}{off}: {}", "", f.title);
+        let _ = writeln!(s, "{:w$} {cyan}={off} {bold}{tag}{off}: {}", "", sanitize_terminal(&f.title));
     }
     let _ = writeln!(s, "{:w$} {cyan}={off} explain: oxi explain {}", "", d.code);
     s
