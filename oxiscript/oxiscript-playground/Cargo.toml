@@ -3,12 +3,20 @@ name = "oxiscript-playground"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "OxiScript compiler in the browser (wasm-bindgen): check, format, later compile+run. Used by oxiscript.slavekm.pl."
+description = "OxiScript compiler and runner in the browser (wasm-bindgen): check, format, compile, run. Used by oxiscript.slavekm.pl and by `oxi run`."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# `run` = compile + run (lowering, Wasm codegen, the wasmi runtime). On by default (native tests, `oxi`);
+# the website builds the small check/format bundle with `--no-default-features` and the runner bundle with defaults.
+default = ["run"]
+run = ["dep:oxiscript-lower", "dep:oxiscript-runtime"]
+
 [dependencies]
+oxiscript-lower = { path = "../oxiscript-lower", optional = true }
+oxiscript-runtime = { path = "../oxiscript-runtime", optional = true }
 oxiscript-syntax = { path = "../oxiscript-syntax" }
 oxiscript-check = { path = "../oxiscript-check" }
 oxiscript-abi = { path = "../oxiscript-abi" }

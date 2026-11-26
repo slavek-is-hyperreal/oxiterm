@@ -7,7 +7,8 @@
 | 0 | success (`check`: no errors, warnings allowed; `fmt --check`: nothing would change) |
 | 1 | findings: errors reported by `check`, a syntax error in `fmt`, or `fmt --check` would change a file |
 | 2 | usage, I/O or configuration error (missing path, unreadable or broken `oxi.toml` / `idl/*.idl`, unknown code, bad `new` arguments) |
-| 3 | the command exists but its back end is not merged yet (`run`, `build`: "available after 8.L (lowering) is merged") |
+| 3 | reserved (it once meant "not merged yet"); never reused |
+| 4 | `run` only: the program started and stopped on a trap (integer overflow, bounds, division by zero, out of fuel, stack overflow, ...) |
 
 ## `oxi check [paths] [--json] [--fix] [--stdin --stdin-path P]`
 
@@ -96,6 +97,10 @@ edition = "2026"
 needs = ["host:log@1", "host:state@1"]   # host interfaces main receives, in parameter order
 ```
 
-## `oxi run`, `oxi build`
+## `oxi run [file] [--fuel N]`, `oxi build [file] [-o out.wasm]`
 
-Type-check the entry (`main.oxs` or the given path) like `oxi check` (errors: exit 1), then print "available after 8.L (lowering) is merged" and exit 3. The wiring point is `src/runcmd.rs`: a clean `Checked` is in hand there (TODO with the expected `compile_source` signature).
+Both type-check the entry (default `main.oxs`) exactly like `oxi check` (errors: printed the same way, exit 1; a lowering error exits 1 too), then lower it to Wasm.
+
+* `build` writes the module to `-o FILE` (default `<package name>.wasm` from `oxi.toml`, else `<file stem>.wasm`, in the current directory) and exits 0. The package name must match `[A-Za-z0-9_-]{1,64}` when it is used for the default name (otherwise exit 2, nothing written). The output is written atomically (temp file in the same directory, then rename); a symlink, directory, FIFO or device at the output path is refused (exit 2), an existing regular file is replaced. An unwritable output exits 2.
+* `run` runs `main` in `oxiscript-runtime` (wasmi) with the same capabilities and limits as the browser playground: `host:log@1` (levels 0-2 to stdout, 3 and 4 to stderr prefixed `warn:` / `error:`; at most 1000 lines / 64 KiB, the rest is counted and reported) and `host:state@1` (in memory, per run). `--fuel N` sets the instruction budget (default 10000000; `--fuel 0` means the default, like the browser playground). Output is printed when the program stops, not live. A closed stdout/stderr (`oxi run x | head -1`) ends the output quietly with exit 0 (like common CLIs); any other write error (for example a full disk, `/dev/full`) exits 2 with `oxi run: cannot write output: ...`; it never panics. Exit 0 when `main` returns, 4 when it trapped (stderr: `oxi run: stopped: <reason> [OXS-E04xx]`; the log lines written before the trap are still printed), 2 when the program needs a host interface `oxi run` does not provide (use `build`).
+* Limitation: the current runtime cannot convert an `f64` to text (`${x}` with a float traps as "unreachable"); convert to an integer first.

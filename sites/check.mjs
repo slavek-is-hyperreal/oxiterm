@@ -8,7 +8,8 @@
 //  5. no placeholder text (`[PLACEHOLDER`, `[DO UZUPE`) in any text output unless SITES_ALLOW_PLACEHOLDERS=1
 //  6. every `repo:`/`repotree:` link (github .../blob|tree/main/<path>) resolves in this working tree (F5)
 //  7. security hygiene of the output: no inline script/style/handlers, no javascript:/data: URLs, no Web Storage,
-//     and exactly one (identical) Content-Security-Policy per path in `_headers` (F6, F7, F10)
+//     and exactly one (identical) Content-Security-Policy per path in `_headers` (F6, F7, F10), at most one Cache-Control per
+//     path, exactly one immutable one for every content-hashed path
 // Exit code 1 on any problem. External (http/https) links are not fetched (CI has no network guarantee).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -180,17 +181,26 @@ for (const site of SITES) {
     if (!line.trim() || line.startsWith('#')) continue;
     if (!/^\s/.test(line)) { cur = { pattern: line.trim(), h: [] }; rules.push(cur); } else if (cur) cur.h.push(line.trim());
   }
+  // Cloudflare Pages allows ONE splat per pattern: a rule such as /app/*/* is not guaranteed to match anything
+  for (const r of rules) if ((r.pattern.match(/\*/g) || []).length > 1) err(`${site}: _headers pattern "${r.pattern}" has more than one splat (avoid: matching with several splats is not guaranteed; use one explicit rule per path)`);
   const cspOf = (r) => r.h.filter((h) => /^Content-Security-Policy:/i.test(h)).map((h) => h.replace(/^[^:]+:\s*/, ''));
   for (const f of files) {
     const rp = rel(f);
     const urlPaths = rp.endsWith('/index.html') ? [rp, rp.slice(0, -'index.html'.length)] : [rp];
     for (const u of urlPaths) {
+      // Cache-Control: Cloudflare joins the values of every matching rule, so a path may match at most ONE rule that sets it;
+      // content-hashed paths must get exactly one, and it must be immutable; nothing else may be immutable.
+      const ccs = rules.filter((r) => globToRe(r.pattern).test(u)).flatMap((r) => r.h.filter((h) => /^Cache-Control:/i.test(h)));
+      const hashedPath = /^\/(app|play|assets)\/[0-9a-f]{10}\//.test(u);
+      if (ccs.length > 1) err(`${site}${u}: ${ccs.length} Cache-Control headers apply (${ccs.map((h) => h.replace(/^[^:]+:\s*/, '')).join(' | ')}); Cloudflare joins them`);
+      if (hashedPath && !(ccs.length === 1 && /immutable/.test(ccs[0]) && /max-age=31536000/.test(ccs[0]))) err(`${site}${u}: hashed file without exactly one immutable Cache-Control (${ccs.length ? ccs.join(' | ') : 'none'})`);
+      if (!hashedPath && ccs.some((h) => /immutable/.test(h))) err(`${site}${u}: unhashed path is marked immutable`);
       const pols = new Set(rules.filter((r) => globToRe(r.pattern).test(u)).flatMap(cspOf));
       if (pols.size > 1) err(`${site}${u}: ${pols.size} different Content-Security-Policy headers apply (they would be intersected)`);
       if (rp.endsWith('.html') && pols.size === 0 && u === urlPaths[urlPaths.length - 1]) err(`${site}${u}: no Content-Security-Policy applies`);
       for (const pol of pols) {
         if (/'unsafe-inline'|'unsafe-eval'|\*(?=[ ;]|$)/.test(pol.replace(/\*\.[a-z]/g, ''))) err(`${site}${u}: CSP is not strict: ${pol}`);
-        if (/wasm-unsafe-eval/.test(pol) && !(rp.startsWith('/app/') || (site === 'oxiscript' && playPaths.has(u)))) err(`${site}${u}: CSP allows wasm but the page does not need it`);
+        if (/wasm-unsafe-eval/.test(pol) && !(rp.startsWith('/app/') || (site === 'oxiscript' && playPaths.has(u)) || (site === 'oxiscript' && /^\/assets\/[0-9a-f]{10}\/runner-worker\.js$/.test(rp)))) err(`${site}${u}: CSP allows wasm but the page does not need it`);
       }
     }
   }

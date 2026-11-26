@@ -525,7 +525,8 @@
             "items": [
               "Parser, formatter and type checker (the same code you are using above, compiled to WebAssembly).",
               "A registry of stable error codes, each with an explanation and, often, a mechanical fix.",
-              "Host capability interfaces (`log`, `state`) that programs import with `host:` modules."
+              "Host capability interfaces (`log`, `state`) that programs import with `host:` modules.",
+              "**Running programs.** Run compiles the program and runs it in your browser, in a worker, with an instruction limit (fuel) and a 5 second time limit; `log` and `state` are available (`state` lives in memory for that one run). Output appears when the program stops."
             ]
           },
           {
@@ -535,7 +536,7 @@
           {
             "t": "ul",
             "items": [
-              "**Running programs.** Code generation exists, but the lowering step that connects the checker to it is still being built. The Run button is disabled until then.",
+              "**Limits of Run.** An `f64` cannot be converted to text yet (convert it to an integer first), other host interfaces are not available in the playground, and nothing is kept between runs or page loads.",
               "A standard library, packages, the language server, devices. All planned, none ready."
             ]
           },
@@ -642,7 +643,7 @@
           {
             "t": "ul",
             "items": [
-              "It cannot run programs yet. TypeScript can.",
+              "Its runtime is young: programs are interpreted under a fuel limit and printing an `f64` is not supported yet. TypeScript engines are mature and fast.",
               "There is no npm. No ecosystem, a tiny standard library, no `async` (reserved, not built).",
               "No `any`, no `eval`, no dynamic features. That is the point, and also a cost when porting JavaScript.",
               "ASCII identifiers only for now.",
@@ -709,7 +710,7 @@
           },
           {
             "t": "h2",
-            "x": "State that survives reload"
+            "x": "State through a host capability"
           },
           {
             "t": "code",
@@ -759,7 +760,7 @@
           },
           {
             "t": "note",
-            "x": "Not built yet. Lessons need the Run button, which waits for the lowering stage."
+            "x": "Not built yet. The Run button now works in the playground; the lessons and the grading still have to be written."
           }
         ]
       },
@@ -798,7 +799,7 @@
       "check": "Check",
       "format": "Format",
       "run": "Run",
-      "runSoon": "Run: coming with 8.L (the lowering stage).",
+      "runNote": "Run compiles your program and runs it here in the browser, with an instruction limit and a 5 second time limit.",
       "examples": "Example:",
       "apply": "Apply fix",
       "explain": "Explain {code}",
@@ -822,7 +823,46 @@
       "discardAsk": "Replace your edits with {name}? The changes in the editor will be lost.",
       "discard": "Replace",
       "keepEditing": "Keep editing",
-      "compilerEnglish": ""
+      "compilerEnglish": "",
+      "stop": "Stop",
+      "outputTitle": "Output",
+      "outputEmpty": "(the program wrote nothing)",
+      "loadingRunner": "Loading the runner (once; Stop cancels)...",
+      "running": "Running...",
+      "ran": "Finished in {ms} ms, {fuel} instructions used.",
+      "stopped": "Stopped.",
+      "timeout": "Stopped after {s} s: the program ran too long. An endless loop?",
+      "bigInput": "Long input: line numbers and error marks are shown for the first {n} lines only. Check and Run still use the whole text.",
+      "loadTimeout": "The runner did not load within {s} s (slow connection?). Press Run to try again.",
+      "stoppedBecause": "The program stopped: {why}",
+      "dropped": "{n} more line(s) were not shown (output limit).",
+      "moreLines": "... {n} more line(s) not shown.",
+      "runFailed": "The runner could not start. Reload the page.",
+      "cannotRun": "Not run: the program has problems. Fix them first.",
+      "checkedOk": "✓ No problems (checked {time})",
+      "checkedProblems": "{n} problem(s) (checked {time})",
+      "formatSame": "Already formatted, no change ({time})",
+      "formatChanged": "Formatted: {n} line(s) changed ({time})",
+      "hint": "Tip: pick {name} to see errors and one-click fixes.",
+      "trap_overflow": "an integer overflowed (use `+%` to wrap or `+|` to saturate)",
+      "trap_div_by_zero": "division by zero",
+      "trap_bounds": "an index was outside the array or string",
+      "trap_bad_cast": "a checked downcast failed",
+      "trap_null_deref": "a null value was used",
+      "trap_out_of_memory": "the program ran out of memory",
+      "trap_assert": "an assertion failed",
+      "trap_bad_utf8": "invalid UTF-8 text",
+      "trap_panic": "the program called panic",
+      "trap_unreachable": "the program reached code that cannot run yet (for example, an `f64` converted to text is not supported)",
+      "trap_out_of_fuel": "the instruction limit was reached (an endless loop?)",
+      "trap_stack_overflow": "the call stack is too deep (endless recursion?)",
+      "trap_memory_bounds": "a memory access was out of range",
+      "trap_host_denied": "the program used a capability it was not given",
+      "trap_host_bad_argument": "the program passed an argument the host function does not accept (for example a log message or state key over 64 KiB)",
+      "trap_host_error": "a host function failed",
+      "trap_rejected": "the compiled module was rejected by the runtime",
+      "trap_limit": "a runtime limit was reached",
+      "trap_engine": "the runtime stopped the program"
     },
     "course": {
       "levels": [

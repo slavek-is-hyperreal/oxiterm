@@ -1,0 +1,7 @@
+{
+  "_note": "Identity palette (owner 2026-11-25): rust orange = action, bronze-patina green = calm/content. Dark-mode values for the THTML pages (they are dark only); the CSS tokens live in sites/shared/site.css(.d). sites/test/bad_actor_contrast.mjs checks both.",
+  "text": { "fg": "#e6ece9", "muted": "#9bb0a9", "acc": "#ef7d3f", "pat": "#6cc3a4", "coral": "#f6a89f" },
+  "home": { "lbg": "#faf7f2", "bg": "#181512", "card": "#221e1a", "line": "#4a433b" },
+  "oxiui": { "lbg": "#f3f8f5", "bg": "#0b1513", "card": "#112320", "line": "#2c4b44" },
+  "oxiscript": { "lbg": "#f4f8f8", "bg": "#0c1417", "card": "#131f23", "line": "#2b4650" }
+}

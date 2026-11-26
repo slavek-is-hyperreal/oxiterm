@@ -15,6 +15,11 @@ pub(crate) struct SavedEnv {
     swapped: bool,
 }
 
+/// Wasm export names a user `@export_name` may not take: the entry point, the memory and linker symbols, the ABI (`oxi_*`, `cb:*`).
+fn is_reserved_wasm_export(n: &str) -> bool {
+    matches!(n, "main" | "memory" | "__heap_base" | "__data_end") || n.starts_with("oxi_") || n.starts_with("cb:")
+}
+
 const KNOWN_ATTRS: [&str; 7] = ["expect", "profile", "allow", "inline", "noinline", "export_name", "host"];
 
 impl<'a> Checker<'a> {
@@ -363,6 +368,8 @@ impl<'a> Checker<'a> {
                         self.err("OXS-E0123", a.span, &[("detail", "`@export_name` takes one string: `@export_name(\"init\")`")]);
                     } else if args[0].is_empty() || !args[0].bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
                         self.err("OXS-E0123", a.span, &[("detail", "`@export_name` must be a non-empty name of ASCII letters, digits and `_`")]);
+                    } else if is_reserved_wasm_export(&args[0]) {
+                        self.err("OXS-E0123", a.span, &[("detail", &format!("`@export_name(\"{}\")` names an export the ABI or the toolchain reserves (`main`, `memory`, `__heap_base`, `__data_end`, `oxi_*`, `cb:*`)", args[0]))]);
                     }
                 }
                 "host" => {
