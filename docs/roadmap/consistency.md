@@ -93,7 +93,7 @@ Verification done for this file: `git merge-base --is-ancestor` on every hash ci
 9. App-integration skill: tests in Docker; `open_url`, `navigate`, `set_app_token` are documented; thtml skill: self-closing, `flex`, units.
 10. `docs/stages/0.0.1/release.md` "tagged"; `docs/stages/5.2` "blessed"; `docs/stages/7.6` "blessed"; `docs/stages/README.md` full index.
 11. Delete after retargeting the generator: `docs/oxi-ui.md`.
-12. Prune merged worktrees (U.Hygiene) but keep `gemini-rtlink`, `gemini-std`, `gemini-memres` and the old 8.M worktree until its notes are extracted.
+12. Prune merged worktrees: executed by U.Hygiene using the list in the OxiScript half C.9; keep `gemini-rtlink`, `gemini-std`, `gemini-memres` until merged (X-9, X-10).
 
 ## OxiScript half
 
