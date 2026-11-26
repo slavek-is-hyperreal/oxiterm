@@ -81,10 +81,10 @@ All hashes below were checked with `git merge-base --is-ancestor <hash> main`. F
 | 4 | `oxiterm-core` extraction (steps 0-8c; step API `handle_event`/`tick`/`next_deadline`, `MemPageSource`, `ActionHandler`; builds for wasm32 and aarch64-linux-android, CI-checked) | oxi-ui.md Phase 4 | 2026-11-23, `38ba048` |
 | 5.0 | Instrumentation: `frame_cost` bench, baseline table | oxi-ui.md Stage 5.0 | 2026-11-24, `66fa334` |
 | 5.1 | CPU wins: 5.1a lock-free width table (`6b2ffe6`), 5.1b incremental layout (`7802a03`), 5.1c overlay row diff and ARIA cache | oxi-ui.md Stage 5.1 | 2026-11-24, `a451657` |
-| 5.2 | Headless `GpuSink` on wgpu (`oxiterm-gpu`: SDF fills/borders, glyph atlas, clips, CellGrid; PNG goldens on lavapipe; CI `gpu` job) | `docs/stages/5.2`, `oxiterm-gpu/README.md` | 2026-11-26, `05c22ea` (CI `9e4aa49`, `c4ecd2d`) |
+| <a id="s-5-2"></a>5.2 | Headless `GpuSink` on wgpu (`oxiterm-gpu`: SDF fills/borders, glyph atlas, clips, CellGrid; PNG goldens on lavapipe; CI `gpu` job) | `docs/stages/5.2`, `oxiterm-gpu/README.md` | 2026-11-26, `05c22ea` (CI `9e4aa49`, `c4ecd2d`) |
 | 6 | Proportional text, stages 6.0-6.6: cosmic-text shaping, Noto fonts at `/oxiui/fonts.json`, TCSS font properties, positioned glyph runs (wire v3), fractional pointer (`0x03`), local-vs-thin equality test, wasm32 text test in CI | oxi-ui.md Phase 6 | 2026-11-24, `54a7e19` (6.6; demo pages `d1a2117`) |
-| 7.1 | WASM local mode (`?local=1`, `--local-mode`) | oxi-ui.md Stage 7.1 | 2026-11-25, `77f9002` |
-| 7.2 | OxiDE software sink `oxiterm-fb` (PNG goldens; `/dev/fb0`/DRM behind a flag) | oxi-ui.md Stage 7.2 | 2026-11-25, `78fcdb5` |
+| <a id="s-7-1"></a>7.1 | WASM local mode (`?local=1`, `--local-mode`) | oxi-ui.md Stage 7.1 | 2026-11-25, `77f9002` |
+| <a id="s-7-2"></a>7.2 | OxiDE software sink `oxiterm-fb` (PNG goldens; `/dev/fb0`/DRM behind a flag) | oxi-ui.md Stage 7.2 | 2026-11-25, `78fcdb5` |
 | 7.6 | Media and diagram parity across modes (one resolver `pathsafe::resolve_media`, pure-Rust Rive, vendored lottie-web, 64-bit media keys, wire break `0x20/0x21/0xE0`) | `docs/stages/7.6` | 2026-11-26, `83ba89e` |
 | Showcase | OxiUI versions of the three sites (80-column pages, `_mobile` variants, tabs/accordion/drag/spring/Lottie) | `docs/stages/showcase` | 2026-11-26, `782e539` |
 | Sites deploy | `oxiui.slavekm.pl` deployed as Workers static assets (wrangler configs) | `sites/DEPLOY.md` (second half) | 2026-11-26, `ddad8b3` |
@@ -427,7 +427,7 @@ IDEAS.md index mapping: #1 OxiDESK -> 7.2b, U.OxiDE; #2 Embedded -> U.IPC, U.Scr
 | <a id="q-8"></a>Q-8 | Review of the Polish copy, the home About text, the Latin copy and the HSTS decision (owner gates of U.Sites). | R1-107,109; R2-128 |
 | <a id="q-9"></a>Q-9 | Buy the public VPS with port-22 SSH (U.Host) and when. | R2-162 |
 | <a id="q-10"></a>Q-10 | Should OxiScreens, U.OxiDE and Phase 9 stay unscheduled until after the ESP32 board (2026-12-10)? The ESP32 board is 800x480, not the 320x240 of the blueprint. | R1-71; R2-86 |
-| <a id="q-11"></a>Q-11 | Repository split timing (decision 7, owner decides after 8.S1; sites may move too). | oxi-ui.md:718; R4-70 |
+| <a id="q-11"></a>Q-11 | Repository split timing (decision 7, owner decides after 8.S1; sites may move too). | oxi-ui.md:718; R4-70; R3-134 |
 | <a id="q-12"></a>Q-12 | Keep `box-shadow` silently ignored or schedule a GUI shadow? | R1-88 |
 | <a id="q-13"></a>Q-13 | Gemini as default implementer (pilot happened: 5.2, rtlink, std)? | R2-157; HANDOFF.md |
 | <a id="q-14"></a>Q-14 | OxiBench methodology approval and API keys (research/oxibench-methodology.md section 10) is on the OxiScript side: [8.OB](oxiscript.md#s-8-ob). | R2-161 |
