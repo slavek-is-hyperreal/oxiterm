@@ -11,8 +11,9 @@ The version is `x.y.c`.
 - The first public version is **0.0.1**.
 - **`c` grows by 1 for every 5555 changed lines of compiler code.**
   - "Changed lines" = lines added + lines deleted, as counted by `git diff --shortstat` between the previous release tag and the new one.
-  - Only the `src/` directories of the `oxiscript-*` crates count. Tests, documentation, examples and websites do not.
+  - The `src/` directories of the `oxiscript-*` crates count, and the standard library sources `oxiscript/std/**/*.oxs` (owner 2026-11-26: the standard library is part of what the language ships). Tests, documentation, examples and websites do not.
   - The remainder below 5555 carries over to the next release, so no change is ever lost from the count.
+- **Owner override (2026-11-26):** the owner may release the next `c` before 5555 lines have accumulated, deliberately (first used for 0.0.2 with the standard library v0). Tool: `scripts/oxiscript-version.sh --owner-release "<reason>"`; the tag message carries `carry=0` and `owner-release=<reason>`, so the counted lines are spent on that release.
 - `x` and `y` are raised by hand, by the owner, for milestones. `1.0.0` is the first version with stability guarantees.
 - All `oxiscript-*` crates, the `oxi` CLI, the VS Code extension and the web playground always carry the same version.
 
