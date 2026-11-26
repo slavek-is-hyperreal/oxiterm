@@ -748,7 +748,7 @@ Today OxiUI has no 3D. The server-driven design exists in [iot-screens.md §4](i
 | OxiDE without a GPU | software projection of flat-shaded polygons | the 7.2 rasterizer |
 | Terminal over SSH | half-block / braille rendering of tier 2 | cell renderer |
 
-Authoring: declarative `<model src="x.glb">` with GUI-only TCSS (`perspective`, `rotate3d`, camera), pointer rotation and node picking as ordinary `event-htmx`; programmatic 3D (games, simulations, custom shaders) in OxiScript, where a shader is an ordinary function under the `kernel` profile (8.3b). Libraries: `wgpu`, `gltf`, `glam` (all MIT/Apache).
+Authoring: declarative `<model src="x.glb">` with GUI-only TCSS (`perspective`, `rotate3d`, camera), pointer rotation and node picking as ordinary `event-htmx`; programmatic 3D (games, simulations, custom shaders) in OxiScript, where a shader is an ordinary function under the `kernel` profile (8.3d). Libraries: `wgpu`, `gltf`, `glam` (all MIT/Apache).
 Stages when scheduled: **9.1** tier 2 (server-side projection to `Path`, `<model>` element, flat shading, picking) — no GPU needed, works in browser, OxiDE, ESP32 thin clients and (coarsely) terminals; **9.2** tier 3 (mesh + camera to capable thin clients); **9.3** GPU path in local mode and the native window (needs 5.2); **9.4** OxiScript 3D API and kernel shaders (needs 8.3d). Each stage ends with a BAD ACTOR pass (malicious meshes, polygon floods, NaN geometry).
 
 #### GPU after OxiScript: one device, several users (2026-11-25)
