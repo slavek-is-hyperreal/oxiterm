@@ -1,0 +1,42 @@
+// OxiPerf p05 tree (base track): binary-trees style allocation churn. Build a complete tree of
+// depth n, count its nodes, drop it; repeat 8 times. Checksum = total node count mixed with rep index.
+
+class Node {
+  left: Node | null;
+  right: Node | null;
+  constructor(left: Node | null, right: Node | null) {
+    this.left = left;
+    this.right = right;
+  }
+}
+
+function make(depth: i32): Node {
+  if (depth === 0) {
+    return new Node(null, null);
+  }
+  return new Node(make(depth - 1), make(depth - 1));
+}
+
+function count(node: Node): i32 {
+  let c = 1;
+  const l = node.left;
+  if (l !== null) {
+    c += count(l);
+  }
+  const r = node.right;
+  if (r !== null) {
+    c += count(r);
+  }
+  return c;
+}
+
+@host export function run(n: i32): u32 {
+  let h: u32 = 0u32;
+  for (let rep = 0; rep < 8; rep++) {
+    const t = make(n);
+    h = (h *% 31u32) +% ((count(t) + rep) as u32);
+  }
+  return h;
+}
+
+export function main(): void {}

@@ -1,0 +1,6 @@
+Verbatim copies of the JavaScript port of Are We Fast Yet (Stefan Marr et al.), unmodified.
+Source:  https://github.com/smarr/are-we-fast-yet  benchmarks/JavaScript/
+Commit:  f35aed0a61171594804a44efe9d75f1f35360700 (master when fetched, 2026-11-26)
+Licence: MIT (per-file headers kept); mandelbrot.js also carries the Revised BSD notice of the
+         Computer Language Benchmarks Game. The files are not edited; main.js (ours) adapts them
+         to the OxiPerf protocol (run(n) -> u32).
