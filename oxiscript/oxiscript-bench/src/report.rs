@@ -213,6 +213,12 @@ pub fn render(m: &Value, s: &Value) -> String {
     let _ = writeln!(o, "**Suite: {}.**\n", m["suite"].as_str().unwrap_or(""));
     let _ = writeln!(o, "**Not publishable.** {} Tier `{}`; harness version {}.\n", m["publishable_reason"].as_str().unwrap_or(""), m["tier"].as_str().unwrap_or(""), m["harness_version"].as_str().unwrap_or(""));
     let _ = writeln!(o, "**OxiScript runtime mode measured: `{}`** (test-stub runtime with a bump allocator that never reuses memory; the real runtime and f64-to-text arrive with 8.M-link, re-run after that merge). Allocation-heavy rows (`tree`, `string_template`, `json_tokenize`, `map_set`) are flattered by bump allocation, and every iteration uses a fresh instance.\n", m["runtime_mode"].as_str().unwrap_or(""));
+    if let (Some(cells), Some(max)) = (m["plan"]["cells"].as_array(), m["plan"]["bounds"]["max_invocations"].as_u64()) {
+        let capped = cells.iter().filter(|c| c["invocations"].as_u64() == Some(max)).count();
+        if m["plan"]["fixed"] != json!(true) && capped * 2 > cells.len() {
+            let _ = writeln!(o, "**Precision target not reached:** {capped} of {} cells hit the cap of {max} invocations, so the wanted 2% half-width of the interval was limited by the time budget (and by a loaded, uncontrolled machine), not by the measured noise. Read the intervals, not the medians alone.\n", cells.len());
+        }
+    }
     let _ = writeln!(o, "Checksums: {}.\n", if s["digests_ok"] == json!(true) { "**all executors agree on every workload**" } else { "**MISMATCH, this run is invalid**" });
     let _ = writeln!(o, "## Machine\n\n| | |\n|---|---|");
     for (k, v) in [

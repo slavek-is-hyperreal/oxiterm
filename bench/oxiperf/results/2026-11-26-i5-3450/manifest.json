@@ -1,0 +1,349 @@
+{
+  "engines": [
+    {
+      "id": "oxiscript-wasmi",
+      "note": "built in"
+    },
+    {
+      "id": "oxiscript-wasmtime",
+      "note": "wasmtime crate"
+    },
+    {
+      "id": "rust-native",
+      "note": "built in"
+    },
+    {
+      "id": "js-node",
+      "note": "node on PATH"
+    },
+    {
+      "id": "c-gcc",
+      "note": "gcc on PATH"
+    },
+    {
+      "id": "oxiscript-w2c2",
+      "note": "TODO: w2c2 is not installed on this machine; no row is produced"
+    }
+  ],
+  "git": {
+    "commit": "35725d153891abd323afa8c53b1e00c28545dcf5",
+    "dirty": false
+  },
+  "harness_version": "0.0.2",
+  "host": {
+    "arch": "x86_64",
+    "aslr_mode": 2,
+    "cpu_model": "Intel(R) Core(TM) i5-3450 CPU @ 3.10GHz",
+    "cpus_logical": 4,
+    "end": {
+      "cpu0_mhz": 3292.609,
+      "loadavg_1m": 10.94,
+      "temp_c": 58.0
+    },
+    "governor": "schedutil",
+    "os": "Linux version 6.17.0-42-generic",
+    "pinned_core": null,
+    "ram_total_mib": 23973,
+    "start": {
+      "cpu0_mhz": 3293.97,
+      "loadavg_1m": 4.87,
+      "temp_c": 49.0
+    },
+    "turbo_disabled": false,
+    "uncontrolled_dvfs": true
+  },
+  "invalid_invocations": 0,
+  "methodology_version": "oxiperf-v0 (harness; methodology draft v0.1 of docs/research/cross-language-benchmark-methodology.md)",
+  "plan": {
+    "bounds": {
+      "max_invocations": 8,
+      "max_iters": 30,
+      "min_invocations": 3,
+      "min_iters": 10,
+      "target_rel_halfwidth": 0.02
+    },
+    "cells": [
+      {
+        "benchmark": "awfy_mandelbrot",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_mandelbrot",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_mandelbrot",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "awfy_mandelbrot",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_mandelbrot",
+        "engine": "c-gcc",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_sieve",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_sieve",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_sieve",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_sieve",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "awfy_sieve",
+        "engine": "c-gcc",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "sort",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "sort",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "sort",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "sort",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 16
+      },
+      {
+        "benchmark": "sort",
+        "engine": "c-gcc",
+        "invocations": 4,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "map_set",
+        "engine": "oxiscript-wasmi",
+        "invocations": 4,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "map_set",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 3,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "map_set",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "map_set",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "string_template",
+        "engine": "oxiscript-wasmi",
+        "invocations": 6,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "string_template",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "string_template",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "string_template",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 14
+      },
+      {
+        "benchmark": "string_template",
+        "engine": "c-gcc",
+        "invocations": 3,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "json_tokenize",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "json_tokenize",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "json_tokenize",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "json_tokenize",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "json_tokenize",
+        "engine": "c-gcc",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "tree",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "tree",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "tree",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "tree",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "tree",
+        "engine": "c-gcc",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "matmul",
+        "engine": "oxiscript-wasmi",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      },
+      {
+        "benchmark": "matmul",
+        "engine": "oxiscript-wasmtime",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "matmul",
+        "engine": "rust-native",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "matmul",
+        "engine": "js-node",
+        "invocations": 8,
+        "iterations_per_invocation": 10
+      },
+      {
+        "benchmark": "matmul",
+        "engine": "c-gcc",
+        "invocations": 8,
+        "iterations_per_invocation": 30
+      }
+    ],
+    "description": "derived per cell from a pilot (3 invocations x 15 iterations) after Kalibera & Jones: iterations balance invocation cost against variance, invocations reach a 2% half-width of the 95% interval of the mean; clamped to 3..8 invocations and 10..30 iterations (release tier would need at least 10 invocations)",
+    "fixed": false,
+    "min_iter_ms": 10.0,
+    "warmup_iterations": 3
+  },
+  "publishable": false,
+  "publishable_reason": "dev tier: fewer invocations than R15 (10), no controlled DVFS, no isolated core; harness output, not a frozen report",
+  "run_id": "2026-11-26-i5-3450",
+  "runtime_mode": "stub",
+  "schema_version": 1,
+  "size_profile": "server",
+  "suite": "8.Bench part 2 (cross-language suite), v0 subset: unfrozen dev report, gated on owner approval Q-OP-1",
+  "tier": "dev",
+  "toolchains": {
+    "gcc": {
+      "flags": "-O2 -ffp-contract=off -DNDEBUG",
+      "version": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+    },
+    "node": {
+      "flags": "",
+      "v8": "11.3.244.8-node.38",
+      "version": "v20.20.2"
+    },
+    "oxiscript": {
+      "runtime_mode": "stub",
+      "target": "device",
+      "version": "0.0.2"
+    },
+    "rustc": {
+      "flags": "cargo release profile: opt-level=3, codegen-units=16, no LTO, panic=unwind",
+      "version": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+    },
+    "w2c2": {
+      "status": "TODO: not installed on this machine, no rows are produced"
+    },
+    "wasmi": {
+      "crate_version": "2.0.3",
+      "features": "oxiscript-runtime defaults (validate, deterministic)",
+      "fuel": true
+    },
+    "wasmtime": {
+      "cli_version": "wasmtime 51.0.0",
+      "crate_version": "51.0.0",
+      "enabled": true,
+      "flags": "Engine::default() (Cranelift, opt_level speed), module compiled once per process"
+    }
+  },
+  "track": "base (+ one stdlib workload, labelled)"
+}
