@@ -138,3 +138,67 @@ Each is stated in the plan rows, specs or commit messages of the date shown; wor
 | Research use of the name "8.3b" for GPU kernels (`docs/stages/5.2`) | 8.3c-8.3e; 8.3b = auto-vectoriser | R2 inconsistency 7 |
 | Research reuse table naming `ena` for 8.T | 8.T did not use it (no inference variables) | R2-104 |
 
+## 3. Done
+
+Only verified items: merge commit found on `main` (`git log -1`), crate or file present. Dates are merge dates. Stage notes: `docs/stages/<stage>/` where they exist. Stages 8.C, 8.P, 8.R and 8.M have no stage notes anywhere in the repository (checked: not in `main` history, not in the worktrees); their evidence is the merge, the crate, its tests and the BAD ACTOR commits. This matters for the gate of [8.S4](#s-8-s4).
+
+| Stage | What | Evidence |
+|---|---|---|
+| <a id="s-8-c"></a>8.C Contracts | Grammar (`docs/oxiscript/grammar.md`), OxiIR spec and text form (`ir.md`), value/memory layout, host ABI/IDL (`abi.md`, `contracts.md`), reason-code registry (`oxiscript-abi/registry/codes.txt`, 594 lines, append-only) | merge 2ba1aa0 (2026-11-25); crates `oxiscript-abi`, `oxiscript-ir` |
+| <a id="s-8-p"></a>8.P Parser and formatter | Lexer, parser with recovery, formatter, `E0011` depth limit, iterative AST drop | merge 13b5987; crate `oxiscript-syntax`; fuzz tests with `OXI_FULL_FUZZ`, `.github/workflows/oxiscript-fuzz.yml` |
+| <a id="s-8-r"></a>8.R Runtime | wasmi 2.0.3 host, IDL capabilities (`host:log`, `host:state`), fuel, `StoreLimits`, poisoning, instance-swap reload, `oxi_tick` | merge d007c74; crate `oxiscript-runtime` |
+| <a id="s-8-m"></a>8.M Memory (crate) | `oxiscript-rc`: RC runtime, deferred destruction queue, Bacon-Rajan cycle collector, RC-balance checker, `oxi_str_from_f64` behind feature `float-fmt`. Real linking into programs is not part of it: see [8.M-link](#s-8-m-link) | merge 5a5929d; BAD ACTOR commit 1fa4853 |
+| <a id="s-8-t"></a>8.T Type checker | Sound checker, Maranget exhaustiveness, interned types, budgets (`E0113`), effect summary (`EffectSummary`, partial), laws purity (`E0125`), typed output contract | merge 3cbf1b4; `docs/stages/8.T`; crate `oxiscript-check` |
+| <a id="s-8-g"></a>8.G Codegen | OxiIR to Core Wasm, validated, run in wasmi; strict-engine limits (`E0603`, `E0704`, `E0408`) | merge bad1e94; `docs/stages/8.G`; crate `oxiscript-wasm` |
+| <a id="s-8-l"></a>8.L Lowering | Typed AST to OxiIR; end-to-end `.oxs` to Wasm; closures with shared cells; monomorphisation; `E0700`/`E0701` | merge c792b4f; `docs/stages/8.L`; crate `oxiscript-lower` |
+| <a id="s-8-d0"></a>8.D0 DevKit v0 | `oxi` CLI (`check`, `fmt`, `explain`, `new` with 4 templates, later `run`, `build`), JSON schema 1 (`SCHEMA.md`), `AGENTS.md`, `llms.txt`, skill, VS Code extension v0 (TextMate grammar, diagnostics, quick fixes, semicolon assistant, format on save), agent test (`tests/agent_test/LOG.md`: 10 programs, 13 runs) | merge 148b8e8; `docs/stages/8.D`; `oxiscript/oxiscript-cli`, `editors/vscode-oxiscript` |
+| <a id="s-8-w1"></a>8.W1 Websites step 1 | Home, OxiUI and OxiScript sites, playground with check and format, roadmap generator, support link, PL+EN (LA written, off by default). Gate item "Lighthouse measured" was not met: moved to [8.W2](#s-8-w2) and `U.Sites` | merge 0df8681; `docs/stages/8.W`; `sites/` |
+| <a id="s-8-run"></a>8.Run | `oxi run` and `oxi build` wired to `compile_source`; playground Run in a Web Worker (wasmi) with fuel 10M, 5 s wall timer, output caps | merge 6dda5de (branch merge c291e92); `docs/stages/run` |
+| <a id="s-8-id"></a>8.Id Site identity | Palette, "Oxi cell" mark, axolotl mascot (SVG and ASCII); Physarum companion deliberately skipped (belongs to 8.S4 as an idea) | merge 6dda5de (branch merge 320db1b); `docs/stages/identity` |
+| <a id="s-8-hx"></a>8.HX Host export | `export` = visibility, `@host` marks Wasm exports ([D-17](#d-17)); `E0121` for unfit `@host` signatures | merges 4c7c5ed, 1b08076; `docs/stages/host-export` |
+| <a id="s-8-rel"></a>8.Rel Release 0.0.1 | Versions 0.0.1 on all crates, `oxi --version` notice, `scripts/oxiscript-version.sh`, gate step `version-check`, `CHANGELOG.md`, annotated tag `oxiscript-v0.0.1` | commits 8dd11c1, eed8d35; `git tag`; notes in `docs/stages/0.0.1` still say "not tagged" (stale) |
+| <a id="s-8-2a"></a>8.2a Compilation targets | `device`/`web`/`server` as manifest `target`, features, `--target`, `OXS-E0411`, `OXS-E0405`, runtime `max_target`, memory64 declarable but refused, no multi-memory, matrix `targets-web` in `scripts/oxiscript-gate.sh` | merge d8fb0f8; `docs/stages/targets`; `oxiscript-wasm/src/target.rs` |
+| Showcase sites (OxiUI versions of the sites) | merge 782e539, `docs/stages/showcase` | owned by [oxiui.md](oxiui.md) |
+
+Done, not a stage: 98 reason codes plus 4 `P` codes registered (codes.txt), language invariants in force (reserved words, numeric rules, `?` rule, `@host`), 0.0.1 CHANGELOG, machine-applicable fixes for `==`, `;`, parentheses, float suffix. Specs in force without further work (kept as invariants, not tasks) [R3-03, R3-11, R3-12, R3-13, R3-14, R3-22, R3-23, R3-25, R3-33, R3-38, R3-50, R3-52, R3-57, R3-63, R3-70, R3-71, R3-72, R3-73, R3-75, R3-76, R3-77, R3-81, R3-82, R3-86, R3-88, R3-90, R3-91, R3-92, R3-93, R3-148, R3-203, R3-205, R3-217, R3-248, R2-54..R2-60, R2-77, R2-94, R2-97, R2-98, R2-99, R2-102, R2-103, R2-107, R2-110, R2-117, R2-118, R2-119, R2-123, R2-125, R2-134, R2-138, R4-50, R4-51, R4-63].
+
+### 3.1 Machine-readable status table
+
+One row per stage; the status column uses only `done`, `in-progress`, `todo`, `idea`; the last column is the merge hash or empty. Parsed by `sites/build.mjs` replacement work (owned by `U.Sites` in [oxiui.md](oxiui.md)).
+
+| Stage | Status | Merged |
+|---|---|---|
+| 8.C | done | 2ba1aa0 |
+| 8.P | done | 13b5987 |
+| 8.R | done | d007c74 |
+| 8.M | done | 5a5929d |
+| 8.T | done | 3cbf1b4 |
+| 8.G | done | bad1e94 |
+| 8.L | done | c792b4f |
+| 8.D0 | done | 148b8e8 |
+| 8.W1 | done | 0df8681 |
+| 8.Run | done | 6dda5de |
+| 8.Id | done | 6dda5de |
+| 8.HX | done | 1b08076 |
+| 8.Rel | done | eed8d35 |
+| 8.2a | done | d8fb0f8 |
+| 8.M-link | in-progress | |
+| 8.Std | in-progress | |
+| 8.Perf | todo | |
+
+(The remaining stages of section 5 are all `todo` or `idea` and are listed with their status in each stage block.)
+
+## 4. In progress
+
+Three unmerged branches carry work; all other `worktree-agent-*` branches are fully merged (0 commits ahead of `main`, see `consistency.md` for cleanup). Checked with `git log main..<branch>` on 2026-11-26.
+
+| Branch (worktree) | Stage | State | What is missing before merge |
+|---|---|---|---|
+| `gemini-rtlink` (3 commits: c5d31f4 feature, da87be6 BAD ACTOR tests, 0cf56d3 merge of targets) | [8.M-link](#s-8-m-link) | Gemini is fixing BAD ACTOR findings BL01-BL10 (`docs/stages/8.M-link/bad-actor.md` on that branch; 18 uncommitted modified files in the worktree) | Fixes of BL01, BL03, BL04, BL06 (as input to 8.Perf), BL08, BL09, BL10; owner/lead decision on the two ABI questions (heap base, trap channel) recorded in `abi.md`; gate run; merge |
+| `gemini-std` (2 commits: 90fa662 pre-review snapshot, b416210 BAD ACTOR tests and report) | [8.Std](#s-8-std) | BAD ACTOR findings BS01-BS08 being fixed by Gemini (report on that branch) | Rebase on `main` (the branch base predates the targets merge; merging it as is would delete `oxiscript-wasm/tests/targets.rs` and a gate step), wait for 8.M-link (f64 text), review, std module resolution from a bundled directory |
+| `gemini-memres` (1 commit e4b9f7d "Gemini draft, unverified") | input of [8.Perf](#s-8-perf) | `docs/research/oxiscript-memory-performance.md` (about 470 lines, plus `oxiscript-runtime/src/runtime.rs` +17 lines) committed on the branch; Opus verifying | Verification pass (claims marked `[estimate]`/`[unverified]` in the document), merge of the document to `main` so that links to it work; the 17-line runtime change must be reviewed separately |
+
+Excerpt of what the memres draft recommends (to be verified, not adopted yet): a slab plus TLSF/talc allocator for small objects, inline Wasm fast paths for `retain`/`release`/`alloc`, Perceus-style elision and reuse, scalar replacement, a collector that allocates nothing. Target stated: 1.1-1.8x of the bump stub fuel against the measured 6.5-10.5x. These numbers are the draft's estimates.
+
+BAD ACTOR findings of 8.M-link, condensed (from the branch file, for tracing into other stages): BL01 collector needs heap headroom (OOM in `deinit`); BL02 cycles inside one host call never collected, OOM path does not collect first; BL03 exported `oxi_rt_init` accepts a heap base inside program data; BL04 embedded runtime contains the builder's absolute cargo path (reproducibility and privacy); BL05 `build.rs` rerun list and nested cargo flags; BL06 fuel 6.5-10.5x of Stub, default 10M fuel allows about 3k allocations per call instead of 25k; BL07 module 58-60 KB versus 3.5-5 KB, compile 3.4-4.5 ms versus 0.7-2.2 ms; BL08 nothing in `oxiscript-runtime` ever calls `oxi_collect_cycles`; BL09 `${f32}` prints the widened f64 text; BL10 lower tests now run Linked only and the debug-only `stale_object` check is absent. BL06 and BL07 are owned by [8.Perf](#s-8-perf), BL08 by [8.M-link](#s-8-m-link) (host collects between events), BL04 by [8.Sec](#s-8-sec), BL10 by [8.M-link](#s-8-m-link).
+
