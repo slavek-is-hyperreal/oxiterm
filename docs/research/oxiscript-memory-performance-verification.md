@@ -1,5 +1,7 @@
 # Verification ledger: `oxiscript-memory-performance.md` (Gemini draft)
 
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
 Verifier: Claude (Opus), 2026-11-26. Method: same as `oxiscript-simd-gpu-design-verification.md`. Every claim about our code was checked against the repository; every sourced external claim, and every unsourced one that drives a decision, was checked against the cited source or a primary substitute.
 
 * **Our code.** This worktree (`gemini-memres`, e4b9f7d) for `oxiscript-rc/src/rt.rs`, `oxiscript-lower`, `oxiscript-wasm/src/func.rs` and the docs. The linked runtime (8.M-link) comes from branch `gemini-rtlink` at **0cf56d3**, read with `git show` and never touched. That branch holds `oxiscript-rc/src/wasm.rs`, `oxiscript-wasm/src/link.rs` and `build.rs`, `docs/stages/8.M-link/bad-actor.md` (BL06) and `oxiscript-lower/tests/bad_actor_link_perf.rs`. `rt.rs` and `func.rs` are identical on both branches.
@@ -90,7 +92,7 @@ Section A lists the 10 findings that change the design (A1-A10). Each also appea
 | B37 | `LIMIT_LOCALS = 12_000` (`oxiscript-wasm/src/lib.rs:94`) | CONFIRMED | `oxiscript-wasm/src/lib.rs:94` |
 | B38 | Native gc_step: 0.09 µs/unit, p99 ~8x, worst 4 ms at budget 1000 (`lib.rs:56-59`) | CONFIRMED | `oxiscript-rc/src/lib.rs:56-59` |
 | B39 | `STICKY = 0x8000_0000` acts as an immortal flag | CONFIRMED | `rt.rs:41, 595-604` |
-| B40 | Decision 1 / GC-like convenience (`oxi-ui.md:711`); wasm32 pointer width (`:735`); WasmGC excluded (`:624`); 0.0.1 (`:659`) | CONFIRMED (`:654` is the 8.2 targets row, not WasmGC) | rtlink `docs/oxi-ui.md:624, 654, 659, 711, 735` |
+| B40 | Decision 1 / GC-like convenience (`oxi-ui-plan-history.md:711`); wasm32 pointer width (`:735`); WasmGC excluded (`:624`); 0.0.1 (`:659`) | CONFIRMED (`:654` is the 8.2 targets row, not WasmGC) | rtlink `docs/history/oxi-ui-plan-history.md:624, 654, 659, 711, 735` |
 | B41 | Licence policy "zero GPL/LGPL/MPL" (`HANDOFF.md:8`) | PARTLY ("MPL only if recorded") | `docs/HANDOFF.md:8` |
 | B42 | Linked runtime: Wasm size, compile and instantiate costs | NRC (not used by the report) | rtlink `bad-actor.md:27` |
 
@@ -207,7 +209,7 @@ Section A lists the 10 findings that change the design (A1-A10). Each also appea
 | G10 | TinyGo conservative GC; BSD-3 | PARTLY (3-clause BSD text CONFIRMED in LICENSE; GC details NRC) | tinygo LICENSE |
 | G11 | V8 pointer compression, Oilpan, escape analysis; JSC libpas; SpiderMonkey 4 KiB arenas; Go escape analysis; OCaml 5; TLAB | NRC (background; no decision depends on exact figures) | |
 | G12 | Moving/copying GC and conservative stack scanning do not transfer to Core Wasm | CONFIRMED (argument; also conflicts with determinism, `ir.md §6`) | |
-| G13 | Pointer compression "already have it" with wasm32 | CONFIRMED | `oxi-ui.md:735` |
+| G13 | Pointer compression "already have it" with wasm32 | CONFIRMED | `oxi-ui-plan-history.md:735` |
 
 ## H. Estimates judged (task 3)
 

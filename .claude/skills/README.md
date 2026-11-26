@@ -14,8 +14,11 @@ cleanly, render wrong, and emit no error.
 The two OxiTerm skills were derived by reading `oxiterm-renderer/src/parser/`,
 `oxiterm-server/src/dispatcher.rs`, and `oxiterm-server/src/session.rs` — not by
 summarising `docs/`. Where a skill and a document in `docs/` disagree, the skill
-is the one checked against source. Known documentation errors are listed in
-`thtml-tcss-authoring/SKILL.md` §2.2 and `oxiterm-app-integration/SKILL.md` §2.1.
+is the one checked against source. The documentation errors that the skills first
+listed (spring argument order, `position` default, units, self-closing tags,
+reserved patch keys, where App Server tests run) were corrected in `docs/` on
+2026-11-26; the remaining pitfalls are in `thtml-tcss-authoring/SKILL.md` §2.2 and
+`oxiterm-app-integration/SKILL.md` §2.1.
 
 ## Layout linter
 

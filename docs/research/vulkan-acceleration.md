@@ -1,10 +1,14 @@
 # 🚀 GPU (Vulkan) Acceleration for OxiUI: Findings and Recommendation
 
-This document is a research note on how OxiUI should add GPU acceleration, what existing Rust and terminal-emulator solutions do, and what the literature says. It feeds decision **D3** and **Phase 5** of [oxi-ui.md](../oxi-ui.md).
+> **Stale facts (2026-11-26):** section 2 ("reset_nodes every frame", "PushClip not emitted", "wire v1/v2") describes the code of 2026-11-22 and was overtaken by stages 5.1b, 5.2 and 6.x; stage 5.2 (headless `GpuSink`, merged `05c22ea`) implements decision D3 (revised) from this note, and the remaining GPU work is in [../roadmap/oxiui.md](../roadmap/oxiui.md) (5.3 to 5.7, U.WebGPU).
+>
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
+This document is a research note on how OxiUI should add GPU acceleration, what existing Rust and terminal-emulator solutions do, and what the literature says. It feeds decision **D3** and **Phase 5** of [oxi-ui-plan-history.md](../history/oxi-ui-plan-history.md).
 
 > **Status:** Research note, 2026-11-22. No code was changed. All "status" claims are dated; anything not verified against a primary source is marked **[unverified]** or **[inferred]**. Benchmark numbers are quoted with their source or listed as unknown. Nothing here was measured on OxiTerm itself.
 >
-> **Related docs:** [oxi-ui.md](../oxi-ui.md) (plan, DisplayList, D3), [iot-screens.md](../iot-screens.md) §4 (3D tiers), [retro-desktop-environment.md](../retro-desktop-environment.md) and [embedded-iot-platform.md](../embedded-iot-platform.md) (low-end targets).
+> **Related docs:** [oxi-ui-plan-history.md](../history/oxi-ui-plan-history.md) (plan, DisplayList, D3), [iot-screens.md](../iot-screens.md) §4 (3D tiers), [retro-desktop-environment.md](../retro-desktop-environment.md) and [embedded-iot-platform.md](../embedded-iot-platform.md) (low-end targets).
 
 ---
 
@@ -54,7 +58,7 @@ Facts that matter for GPU work:
 | `Text` carries already-positioned glyphs (`ch`, `x`, `y`, `advance`), one `Glyph` per character, with whole-cell offsets inside a run (monospace until Phase 6). | `display_list.rs` | Text is a cell-grid-like instance list: one atlas quad per glyph. No shaping at paint time. |
 | `CellGrid` is used for `img`/`video`/`diagram` (painted by legacy cell code) and for overlays (focus ring, echo, scroll bar). `skip` marks the trailing half of a wide glyph. | `display_list.rs`, `renderer.rs::capture_grid` | Maps directly to the GPU-terminal model (one instance per cell). Images/video as cell grids are a poor fit for a pixel GPU; they should become real image items in a later phase. |
 | `PushClip`/`PopClip` are reserved and not emitted yet. | `display_list.rs` | Needs to be emitted before a GPU sink can clip correctly; maps to scissor rects. |
-| In GUI sessions `render_frame_mode` still paints the list into a `CellBuffer` through `CellSink` (and runs the legacy painters) on every frame, then the server zlib-compresses the full list. | `renderer.rs::render_frame_mode`, oxi-ui.md Phase 3 | A fixed CPU cost per frame that no GPU sink removes. |
+| In GUI sessions `render_frame_mode` still paints the list into a `CellBuffer` through `CellSink` (and runs the legacy painters) on every frame, then the server zlib-compresses the full list. | `renderer.rs::render_frame_mode`, oxi-ui-plan-history.md Phase 3 | A fixed CPU cost per frame that no GPU sink removes. |
 | `LayoutEngine::compute` calls `self.reset_nodes()` first, so the Taffy tree is rebuilt every frame. The code comment says this guarantees correctness for `bind-show` toggles. The `doc.dirty_nodes` loop afterwards is therefore redundant work on a fresh tree. | `oxiterm-renderer/src/layout/engine.rs:204-210` | Taffy's per-node cache is thrown away every frame (see §3.4 and §12). |
 | The web painter (`paint.rs::plan`) is **pure** (no canvas, no browser): DisplayList + `Metrics` → abstract `PaintOp`s in CSS pixels (border snapping, radius clamping, hidpi line alignment). A thin executor maps ops 1:1 to Canvas2D. Text is one `Text { ch, ... }` op, i.e. one `fillText` per glyph. | `oxiterm-web/src/paint.rs` | This is a reusable pixel-space layer. A native GPU sink could consume the same `PaintOp`s (or share `plan()` via a common crate) so snapping and radius rules do not diverge between web and native. |
 | `resvg`/`tiny-skia` are already dependencies of `oxiterm-renderer` (used for SVG diagrams). | `oxiterm-renderer/Cargo.toml` | A CPU vector rasterizer is already in the tree, but retro-desktop-environment.md calls it too heavy for 400 MHz–1 GHz targets. |
@@ -80,7 +84,7 @@ Facts that matter for GPU work:
 - Release status: v30.0.0 on 2026-07-01, v30.0.1 on 22 Aug, v30.0.2 on 12 Nov (GitHub releases page; the year is inferred from the page, **[partly inferred]**). Major versions arrive every few months with breaking changes, so pin carefully and budget for upgrades.
 - The **floor** that matters for OxiUI: Vulkan 1.x, DX12, Metal, or GLES 3.0. Hardware below that (GLES 2.0 only) cannot run wgpu at all.
 - Headless use is routine: render to a texture with `RENDER_ATTACHMENT | COPY_SRC`, `copy_texture_to_buffer` (rows padded to 256 bytes), map and read (pattern seen in egui-wgpu's capture code and several crates). Mesa's lavapipe (CPU Vulkan) is used as a software adapter in wgpu's own CI table (wgpu 0.20 docs). **[Source for the CI claim is an older docs page; verify against current wgpu CI.]**
-- Cost to measure: wasm binary size of wgpu (known to be significant) **[unquantified here]**, and resident memory with a Vulkan driver loaded versus the 15–25 MB RSS target in oxi-ui.md §1. Both are **unknown** and listed in §13.
+- Cost to measure: wasm binary size of wgpu (known to be significant) **[unquantified here]**, and resident memory with a Vulkan driver loaded versus the 15–25 MB RSS target in oxi-ui-plan-history.md §1. Both are **unknown** and listed in §13.
 
 ### 3.2 Vello family (Linebender)
 
@@ -105,7 +109,7 @@ Slint documents its Vello renderer as experimental, requiring a GPU with compute
 | **tiny-skia** (CPU) | Rust port of a Skia subset; CPU only. README: on x86-64 roughly 20–100% slower than Skia, on ARM roughly 100–300% slower; **no text rendering**; GPU out of scope. | Good deterministic software reference and already a dependency (via `resvg`). Too heavy for 400 MHz-class retro targets per the existing doc. |
 | **lyon** | Path tessellation to vertex/index buffers; "designed for GPU APIs"; no renderer and no built-in anti-aliasing (use MSAA or a fringe) | Right tool for `Path` fills/strokes if `vello_gpu` is not adopted. Small. |
 | **glyphon** | wgpu text renderer: cosmic-text for shaping/rasterization, etagere atlas, LRU eviction, renders in an existing pass | Ready-made text path; but it targets proportional text, and OxiUI's monospace cell model may be simpler to do directly (§7). |
-| **cosmic-text / swash / etagere** | Shaping, glyph rasterization, atlas packing | Building blocks named in oxi-ui.md Phase 5/6. Not individually verified in this session **[not verified this session]**. |
+| **cosmic-text / swash / etagere** | Shaping, glyph rasterization, atlas packing | Building blocks named in oxi-ui-plan-history.md Phase 5/6. Not individually verified in this session **[not verified this session]**. |
 | **femtovg** | OpenGL canvas (NanoVG-style); Slint offers it as a renderer | Per Slint docs: requires OpenGL; text/path quality "sometimes suboptimal". Not individually verified **[beyond the Slint docs]**. |
 | **skia-safe** (Skia bindings) | Full Skia on GL/Vulkan/Metal/D3D | Per Slint: needs a GPU API and has a large disk footprint. Conflicts with the "lightweight" goal. **[Not otherwise verified this session.]** |
 | **iced** | Two renderers: `iced_wgpu` and `iced_tiny_skia`; tries wgpu first and falls back to tiny-skia (secondary guide, iced 0.14) | The same "GPU first, software second" pattern OxiUI wants. |
@@ -188,7 +192,7 @@ These matter for `Path`, scalable text and "full vector" UIs, not for the rectan
 
 ### 7.1 Glyph atlas (recommended for Phases 5–6)
 
-- CPU-rasterize each `(char, style, pixel size, subpixel bucket)` once with `swash`/`cosmic-text`/`fontdue`, store alpha only, pack with `etagere`, tint at draw time (Zed's approach; Alacritty's and kitty's too). Build it lazily, so the memory cost is bounded by glyphs actually in use (matches oxi-ui.md Phase 5: "glyph atlas built only from the glyphs in use").
+- CPU-rasterize each `(char, style, pixel size, subpixel bucket)` once with `swash`/`cosmic-text`/`fontdue`, store alpha only, pack with `etagere`, tint at draw time (Zed's approach; Alacritty's and kitty's too). Build it lazily, so the memory cost is bounded by glyphs actually in use (matches oxi-ui-plan-history.md Phase 5: "glyph atlas built only from the glyphs in use").
 - Monospace cell metrics make atlas lookups trivial and positions exact.
 - Wide glyphs (CJK/emoji): `advance 2`, `skip` trailer already in the data model.
 - Color emoji need an RGBA atlas page (Alacritty uses RGBA atlases).
@@ -205,7 +209,7 @@ These matter for `Path`, scalable text and "full vector" UIs, not for the rectan
 - **Terminals** (Alacritty): per-line damage, redraw only damaged lines when the platform allows partial presents.
 - **WebRender (Firefox):** picture caching in tiles, dirty rects inside tiles, scissored re-raster; display items are interned and hashed with coordinates relativized so scrolling does not invalidate caches (Mozilla bug tracker and source comments; no single design document retrieved **[partial]**).
 - **Chromium:** tiled raster and compositor layers. **Not researched in this session [not verified].**
-- For OxiUI, a GPU sink that redraws a whole frame in well under a millisecond **does not need tile caches**. Damage tracking pays off for: (1) the **wire** (oxi-ui.md Phase 3 defers "rect diffing between lists"), (2) **software/framebuffer sinks** and **e-ink** (only changed regions are written), (3) power use on battery panels. Retain this as a *list diff* feature, not a GPU feature.
+- For OxiUI, a GPU sink that redraws a whole frame in well under a millisecond **does not need tile caches**. Damage tracking pays off for: (1) the **wire** (oxi-ui-plan-history.md Phase 3 defers "rect diffing between lists"), (2) **software/framebuffer sinks** and **e-ink** (only changed regions are written), (3) power use on battery panels. Retain this as a *list diff* feature, not a GPU feature.
 - The simplest GPU-side win: **render only when something changed** (the server already sends nothing for empty diffs, `FrameSink::send_frame` returns `Ok(false)`).
 
 ---
@@ -219,7 +223,7 @@ These matter for `Path`, scalable text and "full vector" UIs, not for the rectan
 | Raspberry Pi Zero–3 (VideoCore IV, VC4) | Mesa's VC4 docs: GLES 2.0 (nearly conformant) plus OpenGL 2.1; kernel docs call the 3D engine OpenGL ES 2.0-compatible. **No Vulkan driver is mentioned for VC4** (so "no Vulkan on Pi 3" is **[inferred from absence]**). | Below wgpu's GLES 3.0 floor: **CPU/framebuffer sink only** (bitmap-font blitter to DRM dumb buffers or `/dev/fb0`, as in embedded-iot-platform.md §3.1). |
 | Mali Valhall (G310/G610 and newer) | Mesa PanVK: Vulkan 1.1 conformance on Mali-G610 (Mesa 25.0.2), 1.2 about six weeks later (May 2025); Vulkan 1.4 support in Mesa 25.2, formal conformance not confirmed. Older Mali (Midgard/Bifrost) via Panfrost is OpenGL/GLES, not Vulkan **[not verified here]**. | wgpu via Vulkan on newer Mali; GLES 3.0 path on older ones **[unverified]**. |
 | Adreno | Mesa Turnip: Vulkan 1.3 for the 600 series; reported officially 1.3 conformant on A6xx (Collabora, Sept 2026) and 1.4 conformant on 700 series. | wgpu via Vulkan. |
-| Old desktop GPUs (e.g. GT 220, named in oxi-ui.md D3) | **Open question.** Whether any supported driver exposes Vulkan, and whether the legacy NVIDIA driver provides a usable GLES 3.0 context through EGL for wgpu's GL backend, was **not checked**. Do not assume either. | Possibly GL 3.3 via a hand-written GL renderer (Alacritty-style) or the software sink. Decide only after testing on real hardware. |
+| Old desktop GPUs (e.g. GT 220, named in oxi-ui-plan-history.md D3) | **Open question.** Whether any supported driver exposes Vulkan, and whether the legacy NVIDIA driver provides a usable GLES 3.0 context through EGL for wgpu's GL backend, was **not checked**. Do not assume either. | Possibly GL 3.3 via a hand-written GL renderer (Alacritty-style) or the software sink. Decide only after testing on real hardware. |
 | No GPU / VM / remote desktop | Mesa **lavapipe** is a software Vulkan implementation (CPU) usable as a wgpu adapter; WezTerm falls back to `Software` in RDP sessions. | lavapipe for CI goldens and for "GPU path on a GPU-less machine"; the CPU sink for retro boards. |
 
 **Compute shaders** are available on Vulkan 1.0+ and GLES 3.1+ but **not** in WebGL2 or GLES 3.0. wgpu's GLES backend therefore cannot rely on compute. An instanced-quad/SDF/atlas pipeline uses only vertex and fragment shaders and so works at the wgpu floor. That is the practical reason to **write the core pipeline yourselves** instead of depending on a compute-based renderer.
@@ -338,7 +342,7 @@ The GPU only draws what the CPU hands it. In OxiUI today the per-frame CPU work 
 
 1. `LayoutEngine::compute` calls `reset_nodes()` at the start of every call, which replaces the Taffy tree and clears the node map and `last_layout`. All Taffy per-node caches are lost, even though `doc.dirty_nodes` exists and is iterated afterwards.
 2. Taffy 0.6.3 (locked in `Cargo.lock`) has a per-node `Cache` and `TaffyTree::mark_dirty` (verified by grepping the vendored sources at `~/.cargo/registry/src/*/taffy-0.6.3/src/tree/{cache,taffy_tree}.rs`). Incremental layout is therefore supported by the engine; whether OxiUI can use it depends on handling `bind-show` toggles and `Display::None` correctly (the stated reason for the reset).
-3. `build_display_list` rebuilds the whole list every frame and, in GUI sessions, `render_frame_mode` also runs `CellSink::paint` into a `CellBuffer` and the legacy painters (img, video, diagram) every frame, then the server zlib-compresses the entire list for the wire (oxi-ui.md Phase 3a).
+3. `build_display_list` rebuilds the whole list every frame and, in GUI sessions, `render_frame_mode` also runs `CellSink::paint` into a `CellBuffer` and the legacy painters (img, video, diagram) every frame, then the server zlib-compresses the entire list for the wire (oxi-ui-plan-history.md Phase 3a).
 4. The web client rebuilds all `PaintOp`s and issues one `fillText` per glyph per frame.
 
 **Recommended order**
@@ -359,7 +363,7 @@ Honest framing: the GPU sink is likely **not** the first-order frame-time win fo
 
 | Risk / question | Notes | How to resolve |
 |---|---|---|
-| **RSS with a GPU driver loaded** | oxi-ui.md targets <15–25 MB. A Vulkan or GL driver stack plus wgpu is likely to exceed that; the amount is **unknown** | Measure a minimal winit + wgpu window early; document in Phase 5 "done when" |
+| **RSS with a GPU driver loaded** | oxi-ui-plan-history.md targets <15–25 MB. A Vulkan or GL driver stack plus wgpu is likely to exceed that; the amount is **unknown** | Measure a minimal winit + wgpu window early; document in Phase 5 "done when" |
 | **wasm size of wgpu** | Unquantified here | Build a minimal wgpu wasm and compare with the current thin client |
 | **wgpu churn** | Majors v29 (Mar 2026) and v30 (Jul 2026) with breaking changes; patch releases since | Pin; isolate wgpu behind `GpuSink` |
 | **`vello_gpu` maturity** | Panics on mask layers, complex filters, some blends; experimental glyph caching; renamed from `vello_hybrid`; needs wgpu >= 30 | Use only for `Path`, behind a feature flag, or skip in favour of lyon |
@@ -454,7 +458,7 @@ Accessed 2026-11-22 unless noted. "Secondary" marks news or blog coverage; "mirr
 - Chrome 146 WebGPU compatibility mode: https://developer.chrome.com/blog/new-in-webgpu-146
 
 **Local sources**
-- `docs/oxi-ui.md`, `docs/iot-screens.md`, `docs/retro-desktop-environment.md`, `docs/embedded-iot-platform.md`
+- `docs/history/oxi-ui-plan-history.md`, `docs/iot-screens.md`, `docs/retro-desktop-environment.md`, `docs/embedded-iot-platform.md`
 - `oxiterm-renderer/src/render/display_list.rs`, `layout/engine.rs`, `render/renderer.rs`, `render/cell_sink.rs`; `oxiterm-web/src/paint.rs`; `Cargo.lock` (taffy 0.6.3) and `~/.cargo/registry/src/*/taffy-0.6.3/`
 
 **Not verified this session:** egui/epaint internals, skia-safe, femtovg beyond Slint's description, cosmic-text/swash/etagere individually, Chromium's raster pipeline, Skia Spinel/Forge, VA-API and V4L2 M2M encoders, Pi 3 Vulkan (inferred absent), GT 220 driver support, Mesa lavapipe's current Vulkan version (its docs page returned 404), RSS and wasm-size figures, any OxiUI frame-time number.

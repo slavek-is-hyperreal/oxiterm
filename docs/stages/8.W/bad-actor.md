@@ -20,7 +20,7 @@ Tests added: `sites/test/bad_actor_wasm.mjs` (real release wasm in node), `sites
 
 ## Held up
 - XSS: all diagnostic/explain/example text reaches the DOM through `esc()` or `textContent`; `#ex=` is regex + allowlist; JSON `<script>` blocks escape `<`; no postMessage/message listener anywhere in the pages or the copied client; no eval.
-- Build injection: a tampered docs/oxi-ui.md (img onerror, script, svg onload, THTML `</text></box><box event-htmx="open:javascript:...">`, markdown javascript: link) in the roadmap/wave log renders fully escaped in HTML and THTML (built in a scratch copy; `check.mjs` still passed).
+- Build injection: a tampered roadmap source (originally docs/history/oxi-ui-plan-history.md, now docs/roadmap/*.md) (img onerror, script, svg onload, THTML `</text></box><box event-htmx="open:javascript:...">`, markdown javascript: link) in the roadmap/wave log renders fully escaped in HTML and THTML (built in a scratch copy; `check.mjs` still passed).
 - Wasm robustness (real release wasm, panic=abort, node 20): 349 targeted runs + 4000 random grammar-token inputs x check/format/apply_fix: 0 traps, 0 hangs, worst call 154 ms (256 KiB of NUL bytes: 131 ms), diagnostics output capped (~56 KB).
 - No source maps; no Latin words/`/la/`/`lang="la"` anywhere in dist (pages, sitemap, hreflang, pages.json, dirs); no `undefined`/`NaN` rendered from the roadmap parse.
 

@@ -83,7 +83,7 @@ Video: the matrix only asserts the `<video>` element and its size (Playwright's 
 * Wire change after BAD ACTOR (`fixes.md` F-01/F-09): media keys are 64-bit (0x20/0x21/0xE0 carry 8 key bytes).
 * GUI overlays sit above `z-index` windows and snap to whole cells (section 7c of ARCHITECTURE.md).
 * The `native-media` off build still draws no SVG/Lottie/video itself (the browser does).
-* Goldens that change (not blessed here, for the lead): `oxiterm-renderer/tests/golden/` `demos__diagram@{80x24,120x40}`,
+* Goldens that change (not blessed here; the lead blessed them, see `d52bb89`): `oxiterm-renderer/tests/golden/` `demos__diagram@{80x24,120x40}`,
   `demos__diagram_mobile@{80x24,120x40}` (page fixed: header on top, diagram box on screen),
   `demos__media@{80x24,120x40}`, `demos__media_mobile@{80x24,120x40}` (the Rive widget is now drawn; the old
   baselines pinned the empty box).

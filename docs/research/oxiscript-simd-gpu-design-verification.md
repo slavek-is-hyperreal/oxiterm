@@ -1,5 +1,7 @@
 # Verification ledger: `oxiscript-simd-gpu-design.md` (Gemini draft)
 
+> **Note (2026-11-26, plan-cleanup):** this document predates the roadmaps. Where it cites `oxi-ui-plan-history.md` with line numbers or section names, it means the old OxiUI plan file as it was at commit `3017fd5` (its Phase 1-7 text is kept in `docs/history/oxi-ui-plan-history.md`; its Phase 8 text, principles `P-n` and decisions `D-n` are now in [../roadmap/oxiscript.md](../roadmap/oxiscript.md), the OxiUI half in [../roadmap/oxiui.md](../roadmap/oxiui.md)).
+
 Verifier: Claude (Opus), 2026-11-26. Method: every sourced claim, and every unsourced claim that drives a decision, was checked against the cited source or a primary substitute. Local facts were checked against the crate sources at the versions in this worktree's `Cargo.lock`, under `~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/`, and against the repository. Web facts were checked against the cited page, or against the primary page when the cited one was dead or empty.
 
 Status values:
@@ -46,7 +48,7 @@ Section A lists the 10 findings that change the design. Each one also appears as
 | B3 | One feature `simd = ["wasmi_core/simd","wasmi_ir/simd","wasmparser/simd"]`, disabled by default | VERIFIED (line number wrong) | `wasmi-2.0.3/Cargo.toml:83` (report says :69); `src/lib.rs:69` "Disabled by default" |
 | B4 | The feature enables both SIMD and relaxed SIMD | VERIFIED | `wasmi-2.0.3/src/engine/config.rs:94-95` |
 | B5 | `Config::wasm_simd` / `wasm_relaxed_simd` gated on `simd`+`validate`; both default on | VERIFIED | `config.rs:323-338`, `:94-95` |
-| B6 | `oxiscript-runtime` enables `validate, deterministic, stable, auto-dispatch` (no `simd`) | VERIFIED | `oxiscript/oxiscript-runtime/Cargo.toml:18` |
+| B6 | `oxiscript-runtime` enables `validate, deterministic, stable, auto-dispatch` (no `simd`) | VERIFIED when written; **OUTDATED since the targets merge (`d8fb0f8`)**: the runtime now also enables `simd` and `memory64` on purpose so that the host can switch them off explicitly (BAD ACTOR F1); whether `relaxed_simd(false)` is forced and tested is an 8.3a gate item | `oxiscript/oxiscript-runtime/Cargo.toml:14-22` |
 | B7 | `V128` occupies 2 cells | VERIFIED | `wasmi-2.0.3/src/engine/translator/utils.rs:12-18` |
 | B8 | wasmi 2.0: no cost on non-SIMD code | VERIFIED (was [S]) | CHANGELOG 2.0.0 quote (A5) |
 | B9 | wasmi 1.x: `simd` regressed CoreMark by about 8% | PARTLY | CHANGELOG 0.43/0.44: "may introduce Wasm execution overhead, increase memory consumption"; **no 8% figure found** |
@@ -112,7 +114,7 @@ Section A lists the 10 findings that change the design. Each one also appears as
 | D6 | Codes P0101 (assertable no), P0102 (yes), P0201 (yes), P0301 (no) | VERIFIED | `codes.txt:620-650` |
 | D7 | `@expect(simd)` attaches to statements; reserved `parallel for` | VERIFIED | `grammar.md:276, 360, 376` |
 | D8 | `OXS-E0110` = invalid operand types; `E0117` = invalid generic arguments | VERIFIED (codes exist). Using E0117 for a dynamic lane index is a stretch; a dedicated code is cleaner. | `codes.txt:193, 242` |
-| D9 | Stage naming | **Inconsistent** | oxi-ui.md:651 names "8.3 SIMD/parallel" and "8.3b GPU kernels". The report §3.3 calls the vectoriser "8.3b", while §7 uses the task's 8.3a-8.3e. Mapping added in the report. |
+| D9 | Stage naming | **Inconsistent** | oxi-ui-plan-history.md:651 names "8.3 SIMD/parallel" and "8.3b GPU kernels". The report §3.3 calls the vectoriser "8.3b", while §7 uses the task's 8.3a-8.3e. Mapping added in the report. |
 
 ## E. Ledger: GPU kernels (task Q4)
 
@@ -170,15 +172,15 @@ Section A lists the 10 findings that change the design. Each one also appears as
 | G5 | WebLLM / Burn / Candle / ORT Web / Transformers.js licences and descriptions | NRC | |
 | G6 | ORT Web: WebGPU 5-10x faster, Wasm faster below 10 ms | **UNVERIFIABLE** (page has no numbers) | A7 |
 | G7 | Naive GEMM 10-30x slower than tiled | UNVERIFIABLE (no source) | |
-| G8 | 8.L done `c792b4f`; 8.M `5a5929d` | VERIFIED | `oxi-ui.md:699-700` |
+| G8 | 8.L done `c792b4f`; 8.M `5a5929d` | VERIFIED | `oxi-ui-plan-history.md:699-700` |
 | G9 | half 2.5 pulled by naga | PARTLY (version) | `Cargo.lock`: half **2.7.1**, MIT OR Apache-2.0 (`half-2.7.1/Cargo.toml`) |
 | G10 | wasm-encoder / wasmparser 0.263 licence; wasmi MIT/Apache; wgpu MIT/Apache; bytemuck Zlib/Apache/MIT; pollster MIT/Apache | VERIFIED | each `Cargo.toml` `license` |
 | G11 | Benchmark reference numbers in the §8.2 table | mostly UNVERIFIABLE → [P] | A7. TF.js 1.7-4.5x and per-dispatch overhead VERIFIED as replacements |
 | G12 | TF.js Wasm SIMD 1.7-4.5x | VERIFIED | TF blog |
 | G13 | wgpu boids "1M+ particles at 60 fps" | UNVERIFIABLE (the example page gives no such figure) | |
-| G14 | "OxiScript v1 needs no GPU", Core Wasm only, wasmi as live engine | VERIFIED consistent | `oxi-ui.md:711, 757`; `abi.md:5` |
+| G14 | "OxiScript v1 needs no GPU", Core Wasm only, wasmi as live engine | VERIFIED consistent | `oxi-ui-plan-history.md:711, 757`; `abi.md:5` |
 | G15 | Licence rule: no GPL/LGPL in the plan | VERIFIED: every recommended dependency is MIT/Apache/Zlib/BSD; esp-dsp/esp-nn are Apache-2.0 | |
-| G16 | Multi-core layer (isolates, "CPU SIMD + multi-core first") | GAP | `oxi-ui.md:757` and `oxiscript-language.md` §E Layer 2. The report covers it only by a `rayon` row; added as an open question |
+| G16 | Multi-core layer (isolates, "CPU SIMD + multi-core first") | GAP | `oxi-ui-plan-history.md:757` and `oxiscript-language.md` §E Layer 2. The report covers it only by a `rayon` row; added as an open question |
 
 ## H. Assessment of the draft
 

@@ -1,5 +1,7 @@
 # HANDOFF 8.D DevKit v0 (update after each milestone)
 
+> **Status (2026-11-26):** complete and merged (`148b8e8`; DevKit v0 of stage 8.D0). The unchecked boxes below were never ticked in these working notes: the items were finished (see `oxiscript/oxiscript-cli/tests/agent_test/LOG.md`, `oxiscript/oxiscript-cli/SCHEMA.md`, `editors/vscode-oxiscript`), and the final report was delivered.
+
 ## Milestones
 - [x] M1 oxi CLI: check (--json/--fix/--stdin), fmt (--check/--stdin), explain, new, run/build placeholders (exit 3), --version. src/{main,check,fmtcmd,explain,newcmd,project,report,hints,runcmd}.rs
 - [x] M2 templates blink/touch-button/sensor-dashboard/oxiui-page (templates/<name>/, templates/common/) all pass check + fmt --check

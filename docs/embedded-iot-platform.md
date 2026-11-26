@@ -157,10 +157,12 @@ Buttons on the screen or touchscreen clicks dispatch actions directly to the dae
 
 ## 6. Embedded Feature Roadmap
 
+> **Status (2026-11-26):** this checklist is kept for orientation only; status and order of work are in [roadmap/oxiui.md](roadmap/oxiui.md) and [roadmap/oxiscript.md](roadmap/oxiscript.md). The "<15 MB, 0% idle CPU" figures are unmeasured claims (U.Bench), and the first board is an ESP32-S3 4.3" 800x480 touch panel (8.S3).
+
 - [x] **Core Engine:** Ultra-low RAM footprint (<15 MB), 0% idle CPU sleep mode.
 - [x] **Layering & Windowing:** `position: absolute`, `z-index`, draggable widgets.
 - [x] **Transitions:** Smooth CSS transitions for dials, bars, and gauges.
-- [ ] **`oxiterm-fb` Crate:** Standalone Linux framebuffer (`/dev/fb0`) blitter using embedded monospace bitmap fonts.
-- [ ] **Linux `evdev` Touchscreen Driver:** Direct touch and mouse input translation from `/dev/input/event*` without X11.
-- [ ] **Unix Domain Socket IPC:** High-speed local IPC for daemon state patches and hardware interrupts.
-- [ ] **`no_std` / RTOS Port:** Evaluate minimal core allocator support for high-end microcontrollers (ESP32-S3 with PSRAM).
+- [x] **`oxiterm-fb` Crate (merged as stage 7.2):** Standalone Linux framebuffer (`/dev/fb0`) blitter using embedded monospace bitmap fonts.
+- [ ] **Linux `evdev` Touchscreen Driver (7.2b / U.OxiDE):** Direct touch and mouse input translation from `/dev/input/event*` without X11.
+- [ ] **Unix Domain Socket IPC (U.IPC):** High-speed local IPC for daemon state patches and hardware interrupts.
+- [ ] **`no_std` / RTOS Port (U.Screens, 8.S3):** Evaluate minimal core allocator support for high-end microcontrollers (ESP32-S3 with PSRAM).

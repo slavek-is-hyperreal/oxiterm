@@ -21,7 +21,7 @@ Status per finding (updated after each fix). "Test" = what flips or guards it.
 * F8: the cut can fall inside a `\xNN` / `\u{..}` escape the runtime wrote for a control character; the output is still valid text, just a truncated escape before the marker.
 * Headers: the lead's description ("`/app/*.wasm` overrides the immutable rule") does not match the old file: that rule set only `Content-Type`. The old immutable rule `/app/*/*` had two splats, which Cloudflare Pages does not support (one `*` per pattern: recalled, NOT verified, no network), so it probably never matched and the Pages default `max-age=0, must-revalidate` applied. Cloudflare also documents that several matching rules do not replace each other: the values of the same header name are joined with a comma (unverified here). The new design does not depend on either: every path matches exactly one rule that sets `Cache-Control`, and `check.mjs` fails otherwise (also on a pattern with more than one `*`).
 
-## For the lead: rows in docs/oxi-ui.md (not edited here)
+## For the lead: rows in docs/history/oxi-ui-plan-history.md (not edited here; historical: the file is deleted and `sites/build.mjs` now reads the status tables of `docs/roadmap/oxiui.md` and `oxiscript.md`)
 
 `sites/build.mjs` `stateOf(id)` reads the wave-log table (`| Slice | Implementation | BAD ACTOR | Fixes | Findings | Merged |`, under "#### Wave log"): a slice is **done** only if a row starts with its id and its 6th cell (Merged) holds a date or a 7-hex hash and no em dash; no row = planned, a `—` = active.
 

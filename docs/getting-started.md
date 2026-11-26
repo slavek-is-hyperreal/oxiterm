@@ -8,10 +8,12 @@ OxiTerm is a framework for creating server-side rendered TUI (Terminal User Inte
 
 A Rust environment is required to build OxiTerm from source. If you don't have it, install it from: [https://rustup.rs](https://rustup.rs)
 
-Then clone the repository and build the project:
+The server embeds the web client bundle, so the bundle is built first (this needs `wasm-pack` and the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown && cargo install wasm-pack`). Then clone the repository and build the project:
 ```bash
 git clone https://github.com/slavek-is-hyperreal/oxiterm && cd oxiterm
-cargo build --release
+wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg oxiterm-web -- --no-default-features
+wasm-pack build --target web --release --out-dir ../oxiterm-server/assets/pkg --out-name oxiterm_local oxiterm-web -- --features local
+cargo build --release -p oxiterm-cli
 ```
 You can find the compiled executable in: `target/release/oxiterm-cli` (the examples below use `oxiterm` as shorthand — alias it, or call `target/release/oxiterm-cli` / `cargo run --bin oxiterm-cli --` directly).
 
@@ -42,6 +44,13 @@ Now you can connect to the application from any terminal using SSH:
 ```bash
 ssh localhost -p 2222
 ```
+
+The same page is also served to browsers on the web port (`http://localhost:8080` by default) in three client modes:
+* **Cell canvas** (default): the server streams cell diffs, the browser paints a terminal grid.
+* **GUI** (`?gui=1`): the server streams a display list (pixel geometry, proportional text) and the browser paints it on a canvas. TCSS font properties and `@media (render: gui)` apply only here.
+* **Local mode** (`?local=1`): the OxiUI core runs in the page as WebAssembly and fetches the app's THTML pages; actions are proxied to your App Server. It is off by default and must be enabled with `--local-mode` (or `OXITERM_LOCAL_MODE=1`), because it publishes every page of the app to every visitor.
+
+Add `--a11y` to `serve` for accessible rendering: a linear text tree for screen readers instead of a two-dimensional ANSI buffer (the AT-SPI/D-Bus transport is not implemented).
 
 ---
 
@@ -209,13 +218,15 @@ For every user action (`event-htmx`), OxiTerm will dispatch an asynchronous POST
 {
   "action": "save_profile",
   "state": { "username": "admin", "email": "user@example.com" },
-  "session_id": 42
+  "session_id": 42,
+  "username": "alice",
+  "auth_method": "SshKey"
 }
 ```
 
 The App Server can return a `200 OK` response with a JSON object to apply a **State Patch** back to the active session state. If no state changes are required, it can return a `204 No Content` status.
 
-For complete protocol details, examples in five languages, and the push endpoint (`POST /sessions/{id}/patch`), see [app-server-guide.md](app-server-guide.md).
+For complete protocol details, examples in five frameworks (Python, Node.js, Rust), the patch limits, and the push endpoint (`POST /sessions/{id}/patch`), see [app-server-guide.md](app-server-guide.md).
 
 ---
 
@@ -255,5 +266,6 @@ You can configure the server behavior using the following environment variables:
 | `OXITERM_METRICS_HOST` | (config default) | Bind host for the Prometheus metrics endpoint |
 | `OXITERM_TRUSTED_PROXY` | (none) | IP of a trusted reverse proxy allowed to forward the authenticated user identity |
 | `OXITERM_ALLOW_GUEST` | `false` | Allow unauthenticated ("guest") web access |
+| `OXITERM_LOCAL_MODE` | `false` | Enable browser local mode (`?local=1`); same as `serve --local-mode` |
 | `RUST_LOG` | `warn` | Server logging level (e.g. `debug`, `info`, `warn`, `error`) |
 

@@ -1,6 +1,6 @@
 # Roadmaps
 
-Two roadmaps replace every earlier plan of this repository (`docs/oxi-ui.md` as plan, `docs/HANDOFF.md` status, the status lists in `docs/IDEAS.md`, the roadmap checklists in `embedded-iot-platform.md`, `iot-screens.md` and `retro-desktop-environment.md`, and the concept documents in the repository root). They link to each other.
+Two roadmaps replace every earlier plan of this repository (`docs/history/oxi-ui-plan-history.md` as plan, `docs/HANDOFF.md` status, the status lists in `docs/IDEAS.md`, the roadmap checklists in `embedded-iot-platform.md`, `iot-screens.md` and `retro-desktop-environment.md`, and the concept documents in the repository root). They link to each other.
 
 | File | Covers |
 |---|---|

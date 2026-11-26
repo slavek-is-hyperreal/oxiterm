@@ -2,9 +2,9 @@
 
 This document is the blueprint for using OxiTerm's **server-driven** model to run many cheap networked displays (wall panels, kitchen screens, e-ink tags, old tablets, ESP32 boards) from **one central home server**. The screens hold no layout and no logic. They paint what the server sends and send input back.
 
-> **Status:** Blueprint. Nothing here is implemented yet beyond what OxiTerm already ships.
+> **Status:** Blueprint. Nothing here is implemented yet beyond what OxiTerm already ships. Stage U.Screens in [roadmap/oxiui.md](roadmap/oxiui.md) schedules it (it waits for hardware). Note: the 320x240 sizing example predates the board that was bought (ESP32-S3 4.3" 800x480 touch), and the ESP32 plan predates the core step API and the display-list wire.
 >
-> **Relationship to other docs:** [embedded-iot-platform.md](embedded-iot-platform.md) covers the opposite model, where the UI runs *on* the device (framebuffer, UART). This document reuses the server-driven mode of [oxi-ui.md](oxi-ui.md) §3.2.
+> **Relationship to other docs:** [embedded-iot-platform.md](embedded-iot-platform.md) covers the opposite model, where the UI runs *on* the device (framebuffer, UART). This document reuses the server-driven mode of [the OxiUI plan](history/oxi-ui-plan-history.md) §3.2 (see also [roadmap/oxiui.md](roadmap/oxiui.md)).
 
 ---
 
@@ -38,7 +38,7 @@ OxiScreens' position: **zero layout on the device**, and the same pages also wor
 | Old tablet / Raspberry Pi with a browser in kiosk mode | Existing web client (`oxiterm-web`, canvas) | **Works today** |
 | ESP32-S3 + SPI LCD (ST7789 / ILI9341) | Binary cell-diff stream + bitmap font | New thin client (§5) |
 | E-ink panel (ESP32 or SBC) | Cell diffs with partial refresh | New thin client (§5) |
-| Raspberry Pi / SBC native window | DisplayList (OxiUI phases 3 and 5) | After OxiUI phase 5 |
+| Raspberry Pi / SBC native window | DisplayList (wire v2/v3, merged; native window is stage 5.3) | After stage 5.3 ([roadmap/oxiui.md](roadmap/oxiui.md)) |
 
 Indicative sizing (estimates, to be measured): a 320×240 LCD with an 8×16 font is a 40×15 cell grid, enough for a room panel.
 
@@ -121,7 +121,7 @@ Limits: no textures or realistic lighting in tiers 2–3 (flat colours, later si
 ## 5. ESP32 Thin Client
 
 - Rust on `esp-hal` (no_std) or `esp-idf` (std), WebSocket client.
-- Decodes the existing binary cell-diff stream (`DiffEngine::encode_binary` / `decode_binary`), which stays the default and fallback stream in OxiUI phase 3.
+- Decodes the existing binary cell-diff stream (`DiffEngine::encode_binary` / `decode_binary`), which stays the default and fallback stream next to the display list (merged, OxiUI Phase 3).
 - Bitmap font atlas in flash (8×16 to start; Unicode subset with a replacement glyph for anything missing, e.g. emoji).
 - Touch controller (e.g. FT6236 / GT911) → cell coordinates → mouse events.
 - Declares its capabilities on connect: grid size, colour depth, touch, supported 3D tiers and polygon budget, JPEG support.
@@ -136,7 +136,7 @@ Limits: no textures or realistic lighting in tiers 2–3 (flat colours, later si
 3. **Home Assistant bridge** App Server.
 4. **ESP32-S3 thin client** for cell diffs with touch.
 5. **`<scene>` tier 1** (server render + JPEG), including camera feeds.
-6. **Tier 2 vectors** once OxiUI phase 3 adds `Polygon`/`Path` items to the DisplayList; then tier 3 for capable devices.
+6. **Tier 2 vectors** (`Path` items exist in the DisplayList since OxiUI Phase 3b; tier 2 is stage 9.1); then tier 3 for capable devices.
 7. E-ink client with partial refresh.
 
 ---
