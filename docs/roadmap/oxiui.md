@@ -71,7 +71,7 @@ Superseded design decisions from the original concept documents (kept for histor
 
 ### Owner decision 2026-11-27: GUI is the browser default
 
-<a id="o-25"></a>**O-25.** In the browser the GUI mode (display list, proportional text, sub-cell movement) is the **default**; the cell mode stays available **on request**: `?gui=0` in the URL, a page attribute, or a server/operator flag that forces cell mode (e.g. for terminal-identical rendering). SSH terminals are always cell mode. Before switching the default: check GUI performance on weaker phones and that every demo page looks right in GUI; fix the two GUI bugs seen on 2026-11-27 (the "100%" button one cell wider than its panel; a box background larger than its rounded border, visible behind the dragged OxiDESK window).
+<a id="o-25"></a>**O-25.** In the browser the GUI mode (display list, proportional text, sub-cell movement) is the **default**; **the server decides the mode; the user may only ask.** Server/operator policy (per server or per page): `force-cell` (always cell mode, user parameters ignored), `force-gui` (always GUI, user parameters ignored) or `user-choice` (default GUI; the user may request cell mode with `?gui=0`, and the server grants it). A user parameter is a request, never a command: under a forcing policy it is ignored. SSH terminals are always cell mode. Before switching the default: check GUI performance on weaker phones and that every demo page looks right in GUI; fix the two GUI bugs seen on 2026-11-27 (the "100%" button one cell wider than its panel; a box background larger than its rounded border, visible behind the dragged OxiDESK window).
 
 ### Owner answers of 2026-11-26 (batch)
 
