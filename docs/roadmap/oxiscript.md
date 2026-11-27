@@ -197,7 +197,7 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.S4b | todo | — |
 | 8.S4c | todo | — |
 | 8.N | todo | — |
-| 8.Bench | todo | — |
+| 8.Bench | in-progress | harness v0 (dev tier) on branch oxiperf, 2026-11-26 |
 | 8.2b | todo | — |
 | 8.2c | todo | — |
 | 8.3a | todo | — |
@@ -400,13 +400,13 @@ Scope of the owner-approved row ([D-11](#d-11), [D-15](#d-15), [D-16](#d-16)), s
 - Depends on: 8.L, [8.M-link](#s-8-m-link), [8.Std](#s-8-std) (allocator contract and hashing interfaces). Status: todo.
 
 <a id="s-8-bench"></a>
-#### 8.Bench OxiPerf: performance benchmark harness `oxiscript-bench` (todo)
+#### 8.Bench OxiPerf: performance benchmark harness `oxiscript-bench` (harness v0 done, rest todo)
 
 Named **OxiPerf** (owner 2026-11-26); the agent usability benchmark is **OxiBench** ([8.OB](#s-8-ob)). Two parts (Opus verification 2026-11-26): **(1) the harness plus the four SIMD/GPU workloads** (blocks 8.3a/b/d); **(2) the cross-language suite**, gated on the owner approving the methodology (Q-OP-1) and, for w2c2 rows, on 8.2b. v0.1 of (2): the six Are We Fast Yet benchmarks with their upstream ports (MIT; DeltaBlue not copied until its old licence terms are cleared), headline claims only on these six, OxiScript on wasmi and Rust on the dev box; Pi 1 rows (C, wasmi, LuaJIT, Lua, CPython; w2c2 after 8.2b) inside 8.Mem; ESP32 later. Every C and w2c2 build uses `-ffp-contract=off`; JS `f32` workloads use `Math.fround`. Both described with their state in [../bench/README.md](../bench/README.md); fair cross-language method in [../research/cross-language-benchmark-methodology.md](../research/cross-language-benchmark-methodology.md) (in progress).
 
 
 - Scope: harness over six targets (wasmi scalar and SIMD, Wasmtime scalar and SIMD, browser, GPU resident and round trip, native Rust baseline) and four workloads (GEMM, image filter, particles, MLP); median and p95 over at least 30 warm iterations, compile latency, `.wasm` size delta, RSS/VRAM; replaces the `[P]` estimates of the SIMD/GPU report with measurements; hosts the sort/regex/crossing benchmarks of the sync-callback research when kind-D bindings appear [R4-06, R3-292].
-- Gate: one command produces a table for the targets available on the machine and records the hardware (the dev box is i5-3450 with llvmpipe; real GPU hardware: [Q-SIMD-6](#q-simd)); numbers reproducible within a stated tolerance. Depends on: 8.L (done); better after [8.M-link](#s-8-m-link). Blocks 8.3a, 8.3b, 8.3d. OxiUI bench side: [U.Bench](oxiui.md#s-u-bench). Status: todo (no crate).
+- Gate: one command produces a table for the targets available on the machine and records the hardware (the dev box is i5-3450 with llvmpipe; real GPU hardware: [Q-SIMD-6](#q-simd)); numbers reproducible within a stated tolerance. Depends on: 8.L (done); better after [8.M-link](#s-8-m-link). Blocks 8.3a, 8.3b, 8.3d. OxiUI bench side: [U.Bench](oxiui.md#s-u-bench). Status: harness v0 done 2026-11-26 (`oxiscript/oxiscript-bench`, binary `oxiperf`, [../bench/oxiperf.md](../bench/oxiperf.md)): wasmi, Wasmtime, Rust, C, Node; 2 AWFY + 6 own workloads; dev tier. Todo: SIMD/GPU workloads and targets (part 1), rest of the AWFY six, w2c2 after 8.2b, release tier, `compare` for 8.Lab.
 
 ### 5.4 Profiles, release path, targets
 

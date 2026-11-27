@@ -1,0 +1,23 @@
+// OxiPerf p03 string_template (base track): n rows rendered through a template literal
+// (integers only), each hashed byte by byte. No big concatenation: the cost is formatting
+// plus short-lived string allocation.
+
+@host export function run(n: i32): u32 {
+  const labels: string[] = ["alpha", "beta", "gamma", "delta"];
+  let h: u32 = 0u32;
+  let total: u32 = 0u32;
+  for (let i = 0; i < n; i++) {
+    const label = labels[i % 4];
+    const x = i * 3;
+    const y = (i * 7) % 1000;
+    const d = x - y;
+    const s = `row #${i}: ${label} (${x}, ${y}) delta=${d}`;
+    for (const b of s.bytes()) {
+      h = (h *% 31u32) +% (b as u32);
+    }
+    total = total +% (s.byteLength as u32);
+  }
+  return h +% total;
+}
+
+export function main(): void {}

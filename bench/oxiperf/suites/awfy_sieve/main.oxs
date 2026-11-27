@@ -1,0 +1,27 @@
+// OxiPerf awfy_sieve: our port of the Are We Fast Yet Sieve (P03). run(n) = n sieves of 5000
+// (669 primes each). No upstream OxiScript port exists; the algorithm follows upstream sieve.js.
+
+@host export function run(n: i32): u32 {
+  let total: u32 = 0u32;
+  for (let rep = 0; rep < n; rep++) {
+    const flags: bool[] = [];
+    for (let i = 0; i < 5000; i++) {
+      flags.push(true);
+    }
+    let primeCount: i32 = 0;
+    for (let i = 2; i <= 5000; i++) {
+      if (flags[i - 1]) {
+        primeCount += 1;
+        let k = i + i;
+        while (k <= 5000) {
+          flags[k - 1] = false;
+          k += i;
+        }
+      }
+    }
+    total = total +% (primeCount as u32);
+  }
+  return total;
+}
+
+export function main(): void {}

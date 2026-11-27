@@ -1,0 +1,64 @@
+// OxiPerf p01 sort (base track): top-down merge sort of n i32 keys from xorshift32.
+// Every language implements this exact algorithm; no library sort.
+
+function nextRand(x: u32): u32 {
+  let y = x;
+  y = y ^ (y << 13u32);
+  y = y ^ (y >> 17u32);
+  y = y ^ (y << 5u32);
+  return y;
+}
+
+function mergeSort(a: i32[], tmp: i32[], lo: i32, hi: i32): void {
+  if (hi - lo < 2) {
+    return;
+  }
+  const mid = lo + (hi - lo) / 2;
+  mergeSort(a, tmp, lo, mid);
+  mergeSort(a, tmp, mid, hi);
+  let i = lo;
+  let j = mid;
+  let k = lo;
+  while (i < mid && j < hi) {
+    if (a[i] <= a[j]) {
+      tmp[k] = a[i];
+      i++;
+    } else {
+      tmp[k] = a[j];
+      j++;
+    }
+    k++;
+  }
+  while (i < mid) {
+    tmp[k] = a[i];
+    i++;
+    k++;
+  }
+  while (j < hi) {
+    tmp[k] = a[j];
+    j++;
+    k++;
+  }
+  for (let t = lo; t < hi; t++) {
+    a[t] = tmp[t];
+  }
+}
+
+@host export function run(n: i32): u32 {
+  let s: u32 = 2463534242u32;
+  const a: i32[] = [];
+  const tmp: i32[] = [];
+  for (let i = 0; i < n; i++) {
+    s = nextRand(s);
+    a.push((s >> 1u32) as i32);
+    tmp.push(0);
+  }
+  mergeSort(a, tmp, 0, n);
+  let h: u32 = 0u32;
+  for (let i = 0; i < n; i++) {
+    h = (h *% 31u32) +% (a[i] as u32);
+  }
+  return h;
+}
+
+export function main(): void {}

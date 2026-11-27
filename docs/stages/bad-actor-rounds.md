@@ -11,10 +11,12 @@ Rules:
 
 | Change | Merged | Why it waits | Planned round |
 |---|---|---|---|
+| 8.Spec + 8.Sec + 8.Fix (Gemini, branch gemini-fixspecsec 5bb98c5) | not yet (waits for its round: 8.Sec and a runtime loader change in `oxiscript-runtime/src/load.rs`) | large, security-relevant | next Opus round, before merge |
 | 8.Std v0 (std library) | fd7bf41 | had a Sonnet+advisor pass; large stage, Opus pass owed | next Opus round |
 | Playground "no main" notice | 0bd281a | small change, no BAD ACTOR yet | next round |
 | OxiUI "How it works" diagram and statuses | 31e8075 | small change, static page | next round |
 | Taller live demos (CSS) | (sites commit) | small change | next round |
+| OxiPerf v0 harness (`oxiscript-bench`) | merge of oxiperf | small, tooling only | next round |
 | Versioning rule: std counts, `--owner-release` | d624ff5 | small change in a release script | next round |
 
 ## Rounds done

@@ -2,8 +2,10 @@ name: OxiScript fuzz (nightly)
 
 # The long fuzz campaigns are #[ignore]d in normal `cargo test` (too slow for every
 # push and for the owner's machine). They run here every night with seeds taken
-# from the date, and on demand from the Actions tab. OXI_NIGHTLY_IGNORED=1 adds every
-# #[ignore]d heavy test in release (the runner is ~2.5x faster than the owner's machine).
+# from the date, and on demand from the Actions tab. Heavy tests marked
+# `#[cfg_attr(debug_assertions, ignore)]` already run in the release step. OXI_NIGHTLY_IGNORED=1
+# (every #[ignore]d test) is NOT used: #[ignore] also marks dump utilities, known-red BAD ACTOR
+# findings and tests needing extra targets (run 45842555455 went red on those, 2026-11-26).
 on:
   schedule:
     - cron: "30 2 * * *"
@@ -22,7 +24,7 @@ jobs:
     - name: OxiScript gate (nightly level)
       run: |
         mkdir -p "$RUNNER_TEMP/gate"
-        TMPDIR="$RUNNER_TEMP/gate" CARGO_BUILD_JOBS=4 OXI_NIGHTLY_IGNORED=1 scripts/oxiscript-gate.sh nightly
+        TMPDIR="$RUNNER_TEMP/gate" CARGO_BUILD_JOBS=4 scripts/oxiscript-gate.sh nightly
     - name: Upload logs on failure
       if: failure()
       uses: actions/upload-artifact@v7

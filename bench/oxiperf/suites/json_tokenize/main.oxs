@@ -1,0 +1,77 @@
+// OxiPerf p04 json_tokenize (base track): build a JSON-like byte buffer for n records, then run a
+// hand-written tokenizer over the bytes (strings, numbers, literals, punctuation) and fold the
+// token stream into a checksum. Bytes, not strings, so every language does the same work.
+
+function pushText(buf: u8[], s: string): void {
+  for (const b of s.bytes()) {
+    buf.push(b);
+  }
+}
+
+function pushNum(buf: u8[], v: i32): void {
+  if (v >= 10) {
+    pushNum(buf, v / 10);
+  }
+  buf.push((48 + v % 10) as u8);
+}
+
+@host export function run(n: i32): u32 {
+  const buf: u8[] = [];
+  buf.push(91u8);
+  for (let i = 0; i < n; i++) {
+    if (i > 0) {
+      buf.push(44u8);
+    }
+    pushText(buf, "{\"id\":");
+    pushNum(buf, i);
+    pushText(buf, ",\"name\":\"item");
+    pushNum(buf, i % 97);
+    pushText(buf, "\",\"ok\":true,\"none\":null,\"v\":[1,22,");
+    pushNum(buf, i * 3);
+    pushText(buf, "]}");
+  }
+  buf.push(93u8);
+
+  let h: u32 = 0u32;
+  let tokens: u32 = 0u32;
+  let i = 0;
+  const len = buf.length;
+  while (i < len) {
+    const c = buf[i];
+    if (c === 34u8) {
+      i++;
+      const start = i;
+      while (buf[i] !== 34u8) {
+        i++;
+      }
+      h = (h *% 31u32) +% ((i - start) as u32);
+      i++;
+      tokens = tokens +% 1u32;
+    } else if (c >= 48u8 && c <= 57u8) {
+      let v: u32 = 0u32;
+      while (i < len && buf[i] >= 48u8 && buf[i] <= 57u8) {
+        v = (v *% 10u32) +% ((buf[i] - 48u8) as u32);
+        i++;
+      }
+      h = (h *% 31u32) +% v;
+      tokens = tokens +% 1u32;
+    } else if (c === 116u8) {
+      i += 4;
+      h = (h *% 31u32) +% 1u32;
+      tokens = tokens +% 1u32;
+    } else if (c === 110u8) {
+      i += 4;
+      h = (h *% 31u32) +% 2u32;
+      tokens = tokens +% 1u32;
+    } else {
+      if (c === 123u8 || c === 125u8 || c === 91u8 || c === 93u8 || c === 44u8 || c === 58u8) {
+        h = (h *% 31u32) +% (c as u32);
+        tokens = tokens +% 1u32;
+      }
+      i++;
+    }
+  }
+  return h +% tokens;
+}
+
+export function main(): void {}
