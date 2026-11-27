@@ -142,6 +142,7 @@ Renamed ids (old -> new): oxi-ui-plan-history.md "Phase 5 stages 5.2-5.7" keep t
 | U.IPC | idea | — |
 | U.Idle | todo | — |
 | U.S1 | todo, blocked on 8.S1 and 8.M-link | — |
+| U.Rive | in progress (branch gemini-rive) | — |
 | U.Quirks | todo | — |
 | U.Cpu | todo | — |
 | U.Damage | conditional on 8.Mem | — |
@@ -272,6 +273,14 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - **Security invariants (owner: the streamed version is meant for sensitive uses such as logins and banking, where the client knows no logic):** (1) animation messages carry only values that will be visible anyway, never logic, rules or hidden state; (2) the server stays the only source of truth and accepts nothing from the client about animations; (3) hit-testing during an animation is decided by the server from the deterministic timeline, never from the client's view; (4) a page/server **strict mode** disables client-side animation completely (server-ticked or no animation), also honouring reduced-motion.
 - Gate: 60 fps on the GUI client under an injected 100 ms network delay with jitter; final frame identical to the server (test); interrupting mid-way changes direction without a jump; strict mode sends no animation messages (test); BAD ACTOR (Opus) attacks the client parser (malformed/huge descriptions) and checks that no animation message reveals anything not on screen.
 - Depends: [O-25](#o-25) (GUI default, decided 2026-11-27) and the gemini-oxiui merge. Status: todo.
+
+<a id="s-u-rive"></a>
+#### U.Rive Real Rive playback (owner 2026-11-27)
+- Today a `.riv` node is a procedural toggle drawn in half-block cells even in the GUI client (`oxiterm-renderer/src/render/rive.rs`), and the example `toggle.riv` is a 12-byte stub. Owner: "real Rive, done properly".
+- Scope: the GUI web client and local mode play real `.riv` files with the official runtime `@rive-app/canvas` 2.50.0 (MIT), vendored same-origin in `oxiterm-server/assets/vendor/` like `lottie-web`, loaded lazily only when a `.riv` node is on screen, the wasm URL set explicitly (never a CDN). Artboard, state machine and fit come from THTML attributes; state-machine inputs can be bound to page-state keys, so the server (App Server, `event-htmx`, OxiScript) drives the animation and pointer events reach the state machine. Cell mode and SSH keep a terminal fallback (half-block poster or label from a bounded Rust parser of the `.riv` header: artboards, state machines, inputs). Real sample files: `examples/assets/rive/` (rive-runtime test assets, MIT).
+- Security: `.riv` files are untrusted input to a C++ runtime compiled to wasm: only files from the app's asset directory, size cap, served with the existing security headers, no network access from the runtime; the header parser is fuzzed; follows the [U.Anim](#s-u-anim) invariants (strict mode shows a static frame; a Rive input bound to a key never reveals a key the page could not show).
+- Gate: a test page plays all sample files in Chromium (screenshot not blank, the state machine reacts to a click and to a server-side key change) in streamed GUI and local mode; cell mode and SSH goldens of the fallback; BAD ACTOR (Opus) with malformed and oversized `.riv` files and with input bindings.
+- Depends: the gemini-oxiui merge. Status: in progress (branch `gemini-rive`).
 
 <a id="s-u-archaic"></a>
 #### U.Archaic Archaic mode: from the 1960s/70s to today (owner 2026-11-27)
