@@ -117,37 +117,51 @@ fn probe_set_every_operation_traps_on_reentrant_mutation() {
     assert!(f.is_empty(), "{f:#?}");
 }
 
-/// forEach with a callback that removes entries and triggers compaction: the loop walks the replaced
-/// arrays. Entries 0..40, at the first visit remove 1..=25 (compaction shrinks the arrays to 15 live
-/// entries). Live entries after the removal: 0 and 26..40. A sound iteration visits 0 once and then
-/// each of 26..39 once (15 visits) or traps.
-#[test]
-fn probe_map_foreach_mutation_never_silently_wrong() {
-    let src = r#"
+const FOREACH_SRC: &str = r#"
 import { Map } from "std/collections";
 @host export function run(): i32 {
   const m = new Map<i32, i32>();
   let i: i32 = 0;
   while (i < 40) { m.set(i, i); i++; }
   let visited: i32 = 0;
-  let sum: i32 = 0;
+  let originals: i32 = 0;
   m.forEach((k: i32, v: i32): void => {
     visited++;
-    sum = sum + k;
-    if (visited === 1) {
-      let j: i32 = 1;
-      while (j <= 25) { m.remove(j); j++; }
+    if (k < 40) { originals++; }
+    if (visited === 20) {
+      // remove the 20 visited entries and 5 unvisited ones (compaction replaces the entry arrays), then insert fresh keys until the
+      // entry length is back at or above the captured n = 40
+      let j: i32 = 0;
+      while (j <= 24) { m.remove(j); j++; }
+      j = 100;
+      while (j < 130) { m.set(j, j); j++; }
     }
   });
-  return visited * 100000 + sum;
+  return originals;
 }
 "#;
-    let mut p = Prog::new(src);
+
+/// R2-03 (LOW, outside R1-30's hash/equals scope): `forEach` captures `n = entryKeys.length` once and walks
+/// the live arrays. A callback that removes visited entries (compaction shifts the remaining ones left of the
+/// cursor) and then inserts fresh keys (length back at or above `n`) makes the loop silently skip original
+/// entries and visit new ones: no trap, no documentation in std.md. A sound iteration visits the 20 visited keys plus each of the
+/// 15 original keys still live (25..39) = 35 originals, or traps.
+#[test]
+fn r2_03_map_foreach_mutation_skips_entries_silently() {
+    let mut p = Prog::new(FOREACH_SRC);
     let r = p.rt.call_export("run", &[]);
-    // live set after the removal: {0} + {26..39}: 15 visits, sum 0 + (26+...+39) = 455
-    let sound = 15 * 100000 + 455;
-    match r {
-        Err(_) => {}
-        Ok(v) => assert!(format!("{v:?}").contains(&sound.to_string()), "silent wrong iteration: {v:?} (sound = {sound})"),
+    if let Ok(v) = r {
+        assert!(format!("{v:?}").contains("35"), "forEach silently skipped original entries: visited originals = {v:?} (sound = 35)");
+    }
+}
+
+/// Probe: the shape without refilling (arrays shrink below `n`) traps instead of iterating wrongly.
+#[test]
+fn probe_map_foreach_shrinking_compaction_traps_or_is_sound() {
+    let src = FOREACH_SRC.replace("while (j < 130) { m.set(j, j); j++; }", "");
+    let mut p = Prog::new(&src);
+    let r = p.rt.call_export("run", &[]);
+    if let Ok(v) = r {
+        assert!(format!("{v:?}").contains("35"), "{v:?}");
     }
 }

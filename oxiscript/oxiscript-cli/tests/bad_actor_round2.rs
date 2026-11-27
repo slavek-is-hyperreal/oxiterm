@@ -125,3 +125,62 @@ fn r2_01_backslash_file_name_collides_with_subdirectory_file() {
         "both files have an OXS-E0005 but their display names collide: files={files:?} diag files={diag_files:?}"
     );
 }
+
+/// R1-04 probe: for hostile names `files[]` holds the raw name, every `diagnostics[].file` and
+/// `edits[].file` equals an entry of `files[]`, each file has its OXS-E0005 and `file_display` is present
+/// exactly when sanitising changes the name (and is itself clean).
+#[test]
+fn probe_check_json_hostile_names_are_consistent() {
+    let d = scratch("json");
+    for n in HOSTILE {
+        std::fs::write(d.join(n), BAD).unwrap();
+    }
+    let o = oxi(&["check", "--json", "."], &d);
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    let files: Vec<&str> = v["files"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+    for n in HOSTILE {
+        assert!(files.contains(&n), "files[] lacks the raw name {n:?}: {files:?}");
+        let ds: Vec<&Value> = v["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|x| x["file"].as_str() == Some(n) && x["code"] == "OXS-E0005")
+            .collect();
+        assert_eq!(ds.len(), 1, "{n:?}: expected one OXS-E0005, diagnostics = {}", v["diagnostics"]);
+        let clean = oxiscript_abi::sanitize::sanitize_terminal(n);
+        match ds[0].get("file_display").and_then(Value::as_str) {
+            Some(fd) => {
+                assert_ne!(clean, n);
+                assert_eq!(fd, clean);
+                assert_eq!(leaks(fd), None);
+            }
+            None => assert_eq!(clean, n, "{n:?}: file_display missing although the name is unsafe"),
+        }
+    }
+    for x in v["diagnostics"].as_array().unwrap() {
+        assert!(files.contains(&x["file"].as_str().unwrap()), "diagnostic file not in files[]: {x}");
+        for f in x["fixes"].as_array().into_iter().flatten() {
+            for e in f["edits"].as_array().into_iter().flatten() {
+                assert!(files.contains(&e["file"].as_str().unwrap()), "edit file not in files[]: {e}");
+            }
+        }
+    }
+}
+
+/// R2-01 probe: `--fix` with the colliding names writes each file's own fix only.
+#[test]
+fn probe_fix_with_colliding_names_touches_only_own_file() {
+    let d = scratch("bslash-fix");
+    std::fs::create_dir_all(d.join("a")).unwrap();
+    // a/b.oxs: `==` (fixable to `===`); a\b.oxs: a missing semicolon (fixable)
+    let sub = "export function f(a: i32, b: i32): bool {\n  return a == b;\n}\n";
+    let back = "export function g(a: i32): i32 {\n  return a\n}\n";
+    std::fs::write(d.join("a/b.oxs"), sub).unwrap();
+    std::fs::write(d.join("a\\b.oxs"), back).unwrap();
+    let _ = oxi(&["check", "--fix", "."], &d);
+    let s = std::fs::read_to_string(d.join("a/b.oxs")).unwrap();
+    let b = std::fs::read_to_string(d.join("a\\b.oxs")).unwrap();
+    assert!(!s.contains("return a;") && !s.contains("g("), "a/b.oxs got a foreign edit: {s:?}");
+    assert!(!b.contains("==") && !b.contains("f("), "a\\b.oxs got a foreign edit: {b:?}");
+    assert!(b.contains("return a;"), "own fix missing in a\\b.oxs: {b:?}");
+}
