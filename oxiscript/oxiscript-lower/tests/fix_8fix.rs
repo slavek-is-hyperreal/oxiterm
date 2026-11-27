@@ -39,7 +39,7 @@ fn float_remainder_f64_and_f32_match_ieee754() {
 }
 "#;
     let wasm = compile(src);
-    let host = Host::new(Limits::default());
+    let host = Host::with_options(Limits::default(), test_host_options());
     let mut rt = host.instantiate(&wasm, Grants::none()).expect("instantiate");
 
     let cases64: &[(f64, f64)] = &[
@@ -137,7 +137,7 @@ class Holder {
 }
 "#;
     let wasm = compile(src);
-    let host = Host::new(Limits::default());
+    let host = Host::with_options(Limits::default(), test_host_options());
     let mut rt = host.instantiate(&wasm, Grants::none()).expect("instantiate");
     assert_eq!(
         rt.call_export("test_ctor", &[Value::I32(1)]).unwrap(),
@@ -158,7 +158,7 @@ fn thousand_tiny_host_exports_compile_and_run_end_to_end() {
         ));
     }
     let wasm = compile(&src);
-    let host = Host::new(Limits::default());
+    let host = Host::with_options(Limits::default(), test_host_options());
     let mut rt = host
         .instantiate(&wasm, Grants::none())
         .expect("instantiate 1000 exports");
