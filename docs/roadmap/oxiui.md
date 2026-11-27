@@ -273,6 +273,17 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - Gate: 60 fps on the GUI client under an injected 100 ms network delay with jitter; final frame identical to the server (test); interrupting mid-way changes direction without a jump; strict mode sends no animation messages (test); BAD ACTOR (Opus) attacks the client parser (malformed/huge descriptions) and checks that no animation message reveals anything not on screen.
 - Depends: [O-25](#o-25) (GUI default, decided 2026-11-27) and the gemini-oxiui merge. Status: todo.
 
+<a id="s-u-archaic"></a>
+#### U.Archaic Archaic mode: from the 1960s/70s to today (owner 2026-11-27)
+- Goal: a showcase that the same THTML page displays sensibly from a teletype to a modern GUI, with features reduced step by step (no mouse means no windows/drag).
+- Compatibility ladder: **A0** modern (truecolor, UTF-8, mouse, images); **A1** 256 colours (images to alt text); **A2** 16 colours, CP437/Latin-1 box drawing (Linux console, DOS ANSI.SYS); **A3** VT100 (1978): monochrome + attributes, DEC Special Graphics line drawing, keyboard only (windows/drag become static panels, colours map to bold/underline/reverse); **A4** VT52 (1975): ASCII `+-|`, no attributes; **A5** dumb terminal / teletype: no cursor addressing, the page is printed as text and navigation uses numbered choices + Enter. Grids from 80x24 (VT100) and 40x24 down. Today the server always sends truecolor (the `ColorDepth` enum exists but is unused) and UTF-8: A1/A2 (colour downgrade + ASCII box fallback) are the first slices.
+- Detection: `TERM` (vt52, vt100, vt220, linux, ansi, dumb), DA1 replies, `COLORTERM`; manual override `oxiterm-cli serve --archaic=<level>` or a client request.
+- Transports: legacy-algorithm SSH for pre-2014 clients (separate listener, possibly another permissively licensed SSH library), **Telnet**, and **RS-232 serial** through a gateway (e.g. a Raspberry Pi with a USB-serial adapter driving a real VT100/VT220).
+- Security: archaic transports are insecure by nature: operator opt-in only, off by default, separate port, a clear warning, forbidden for sensitive pages; the server decides the level ([O-25](#o-25) rule: the user may only ask).
+- Showcase: one demo page recorded on a teletype emulator, VT52, VT100, DOS ANSI, the Linux console, a modern terminal and the browser GUI; later real hardware over serial.
+- Gate: golden renders of every demo page at every level A0-A5; at each level every feature that makes sense without a mouse is reachable by keyboard; BAD ACTOR (Opus) on the new transports (telnet, legacy SSH, serial gateway).
+- Depends: U.Term. Status: todo (not scheduled).
+
 <a id="s-u-quirks"></a>
 #### U.Quirks Pinned quirks and filesystem users
 - Scope: decide each Phase 4 quirk the traces pin (do not fix silently): `<for>` re-expanded only on `StatePatched`, `current_page` not normalised, Enter pushes `'\r'` into predictive echo, `<for>` template node rendered, origin policy of `open_url` and token resync differs between App Server response and push endpoint; remove residual filesystem users (`source_path`/`base_source_path`, `Renderer::read_asset`, attach `page` param check); `0x21 update_document` cleared and resent every GUI frame on media pages (fix needs client + trace baseline change).
