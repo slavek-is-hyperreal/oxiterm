@@ -2,7 +2,7 @@
   "name": "oxiscript",
   "displayName": "OxiScript",
   "description": "OxiScript (.oxs): syntax highlighting, diagnostics and quick fixes from `oxi check`, format on save with `oxi fmt`, snippets.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "oxiterm",
   "license": "MIT",
   "private": true,

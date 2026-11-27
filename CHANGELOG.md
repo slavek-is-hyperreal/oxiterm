@@ -1,5 +1,39 @@
 # Changelog
 
+## OxiScript 0.0.3 — 2026-11-27
+
+Regular release on the 5555-line step (7110 changed lines since 0.0.2, `carry=1555`, [docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md)). Nothing is guaranteed before 1.0.0. Git tag: `oxiscript-v0.0.3`.
+
+### Checker and syntax (stage 8.Fix)
+- Closed the open checker/parser backlog: `static`/`mutating` constructors rejected (`OXS-E0123`), excluded union case labels warned (`OXS-W0005`), nullable operands diagnosed on every operator, compound assignment and `++`/`--` (`OXS-E0105`), `throw`/`try`/`catch` get a "no exceptions" message, `.length` / `s[i]` on strings carry their fix directly from the checker, budget-exhaustion errors name the offending expression.
+- `decreases`, `ghost` and `pure` are reserved words.
+- Formatter keeps comments next to operators and inside arrays, objects and argument lists; no `;` is inserted before a line that starts with a template literal.
+
+### Security hardening (stage 8.Sec)
+- One sanitiser for terminal escapes and bidi controls in every place the `oxi` CLI prints user-controlled text (file names, source lines, JSON `file_display`); bidi/invisible characters in comments are warned (`OXS-W0003`).
+- `#![forbid(unsafe_code)]` in the compiler and runtime crates.
+- Runtime: per-call wall-clock limit (`Limits::call_wall_micros`), fuel and memory fault-injection sweeps, a reload can never widen a module's capabilities, a total-locals cap in the module loader.
+- Reproducible compiler output (byte-identical across builds).
+
+### Specification (stage 8.Spec)
+- `grammar.md`, `contracts.md`, `abi.md`, `llms.txt` and the authoring skill agree with the implementation (diagnostic codes, switch arm syntax, payload caps, effect flags); `sync_docs.py` checks every reason code the skill cites.
+
+### Standard library
+- `Map`/`Set`: re-entrant mutation from user `hash()`/`equals()` traps deterministically; `forEach` has a defined result when its callback mutates the collection (visits the entries present at the start, skips removed ones).
+- `parseFloat` costs 15-30x less fuel per digit on long inputs; `repeat` is O(log n).
+
+### Tooling
+- OxiPerf (crate renamed `oxiscript-perf`): checksums are validated strictly, a run with a missing or wrong checksum fails.
+- Version script: strict tag and `carry` parsing.
+- Sites are deployed from release tags by a GitHub workflow that needs the owner's approval.
+
+### Hardened by
+- BAD ACTOR round 2026-11-27-1 (Opus: 0 high, 3 medium, 10 low) and round 2026-11-27-2 (Sonnet + Opus advisor: 1 medium, 4 low, 1 info), all fixed with regression tests ([docs/stages/rounds/](docs/stages/rounds/)).
+
+### Known limitations
+- `f64` to text still needs the real runtime linked (stage 8.M-link).
+- Sorting 30k `i32` needs about 21M fuel (default 10M per call); stage 8.Perf.
+
 ## OxiScript 0.0.2 — 2026-11-26
 
 Owner release before the 5555-line step (`owner-release=standard library v0`, [docs/oxiscript/VERSIONING.md](docs/oxiscript/VERSIONING.md)). Nothing is guaranteed before 1.0.0. Git tag: `oxiscript-v0.0.2`.

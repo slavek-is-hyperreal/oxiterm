@@ -1,6 +1,6 @@
 [package]
 name = "oxiscript-abi"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiScript value/memory layout, host ABI and IDL, Wasm module conventions, reason codes (Phase 8)."

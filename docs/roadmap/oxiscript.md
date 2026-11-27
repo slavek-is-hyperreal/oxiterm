@@ -193,9 +193,9 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.Perf | todo | — |
 | 8.Lab | todo | — |
 | 8.Mig | todo | — |
-| 8.Fix | todo | — |
-| 8.Spec | todo | — |
-| 8.Sec | todo | — |
+| 8.Fix | done | 2026-11-27, 74bf3aa (release 0.0.3) |
+| 8.Spec | done | 2026-11-27, 74bf3aa (release 0.0.3) |
+| 8.Sec | done | 2026-11-27, 74bf3aa (release 0.0.3) |
 | 8.0 | todo | — |
 | 8.S1 | in-progress | — |
 | 8.S1b | todo | — |
