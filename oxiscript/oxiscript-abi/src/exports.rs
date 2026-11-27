@@ -78,6 +78,12 @@ pub const STR_FROM_F64: &str = "oxi_str_from_f64";
 pub const ARRAY_NEW: &str = "oxi_array_new";
 pub const ARRAY_GROW: &str = "oxi_array_grow";
 pub const TRAP: &str = "oxi_trap";
+/// Optional runtime exports (not in [`EXPORTS`]; a module may lack them, the Stub
+/// runtime does): `oxi_collect_step(units) -> bits` is the runtime's bounded
+/// collection step and `oxi_collect_stat(key) -> u32` its counters. The host
+/// drives incremental cycle collection between turns with them.
+pub const COLLECT_STEP: &str = "oxi_collect_step";
+pub const COLLECT_STAT: &str = "oxi_collect_stat";
 
 /// Prefix of the callback trampolines the module exports for host-declared
 /// callbacks: `cb:<module>@<version>.<Interface>.<Callback>` (module and
@@ -101,7 +107,7 @@ pub const HOST_PAYLOAD_MAX: u32 = SCRATCH_MIN_CAP;
 
 /// The fixed export table. User `export function`s are additional exports
 /// under their own names (flattened per the IDL/ABI rules); names starting
-/// with `oxi_` or `cb:` are reserved and a user export with such a name is a
+/// with `oxi_`, `__oxi_` or `cb:`, and the linker's `__heap_base` / `__data_end`, are reserved and a user export with such a name is a
 /// compile error.
 pub const EXPORTS: &[ExportSpec] = &[
     ExportSpec { name: MEMORY, kind: ExportKind::Memory, provider: Provider::Compiler, params: &[], results: &[],
@@ -177,8 +183,17 @@ pub const HOST_NAMESPACE_PREFIX: &str = "host:";
 
 /// Reserved: a name is reserved for the ABI if user code may not export it.
 pub fn is_reserved_export_name(name: &str) -> bool {
-    name == MEMORY || name.starts_with("oxi_") || name.starts_with(CALLBACK_PREFIX)
+    name == MEMORY
+        || name.starts_with("oxi_")
+        || name.starts_with("__oxi_")
+        || name.starts_with(CALLBACK_PREFIX)
+        || LINKER_RESERVED.contains(&name)
 }
+
+/// Names the toolchain itself uses for linear-memory layout symbols
+/// (`__heap_base`, `__data_end`); tools read them as the heap start / data end,
+/// so a program may not export a function under one of these names (BL2-07).
+pub const LINKER_RESERVED: &[&str] = &["__heap_base", "__data_end"];
 
 #[cfg(test)]
 mod tests {

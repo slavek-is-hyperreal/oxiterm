@@ -277,10 +277,20 @@ struct Instance {
     /// host->guest turns (`call_export`, `tick`, `pump`) so cyclic garbage
     /// cannot accumulate unboundedly in long-running instances without stalling
     /// steady-state turns.
-    calls_since_gc: u32,
-    last_gc_live_objs: u32,
-    last_gc_live_bytes: u32,
+    /// Pages at the last housekeeping pass (growth trigger).
     last_gc_pages: usize,
+    /// A step returned `STEP_MORE` / escalation pending: continue next turn.
+    hk_active: bool,
+    /// Work units of the next housekeeping step (grows while only over-budget
+    /// candidates remain).
+    hk_units: u32,
+    /// Turns to wait before trying again after a step at the cap left candidates
+    /// that are still too big.
+    hk_cooldown: u32,
+    /// Next cooldown length: doubles while passes find nothing they can collect.
+    hk_backoff: u32,
+    /// Housekeeping accounting (see [`Runtime::collector_stats`]).
+    gc_stats: CollectorStats,
     /// Closure pointers the host dropped, waiting for `oxi_release`.
     pending_releases: std::collections::VecDeque<u32>,
     /// Events taken from capabilities but not yet delivered (bounded by
@@ -291,6 +301,51 @@ struct Instance {
     // after the store and its capability objects are gone.
     _guard: Guard,
 }
+
+/// Accounting of the host's collector steps (housekeeping and explicit
+/// [`Runtime::collect_step`] calls) over the life of the instance.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollectorStats {
+    pub steps: u64,
+    pub fuel_total: u64,
+    /// Most fuel one step used.
+    pub max_step_fuel: u64,
+    /// Highest fuel per requested work unit of any step of 64 units or more
+    /// (must stay below [`GC_FUEL_PER_UNIT`] times the backstop factor).
+    pub max_fuel_per_unit: f64,
+}
+
+/// What one [`Runtime::collect_step`] did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CollectStep {
+    /// The collector has more work for another step.
+    pub more: bool,
+    /// Candidates remain that exceeded this step's unit budget.
+    pub deferred: bool,
+    /// Fuel the step used.
+    pub fuel_used: u64,
+}
+
+/// Fuel the host assumes one collector work unit (an edge visit) may cost, in the
+/// worst case of the linked runtime including its debug flavour; measured in
+/// `oxiscript-lower/tests/fixes_link2.rs` with a safety factor (docs section 4).
+pub const GC_FUEL_PER_UNIT: u64 = 700;
+/// Fixed fuel added to every collector call (entry, stat queries).
+const GC_STEP_FUEL_BASE: u64 = 10_000;
+/// Smallest / first step size in work units.
+const GC_UNITS_MIN: u32 = 4096;
+/// Turns to leave over-budget candidates alone after a full-budget step failed.
+const GC_COOLDOWN_TURNS: u32 = 64;
+const GC_COOLDOWN_MAX: u32 = 1024;
+/// Steps of one housekeeping turn (the fuel budget usually ends it sooner).
+const GC_MAX_STEPS_PER_TURN: u32 = 64;
+/// The fuel limit of a step is a backstop this many times the planned `units * GC_FUEL_PER_UNIT`.
+const GC_BACKSTOP_FACTOR: u64 = 4;
+/// Linear-memory growth (pages) since the last pass that triggers a pass.
+const GC_PAGE_GROWTH: usize = 4;
+const STAT_PENDING: u32 = 0;
+const STAT_CANDIDATES: u32 = 1;
+const STAT_GC_WANTED: u32 = 5;
 
 /// Counters from one [`Runtime::pump`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -530,10 +585,12 @@ impl Instance {
             poisoned: false,
             last_fuel_used: 0,
             dropped_events: 0,
-            calls_since_gc: 0,
-            last_gc_live_objs: 0,
-            last_gc_live_bytes: 0,
             last_gc_pages: init_pages,
+            hk_active: false,
+            hk_units: GC_UNITS_MIN,
+            hk_cooldown: 0,
+            hk_backoff: GC_COOLDOWN_TURNS,
+            gc_stats: CollectorStats::default(),
             pending_releases: std::collections::VecDeque::new(),
             pending_events: std::collections::VecDeque::new(),
             _guard: guard,
@@ -592,18 +649,25 @@ impl Instance {
         }
     }
 
-    /// Internal host maintenance call (e.g. automatic cycle collection between
-    /// events): does not invoke capability `begin_turn` and preserves
-    /// `last_fuel_used` for the user's call.
-    fn invoke_internal(&mut self, f: Func, fuel_budget: u64) -> Result<Vec<Val>> {
+    /// Internal host maintenance call (cycle collection between events): does not invoke
+    /// capability `begin_turn` and preserves `last_fuel_used` for the user's call. Returns
+    /// the fuel it used.
+    fn invoke_internal_args(
+        &mut self,
+        f: Func,
+        args: &[Val],
+        fuel_budget: u64,
+    ) -> Result<(Vec<Val>, u64)> {
         if self.poisoned {
             return Err(Error::Poisoned);
         }
         let _ = self.store.set_fuel(fuel_budget);
         let ft = f.ty(&self.store);
         let mut results = Self::zero_results(&ft);
-        match f.call(&mut self.store, &[], &mut results) {
-            Ok(()) => Ok(results),
+        let r = f.call(&mut self.store, args, &mut results);
+        let used = fuel_budget.saturating_sub(self.store.get_fuel().unwrap_or(0));
+        match r {
+            Ok(()) => Ok((results, used)),
             Err(e) => {
                 self.poisoned = true;
                 Err(Error::Trap(self.trap_info(&e)))
@@ -760,6 +824,11 @@ impl Runtime {
         self.inst.last_fuel_used
     }
 
+    /// Collector step accounting of the current instance.
+    pub fn collector_stats(&self) -> CollectorStats {
+        self.inst.gc_stats
+    }
+
     /// Number of import calls the current instance made.
     pub fn host_calls(&self) -> u64 {
         self.inst.store.data().host_calls
@@ -837,89 +906,163 @@ impl Runtime {
             .expect("checked by load::check")
     }
 
-    /// Threshold-based automatic cycle collection between host events (BL08;
-    /// documented in `docs/oxiscript/abi.md` section 4). Checks live heap
-    /// growth every 64 turns (or 16 under memory pressure, or immediately if
-    /// linear memory grew past `max(4, last_gc_pages / 2)` pages) and invokes
-    /// `oxi_collect_cycles` only when live objects, live bytes, or pages grew
-    /// past a geometric threshold (`max(1024, last/2)` objects or
-    /// `max(256 KiB, last/2)` bytes; tightened to 256 objects / 64 KiB / 2
-    /// pages above 50% of `max_memory_pages`). Bounded by
-    /// `pump_fuel.max(fuel_per_call)` so background collection neither stalls
-    /// indefinitely nor falsely poisons large live heaps under default call
-    /// fuel.
+    /// One bounded step of the runtime's cycle collector (`oxi_collect_step`), driven
+    /// by the host between guest turns. `units` bounds the work in collector work units
+    /// (edges / visits, not live objects); the fuel it may use is `units *`
+    /// [`GC_FUEL_PER_UNIT`], charged to housekeeping, never to the guest call that
+    /// came before. Returns `None` when the module has no collector (the Stub runtime).
+    /// See `docs/oxiscript/abi.md` section 4.
+    pub fn collect_step(&mut self, units: u32) -> Result<Option<CollectStep>> {
+        if self.inst.poisoned {
+            return Err(Error::Poisoned);
+        }
+        let Some(f) = self.opt_func(exports::COLLECT_STEP) else {
+            return Ok(None);
+        };
+        // The unit bound is the real limit; fuel is a backstop with a wide margin so a
+        // step is never cut off half-way (that would leave the collector mid-trial).
+        let fuel = u64::from(units).saturating_mul(GC_FUEL_PER_UNIT).saturating_mul(GC_BACKSTOP_FACTOR) + GC_STEP_FUEL_BASE;
+        let (res, used) = self.inst.invoke_internal_args(f, &[Val::I32(units as i32)], fuel)?;
+        let bits = match res.first() {
+            Some(Val::I32(n)) => *n as u32,
+            _ => 0,
+        };
+        let st = &mut self.inst.gc_stats;
+        st.steps += 1;
+        st.fuel_total = st.fuel_total.saturating_add(used);
+        st.max_step_fuel = st.max_step_fuel.max(used);
+        if units >= 64 {
+            st.max_fuel_per_unit = st.max_fuel_per_unit.max(used as f64 / f64::from(units));
+        }
+        Ok(Some(CollectStep {
+            more: bits & 1 != 0,
+            deferred: bits & 2 != 0,
+            fuel_used: used,
+        }))
+    }
+
+    fn opt_func(&self, name: &str) -> Option<Func> {
+        self.inst.instance.get_func(&self.inst.store, name)
+    }
+
+    /// One counter of the collector (`oxi_collect_stat`: 0 pending destruction queue,
+    /// 1 candidates, 2 collections, 3 objects freed by cycle collection, 4 internal bytes,
+    /// 5 collection wanted, 6 aborted trials). `None` when the module has no collector.
+    pub fn collector_stat(&mut self, key: u32) -> Result<Option<u32>> {
+        let Some(f) = self.opt_func(exports::COLLECT_STAT) else {
+            return Ok(None);
+        };
+        self.collect_stat(f, key).map(Some)
+    }
+
+    fn collect_stat(&mut self, f: Func, key: u32) -> Result<u32> {
+        let (res, _) = self.inst.invoke_internal_args(f, &[Val::I32(key as i32)], GC_STEP_FUEL_BASE)?;
+        Ok(match res.first() {
+            Some(Val::I32(n)) => *n as u32,
+            _ => 0,
+        })
+    }
+
+    /// Incremental cycle collection between host turns (BL08, reworked for BL2-02 and
+    /// BL2-03; `docs/oxiscript/abi.md` section 4).
+    ///
+    /// After a successful turn the host looks at the collector's candidate buffer. It
+    /// collects when the buffer reached the collector's threshold, when memory grew
+    /// since the last pass, or under memory pressure; and it keeps going on the
+    /// following turns while a step reports more work. Every step is bounded by work
+    /// units (visits, so edges count), a pass by the housekeeping budget
+    /// `pump_fuel.max(fuel_per_call)`, and nothing in it is charged to the guest call
+    /// that just returned. A candidate whose subgraph exceeds the step budget is
+    /// retried with 4x bigger steps (up to the budget), then left alone for 64 turns.
+    /// The pass never runs the unbounded `oxi_collect_cycles`, so it cannot run out
+    /// of fuel half-way through a trial.
     fn maybe_collect_cycles(&mut self) -> Result<()> {
         if self.inst.poisoned {
             return Ok(());
         }
-        self.inst.calls_since_gc = self.inst.calls_since_gc.saturating_add(1);
+        let (Some(_), Some(stat_f)) = (self.opt_func(exports::COLLECT_STEP), self.opt_func(exports::COLLECT_STAT)) else {
+            return Ok(());
+        };
         let pages = self.memory_pages();
         let max_pages = self.host.limits.max_memory_pages as usize;
         let mem_pressure = max_pages > 0 && pages * 2 >= max_pages;
-        let check_interval = if mem_pressure { 16 } else { 64 };
-        let page_thresh = if mem_pressure {
-            2
-        } else {
-            4usize.max(self.inst.last_gc_pages / 2)
-        };
-        if self.inst.calls_since_gc < check_interval
-            && pages <= self.inst.last_gc_pages.saturating_add(page_thresh)
-        {
-            return Ok(());
+        let grown = pages > self.inst.last_gc_pages.saturating_add(GC_PAGE_GROWTH);
+        if self.inst.hk_cooldown > 0 {
+            self.inst.hk_cooldown -= 1;
+            if !(grown || mem_pressure) {
+                return Ok(());
+            }
         }
-        self.inst.calls_since_gc = 0;
+        if !self.inst.hk_active {
+            let wanted = self.collect_stat(stat_f, STAT_GC_WANTED)? != 0;
+            if !wanted {
+                if !(grown || mem_pressure) {
+                    return Ok(());
+                }
+                // Growth or pressure without a full candidate buffer: only worth a pass
+                // if there is something to examine or reclaim.
+                let cands = self.collect_stat(stat_f, STAT_CANDIDATES)?;
+                let pending = self.collect_stat(stat_f, STAT_PENDING)?;
+                if cands == 0 && pending == 0 {
+                    self.inst.last_gc_pages = pages;
+                    return Ok(());
+                }
+            }
+        }
         let budget = self
             .host
             .limits
             .pump_fuel
             .max(self.host.limits.fuel_per_call);
-        let live_f = self.rt_func(exports::LIVE_OBJECTS);
-        let bytes_f = self.rt_func(exports::LIVE_BYTES);
-        let live_objs = match self.inst.invoke_internal(live_f, budget)?.first() {
-            Some(Val::I32(n)) => *n as u32,
-            _ => 0,
-        };
-        let live_bytes = match self.inst.invoke_internal(bytes_f, budget)?.first() {
-            Some(Val::I32(n)) => *n as u32,
-            _ => 0,
-        };
-        let (obj_thresh, byte_thresh) = if mem_pressure {
-            (256u32, 64 * 1024u32)
-        } else {
-            (
-                1024u32.max(self.inst.last_gc_live_objs / 2),
-                (256 * 1024u32).max(self.inst.last_gc_live_bytes / 2),
-            )
-        };
-        let grew_objs = live_objs.saturating_sub(self.inst.last_gc_live_objs) >= obj_thresh;
-        let grew_bytes = live_bytes.saturating_sub(self.inst.last_gc_live_bytes) >= byte_thresh;
-        let grew_pages = pages > self.inst.last_gc_pages.saturating_add(page_thresh);
-        // Only run background full-heap collection when a conservative upper
-        // bound on traversal work (~1000 fuel/live object) fits inside the
-        // bounded housekeeping budget; otherwise defer to OOM recovery (BL02)
-        // and `deinit()` so background GC never stalls past the budget or
-        // falsely poisons a healthy large live heap with `OutOfFuel`.
-        let fits_budget = u64::from(live_objs).saturating_mul(1000) <= budget;
-        if (grew_objs || grew_bytes || grew_pages) && fits_budget {
-            let gc_f = self.rt_func(exports::COLLECT_CYCLES);
-            self.inst.invoke_internal(gc_f, budget)?;
-            let after_objs = match self.inst.invoke_internal(live_f, budget)?.first() {
-                Some(Val::I32(n)) => *n as u32,
-                _ => 0,
-            };
-            let after_bytes = match self.inst.invoke_internal(bytes_f, budget)?.first() {
-                Some(Val::I32(n)) => *n as u32,
-                _ => 0,
-            };
-            self.inst.last_gc_live_objs = after_objs;
-            self.inst.last_gc_live_bytes = after_bytes;
-            self.inst.last_gc_pages = self.memory_pages();
-        } else if grew_objs || grew_bytes || grew_pages {
-            // Back off checkpoints so we do not re-query live stats on every turn.
-            self.inst.last_gc_live_objs = live_objs;
-            self.inst.last_gc_live_bytes = live_bytes;
-            self.inst.last_gc_pages = pages;
+        let cap_units = u32::try_from(budget / GC_FUEL_PER_UNIT).unwrap_or(u32::MAX).max(GC_UNITS_MIN);
+        let mut spent = 0u64;
+        self.inst.hk_active = false;
+        let mut cands = self.collect_stat(stat_f, STAT_CANDIDATES)?;
+        let mut productive = false;
+        for _round in 0..GC_MAX_STEPS_PER_TURN {
+            let left_units = u32::try_from(budget.saturating_sub(spent) / GC_FUEL_PER_UNIT).unwrap_or(u32::MAX);
+            if left_units < 64 {
+                // budget spent: resume next turn
+                self.inst.hk_active = true;
+                break;
+            }
+            let units = self.inst.hk_units.min(left_units).min(cap_units);
+            let Some(r) = self.collect_step(units)? else { break };
+            spent = spent.saturating_add(r.fuel_used);
+            let now = self.collect_stat(stat_f, STAT_CANDIDATES)?;
+            let shrank = now < cands;
+            cands = now;
+            productive |= shrank;
+            if r.more || r.deferred {
+                // A step that burned most of its budget without shrinking the candidate
+                // buffer hit a candidate (graph) bigger than the step: retry with 4x bigger
+                // steps instead of aborting candidate after candidate at the same size.
+                let burned = r.fuel_used >= u64::from(units) * GC_FUEL_PER_UNIT / 2;
+                if (!shrank && burned) || (r.deferred && !r.more) {
+                    if units >= cap_units {
+                        // even a full-budget step cannot take these candidates: leave them to
+                        // out-of-memory recovery / `collect_cycles`, back off
+                        self.inst.hk_cooldown = self.inst.hk_backoff;
+                        self.inst.hk_backoff = (self.inst.hk_backoff.saturating_mul(2)).min(GC_COOLDOWN_MAX);
+                        self.inst.hk_units = GC_UNITS_MIN;
+                        break;
+                    }
+                    self.inst.hk_units = units.saturating_mul(4).min(cap_units);
+                    if r.deferred && !r.more {
+                        self.inst.hk_active = true; // retry bigger next turn
+                        break;
+                    }
+                }
+                continue;
+            }
+            // idle: nothing left to examine
+            self.inst.hk_units = GC_UNITS_MIN;
+            break;
         }
+        if productive {
+            self.inst.hk_backoff = GC_COOLDOWN_TURNS;
+        }
+        self.inst.last_gc_pages = self.memory_pages();
         Ok(())
     }
 
@@ -941,7 +1084,6 @@ impl Runtime {
             Some(Val::I32(n)) => *n,
             _ => 0,
         };
-        self.inst.calls_since_gc = 0;
         self.inst.last_gc_pages = self.memory_pages();
         Ok(n)
     }

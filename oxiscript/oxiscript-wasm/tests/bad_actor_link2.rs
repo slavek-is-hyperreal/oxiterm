@@ -134,7 +134,10 @@ impl W {
 /// allocation.
 #[test]
 fn allocating_before_oxi_init_never_overlaps_program_static_data() {
-    for debug in [false, true] {
+    // The debug runtime flavour only exists with `--features debug-runtime` (compiling with
+    // `debug_runtime: true` is rejected without it); check every flavour that is built.
+    let flavours: &[bool] = if cfg!(feature = "debug-runtime") { &[false, true] } else { &[false] };
+    for &debug in flavours {
         let wasm = linked(debug);
         let imgs = program_images(&wasm);
         let (lo, hi) = (imgs.iter().map(|i| i.0).min().unwrap(), imgs.iter().map(|i| i.0 + i.1.len() as u32).max().unwrap());

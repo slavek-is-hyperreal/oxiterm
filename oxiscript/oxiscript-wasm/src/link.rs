@@ -779,6 +779,15 @@ pub(crate) fn merge(
             .ok_or_else(|| err(format!("linker: missing runtime export `{}`", spec.name)))?;
         es.export(spec.name, ExportKind::Func, idx);
     }
+    // Optional host-driven collection (see `exports::COLLECT_STEP`): the runtime's
+    // `oxi_gc_step` / `oxi_gc_stat` under their ABI names. The runtime-internal names
+    // themselves stay unexported.
+    for (opt, internal) in [(exports::COLLECT_STEP, "oxi_gc_step"), (exports::COLLECT_STAT, "oxi_gc_stat")] {
+        let idx = *r_export_funcs
+            .get(internal)
+            .ok_or_else(|| err(format!("linker: runtime missing `{internal}`")))?;
+        es.export(opt, ExportKind::Func, idx);
+    }
     out.section(&es);
 
     // Element section: R's active elements, then P's active elements.
@@ -860,6 +869,25 @@ pub(crate) fn merge(
             }
         }
     }
+    // BL2-06: the runtime's allocator starts at its own `__heap_base` until
+    // `oxi_rt_init` runs, which in a merged module is inside the program's static
+    // data. Patch its `oxi_rt_floor` word (zero-initialised `.bss`, so no segment of
+    // the runtime covers it) to the end of static data: an allocation before
+    // `oxi_init` then lands above it.
+    let floor_addr = {
+        let (_, _, gi) = r
+            .exports
+            .iter()
+            .find(|(n, k, _)| n == "oxi_rt_floor" && *k == ExternalKind::Global)
+            .ok_or_else(|| err("linker: runtime missing global export `oxi_rt_floor`"))?;
+        let (_, expr) = r
+            .globals
+            .get(*gi as usize)
+            .ok_or_else(|| err("linker: `oxi_rt_floor` global index out of range"))?;
+        eval_const_i32(expr)?
+    };
+    let floor = static_end.wrapping_add(7) & !7;
+    ds.active(0, &ConstExpr::i32_const(floor_addr), floor.to_le_bytes());
     out.section(&ds);
 
     // Custom section: preserve `oxi.manifest` from P.

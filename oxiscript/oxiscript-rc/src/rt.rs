@@ -50,6 +50,7 @@ const IN_STACK: u32 = 1 << 28;
 
 /// Pre-reserved inline workspace (lives in `.bss` on wasm32, zero bytes in `.wasm`)
 /// so batched cycle collection over small/medium cycles needs zero heap headroom.
+// powers of two: indices are masked, which keeps a bounds check out of the trace loops
 const INLINE_STACK: usize = 2048;
 const INLINE_LOG: usize = 1024;
 const COLLECT_BATCH: u32 = 256;
@@ -105,6 +106,13 @@ pub const STAT_ABORTS: u32 = 6;
 // config keys (`oxi_gc_config`)
 pub const CFG_DRAIN_BUDGET: u32 = 0;
 pub const CFG_ROOT_THRESHOLD: u32 = 1;
+
+/// Work units of the first step of an allocation-failure collection, and the most one
+/// such attempt may spend in total (see `Rt::oom_collect`).
+pub const OOM_STEP_UNITS: u32 = 2048;
+pub const OOM_COLLECT_UNITS: u32 = 8192;
+/// Bytes an allocation-failure collection tries to return at least.
+const OOM_MIN_TARGET: u32 = 64 * 1024;
 
 /// `oxi_gc_step` result bits.
 pub const STEP_MORE: u32 = 1;
@@ -210,6 +218,10 @@ pub struct Rt<H: Heap> {
     in_oom_collect: bool,
     oom_abort: bool,
     batch: u32,
+    /// Largest batch `gc_step` may grow back to in the current sweep: set when an aborted
+    /// trial halved the batch, reset at the end of the sweep (growing straight back made
+    /// steps alternate between aborting and succeeding; each abort burns a whole step).
+    batch_cap: u32,
     deferred_limit: u32,
     skip_flagged: bool,
     oom_streak: u32,
@@ -256,6 +268,7 @@ impl<H: Heap> Rt<H> {
             in_oom_collect: false,
             oom_abort: false,
             batch: u32::MAX,
+            batch_cap: u32::MAX,
             deferred_limit: 0,
             skip_flagged: false,
             oom_streak: 0,
@@ -430,7 +443,7 @@ impl<H: Heap> Rt<H> {
     #[inline(always)]
     fn stack_get(&self, i: u32) -> u32 {
         if self.stack.ptr == 0 {
-            self.inline_stack[i as usize]
+            self.inline_stack[i as usize & (INLINE_STACK - 1)]
         } else {
             self.heap.ld32(self.stack.ptr + 4 * i)
         }
@@ -438,7 +451,7 @@ impl<H: Heap> Rt<H> {
     #[inline(always)]
     fn stack_set(&mut self, i: u32, x: u32) {
         if self.stack.ptr == 0 {
-            self.inline_stack[i as usize] = x;
+            self.inline_stack[i as usize & (INLINE_STACK - 1)] = x;
         } else {
             self.heap.st32(self.stack.ptr + 4 * i, x);
         }
@@ -446,7 +459,7 @@ impl<H: Heap> Rt<H> {
     #[inline(always)]
     fn log_get(&self, i: u32) -> u32 {
         if self.log.ptr == 0 {
-            self.inline_log[i as usize]
+            self.inline_log[i as usize & (INLINE_LOG - 1)]
         } else {
             self.heap.ld32(self.log.ptr + 4 * i)
         }
@@ -454,7 +467,7 @@ impl<H: Heap> Rt<H> {
     #[inline(always)]
     fn log_set(&mut self, i: u32, x: u32) {
         if self.log.ptr == 0 {
-            self.inline_log[i as usize] = x;
+            self.inline_log[i as usize & (INLINE_LOG - 1)] = x;
         } else {
             self.heap.st32(self.log.ptr + 4 * i, x);
         }
@@ -506,19 +519,29 @@ impl<H: Heap> Rt<H> {
                 return p;
             }
         }
-        // BL02: run one cycle collection and retry the allocation once before trapping OOM.
+        // BL02/BL2-02: bounded cycle collection, then retry, before trapping OOM.
         if !self.in_trial && !self.in_drain && !self.in_oom_collect && self.roots.len > 0 {
-            self.in_oom_collect = true;
-            self.collect_cycles_inner(false);
-            self.in_oom_collect = false;
-            self.drain(u32::MAX);
-            let p = do_alloc(&mut self.heap);
-            if p != 0 {
-                #[cfg(debug_assertions)]
-                {
-                    self.floor = self.floor.min(p);
+            let mut left = OOM_COLLECT_UNITS;
+            let mut target = size.max(OOM_MIN_TARGET);
+            while left > 0 {
+                self.in_oom_collect = true;
+                let spent = self.oom_collect(target, false, left);
+                self.in_oom_collect = false;
+                left -= spent.min(left);
+                self.drain(u32::MAX);
+                let p = do_alloc(&mut self.heap);
+                if p != 0 {
+                    #[cfg(debug_assertions)]
+                    {
+                        self.floor = self.floor.min(p);
+                    }
+                    return p;
                 }
-                return p;
+                if spent == 0 {
+                    break;
+                }
+                // Freed memory may be too fragmented for `size`: ask for more.
+                target = target.saturating_mul(2);
             }
         }
         self.trap(T_OOM)
@@ -616,7 +639,7 @@ impl<H: Heap> Rt<H> {
                 self.heap.st32(p - 8, rc + 1);
             }
             self.in_oom_collect = true;
-            self.collect_cycles_inner(false);
+            let _ = self.oom_collect(OOM_MIN_TARGET, true, OOM_COLLECT_UNITS);
             self.in_oom_collect = false;
             if pinned {
                 let rc2 = self.heap.ld32(p - 8);
@@ -880,11 +903,11 @@ impl<H: Heap> Rt<H> {
         self.heap.free(p - 8, total);
     }
 
-    /// Fast path for `oxi_release`: non-buffered objects with `rc == 1` (the
-    /// overwhelming majority of temporaries) are freed directly with a tiny,
-    /// branch-light body; everything else (`rc != 1`, `BUFFERED`, ref arrays,
-    /// non-empty destruction queue) is outlined so wasmi basic-block fuel stays
-    /// minimal on the fast path.
+    /// `oxi_release`. wasmi charges the fuel of every instruction of a function body that
+    /// has no `loop`/`if` up front, on every call, whichever branch runs. So the exported
+    /// entry is a thin dispatcher (null check, one load, one branch) and every path is a
+    /// separate small function: a shared object (rc > 1) pays only for its own few
+    /// instructions, not for the record/string/array freeing code it never reaches.
     #[inline]
     pub fn release(&mut self, p: u32) {
         if p == 0 {
@@ -896,6 +919,14 @@ impl<H: Heap> Rt<H> {
             self.release_rc_ne_1(p, rc);
             return;
         }
+        self.release_unique(p);
+    }
+
+    /// `release` of an object whose `rc` is 1 (the overwhelming majority of
+    /// temporaries): freed directly; buffered objects, strings and arrays go to
+    /// their own functions.
+    #[inline(never)]
+    fn release_unique(&mut self, p: u32) {
         let m = self.heap.ld32(p - 4);
         if m & BUFFERED != 0 {
             self.release_queue_slow(p, m);
@@ -903,13 +934,7 @@ impl<H: Heap> Rt<H> {
         }
         let id = m & META_TYPE_MASK;
         if id == TYPE_STRING {
-            self.live_mark(p, false);
-            let len = self.heap.ld32(p);
-            let total = (HEADER + 8 + len + 1 + 7) & !7;
-            self.free_object_known(p, total);
-            if self.q_head != 0 {
-                self.drain_cold();
-            }
+            self.release_string(p);
             return;
         }
         self.ensure_td(id);
@@ -923,6 +948,17 @@ impl<H: Heap> Rt<H> {
         if pcount > 0 {
             self.release_record_children(p, pcount, self.tdc.pmap);
         }
+        self.free_object_known(p, total);
+        if self.q_head != 0 {
+            self.drain_cold();
+        }
+    }
+
+    #[inline(never)]
+    fn release_string(&mut self, p: u32) {
+        self.live_mark(p, false);
+        let len = self.heap.ld32(p);
+        let total = (HEADER + 8 + len + 1 + 7) & !7;
         self.free_object_known(p, total);
         if self.q_head != 0 {
             self.drain_cold();
@@ -1287,7 +1323,7 @@ impl<H: Heap> Rt<H> {
             self.log_set(entry_idx + 1, 0);
             self.log.len = entry_idx + 2;
             self.heap.st32(n - 4, with_colour(m, GRAY));
-            self.work = self.work.saturating_add(1);
+            self.work = self.work.wrapping_add(1);
             let mut it = self.slots_id(n, m & META_TYPE_MASK);
             let mut done = 0u32;
             let mut res = Ok(());
@@ -1297,7 +1333,7 @@ impl<H: Heap> Rt<H> {
                     break;
                 }
                 done += 1;
-                self.work = self.work.saturating_add(1);
+                self.work = self.work.wrapping_add(1);
                 let c = self.heap.ld32(sa);
                 if c == 0 {
                     continue;
@@ -1465,7 +1501,7 @@ impl<H: Heap> Rt<H> {
         self.stack.len = 0;
         // phase 1: mark roots
         for i in start..end {
-            self.work = self.work.saturating_add(1);
+            self.work = self.work.wrapping_add(1);
             let s = self.root_active(i);
             if s == 0 {
                 continue;
@@ -1685,6 +1721,68 @@ impl<H: Heap> Rt<H> {
         total
     }
 
+    /// Bounded, non-trapping cycle collection for the allocation-failure paths
+    /// (BL2-02). Runs [`Self::gc_step`] with growing budgets until at least
+    /// `target` bytes were returned to the heap (or, with `need_root_slot`, the
+    /// candidate buffer has room again), the collector is idle, or `limit` work
+    /// units were spent. Returns the units spent (0 = nothing was examined).
+    ///
+    /// The bound is what keeps a recovery attempt from exceeding the fuel of
+    /// the call it runs in: one step costs at most [`OOM_STEP_UNITS`] units, a
+    /// whole attempt at most `limit` (at most [`OOM_COLLECT_UNITS`]). A garbage
+    /// subgraph larger than that is *not* reclaimed here and the allocation
+    /// traps `out_of_memory`; the host's incremental collection between calls
+    /// (or `oxi_collect_cycles`) handles such graphs.
+    fn oom_collect(&mut self, target: u32, need_root_slot: bool, limit: u32) -> u32 {
+        let start = self.live_bytes;
+        let mut spent = 0u32;
+        let mut step = OOM_STEP_UNITS.min(limit);
+        loop {
+            let r = self.gc_step(step);
+            spent = spent.saturating_add(step);
+            let freed = start.saturating_sub(self.live_bytes);
+            if freed >= u64::from(target) || (need_root_slot && self.roots.len < self.roots.cap) {
+                break;
+            }
+            if r == 0 || spent >= limit {
+                break;
+            }
+            if r & STEP_MORE == 0 {
+                // only candidates that exceeded this step's budget remain: raise it
+                step = step.saturating_mul(4).min(OOM_COLLECT_UNITS);
+            }
+            step = step.min(limit - spent);
+        }
+        self.collections += 1;
+        if self.q_head != 0 || spent > 0 {
+            self.drain(u32::MAX);
+        }
+        if need_root_slot {
+            self.free_one_root_slot();
+        }
+        spent
+    }
+
+    /// A partial sweep leaves a gap of zeros in the candidate buffer
+    /// (`[step_write, step_cursor)`). Free one slot at its end in O(1): with nothing left
+    /// unexamined the gap is simply cut off; otherwise the last unexamined entry moves into
+    /// the gap (it counts as swept for this round and is examined in the next one).
+    fn free_one_root_slot(&mut self) {
+        let gap = self.step_cursor - self.step_write;
+        if gap == 0 {
+            return;
+        }
+        if self.roots.len == self.step_cursor {
+            self.roots.len -= gap;
+            self.step_cursor = self.step_write;
+            return;
+        }
+        let last = self.heap.ld32(self.roots.ptr + 4 * (self.roots.len - 1));
+        self.heap.st32(self.roots.ptr + 4 * self.step_write, last);
+        self.step_write += 1;
+        self.roots.len -= 1;
+    }
+
     /// Bounded collection step (`oxi_gc_step`).
     ///
     /// Work bound: a call performs O(`budget`) slot/node visits (drain: up to
@@ -1743,7 +1841,8 @@ impl<H: Heap> Rt<H> {
                 self.cycle_freed += u64::from(freed);
                 left = left.saturating_sub(used.max(1));
                 if used < lim / 2 {
-                    self.batch = self.batch.saturating_mul(2); // cheap: try more roots next time
+                    // cheap: try more roots next time, but not past a size that just aborted
+                    self.batch = self.batch.saturating_mul(2).min(self.batch_cap);
                 }
                 for k in i..end {
                     self.keep_root(k);
@@ -1757,6 +1856,7 @@ impl<H: Heap> Rt<H> {
                     self.oom_streak += 1;
                 } else if end - i > 1 {
                     self.batch = ((end - i) / 2).max(1);
+                    self.batch_cap = self.batch;
                 } else {
                     if lim >= budget - budget / 2 {
                         self.heap.st32(self.roots.ptr + 4 * i, (raw & !7) | 1);
@@ -1770,6 +1870,7 @@ impl<H: Heap> Rt<H> {
             }
         }
         if self.step_cursor >= self.roots.len {
+            self.batch_cap = u32::MAX;
             self.roots.len = self.step_write;
             self.step_cursor = 0;
             self.step_write = 0;
