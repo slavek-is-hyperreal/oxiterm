@@ -156,6 +156,9 @@ fn spawn(cfg: &Config, exe: &Path, e: Engine, w: &Workload, n: i32, art: &Artifa
     }
     let line = String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or("").to_string();
     let v: Value = serde_json::from_str(&line).map_err(|er| format!("{} {}: bad child output ({er}): {line:.200}", e.id(), w.id))?;
+    if !v.is_object() {
+        return Err(format!("{} {}: child output is not a JSON object: {line:.200}", e.id(), w.id));
+    }
     Ok((v, wall_ms))
 }
 
@@ -249,32 +252,42 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
         arts.push((w, Artifacts { wasm: Some(path), c_bin }));
     }
 
-    let mut results: Vec<(String, Vec<(String, u32)>)> = workloads.iter().map(|w| (w.id.to_string(), vec![])).collect();
+    let mut results: Vec<(String, Vec<workloads::ChecksumEntry>)> = workloads.iter().map(|w| (w.id.to_string(), vec![])).collect();
     let mut invalid = 0usize;
 
-    // One child run -> one raw record. Checksums of steady and pilot runs feed the agreement check.
+    // One child run -> one raw record. Every run's checksum must be a valid u32 and feed the agreement check.
     let mut one = |emit: &mut dyn FnMut(Value) -> Result<(), String>, kind: &str, inv: usize, wi: usize, w: &Workload, art: &Artifacts, e: Engine, warm: usize, it: usize| -> Result<Option<Value>, String> {
         let n = n_for(w, cfg);
         let pad = env_pad(inv);
         eprintln!("[{kind} {}] {:<16} {:<19}", inv + 1, w.id, e.id());
         let mut rec = json!({ "kind": kind, "benchmark": w.id, "origin": w.origin.as_str(), "language": e.language(), "engine": e.id(), "track": w.track.as_str(), "size_profile": "server", "n": n, "runtime_mode": RUNTIME_MODE, "invocation_idx": inv, "env_pad_bytes": pad });
         let mut ret = None;
+        let label = format!("{} ({kind} {inv})", e.id());
         match spawn(cfg, &exe, e, w, n, art, warm, it, pad) {
             Ok((v, wall)) => {
-                let ok = v["checksum_stable"].as_bool().unwrap_or(false) && v.get("fuel_stable").and_then(Value::as_bool).unwrap_or(true);
+                let parsed_checksum = workloads::parse_u32_checksum(&v);
+                let checksum_stable = v["checksum_stable"].as_bool().unwrap_or(false);
+                let fuel_stable = v.get("fuel_stable").and_then(Value::as_bool).unwrap_or(true);
+                let ok = parsed_checksum.is_some() && checksum_stable && fuel_stable;
                 for (k2, v2) in v.as_object().unwrap() {
                     rec[k2] = v2.clone();
                 }
                 rec["process_ms"] = json!(wall);
                 rec["valid"] = json!(ok);
-                if !ok {
-                    rec["invalid_reason"] = json!("checksum or fuel not stable across iterations");
-                    invalid += 1;
-                }
-                if kind != "cold" {
-                    if let Some(c) = v["checksum"].as_u64() {
-                        results[wi].1.push((format!("{} ({kind} {inv})", e.id()), c as u32));
+                if let Some(c) = parsed_checksum {
+                    if checksum_stable && fuel_stable {
+                        results[wi].1.push((label, Ok(c)));
+                    } else {
+                        let reason = "checksum or fuel not stable across iterations";
+                        rec["invalid_reason"] = json!(reason);
+                        invalid += 1;
+                        results[wi].1.push((label, Err(reason.into())));
                     }
+                } else {
+                    let reason = format!("missing or malformed u32 checksum: {}", v.get("checksum").unwrap_or(&Value::Null));
+                    rec["invalid_reason"] = json!(reason);
+                    invalid += 1;
+                    results[wi].1.push((label, Err(reason)));
                 }
                 ret = Some(rec.clone());
             }
@@ -283,6 +296,7 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
                 rec["invalid_reason"] = json!(msg);
                 invalid += 1;
                 eprintln!("  INVALID: {msg}");
+                results[wi].1.push((label, Err(msg)));
             }
         }
         emit(rec)?;
@@ -346,12 +360,12 @@ pub fn run(cfg: &Config) -> Result<usize, String> {
     // Checksums: every executor of a workload must agree (R01, section 4.3).
     let mut mismatches = 0usize;
     for (id, rs) in &results {
-        match workloads::verify_checksums(rs) {
+        match workloads::verify_run_checksums(rs) {
             Ok(c) => emit(json!({ "kind": "digest", "benchmark": id, "digest_ok": true, "checksum": c, "executors": rs.len() }))?,
             Err(m) => {
                 mismatches += 1;
                 eprintln!("CHECKSUM MISMATCH in {id}: {m}");
-                emit(json!({ "kind": "digest", "benchmark": id, "digest_ok": false, "error": m.to_string() }))?;
+                emit(json!({ "kind": "digest", "benchmark": id, "digest_ok": false, "error": m }))?;
             }
         }
     }

@@ -272,3 +272,65 @@ const gSet: Set<i32> = new Set<i32>();
     p.call("s_clear", &[]);
     p.finish();
 }
+
+#[test]
+fn reentrant_mutation_in_hash_or_equals_traps_deterministically() {
+    let cases = [
+        // Re-entrant mutation inside Map key hash()
+        r#"
+import { Map } from "std/collections";
+class K {
+  v: i32;
+  host: Map<K, i32> | null = null;
+  constructor(v: i32) { this.v = v; }
+  hash(): u64 {
+    const m = this.host;
+    if (m !== null) {
+      this.host = null;
+      m.set(new K(99), 99);
+    }
+    return 7u64;
+  }
+  equals(o: K): bool { return this.v === o.v; }
+}
+@host export function run(): i32 {
+  const m = new Map<K, i32>();
+  const k = new K(1);
+  k.host = m;
+  m.set(k, 1);
+  return m.size();
+}
+"#,
+        // Re-entrant mutation inside Set item equals()
+        r#"
+import { Set } from "std/collections";
+class K {
+  v: i32;
+  host: Set<K> | null = null;
+  constructor(v: i32) { this.v = v; }
+  hash(): u64 { return 7u64; }
+  equals(o: K): bool {
+    const s = this.host;
+    if (s !== null) {
+      this.host = null;
+      s.add(new K(99));
+    }
+    return this.v === o.v;
+  }
+}
+@host export function run(): i32 {
+  const s = new Set<K>();
+  const a = new K(1);
+  s.add(a);
+  a.host = s;
+  s.add(new K(2));
+  return s.size();
+}
+"#,
+    ];
+    for (idx, src) in cases.iter().enumerate() {
+        let mut p = Prog::new(src);
+        let r = p.rt.call_export("run", &[]);
+        assert!(r.is_err(), "case {idx}: expected deterministic trap on re-entrant mutation, got {r:?}");
+    }
+}
