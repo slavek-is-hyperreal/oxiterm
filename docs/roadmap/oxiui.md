@@ -69,6 +69,10 @@ Superseded design decisions from the original concept documents (kept for histor
 
 ---
 
+### Owner decision 2026-11-27: GUI is the browser default
+
+<a id="o-25"></a>**O-25.** In the browser the GUI mode (display list, proportional text, sub-cell movement) is the **default**; the cell mode stays available **on request**: `?gui=0` in the URL, a page attribute, or a server/operator flag that forces cell mode (e.g. for terminal-identical rendering). SSH terminals are always cell mode. Before switching the default: check GUI performance on weaker phones and that every demo page looks right in GUI; fix the two GUI bugs seen on 2026-11-27 (the "100%" button one cell wider than its panel; a box background larger than its rounded border, visible behind the dragged OxiDESK window).
+
 ### Owner answers of 2026-11-26 (batch)
 
 Q-1 yes (the old execution order is replaced). Q-2 8.S1 first, then 7.3-7.5, native window 5.3-5.7 last. Q-3, Q-4 (OxiTerm/OxiUI versions follow the OxiScript rule, next `v0.7.0`), Q-5 closed (the roadmaps are the public roadmap), Q-6 (linear `--a11y` in v1, AT-SPI as an idea), Q-7 (keep avoiding ambiguous-width glyphs; drop the Mint/emulator matrix), Q-9 (VPS after 8.S1), Q-10 (OxiScreens, OxiDE desktop and 3D wait for the ESP32 board), Q-12 (linter warning for `box-shadow` now), Q-15 (remove unmeasured numbers until 8.Mem measures them): as the lead recommended. Q-8: **no Latin site version for now; only the in memoriam dedication stays** (shown on the home page once the owner writes its text and the teacher's name; a Latin version may come later); HSTS 6 months without `includeSubDomains`; Polish copy review when the owner has time. Gemini rule: [D-31](oxiscript.md#d-31).
@@ -267,7 +271,7 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - Scope: server-streamed animations are jerky on real networks because every 16 ms frame travels over the network. Instead the server sends a **visual description** once (element, property, from, to, duration, easing; covers TCSS `transition`, `spring()`, drag inertia, appear/disappear) and the GUI client (and local mode) interpolates at the display refresh rate; a new target mid-animation retargets smoothly. Cell mode: colour transitions only; SSH terminals keep server-ticked animation.
 - **Security invariants (owner: the streamed version is meant for sensitive uses such as logins and banking, where the client knows no logic):** (1) animation messages carry only values that will be visible anyway, never logic, rules or hidden state; (2) the server stays the only source of truth and accepts nothing from the client about animations; (3) hit-testing during an animation is decided by the server from the deterministic timeline, never from the client's view; (4) a page/server **strict mode** disables client-side animation completely (server-ticked or no animation), also honouring reduced-motion.
 - Gate: 60 fps on the GUI client under an injected 100 ms network delay with jitter; final frame identical to the server (test); interrupting mid-way changes direction without a jump; strict mode sends no animation messages (test); BAD ACTOR (Opus) attacks the client parser (malformed/huge descriptions) and checks that no animation message reveals anything not on screen.
-- Depends: the GUI-default decision and the gemini-oxiui merge. Status: todo.
+- Depends: [O-25](#o-25) (GUI default, decided 2026-11-27) and the gemini-oxiui merge. Status: todo.
 
 <a id="s-u-quirks"></a>
 #### U.Quirks Pinned quirks and filesystem users
