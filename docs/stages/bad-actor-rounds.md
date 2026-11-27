@@ -11,17 +11,14 @@ Rules:
 
 | Change | Merged | Why it waits | Planned round |
 |---|---|---|---|
-| 8.Spec + 8.Sec + 8.Fix (Gemini, branch gemini-fixspecsec 5bb98c5) | not yet (waits for its round: 8.Sec and a runtime loader change in `oxiscript-runtime/src/load.rs`) | large, security-relevant | next Opus round, before merge |
-| 8.Std v0 (std library) | fd7bf41 | had a Sonnet+advisor pass; large stage, Opus pass owed | next Opus round |
-| Playground "no main" notice | 0bd281a | small change, no BAD ACTOR yet | next round |
-| OxiUI "How it works" diagram and statuses | 31e8075 | small change, static page | next round |
-| Taller live demos (CSS) | (sites commit) | small change | next round |
-| OxiPerf v0 harness (`oxiscript-perf`) | merge of oxiperf | small, tooling only | next round |
-| Versioning rule: std counts, `--owner-release` | d624ff5 | small change in a release script | next round |
+| Sites deploy workflow `.github/workflows/sites-deploy.yml` (Cloudflare environment, secrets) | c137360 | small, but handles deploy secrets | Sonnet + advisor pass before the 0.0.3 tag |
+| Fixes of round 2026-11-27-1 (Gemini: 3de5e9e, a0ed1ab) | merged 2026-11-27 | fixes reviewed by the lead and gated; same Sonnet + advisor pass checks they close the findings | same pass, before the 0.0.3 tag |
+
+Everything listed here before 2026-11-27 was covered by round 2026-11-27-1 (below).
 
 ## Rounds done
 
 | Round | Changes | Model | Report |
 |---|---|---|---|
 | 8.M-link round 2 | gemini-rtlink d6b6afd | Opus | docs/stages/8.M-link/bad-actor-2.md (fixed in dab81b0, merged a17d1ef) |
-| 2026-11-27-1 | 8.Spec/Sec/Fix, 8.Std, OxiPerf, small changes | Opus | docs/stages/rounds/2026-11-27-1.md (fixes on branches gemini-fixspecsec 3de5e9e, ba-round1 a0ed1ab) |
+| 2026-11-27-1 | 8.Spec+8.Sec+8.Fix, 8.Std v0 (Opus pass), OxiPerf v0, 0bd281a, d624ff5, 31e8075, demo CSS | Opus | [rounds/2026-11-27-1.md](rounds/2026-11-27-1.md): 0 high, 3 medium (R1-03, R1-04, R1-40), 10 low; fixes on branches gemini-fixspecsec 3de5e9e, ba-round1 a0ed1ab |

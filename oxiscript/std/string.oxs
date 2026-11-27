@@ -305,13 +305,22 @@ export function repeat(s: string, count: i32): string {
   if (count <= 0 || s.byteLength === 0) {
     return "";
   }
-  const buf: u8[] = [];
-  let k: i32 = 0;
-  while (k < count) {
-    pushStrBytes(buf, s);
-    k++;
+  if (count === 1) {
+    return s;
   }
-  return strFromUtf8Raw(buf, buf.length);
+  let res = "";
+  let chunk = s;
+  let rem = count;
+  while (rem > 0) {
+    if ((rem & 1) !== 0) {
+      res = `${res}${chunk}`;
+    }
+    rem = rem >> 1;
+    if (rem > 0) {
+      chunk = `${chunk}${chunk}`;
+    }
+  }
+  return res;
 }
 
 function appendPadChars(buf: u8[], pad: string, needChars: i32): void {
@@ -865,52 +874,69 @@ function bigDivRemU32(a: u32[], d: u32): u32 {
   return rem as u32;
 }
 
-function parseFloatBigInt(t: string, mantStart: i32, mantEnd: i32, expSigned: i32, neg: bool): f64 {
-  // Parse up to 768 significant decimal digits into bigD with sticky digit if truncated.
+function parseFloatBigInt(t: string, firstSigPos: i32, dotPos: i32, mantEnd: i32, expSigned: i32, neg: bool): f64 {
+  // Parse up to 768 significant decimal digits starting at firstSigPos into bigD,
+  // collapsing any remaining non-zero digits into a single sticky digit (Gay / Clinger 1990).
   const bigD: u32[] = [];
   let sigCount: i32 = 0;
-  let decExp: i32 = 0;
-  let seenDot = false;
+  let seenDot = firstSigPos > dotPos;
+  let decExp: i32 = seenDot ? -(firstSigPos - dotPos - 1) : 0;
   let sticky = false;
   let chunk: u32 = 0u32;
   let chunkLen: i32 = 0;
   let chunkMul: u32 = 1u32;
-  let p = mantStart;
-  while (p < mantEnd) {
+  let p = firstSigPos;
+  while (p < mantEnd && sigCount < 768) {
     const b = byteAt(t, p);
     if (b === 46u8) {
       seenDot = true;
-      p++;
+      p = p +% 1;
       continue;
     }
-    const d: u32 = (b - 48u8) as u32;
-    if (sigCount === 0 && d === 0u32) {
-      if (seenDot) {
-        decExp--;
+    const d: u32 = (b -% 48u8) as u32;
+    chunk = chunk *% 10u32 +% d;
+    chunkMul = chunkMul *% 10u32;
+    chunkLen = chunkLen +% 1;
+    sigCount = sigCount +% 1;
+    if (seenDot) {
+      decExp = decExp -% 1;
+    }
+    if (chunkLen === 9) {
+      bigMulAddU32(bigD, 1000000000u32, chunk);
+      chunk = 0u32;
+      chunkLen = 0;
+      chunkMul = 1u32;
+    }
+    p = p +% 1;
+  }
+  if (p < mantEnd) {
+    if (p < dotPos) {
+      decExp = decExp + (dotPos - p);
+      while (p < dotPos && byteAt(t, p) === 48u8) {
+        p = p +% 1;
       }
-    } else if (sigCount < 768) {
-      chunk = chunk * 10u32 + d;
-      chunkMul = chunkMul * 10u32;
-      chunkLen++;
-      sigCount++;
-      if (seenDot) {
-        decExp--;
-      }
-      if (chunkLen === 9) {
-        bigMulAddU32(bigD, 1000000000u32, chunk);
-        chunk = 0u32;
-        chunkLen = 0;
-        chunkMul = 1u32;
+      if (p < dotPos) {
+        sticky = true;
+      } else if (dotPos < mantEnd) {
+        p = dotPos +% 1;
+        while (p < mantEnd && byteAt(t, p) === 48u8) {
+          p = p +% 1;
+        }
+        if (p < mantEnd) {
+          sticky = true;
+        }
       }
     } else {
-      if (!seenDot) {
-        decExp++;
+      if (p === dotPos) {
+        p = p +% 1;
       }
-      if (d !== 0u32) {
+      while (p < mantEnd && byteAt(t, p) === 48u8) {
+        p = p +% 1;
+      }
+      if (p < mantEnd) {
         sticky = true;
       }
     }
-    p++;
   }
   if (chunkLen > 0) {
     bigMulAddU32(bigD, chunkMul, chunk);
@@ -1027,42 +1053,95 @@ export function parseFloat(s: string): Result<f64, string> {
       return Ok(neg ? NEG_INF : INF);
     }
   }
-  const mantStart = i;
   let mant: u64 = 0u64;
   let sigDigits: i32 = 0;
   let decExp: i32 = 0;
   let truncated = false;
   let seenDigit = false;
-  let seenDot = false;
-  while (i < n) {
+  let firstSigPos: i32 = -1;
+  // Integer leading zeros
+  const intZeroStart = i;
+  while (i < n && byteAt(t, i) === 48u8) {
+    i = i +% 1;
+  }
+  if (i > intZeroStart) {
+    seenDigit = true;
+  }
+  // Integer significant digits (first 19 into mant)
+  while (i < n && sigDigits < 19) {
     const b = byteAt(t, i);
-    if (b >= 48u8 && b <= 57u8) {
-      seenDigit = true;
-      const d: u64 = (b - 48u8) as u64;
-      if (sigDigits === 0 && d === 0u64) {
-        if (seenDot) {
-          decExp--;
+    if ((b -% 48u8) > 9u8) {
+      break;
+    }
+    if (firstSigPos < 0) {
+      firstSigPos = i;
+    }
+    seenDigit = true;
+    mant = mant *% 10u64 +% ((b -% 48u8) as u64);
+    sigDigits = sigDigits +% 1;
+    i = i +% 1;
+  }
+  // Remaining integer digits beyond 19
+  if (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
+    const extraStart = i;
+    while (i < n && byteAt(t, i) === 48u8) {
+      i = i +% 1;
+    }
+    if (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
+      truncated = true;
+      i = i +% 1;
+      while (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
+        i = i +% 1;
+      }
+    }
+    decExp = decExp + (i - extraStart);
+  }
+  let dotPos = i;
+  // Fractional part
+  if (i < n && byteAt(t, i) === 46u8) {
+    dotPos = i;
+    i = i +% 1;
+    if (sigDigits === 0) {
+      const fracZeroStart = i;
+      while (i < n && byteAt(t, i) === 48u8) {
+        i = i +% 1;
+      }
+      if (i > fracZeroStart) {
+        seenDigit = true;
+        decExp = decExp - (i - fracZeroStart);
+      }
+    }
+    if (sigDigits < 19) {
+      const fracSigStart = i;
+      while (i < n && sigDigits < 19) {
+        const b = byteAt(t, i);
+        if ((b -% 48u8) > 9u8) {
+          break;
         }
-      } else if (sigDigits < 19) {
-        mant = mant * 10u64 + d;
-        sigDigits++;
-        if (seenDot) {
-          decExp--;
+        if (firstSigPos < 0) {
+          firstSigPos = i;
         }
-      } else {
-        if (!seenDot) {
-          decExp++;
+        seenDigit = true;
+        mant = mant *% 10u64 +% ((b -% 48u8) as u64);
+        sigDigits = sigDigits +% 1;
+        i = i +% 1;
+      }
+      decExp = decExp - (i - fracSigStart);
+    }
+    // Remaining fractional digits beyond 19
+    if (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
+      if (!truncated) {
+        while (i < n && byteAt(t, i) === 48u8) {
+          i = i +% 1;
         }
-        if (d !== 0u64) {
+        if (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
           truncated = true;
+          i = i +% 1;
         }
       }
-      i++;
-    } else if (b === 46u8 && !seenDot) {
-      seenDot = true;
-      i++;
-    } else {
-      break;
+      while (i < n && (byteAt(t, i) -% 48u8) <= 9u8) {
+        i = i +% 1;
+      }
     }
   }
   const mantEnd = i;
@@ -1071,26 +1150,26 @@ export function parseFloat(s: string): Result<f64, string> {
   }
   let expSigned: i32 = 0;
   if (i < n && (byteAt(t, i) === 101u8 || byteAt(t, i) === 69u8)) {
-    i++;
+    i = i +% 1;
     let expNeg = false;
     if (i < n && byteAt(t, i) === 45u8) {
       expNeg = true;
-      i++;
+      i = i +% 1;
     } else if (i < n && byteAt(t, i) === 43u8) {
-      i++;
+      i = i +% 1;
     }
     let expDigits = false;
     let expVal: i32 = 0;
     while (i < n) {
       const b = byteAt(t, i);
-      if (b < 48u8 || b > 57u8) {
+      if ((b -% 48u8) > 9u8) {
         return Err("invalid exponent digit");
       }
       expDigits = true;
       if (expVal < 10000000) {
-        expVal = expVal * 10 + ((b - 48u8) as i32);
+        expVal = expVal * 10 + ((b -% 48u8) as i32);
       }
-      i++;
+      i = i +% 1;
     }
     if (!expDigits) {
       return Err("missing exponent digits");
@@ -1110,6 +1189,13 @@ export function parseFloat(s: string): Result<f64, string> {
   }
   if (sciExp < -325) {
     return Ok(neg ? -0.0 : 0.0);
+  }
+  // Strip trailing decimal zeros when exact so inputs like 1000...e-n hit the fast paths.
+  if (!truncated) {
+    while (mant % 10u64 === 0u64 && (mant > 9007199254740991u64 || decExp < 0)) {
+      mant = mant / 10u64;
+      decExp++;
+    }
   }
   // Fast path 1 (Clinger 1990): exact f64 significand and exact power of 10.
   if (!truncated && mant <= 9007199254740991u64 && decExp >= -22 && decExp <= 22) {
@@ -1185,7 +1271,7 @@ export function parseFloat(s: string): Result<f64, string> {
     }
   }
   // Exact BigUint fallback for >19-digit inputs and all halfway / ambiguous cases.
-  return Ok(parseFloatBigInt(t, mantStart, mantEnd, expSigned, neg));
+  return Ok(parseFloatBigInt(t, firstSigPos, dotPos, mantEnd, expSigned, neg));
 }
 
 // -----------------------------------------------------------------------------

@@ -169,9 +169,21 @@ UTF-8 string utilities, parsing (`Result`), and deterministic number formatting.
 * `lastIndexOf(s: string, needle: string): i32` — byte index of last occurrence or `-1`.
 * `parseInt(s: string, radix: i32 = 10): Result<i64, string>` — parses signed 64-bit integer in base `2..36`.
 * `parseInt32(s: string, radix: i32 = 10): Result<i32, string>` — parses signed 32-bit integer in base `2..36`.
-* `parseFloat(s: string): Result<f64, string>` — correctly-rounded (IEEE-754 round-to-nearest-even) decimal floating-point parser (trims leading/trailing ASCII whitespace; accepts optional `+`/`-`, case-insensitive `NaN`, `Inf`, `Infinity`, and decimal mantissa with optional fractional part and `e`/`E` exponent; uses Clinger + Eisel-Lemire 128-bit fast paths with an exact big-integer fallback so results agree bit-for-bit with OxiScript literals and Rust `f64` parsing).
+* `parseFloat(s: string): Result<f64, string>` — correctly-rounded (IEEE-754 round-to-nearest-even) decimal floating-point parser (trims leading/trailing ASCII whitespace; accepts optional `+`/`-`, case-insensitive `NaN`, `Inf`, `Infinity`, and decimal mantissa with optional fractional part and `e`/`E` exponent; uses Clinger + Eisel-Lemire 128-bit fast paths with an exact big-integer fallback capped at 768 significant digits plus a sticky bit so results agree bit-for-bit with OxiScript literals and Rust `f64` parsing).
 * `toRadix(n: i64, radix: i32): string`, `toRadixU64(n: u64, radix: i32): string`, `toRadixI32(n: i32, radix: i32): string` — formats integer in base `2..36` (traps `bounds` if `radix` is outside `2..36`).
 * `toFixed(x: f64, digits: i32 = 0): string` — formats the exact binary64 value in fixed-point decimal with `0..20` fractional digits and exact round-to-nearest-even (no `"-0"` when all emitted digits are zero; handles all finite values up to `F64_MAX` without trapping; traps `bounds` if `digits` is outside `0..20`).
+
+### Practical fuel costs (`std/string` `parseFloat`)
+
+Measured against the default runtime budget (`Limits::fuel_per_call = 10_000_000` wasmi fuel):
+
+| Input shape | Measured fuel cost | Practical limit at 10M default fuel |
+|---|---|---|
+| Fast / overflow paths (e.g. `0.000...1eN`, `999...9.5`) | ~53–64 fuel / digit | ~155,000–185,000 digits |
+| Trailing-zero fast path (e.g. `1000...e-N`) | ~105 fuel / digit | ~95,000 digits |
+| Exact BigUint fallback (`> 19` significant digits or halfway tie) | ~1.88M fixed (up to 768 significant digits) + ~53 fuel / extra digit (up to ~117 fuel / extra zero if sticky-bit scan walks a zero tail) | ~69,000–150,000 digits (a 20,000-digit input uses ~2.95M fuel) |
+
+All shapes comfortably exceed `Limits::max_host_payload` (65,536 bytes) under the default 10M fuel budget. For even longer guest-synthesized inputs, raise `Limits::fuel_per_call`.
 
 ```oxs
 import {
@@ -298,6 +310,7 @@ Deterministic open-addressing hash collections (`Map<K, V>` and `Set<T>`) with e
   * `Set<i32>`: ~1,060 fuel per `add`/`has` operation (~2,130 per `add`+`has` pair including rehashing); ~4,700 `add`+`has` pairs (~9,400 individual ops) fit within the default 10M fuel budget.
   * Larger maps/sets or heavy churn (e.g. 20k–50k operations) require raising `Limits::fuel_per_call`.
 * **Unseeded hashes (not DoS-resistant):** built-in `.hash()` uses deterministic unseeded SplitMix64 (scalars) and unseeded FNV-1a 64-bit (strings) so iteration and hashing are identical across targets. `Map` and `Set` are **not** resistant to hash-flooding (HashDoS) attacks: adversarial untrusted keys with colliding hashes degrade linear probing to $O(n^2)$ and can exhaust call fuel. Do not insert unbounded untrusted keys without an application-level bound or keyed hash wrapper.
+* **Re-entrant mutation in `hash()` / `equals()`:** user `hash()` and `equals()` methods must not mutate the same `Map` or `Set` while an operation (`has`, `get`, `getOr`, `set`, `add`, `remove`) is in progress. Both collections maintain an internal modification counter and check it immediately after calling user `hash()` or `equals()`; re-entrant mutation is detected and traps deterministically (`bounds`) rather than corrupting the probe table.
 * **Reference cycles:** `Map` and `Set` hold strong references to their entries. Acyclic graphs using `Map`/`Set` are freed immediately by reference counting (`0` live objects at `deinit`). Reference cycles passing through a `Map` or `Set` (for example, a class instance storing a reference to itself or a peer inside a `Map`) are **not** freed by reference counting alone; they are reclaimed only by the cycle collector (or by calling `.clear()` / `.remove()` explicitly to break the cycle).
 
 ### `MapEntry<K, V>` and `Map<K extends HashEq<K>, V>`

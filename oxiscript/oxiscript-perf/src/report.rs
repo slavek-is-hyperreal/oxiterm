@@ -2,8 +2,9 @@
 //! only here, from the raw data (methodology section 5: execution and analysis are separate).
 
 use crate::stats;
+use crate::workloads;
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub const BOOTSTRAP_RESAMPLES: usize = 10_000;
@@ -59,6 +60,8 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
     let mut art: BTreeMap<Key, Value> = BTreeMap::new();
     let mut digest: BTreeMap<String, Value> = BTreeMap::new();
     let mut checksum: BTreeMap<Key, u64> = BTreeMap::new();
+    let mut raw_checksums: BTreeMap<String, Vec<workloads::ChecksumEntry>> = BTreeMap::new();
+    let mut invalid_workloads: BTreeSet<String> = BTreeSet::new();
 
     for r in &raw {
         let kind = r["kind"].as_str().unwrap_or("");
@@ -72,9 +75,33 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
             "digest" => {
                 digest.insert(bench, r.clone());
             }
-            "steady" | "cold" => {
-                if r["valid"] != json!(true) {
-                    *excluded.entry(key).or_default() += 1;
+            "steady" | "cold" | "pilot" => {
+                let parsed_cs = workloads::parse_u32_checksum(r);
+                let stable = r["checksum_stable"].as_bool().unwrap_or(false)
+                    && r.get("fuel_stable").and_then(Value::as_bool).unwrap_or(true);
+                let run_ok = r["valid"] == json!(true) && parsed_cs.is_some() && stable;
+                let label = format!("{} ({kind} {})", key.1, r["invocation_idx"]);
+                if !run_ok {
+                    if kind != "pilot" {
+                        *excluded.entry(key).or_default() += 1;
+                    }
+                    invalid_workloads.insert(bench.clone());
+                    let reason = r["invalid_reason"].as_str().map_or_else(
+                        || {
+                            if parsed_cs.is_none() {
+                                format!("missing or malformed u32 checksum: {}", r.get("checksum").unwrap_or(&Value::Null))
+                            } else {
+                                "invalid run".to_string()
+                            }
+                        },
+                        str::to_string,
+                    );
+                    raw_checksums.entry(bench).or_default().push((label, Err(reason)));
+                    continue;
+                }
+                let cs = parsed_cs.expect("validated above");
+                raw_checksums.entry(bench).or_default().push((label, Ok(cs)));
+                if kind == "pilot" {
                     continue;
                 }
                 if kind == "cold" {
@@ -101,15 +128,40 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
                 if let Some(x) = f(r, "inner_reps") {
                     inner.entry(key.clone()).or_default().push(x);
                 }
-                if let Some(c) = r["checksum"].as_u64() {
-                    checksum.insert(key.clone(), c);
-                }
+                checksum.insert(key.clone(), u64::from(cs));
                 if let Some(x) = f(r, "load_ns") {
                     load.entry(key.clone()).or_default().push(x / 1e6);
                 }
                 meta.insert(key, r.clone());
             }
             _ => {}
+        }
+    }
+
+    // Re-verify per-workload checksum agreement from raw records alone so `analyze`
+    // catches malformed/missing/disagreeing checksums regardless of any `digest` record.
+    let all_benches: BTreeSet<String> = digest.keys().chain(raw_checksums.keys()).cloned().collect();
+    for bench in all_benches {
+        let verified = raw_checksums
+            .get(&bench)
+            .map_or_else(|| Err("no checksums recorded".to_string()), |rs| workloads::verify_run_checksums(rs));
+        let recorded_ok = digest.get(&bench).is_none_or(|d| d["digest_ok"] == json!(true));
+        match (verified, recorded_ok, invalid_workloads.contains(&bench)) {
+            (Ok(c), true, false) => {
+                digest.entry(bench.clone()).or_insert_with(|| {
+                    json!({ "kind": "digest", "benchmark": bench, "digest_ok": true, "checksum": c, "executors": raw_checksums.get(&bench).map_or(0, Vec::len) })
+                });
+            }
+            (Err(err), _, _) => {
+                invalid_workloads.insert(bench.clone());
+                digest.insert(bench.clone(), json!({ "kind": "digest", "benchmark": bench, "digest_ok": false, "error": err }));
+            }
+            (_, false, _) | (_, _, true) => {
+                invalid_workloads.insert(bench.clone());
+                if digest.get(&bench).is_none_or(|d| d["digest_ok"] == json!(true)) {
+                    digest.insert(bench.clone(), json!({ "kind": "digest", "benchmark": bench, "digest_ok": false, "error": "invalid run in workload" }));
+                }
+            }
         }
     }
 
@@ -125,12 +177,17 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
         let pooled: Vec<f64> = g.iter().flatten().copied().collect();
         let (lo, hi) = stats::bootstrap_median_ci(g, BOOTSTRAP_RESAMPLES, 1);
         let m = &meta[key];
+        let row_digest_ok = digest.get(&key.0).is_some_and(|d| d["digest_ok"] == json!(true)) && checksum.contains_key(key);
         let base = groups.get(&(key.0.clone(), BASELINE.to_string()));
-        let ratio = base.filter(|_| key.1 != BASELINE).map(|b| {
-            let r = stats::median(&pooled) / stats::median(&b.iter().flatten().copied().collect::<Vec<_>>());
-            let (rl, rh) = stats::bootstrap_ratio_ci(g, b, BOOTSTRAP_RESAMPLES, 2);
-            json!({ "ratio": r, "ci95": [rl, rh], "verdict": verdict(r, rl, rh) })
-        });
+        let ratio = if row_digest_ok {
+            base.filter(|_| key.1 != BASELINE).map(|b| {
+                let r = stats::median(&pooled) / stats::median(&b.iter().flatten().copied().collect::<Vec<_>>());
+                let (rl, rh) = stats::bootstrap_ratio_ci(g, b, BOOTSTRAP_RESAMPLES, 2);
+                json!({ "ratio": r, "ci95": [rl, rh], "verdict": verdict(r, rl, rh) })
+            })
+        } else {
+            None
+        };
         let mut statuses = drift[key].clone();
         statuses.sort_unstable();
         statuses.dedup();
@@ -171,7 +228,7 @@ pub fn analyze(dir: &Path) -> Result<(), String> {
         .map(|((o, e), v)| json!({ "origin": o, "engine": e, "benchmarks": v.len(), "geomean": stats::geomean(v), "min": v.iter().copied().fold(f64::MAX, f64::min), "max": v.iter().copied().fold(0.0, f64::max) }))
         .collect();
 
-    let digests_ok = digest.values().all(|d| d["digest_ok"] == json!(true)) && !digest.is_empty();
+    let digests_ok = !digest.is_empty() && invalid_workloads.is_empty() && digest.values().all(|d| d["digest_ok"] == json!(true));
     let summary = json!({
         "schema_version": 1,
         "run_id": manifest["run_id"], "runtime_mode": manifest["runtime_mode"], "baseline": BASELINE,
@@ -251,7 +308,11 @@ pub fn render(m: &Value, s: &Value) -> String {
         let ci = &r["ci95_ms"];
         let rv = &r["ratio_vs_rust_native"];
         let ratio = if rv.is_null() {
-            "baseline".to_string()
+            if r["engine"].as_str() == Some(BASELINE) {
+                "baseline".to_string()
+            } else {
+                "-".to_string()
+            }
         } else {
             format!("{:.2}x [{:.2}, {:.2}]", rv["ratio"].as_f64().unwrap_or(f64::NAN), rv["ci95"][0].as_f64().unwrap_or(f64::NAN), rv["ci95"][1].as_f64().unwrap_or(f64::NAN))
         };
@@ -320,5 +381,53 @@ mod tests {
         assert_eq!(sig(1.234), "1.23");
         assert_eq!(sig(0.1234), "0.123");
         assert_eq!(sig(f64::NAN), "n/a");
+    }
+
+    #[test]
+    fn analyze_rejects_malformed_or_missing_checksums_even_if_marked_valid() {
+        for (tag, cs) in [
+            ("missing", None),
+            ("null", Some(json!(null))),
+            ("neg", Some(json!(-7))),
+            ("frac", Some(json!(1.5))),
+            ("str", Some(json!("42"))),
+            ("overflow", Some(json!(u64::from(u32::MAX) + 1))),
+        ] {
+            let dir = std::env::temp_dir().join(format!("oxiperf-report-r1-40-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let info = crate::machine::RunInfo {
+                run_id: "test",
+                tier: "dev",
+                runtime_mode: "stub",
+                plan: json!({ "description": "fixed", "fixed": true, "warmup_iterations": 1, "min_iter_ms": 1.0, "bounds": {}, "cells": [] }),
+                pinned_core: None,
+                engines: &[],
+            };
+            let manifest = crate::machine::build_manifest(&info, &crate::machine::snapshot());
+            crate::driver::write_json(&dir.join("manifest.json"), &manifest).unwrap();
+            let mut bad_row = json!({
+                "kind": "steady", "benchmark": "matmul", "origin": "own", "language": "javascript",
+                "engine": "js-node", "track": "base", "n": 12, "runtime_mode": "stub", "invocation_idx": 0,
+                "checksum_stable": true, "valid": true, "iter_ns": [1.0, 1.0, 1.0]
+            });
+            if let Some(v) = cs {
+                bad_row["checksum"] = v;
+            }
+            let good_row = json!({
+                "kind": "steady", "benchmark": "matmul", "origin": "own", "language": "rust",
+                "engine": "rust-native", "track": "base", "n": 12, "runtime_mode": "stub", "invocation_idx": 0,
+                "checksum": 42, "checksum_stable": true, "valid": true, "iter_ns": [100.0, 100.0, 100.0]
+            });
+            let fake_digest = json!({ "kind": "digest", "benchmark": "matmul", "digest_ok": true, "checksum": 42, "executors": 1 });
+            std::fs::write(dir.join("raw.jsonl"), format!("{bad_row}\n{good_row}\n{fake_digest}\n")).unwrap();
+            analyze(&dir).unwrap();
+            let summary: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("summary.json")).unwrap()).unwrap();
+            assert_eq!(summary["digests_ok"], json!(false), "{tag}: digests_ok must be false");
+            let rows = summary["rows"].as_array().unwrap();
+            assert!(rows.iter().all(|r| r["engine"] != "js-node"), "{tag}: invalid js-node row must be excluded");
+            assert!(rows.iter().all(|r| r["ratio_vs_rust_native"].is_null()), "{tag}: no verdict when digest failed");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }

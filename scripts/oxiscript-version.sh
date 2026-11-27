@@ -58,18 +58,34 @@ if [ -z "$TAG" ]; then
   exit 0
 fi
 
-# Must be an annotated tag with carry=N.
+# Strict tag name check: oxiscript-vX.Y.C with ASCII decimal digits only (never evaluate arbitrary suffixes).
+if [[ ! "$TAG" =~ ^oxiscript-v([0123456789]+)\.([0123456789]+)\.([0123456789]+)$ ]]; then
+  echo "invalid tag '$TAG': expected oxiscript-vX.Y.C with decimal digits only" >&2
+  exit 1
+fi
+X=$((10#${BASH_REMATCH[1]}))
+Y=$((10#${BASH_REMATCH[2]}))
+C=$((10#${BASH_REMATCH[3]}))
+
+# Must be an annotated tag with carry=N (parsed strictly as decimal, never octal).
 [ "$(git cat-file -t "refs/tags/$TAG")" = tag ] || { echo "$TAG is a lightweight tag: re-create it annotated with a carry=N line" >&2; exit 1; }
-CARRY=$(git tag -l --format='%(contents)' "$TAG" | sed -n 's/^carry=\([0-9][0-9]*\)$/\1/p' | head -n1)
-[ -n "$CARRY" ] || { echo "$TAG has no 'carry=N' line in its message" >&2; exit 1; }
+CARRY_RAW=$(git tag -l --format='%(contents)' "$TAG" | sed -n 's/^carry=\([0123456789][0123456789]*\)$/\1/p' | head -n1)
+if [ -z "$CARRY_RAW" ] || [[ ! "$CARRY_RAW" =~ ^[0123456789]+$ ]]; then
+  echo "$TAG has no 'carry=N' line in its message" >&2
+  exit 1
+fi
+CARRY=$((10#$CARRY_RAW))
 
 # added + deleted lines (same sum as `git diff --shortstat`, binary files skipped).
 DIFF=$(git diff --numstat "$TAG" HEAD -- ':(glob)oxiscript/oxiscript-*/src/**' ':(glob)oxiscript/std/**/*.oxs' | awk '$1!="-"{s+=$1+$2} END{print s+0}')
+if [[ ! "$DIFF" =~ ^[0123456789]+$ ]]; then
+  echo "unexpected diff line count '$DIFF'" >&2
+  exit 1
+fi
+DIFF=$((10#$DIFF))
 TOTAL=$((DIFF + CARRY))
 BUMP=$((TOTAL / STEP))
 NEWCARRY=$((TOTAL % STEP))
-BASE=${TAG#oxiscript-v}
-X=${BASE%%.*}; REST=${BASE#*.}; Y=${REST%%.*}; C=${REST#*.}
 echo "since $TAG: $DIFF changed src lines + carry $CARRY = $TOTAL; +$BUMP" >&2
 if [ -n "$OWNER" ]; then
   # Owner override (VERSIONING.md): release now even below the step; at least +1; carry resets to 0.

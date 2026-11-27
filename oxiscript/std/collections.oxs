@@ -93,8 +93,14 @@ export class Map<K extends HashEq<K>, V> {
   private buckets: i32[] = [];
   private liveCount: i32 = 0;
   private usedSlots: i32 = 0;
+  private modCount: u64 = 0u64;
 
   constructor() {}
+
+  private trapReentrant(): void {
+    // Deterministic `bounds` trap when user `hash()` / `equals()` mutates this Map re-entrantly.
+    const _ = this.buckets[this.buckets.length];
+  }
 
   size(): i32 {
     return this.liveCount;
@@ -109,6 +115,7 @@ export class Map<K extends HashEq<K>, V> {
     if (cap === 0) {
       return -1;
     }
+    const ver = this.modCount;
     const mask: u64 = (cap - 1) as u64;
     let slot: i32 = (h & mask) as i32;
     let probed: i32 = 0;
@@ -117,8 +124,14 @@ export class Map<K extends HashEq<K>, V> {
       if (idx === -1) {
         return -1;
       }
-      if (idx >= 0 && this.entryHashes[idx] === h && this.entryKeys[idx].equals(key)) {
-        return slot;
+      if (idx >= 0 && this.entryHashes[idx] === h) {
+        const eq = this.entryKeys[idx].equals(key);
+        if (this.modCount !== ver) {
+          this.trapReentrant();
+        }
+        if (eq) {
+          return slot;
+        }
       }
       slot = (slot + 1) & (cap - 1);
       probed++;
@@ -162,6 +175,7 @@ export class Map<K extends HashEq<K>, V> {
     this.entryAlive = newAlive;
     this.buckets = newBuckets;
     this.usedSlots = this.liveCount;
+    this.modCount = this.modCount +% 1u64;
   }
 
   private ensureCapacity(): void {
@@ -178,12 +192,20 @@ export class Map<K extends HashEq<K>, V> {
   }
 
   has(key: K): bool {
+    const ver = this.modCount;
     const h = key.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     return this.findBucket(key, h) >= 0;
   }
 
   get(key: K): V | null {
+    const ver = this.modCount;
     const h = key.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     const slot = this.findBucket(key, h);
     if (slot < 0) {
       return null;
@@ -192,7 +214,11 @@ export class Map<K extends HashEq<K>, V> {
   }
 
   getOr(key: K, fallback: V): V {
+    const ver = this.modCount;
     const h = key.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     const slot = this.findBucket(key, h);
     if (slot < 0) {
       return fallback;
@@ -201,8 +227,13 @@ export class Map<K extends HashEq<K>, V> {
   }
 
   set(key: K, value: V): void {
-    this.ensureCapacity();
+    const verBeforeHash = this.modCount;
     const h = key.hash();
+    if (this.modCount !== verBeforeHash) {
+      this.trapReentrant();
+    }
+    this.ensureCapacity();
+    const ver = this.modCount;
     const cap = this.buckets.length;
     const mask: u64 = (cap - 1) as u64;
     let slot: i32 = (h & mask) as i32;
@@ -222,15 +253,23 @@ export class Map<K extends HashEq<K>, V> {
         if (firstTomb < 0) {
           this.usedSlots++;
         }
+        this.modCount = this.modCount +% 1u64;
         return;
       }
       if (idx === -2) {
         if (firstTomb < 0) {
           firstTomb = slot;
         }
-      } else if (this.entryHashes[idx] === h && this.entryKeys[idx].equals(key)) {
-        this.entryVals[idx] = value;
-        return;
+      } else if (this.entryHashes[idx] === h) {
+        const eq = this.entryKeys[idx].equals(key);
+        if (this.modCount !== ver) {
+          this.trapReentrant();
+        }
+        if (eq) {
+          this.entryVals[idx] = value;
+          this.modCount = this.modCount +% 1u64;
+          return;
+        }
       }
       slot = (slot + 1) & (cap - 1);
       probed++;
@@ -241,7 +280,11 @@ export class Map<K extends HashEq<K>, V> {
   }
 
   remove(key: K): bool {
+    const ver = this.modCount;
     const h = key.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     const slot = this.findBucket(key, h);
     if (slot < 0) {
       return false;
@@ -250,6 +293,7 @@ export class Map<K extends HashEq<K>, V> {
     this.entryAlive[idx] = false;
     this.buckets[slot] = -2;
     this.liveCount--;
+    this.modCount = this.modCount +% 1u64;
     // Compact when dead entries outnumber live entries so deleted refs are released.
     if (this.entryKeys.length > 16 && this.liveCount * 2 < this.entryKeys.length) {
       const cap = this.buckets.length;
@@ -267,6 +311,7 @@ export class Map<K extends HashEq<K>, V> {
     this.buckets = [];
     this.liveCount = 0;
     this.usedSlots = 0;
+    this.modCount = this.modCount +% 1u64;
   }
 
   keys(): K[] {
@@ -331,8 +376,14 @@ export class Set<T extends HashEq<T>> {
   private buckets: i32[] = [];
   private liveCount: i32 = 0;
   private usedSlots: i32 = 0;
+  private modCount: u64 = 0u64;
 
   constructor() {}
+
+  private trapReentrant(): void {
+    // Deterministic `bounds` trap when user `hash()` / `equals()` mutates this Set re-entrantly.
+    const _ = this.buckets[this.buckets.length];
+  }
 
   size(): i32 {
     return this.liveCount;
@@ -347,6 +398,7 @@ export class Set<T extends HashEq<T>> {
     if (cap === 0) {
       return -1;
     }
+    const ver = this.modCount;
     const mask: u64 = (cap - 1) as u64;
     let slot: i32 = (h & mask) as i32;
     let probed: i32 = 0;
@@ -355,8 +407,14 @@ export class Set<T extends HashEq<T>> {
       if (idx === -1) {
         return -1;
       }
-      if (idx >= 0 && this.entryHashes[idx] === h && this.entryItems[idx].equals(item)) {
-        return slot;
+      if (idx >= 0 && this.entryHashes[idx] === h) {
+        const eq = this.entryItems[idx].equals(item);
+        if (this.modCount !== ver) {
+          this.trapReentrant();
+        }
+        if (eq) {
+          return slot;
+        }
       }
       slot = (slot + 1) & (cap - 1);
       probed++;
@@ -397,6 +455,7 @@ export class Set<T extends HashEq<T>> {
     this.entryAlive = newAlive;
     this.buckets = newBuckets;
     this.usedSlots = this.liveCount;
+    this.modCount = this.modCount +% 1u64;
   }
 
   private ensureCapacity(): void {
@@ -412,13 +471,22 @@ export class Set<T extends HashEq<T>> {
   }
 
   has(item: T): bool {
+    const ver = this.modCount;
     const h = item.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     return this.findBucket(item, h) >= 0;
   }
 
   add(item: T): bool {
-    this.ensureCapacity();
+    const verBeforeHash = this.modCount;
     const h = item.hash();
+    if (this.modCount !== verBeforeHash) {
+      this.trapReentrant();
+    }
+    this.ensureCapacity();
+    const ver = this.modCount;
     const cap = this.buckets.length;
     const mask: u64 = (cap - 1) as u64;
     let slot: i32 = (h & mask) as i32;
@@ -437,14 +505,21 @@ export class Set<T extends HashEq<T>> {
         if (firstTomb < 0) {
           this.usedSlots++;
         }
+        this.modCount = this.modCount +% 1u64;
         return true;
       }
       if (idx === -2) {
         if (firstTomb < 0) {
           firstTomb = slot;
         }
-      } else if (this.entryHashes[idx] === h && this.entryItems[idx].equals(item)) {
-        return false;
+      } else if (this.entryHashes[idx] === h) {
+        const eq = this.entryItems[idx].equals(item);
+        if (this.modCount !== ver) {
+          this.trapReentrant();
+        }
+        if (eq) {
+          return false;
+        }
       }
       slot = (slot + 1) & (cap - 1);
       probed++;
@@ -454,7 +529,11 @@ export class Set<T extends HashEq<T>> {
   }
 
   remove(item: T): bool {
+    const ver = this.modCount;
     const h = item.hash();
+    if (this.modCount !== ver) {
+      this.trapReentrant();
+    }
     const slot = this.findBucket(item, h);
     if (slot < 0) {
       return false;
@@ -463,6 +542,7 @@ export class Set<T extends HashEq<T>> {
     this.entryAlive[idx] = false;
     this.buckets[slot] = -2;
     this.liveCount--;
+    this.modCount = this.modCount +% 1u64;
     if (this.entryItems.length > 16 && this.liveCount * 2 < this.entryItems.length) {
       const cap = this.buckets.length;
       const targetCap = (cap > 8 && this.liveCount * 4 < cap) ? cap / 2 : cap;
@@ -478,6 +558,7 @@ export class Set<T extends HashEq<T>> {
     this.buckets = [];
     this.liveCount = 0;
     this.usedSlots = 0;
+    this.modCount = this.modCount +% 1u64;
   }
 
   values(): T[] {

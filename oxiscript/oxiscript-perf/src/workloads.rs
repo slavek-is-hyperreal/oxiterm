@@ -98,6 +98,14 @@ impl std::fmt::Display for Mismatch {
     }
 }
 
+/// Parse and validate a child record's `checksum` field as an exact non-negative `u32` integer.
+/// Returns `None` for missing, null, negative, fractional, string, boolean, or out-of-range values.
+pub fn parse_u32_checksum(v: &serde_json::Value) -> Option<u32> {
+    v.get("checksum")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|c| u32::try_from(c).ok())
+}
+
 /// All executors must agree. Returns the common checksum or the first disagreement.
 pub fn verify_checksums(results: &[(String, u32)]) -> Result<u32, Mismatch> {
     let (first_from, first) = results.first().expect("at least one result").clone();
@@ -107,6 +115,24 @@ pub fn verify_checksums(results: &[(String, u32)]) -> Result<u32, Mismatch> {
         }
     }
     Ok(first)
+}
+
+/// One run's checksum outcome: either a validated `u32` or the reason the run/checksum was invalid.
+pub type ChecksumEntry = (String, Result<u32, String>);
+
+/// Verify that every run for a workload produced a valid `u32` checksum and that all agree.
+pub fn verify_run_checksums(results: &[ChecksumEntry]) -> Result<u32, String> {
+    if results.is_empty() {
+        return Err("no checksums recorded".into());
+    }
+    let mut valid = Vec::with_capacity(results.len());
+    for (from, r) in results {
+        match r {
+            Ok(c) => valid.push((from.clone(), *c)),
+            Err(reason) => return Err(format!("{from}: {reason}")),
+        }
+    }
+    verify_checksums(&valid).map_err(|m| m.to_string())
 }
 
 #[cfg(test)]
@@ -139,5 +165,34 @@ mod tests {
                 assert!(suite_file(w.id, "upstream/PIN").exists(), "{}: vendored upstream JS must carry its PIN file", w.id);
             }
         }
+    }
+
+    #[test]
+    fn parse_u32_checksum_accepts_only_u32_integers() {
+        assert_eq!(parse_u32_checksum(&serde_json::json!({"checksum": 0})), Some(0));
+        assert_eq!(parse_u32_checksum(&serde_json::json!({"checksum": 42})), Some(42));
+        assert_eq!(parse_u32_checksum(&serde_json::json!({"checksum": u32::MAX})), Some(u32::MAX));
+        for bad in [
+            serde_json::json!({}),
+            serde_json::json!({"checksum": null}),
+            serde_json::json!({"checksum": -7}),
+            serde_json::json!({"checksum": 1.5}),
+            serde_json::json!({"checksum": 1.0}),
+            serde_json::json!({"checksum": "42"}),
+            serde_json::json!({"checksum": true}),
+            serde_json::json!({"checksum": u64::from(u32::MAX) + 1}),
+        ] {
+            assert_eq!(parse_u32_checksum(&bad), None, "must reject {bad}");
+        }
+    }
+
+    #[test]
+    fn verify_run_checksums_rejects_empty_and_invalid_entries() {
+        assert!(verify_run_checksums(&[]).is_err());
+        let bad = vec![("rust".to_string(), Ok(7)), ("node".to_string(), Err("missing checksum".into()))];
+        let err = verify_run_checksums(&bad).unwrap_err();
+        assert!(err.contains("node") && err.contains("missing checksum"));
+        let ok = vec![("rust".to_string(), Ok(7)), ("node".to_string(), Ok(7))];
+        assert_eq!(verify_run_checksums(&ok), Ok(7));
     }
 }
