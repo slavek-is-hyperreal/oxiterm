@@ -1,0 +1,80 @@
+name: Sites deploy
+
+# Builds and checks the three static sites and deploys them to Cloudflare Workers (static assets)
+# when a release tag is pushed (owner decision: automatic deploys from release 0.0.3 on).
+#   oxiscript-v*  -> oxiscript.slavekm.pl + slavekm.pl
+#   v*            -> oxiui.slavekm.pl     + slavekm.pl
+# The deploy job runs in the GitHub environment "Cloudflare": it holds the secrets
+# CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID, allows only release tags and waits for the
+# owner's approval. Builds never see the secrets. Manual runs (Actions tab) build and check only,
+# unless `deploy` is set; the environment still enforces the tag rule and the approval.
+on:
+  push:
+    tags: [ "oxiscript-v*", "v*" ]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Also deploy (still needs a release tag ref and the owner's approval)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: Swatinem/rust-cache@v2.9.3
+    - name: Install wasm target
+      run: rustup target add wasm32-unknown-unknown
+    - name: Install wasm-pack
+      uses: taiki-e/install-action@wasm-pack
+    - name: Build and check the sites
+      run: sites/build.sh
+    - name: Upload the built sites
+      uses: actions/upload-artifact@v7
+      with:
+        name: sites-dist
+        path: sites/dist
+        if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.deploy)
+    runs-on: ubuntu-latest
+    environment: Cloudflare
+    steps:
+    - uses: actions/checkout@v7
+    - name: Download the built sites
+      uses: actions/download-artifact@v7
+      with:
+        name: sites-dist
+        path: sites/dist
+    - name: Choose the sites for this tag
+      id: pick
+      run: |
+        case "${GITHUB_REF_NAME}" in
+          oxiscript-v*) echo "sites=oxiscript home" >> "$GITHUB_OUTPUT" ;;
+          v*)           echo "sites=oxiui home"     >> "$GITHUB_OUTPUT" ;;
+          *) echo "not a release tag: ${GITHUB_REF_NAME}"; exit 1 ;;
+        esac
+    - name: Deploy with wrangler
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      run: |
+        for s in ${{ steps.pick.outputs.sites }}; do
+          npx -y wrangler@4.86.0 deploy --config "sites/deploy/$s.wrangler.jsonc"
+        done
+    - name: Check the live sites answer
+      run: |
+        for s in ${{ steps.pick.outputs.sites }}; do
+          case "$s" in home) host=slavekm.pl ;; *) host="$s.slavekm.pl" ;; esac
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://$host/")
+          echo "$host -> $code"; [ "$code" = 200 ]
+        done
