@@ -282,7 +282,8 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - Security: archaic transports are insecure by nature: operator opt-in only, off by default, separate port, a clear warning, forbidden for sensitive pages; the server decides the level ([O-25](#o-25) rule: the user may only ask).
 - Showcase: one demo page recorded on a teletype emulator, VT52, VT100, DOS ANSI, the Linux console, a modern terminal and the browser GUI; later real hardware over serial.
 - Gate: golden renders of every demo page at every level A0-A5; at each level every feature that makes sense without a mouse is reachable by keyboard; BAD ACTOR (Opus) on the new transports (telnet, legacy SSH, serial gateway).
-- Depends: U.Term. Status: todo (not scheduled).
+- Documentation and website (owner 2026-11-27): `docs/archaic.md` is the single source (status tables per level and per transport: done / in development / planned) and the website gets a subpage "Legacy terminals / archaic mode" generated from it by `sites/build.mjs`, never hand-copied.
+- Depends: U.Term. Status: in progress (slice 1, levels A0-A4 rendering and detection, branch `gemini-archaic`).
 
 <a id="s-u-quirks"></a>
 #### U.Quirks Pinned quirks and filesystem users
