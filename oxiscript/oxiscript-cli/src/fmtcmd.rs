@@ -1,5 +1,6 @@
 //! `oxi fmt`: the canonical formatter of `oxiscript-syntax` (no options).
 
+use crate::report::SlashPath;
 use crate::check::{EXIT_FATAL, EXIT_FINDINGS, EXIT_OK};
 use crate::project::{self, collect_oxs, ReadError, SourceFile};
 use oxiscript_abi::sanitize::sanitize_terminal;
@@ -142,7 +143,7 @@ pub fn run(a: &Args) -> i32 {
     let mut changed = 0;
     let mut bad = 0;
     for f in &files {
-        let display = f.strip_prefix("./").unwrap_or(f).to_string_lossy().replace('\\', "/");
+        let display = f.strip_prefix("./").unwrap_or(f).slash();
         let safe_display = sanitize_terminal(&display);
         let src = match project::read_regular(f, project::MAX_SOURCE_BYTES) {
             Ok(s) => s,

@@ -1,0 +1,8 @@
+{
+  "name": "oxiterm-sites-deploy",
+  "private": true,
+  "description": "Pinned deploy tool for the static sites (installed with npm ci --ignore-scripts in a step without secrets; BAD ACTOR R2-10).",
+  "devDependencies": {
+    "wrangler": "4.86.0"
+  }
+}

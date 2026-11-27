@@ -21,6 +21,12 @@ on:
 permissions:
   contents: read
 
+# One deploy at a time (two release tags on one commit both deploy slavekm.pl); never cancel a
+# deploy that is already running (BAD ACTOR R2-13).
+concurrency:
+  group: sites-deploy
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -28,16 +34,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
-    - uses: Swatinem/rust-cache@v2.9.3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
     - name: Install wasm target
       run: rustup target add wasm32-unknown-unknown
     - name: Install wasm-pack
-      uses: taiki-e/install-action@wasm-pack
+      uses: taiki-e/install-action@227955246ad60c3108fd48f0559ba9a647315c6e # wasm-pack
     - name: Build and check the sites
       run: sites/build.sh
     - name: Upload the built sites
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: sites-dist
         path: sites/dist
@@ -49,9 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: Cloudflare
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false   # nothing needs git later; keep GITHUB_TOKEN out of .git/config (R2-12)
     - name: Download the built sites
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
       with:
         name: sites-dist
         path: sites/dist
@@ -63,13 +71,18 @@ jobs:
           v*)           echo "sites=oxiui home"     >> "$GITHUB_OUTPUT" ;;
           *) echo "not a release tag: ${GITHUB_REF_NAME}"; exit 1 ;;
         esac
+    # Install the pinned wrangler from the committed lockfile, with no install scripts and no
+    # secrets in this step; the step with the token only runs the installed binary (R2-10, R2-11).
+    - name: Install wrangler (lockfile, no scripts, no secrets)
+      run: npm ci --ignore-scripts --no-audit --no-fund --prefix sites/deploy
     - name: Deploy with wrangler
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        WRANGLER_SEND_METRICS: "false"
       run: |
         for s in ${{ steps.pick.outputs.sites }}; do
-          npx -y wrangler@4.86.0 deploy --config "sites/deploy/$s.wrangler.jsonc"
+          sites/deploy/node_modules/.bin/wrangler deploy --config "sites/deploy/$s.wrangler.jsonc"
         done
     - name: Check the live sites answer
       run: |

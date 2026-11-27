@@ -8,6 +8,7 @@
 //! `host:` module as a built-in one replaces it (so a project can pin or
 //! extend it); two project IDL files declaring the same module is an error.
 
+use crate::report::SlashPath;
 use oxiscript_abi::idl::{self, Interface};
 use oxiscript_check::{check_program, CheckOptions, Checked, ModuleLoader};
 use std::collections::HashMap;
@@ -352,7 +353,7 @@ struct FsLoader {
 impl FsLoader {
     fn display(&self, p: &Path) -> String {
         let rel = p.strip_prefix(&self.cwd).unwrap_or(p);
-        rel.to_string_lossy().replace('\\', "/")
+        rel.slash()
     }
 
     /// Root-relative module name of `spec` imported from `importer`.
@@ -455,14 +456,12 @@ fn entry_loader(entry: &Entry<'_>) -> (FsLoader, String) {
         .strip_prefix(&base)
         .unwrap_or(&abs)
         .with_extension("")
-        .to_string_lossy()
-        .replace('\\', "/");
+        .slash();
     let display = entry
         .path
         .strip_prefix("./")
         .unwrap_or(entry.path)
-        .to_string_lossy()
-        .replace('\\', "/");
+        .slash();
     let loader = FsLoader {
         root: base,
         files: vec![SourceFile::new(display, entry.src.clone())],

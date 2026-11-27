@@ -308,3 +308,21 @@ pub fn render_human(d: &Diag, sources: &dyn Fn(&str) -> Option<String>, color: b
     let _ = writeln!(s, "{:w$} {cyan}={off} explain: oxi explain {}", "", d.code);
     s
 }
+
+/// A path as shown to the user and in JSON: `/`-separated. On Windows `\` is a separator and becomes
+/// `/`; elsewhere `\` is an ordinary file-name character and is kept, so `a\b.oxs` and `a/b.oxs`
+/// never share a display name (BAD ACTOR R2-01).
+pub(crate) trait SlashPath {
+    fn slash(&self) -> String;
+}
+
+impl SlashPath for std::path::Path {
+    fn slash(&self) -> String {
+        let s = self.to_string_lossy();
+        if cfg!(windows) {
+            s.replace('\\', "/")
+        } else {
+            s.into_owned()
+        }
+    }
+}

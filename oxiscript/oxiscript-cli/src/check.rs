@@ -1,5 +1,6 @@
 //! `oxi check`.
 
+use crate::report::SlashPath;
 use crate::needs;
 use crate::project::{self, Entry, ReadError};
 use crate::report::{self, Diag, MACHINE_APPLICABLE};
@@ -97,7 +98,7 @@ fn file_diag(path: &Path, e: &ReadError) -> Diag {
         code: code.to_string(),
         severity: report::severity_of(code),
         message: oxiscript_abi::sanitize::sanitize_terminal(&format!("cannot read the file: {why}")),
-        file: path.strip_prefix("./").unwrap_or(path).to_string_lossy().replace('\\', "/"),
+        file: path.strip_prefix("./").unwrap_or(path).slash(),
         range: report::Range { start: p.clone(), end: p },
         fixes: Vec::new(),
     }
@@ -155,7 +156,7 @@ pub fn run(a: &Args) -> i32 {
                 Err(ReadError::Skipped(why)) => project::note(format!("{}: skipped ({why})", f.display())),
                 Err(ReadError::Failed(why)) => return fatal(a.json, &format!("{}: {why}", f.display())),
                 Err(e @ (ReadError::TooLarge(_) | ReadError::NotUtf8(_))) => {
-                    names.push(f.strip_prefix("./").unwrap_or(&f).to_string_lossy().replace('\\', "/"));
+                    names.push(f.strip_prefix("./").unwrap_or(&f).slash());
                     diags.push(file_diag(&f, &e));
                 }
             }
@@ -308,7 +309,7 @@ fn fix_file(path: &Path, src: &mut String, cache: &mut HostCache, mode: FixMode,
 /// The fix rounds on a source in memory; returns the fixed source.
 fn fix_source(path: &Path, src: &str, opts: &CheckOptions, mode: FixMode, stats: &mut FixStats) -> String {
     const ROUNDS: usize = 10;
-    let shown = path.strip_prefix("./").unwrap_or(path).to_string_lossy().replace('\\', "/");
+    let shown = path.strip_prefix("./").unwrap_or(path).slash();
     let mut cur = src.to_string();
     let mut run = project::check_entry(&Entry { path, src: cur.clone() }, opts);
     let mut own = run.files[0].display.clone();

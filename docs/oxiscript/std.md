@@ -322,14 +322,14 @@ Deterministic open-addressing hash collections (`Map<K, V>` and `Set<T>`) with e
 * `set(key: K, value: V): void` — inserts at end if absent, or updates value in place preserving order.
 * `remove(key: K): bool` — removes key if present (note: named `remove` because `delete` is a reserved keyword).
 * `clear(): void`
-* `keys(): K[]`, `values(): V[]`, `entries(): MapEntry<K, V>[]`, `forEach(f: (key: K, value: V) => void): void` — always in exact insertion order.
+* `keys(): K[]`, `values(): V[]`, `entries(): MapEntry<K, V>[]`, `forEach(f: (key: K, value: V) => void): void` — always in exact insertion order. When the callback mutates the map, `forEach` visits exactly the entries present when it started, in insertion order, skipping any removed before they are reached; entries added during the walk are not visited (so the walk always ends), value updates are seen, and `clear()` ends the walk. The storage is not compacted while a `forEach` runs.
 
 ### `Set<T extends HashEq<T>>`
 
 * `new Set<T>()`
 * `size(): i32`, `isEmpty(): bool`
 * `has(item: T): bool`, `add(item: T): bool`, `remove(item: T): bool`, `clear(): void`
-* `values(): T[]`, `forEach(f: (item: T) => void): void` — always in exact insertion order.
+* `values(): T[]`, `forEach(f: (item: T) => void): void` — always in exact insertion order; under mutation `forEach` follows the same rule as `Map.forEach`.
 
 ```oxs
 import { Map, Set, HashEq, hashCombine } from "std/collections";

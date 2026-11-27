@@ -111,6 +111,14 @@ test("probe_nothing_from_the_artifact_is_executed_or_used_as_config", () => {
   }
 });
 
+// After the R2-10 fix the pin lives in sites/deploy/package.json (exact version) + its lockfile, and the
+// deploy step runs the installed binary.
 test("probe_wrangler_version_is_pinned_exactly", () => {
-  assert.match(deploy, /wrangler@\d+\.\d+\.\d+ deploy/);
+  const dir = path.join(here, "..", "..", "sites", "deploy");
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+  const want = (pkg.devDependencies || {}).wrangler || (pkg.dependencies || {}).wrangler;
+  assert.match(want, /^\d+\.\d+\.\d+$/, "wrangler is not an exact version in package.json");
+  const lock = JSON.parse(fs.readFileSync(path.join(dir, "package-lock.json"), "utf8"));
+  assert.strictEqual(lock.packages["node_modules/wrangler"].version, want);
+  assert.match(deploy, /sites\/deploy\/node_modules\/\.bin\/wrangler deploy/);
 });

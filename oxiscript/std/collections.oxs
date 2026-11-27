@@ -94,6 +94,11 @@ export class Map<K extends HashEq<K>, V> {
   private liveCount: i32 = 0;
   private usedSlots: i32 = 0;
   private modCount: u64 = 0u64;
+  // Depth of running `forEach` calls. While > 0 the entry arrays are never compacted, so entry
+  // indices stay stable and `forEach` has JS Map semantics under mutation (BAD ACTOR R2-03).
+  private iterating: i32 = 0;
+  // Bumped by `clear()`: a running `forEach` stops when the storage it walks was replaced.
+  private clears: u64 = 0u64;
 
   constructor() {}
 
@@ -140,6 +145,10 @@ export class Map<K extends HashEq<K>, V> {
   }
 
   private rehash(newCap: i32): void {
+    if (this.iterating > 0) {
+      this.rebuildBuckets(newCap);
+      return;
+    }
     const newKeys: K[] = [];
     const newVals: V[] = [];
     const newHashes: u64[] = [];
@@ -173,6 +182,32 @@ export class Map<K extends HashEq<K>, V> {
     this.entryVals = newVals;
     this.entryHashes = newHashes;
     this.entryAlive = newAlive;
+    this.buckets = newBuckets;
+    this.usedSlots = this.liveCount;
+    this.modCount = this.modCount +% 1u64;
+  }
+
+  // New bucket array over the live entries, entry arrays untouched (indices stay stable).
+  private rebuildBuckets(newCap: i32): void {
+    const newBuckets: i32[] = [];
+    let b: i32 = 0;
+    while (b < newCap) {
+      newBuckets.push(-1);
+      b++;
+    }
+    const mask: u64 = (newCap - 1) as u64;
+    const len = this.entryKeys.length;
+    let i: i32 = 0;
+    while (i < len) {
+      if (this.entryAlive[i]) {
+        let slot: i32 = (this.entryHashes[i] & mask) as i32;
+        while (newBuckets[slot] !== -1) {
+          slot = (slot + 1) & (newCap - 1);
+        }
+        newBuckets[slot] = i;
+      }
+      i++;
+    }
     this.buckets = newBuckets;
     this.usedSlots = this.liveCount;
     this.modCount = this.modCount +% 1u64;
@@ -295,7 +330,7 @@ export class Map<K extends HashEq<K>, V> {
     this.liveCount--;
     this.modCount = this.modCount +% 1u64;
     // Compact when dead entries outnumber live entries so deleted refs are released.
-    if (this.entryKeys.length > 16 && this.liveCount * 2 < this.entryKeys.length) {
+    if (this.iterating === 0 && this.entryKeys.length > 16 && this.liveCount * 2 < this.entryKeys.length) {
       const cap = this.buckets.length;
       const targetCap = (cap > 8 && this.liveCount * 4 < cap) ? cap / 2 : cap;
       this.rehash(targetCap);
@@ -312,6 +347,7 @@ export class Map<K extends HashEq<K>, V> {
     this.liveCount = 0;
     this.usedSlots = 0;
     this.modCount = this.modCount +% 1u64;
+    this.clears = this.clears +% 1u64;
   }
 
   keys(): K[] {
@@ -353,14 +389,23 @@ export class Map<K extends HashEq<K>, V> {
     return out;
   }
 
+  // Under mutation by the callback: visits the entries present when the walk starts, in insertion
+  // order, skipping any removed before they are reached; entries added during the walk are not
+  // visited (so the walk always ends); value updates are seen; `clear()` ends the walk.
   forEach(f: (key: K, value: V) => void): void {
+    this.iterating++;
     const n = this.entryKeys.length;
+    const clears = this.clears;
     let i: i32 = 0;
-    while (i < n) {
+    while (i < n && this.clears === clears) {
       if (this.entryAlive[i]) {
         f(this.entryKeys[i], this.entryVals[i]);
       }
       i++;
+    }
+    this.iterating--;
+    if (this.iterating === 0 && this.entryKeys.length > 16 && this.liveCount * 2 < this.entryKeys.length) {
+      this.rehash(this.buckets.length);
     }
   }
 }
@@ -377,6 +422,11 @@ export class Set<T extends HashEq<T>> {
   private liveCount: i32 = 0;
   private usedSlots: i32 = 0;
   private modCount: u64 = 0u64;
+  // Depth of running `forEach` calls. While > 0 the entry arrays are never compacted, so entry
+  // indices stay stable and `forEach` has JS Map semantics under mutation (BAD ACTOR R2-03).
+  private iterating: i32 = 0;
+  // Bumped by `clear()`: a running `forEach` stops when the storage it walks was replaced.
+  private clears: u64 = 0u64;
 
   constructor() {}
 
@@ -423,6 +473,10 @@ export class Set<T extends HashEq<T>> {
   }
 
   private rehash(newCap: i32): void {
+    if (this.iterating > 0) {
+      this.rebuildBuckets(newCap);
+      return;
+    }
     const newItems: T[] = [];
     const newHashes: u64[] = [];
     const newAlive: bool[] = [];
@@ -453,6 +507,32 @@ export class Set<T extends HashEq<T>> {
     this.entryItems = newItems;
     this.entryHashes = newHashes;
     this.entryAlive = newAlive;
+    this.buckets = newBuckets;
+    this.usedSlots = this.liveCount;
+    this.modCount = this.modCount +% 1u64;
+  }
+
+  // New bucket array over the live entries, entry arrays untouched (indices stay stable).
+  private rebuildBuckets(newCap: i32): void {
+    const newBuckets: i32[] = [];
+    let b: i32 = 0;
+    while (b < newCap) {
+      newBuckets.push(-1);
+      b++;
+    }
+    const mask: u64 = (newCap - 1) as u64;
+    const len = this.entryItems.length;
+    let i: i32 = 0;
+    while (i < len) {
+      if (this.entryAlive[i]) {
+        let slot: i32 = (this.entryHashes[i] & mask) as i32;
+        while (newBuckets[slot] !== -1) {
+          slot = (slot + 1) & (newCap - 1);
+        }
+        newBuckets[slot] = i;
+      }
+      i++;
+    }
     this.buckets = newBuckets;
     this.usedSlots = this.liveCount;
     this.modCount = this.modCount +% 1u64;
@@ -543,7 +623,7 @@ export class Set<T extends HashEq<T>> {
     this.buckets[slot] = -2;
     this.liveCount--;
     this.modCount = this.modCount +% 1u64;
-    if (this.entryItems.length > 16 && this.liveCount * 2 < this.entryItems.length) {
+    if (this.iterating === 0 && this.entryItems.length > 16 && this.liveCount * 2 < this.entryItems.length) {
       const cap = this.buckets.length;
       const targetCap = (cap > 8 && this.liveCount * 4 < cap) ? cap / 2 : cap;
       this.rehash(targetCap);
@@ -559,6 +639,7 @@ export class Set<T extends HashEq<T>> {
     this.liveCount = 0;
     this.usedSlots = 0;
     this.modCount = this.modCount +% 1u64;
+    this.clears = this.clears +% 1u64;
   }
 
   values(): T[] {
@@ -574,14 +655,21 @@ export class Set<T extends HashEq<T>> {
     return out;
   }
 
+  // Same rule under mutation as `Map.forEach`.
   forEach(f: (item: T) => void): void {
+    this.iterating++;
     const n = this.entryItems.length;
+    const clears = this.clears;
     let i: i32 = 0;
-    while (i < n) {
+    while (i < n && this.clears === clears) {
       if (this.entryAlive[i]) {
         f(this.entryItems[i]);
       }
       i++;
+    }
+    this.iterating--;
+    if (this.iterating === 0 && this.entryItems.length > 16 && this.liveCount * 2 < this.entryItems.length) {
+      this.rehash(this.buckets.length);
     }
   }
 }

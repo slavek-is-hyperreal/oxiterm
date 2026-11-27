@@ -74,7 +74,17 @@ if [ -z "$CARRY_RAW" ] || [[ ! "$CARRY_RAW" =~ ^[0123456789]+$ ]]; then
   echo "$TAG has no 'carry=N' line in its message" >&2
   exit 1
 fi
+# A carry is always a remainder of STEP: refuse anything that is not (also avoids 64-bit wrap of
+# huge values, BAD ACTOR R2-02). Length check first, so bash never evaluates an oversized number.
+if [ "${#CARRY_RAW}" -gt 18 ]; then
+  echo "$TAG: carry=$CARRY_RAW is out of range (must be below $STEP)" >&2
+  exit 1
+fi
 CARRY=$((10#$CARRY_RAW))
+if [ "$CARRY" -ge "$STEP" ]; then
+  echo "$TAG: carry=$CARRY is out of range (must be below $STEP)" >&2
+  exit 1
+fi
 
 # added + deleted lines (same sum as `git diff --shortstat`, binary files skipped).
 DIFF=$(git diff --numstat "$TAG" HEAD -- ':(glob)oxiscript/oxiscript-*/src/**' ':(glob)oxiscript/std/**/*.oxs' | awk '$1!="-"{s+=$1+$2} END{print s+0}')
