@@ -15,12 +15,12 @@ Normative language: rules are numbered `A-n`. "Must", "must not" bind implementa
 
 **Recommendation in ten lines.**
 
-1. Keep the host ABI exactly as it is: the host never re-enters a running guest and delivers events only between guest turns (`abi.md` 5.3). Everything below is language and runtime-support code *on top of* callbacks; stage A1 needs **no ABI change**.
+1. Keep the host ABI exactly as it is: the host never re-enters a running guest and delivers events only between guest turns (`abi.md` 5.3). Everything below is language and runtime-support code *on top of* callbacks; no import or export signature changes, only one new constant (`MAX_POLLS_PER_TURN`) and a tick contract.
 2. Add TypeScript-looking `async function` / `await` (the keywords are already reserved, `FnModifiers::is_async` is already in the AST). The declared return type is the plain result type (`async function f(): Result<i32, string>`), not `Promise<T>`.
 3. Compile async functions in the compiler to **heap state-machine frames**: a `start` function that allocates the frame and a `poll` function that is a `switch` on a state number. No stack switching, no Wasm proposal, no new typedesc kind; a frame is an ordinary IR `struct` and `poll` an ordinary function (verified in section 6.4).
 4. **Colouring is explicit but cheap:** the `async` keyword is required, the checker still computes the effect summary (profiles, report) and every "await outside async" error carries a machine-applicable fix. This deliberately replaces the roadmap's word "inferred effect" (open question Q-ASYNC-1).
 5. **No floating promises.** Calling an async function without `await` yields a move-only `Pending<T>` that can only be awaited or handed to `scope.spawn`. `Task<T>` handles are move-only too.
-6. **Structured concurrency:** every task belongs to a scope; the instance is the root scope; leaving a scope joins its children; an unhandled child failure is impossible because errors are `Result` values.
+6. **Structured concurrency:** every task belongs to a scope; the instance is the root scope; leaving a scope cancels and joins children that were not awaited (reported by the checker); an unhandled child failure is impossible because errors are `Result` values.
 7. **Cancellation is cooperative, happens only at `await` points, and is not an error value:** a cancelled task is never resumed, its `defer` blocks run innermost first, then its frames are released by reference counting. Timeouts are a library function built from a scope, a `Oneshot` and a timer capability.
 8. **Scheduling is single-threaded, FIFO, and bounded per turn** by a fixed poll budget; time and I/O arrive only as host deliveries, so a recorded delivery log replays a program exactly (P-9).
 9. **Hot reload cancels every task of the old instance** (no frame migration); durable work lives in host state and is restarted idempotently by the new `main`. The reload is still atomic accept-or-reject.
@@ -69,7 +69,7 @@ Normative language: rules are numbered `A-n`. "Must", "must not" bind implementa
 | **Wasm stack switching** | Continuations (`cont`, `suspend`, `resume`, `switch`), one-shot, built on function references + EH | Proposal is **Phase 3** and our P-7 forbids relying on it: wasmi's feature table lists tail calls, multi-memory, memory64 as supported and threads, exception handling, GC as tracking issues only, stack switching not listed; w2c2 documents Wasm 2.0 + threads and does not mention exceptions, tail calls or stack switching. Revisit as an optional backend optimisation later; the language semantics must not depend on it | [V] [18][19][20][21] |
 | **JSPI** | Browser engines let Wasm call imports that return Promises and suspend the whole Wasm stack | Phase 5 per the proposals page [V] but browser-only; useful at most for the `host:dom` bridge (8.Dom), never for language semantics. The page fetch failed, details S | [V/S] [19][22] |
 | **WASI 0.3 / Component Model async** | `stream<T>` and `future<T>` with native async in the canonical ABI, released 2026-06-11 per the repository research | A future, optional adapter target for async IDL functions (P-6 says the Component Model can be an adapter later). Our host-op shape (start + completion, cancel) maps onto it | `oxiscript-language.md` (S) [23] |
-| **Trio nurseries** | Structured concurrency: children cannot outlive the block | Origin of the join-at-scope-exit rule | Smith 2018 [R] [24] |
+| **Trio nurseries** | Structured concurrency: children cannot outlive the block | Origin of the "children cannot outlive the scope" rule, adapted here to cancel-then-join (A-13) | Smith 2018 [R] [24] |
 
 ### 3.2 Lessons distilled
 
@@ -128,7 +128,7 @@ async function fetchTitle(http: Http, url: string): Result<string, i32> {
 
 ### 5.2 `await`, `?` and what an async call is
 
-* **A-7.** `await` is a prefix operator with the precedence of unary operators. **`await e?`** means `(await e)?`: when the operand of `await` is a call, a trailing `?` (no space, per the whitespace rule of `AGENTS.md` item 9) applies to the awaited result. This is unambiguous because a `Pending<T>` is not a `Result`, so `?` on it would be a type error anyway. `(await f())?` stays legal; `await (f()?)` is the explicit other reading.
+* **A-7.** `await` is a prefix operator with the precedence of unary operators. **`await e?`** means `(await e)?` for any operand `e` (a call, or a `Task` variable as in `await ta?`): a trailing `?` (no space, per the whitespace rule of `AGENTS.md` item 9) applies to the awaited result. This is unambiguous because neither `Pending<T>` nor `Task<T>` is ever a `Result`, so `?` on them would be a type error anyway. `(await f())?` stays legal; `await (f()?)` is the explicit other reading.
 * **A-8.** A call to an async function does **not** run it. It evaluates the arguments (in order, per the written evaluation order), allocates the callee's frame (`start`, section 6) and yields a value of type `Pending<R>`. `await` starts and drives it to completion *in the awaiting task*; `scope.spawn` gives it its own task.
 * **A-9.** `Pending<R>` and `Task<R>` are **single-consumer** (move-only) types. The checker enforces, by simple dataflow over the function body: a value must be consumed exactly once on every path (`await`, `spawn` for `Pending`; `await` or `cancel()` for `Task`); it may be passed as an argument to an async function's `Pending` parameter, but may not be stored in a field, an array, a module-level `let`, or captured by a non-async closure. Violations: `OXS-E-PENDING-UNUSED`, `-REUSED`, `-ESCAPES`. A `Task` still live at scope exit is cancelled and reported (A-13, A-15).
 * **A-10.** There are no top-level awaits. `main` may be `async` (A-30).
@@ -210,7 +210,7 @@ export async function withTimeout<T>(timer: Timer, ms: u32, work: Pending<T>): T
       clock.cancel();                                     // the alarm's host timer is cancelled by its defer (A-21)
       return { kind: "done", value: await job };
     }
-    job.cancel();                                         // work and everything it spawned is dropped, defers run
+    job.cancel(); await clock;                                       // work and everything it spawned is dropped, defers run
     return { kind: "timedOut" };
   });
 }
@@ -316,7 +316,7 @@ export function main(ui: Ui, http: Http, timer: Timer, state: State, log: Log): 
 
 **A-33.** The async transform is a **front-end lowering step** in `oxiscript-lower` (it works on the checked AST/CFG before the IR is built), not a new IR feature. It emits ordinary verified OxiIR: structs, closures, `switch`, calls. `Terminator::Await` stays a *reserved, unneeded* slot (it would only be added, `#[non_exhaustive]`, if a later optimisation pass wants to run over the unsplit CFG). The three paper lowerings in 6.4 were parsed and verified with the unchanged `parse_module` and `verify` of `oxiscript-ir`, which settles the 8.4a gate sentence "without changing existing IR".
 
-**A-34.** No ABI change in stages A1-A4. Frames use typedesc kind 1 (struct), type erasure uses kind 3 (closure). The scheduler is runtime-support code (the `oxiscript-wasm` runtime module, 8.M family) with module-level state (`@slots`, `@gens`, the ready ring, `@cur_id`, `@cur_gen`), so it resets with the instance (P-8). In this document the word **scheduler** or **driver** means this guest-side task scheduler; it is unrelated to the "executor" of 8.3d (a data-parallel backend policy).
+**A-34.** No import or export signature changes in stages A1-A4; the only ABI additions are the constant `MAX_POLLS_PER_TURN` and the tick contract of A-25. Frames use typedesc kind 1 (struct), type erasure uses kind 3 (closure). The scheduler is runtime-support code (the `oxiscript-wasm` runtime module, 8.M family) with module-level state (`@slots`, `@gens`, the ready ring, `@cur_id`, `@cur_gen`), so it resets with the instance (P-8). In this document the word **scheduler** or **driver** means this guest-side task scheduler; it is unrelated to the "executor" of 8.3d (a data-parallel backend policy).
 
 ### 6.2 Frames, `start`, `poll`
 
@@ -326,7 +326,7 @@ export function main(ui: Ui, http: Http, timer: Timer, state: State, log: Log): 
 * **A-38.** `await g(args)` of an async callee: `g__start` allocates the child frame into a field of the parent, then the parent calls `g__poll` directly (a static call). If it returns done in the same poll, execution continues *without suspending*; otherwise the parent stores its state and returns pending. On completion the parent moves the result out of the child frame and sets the child field to `null` (the child frame is released immediately; the chain holds no back-references).
 * **A-39.** Type erasure exists **only through closures** (IR has no dynamic dispatch): a spawned task is a `fn() -> i32` closure whose environment holds `ref F_f` and the task's result cell. Awaiting such a task, or a `Oneshot`, polls a `done` flag in the cell and parks.
 * **A-40. No back-links, hence no RC cycles from the machinery.** A suspended task is identified to its waker by a **generational id** `(id: u32, gen: u32)` stored as two integers in the cell it waits on; the table `@slots` holds the only owning reference to a spawned task's closure. Waking is `sched_wake(id, gen)`: ignored if the generation is stale (cancelled or finished task), otherwise the id is appended to the ready ring (idempotent through a queued flag). Frames form a tree by ownership (parent to child frame, scope to child ids), so the transform creates no reference cycle; cycles can still be built by user data (class graphs) and are handled by the existing cycle collector. Frames are therefore **not** flagged `acyclic` by default (the flag may be set when the compiler proves a frame holds only scalars and strings).
-* **A-41.** Cancellation support is generated per async function: `f__cancel(ref F_f)` runs the `defer` blocks registered at the current state (a bitmask `defers` in the frame, set when a `defer` statement executes and cleared when it runs), cancels open scopes (children first, innermost first) and marks the state cancelled. The scheduler holds a second closure `fn() -> void` per task for it, calls it, then clears the slot (the frame is released by reference counting and its pointer map frees the owned children).
+* **A-41.** Cancellation support is generated per async function: `f__cancel(ref F_f)` first calls the `g__cancel` of the directly awaited child frame (a static call; the chain unwinds leaf first), then runs the `defer` blocks registered at the current state (a bitmask `defers` in the frame, set when a `defer` statement executes and cleared when it runs), cancels open scopes (children first, innermost first) and marks the state cancelled. The scheduler holds a second closure `fn() -> void` per task for it, calls it, then clears the slot (the frame is released by reference counting and its pointer map frees the owned children).
 
 ### 6.3 Driver, fuel, scheduling
 
@@ -577,7 +577,6 @@ entry:
   setfield.init W.o %f, %o
   setfield.init W.k %f, %k
   %c: ref Cell = alloc Cell
-  retain %f
   retain %c
   %th: fn() -> i32 = closure.new WThunk @w__thunk(%f, %c)
   call @sched_enqueue(%th, %c)
@@ -741,13 +740,12 @@ out:
 
 func @g__cancel_closure(%f: ref G) -> fn() -> void {
 entry:
-  retain %f
   %c: fn() -> void = closure.new GCancel @g__cancel(%f)
   ret %c
 }
 ```
 
-What it shows: the `defer` body is compiled once (`@g__defer0`) and called from the normal exit path and from the generated `@g__cancel`, guarded by the `defers` bitmask so it runs exactly once; the frame's state becomes "cancelled" (3) and the scheduler drops the slot. The timeout of section 5.3 is built on this: `withTimeout` spawns the work and an alarm and `cancel()`s the loser; the alarm's `sleep` wrapper has a `defer` that cancels the host timer, so the host timer is cancelled by the same mechanism.
+What it shows: the `defer` body is compiled once (`@g__defer0`) and called from the normal exit path and from the generated `@g__cancel`, guarded by the `defers` bitmask so it runs exactly once; the frame's state becomes "cancelled" (3) and the scheduler drops the slot. The timeout of section 5.3 is built on this: `withTimeout` spawns the work and an alarm and `cancel()`s the loser; the alarm's `sleep` wrapper has a `defer` that cancels the host timer, so the host timer is cancelled by the same mechanism. The walk down the awaited chain (`@g__cancel` calling the child's cancel first) is elided in this single-frame example.
 
 ### 6.5 Cost estimates [P] (to be measured in A1 and A3)
 
@@ -771,7 +769,7 @@ What it shows: the `defer` body is compiled once (`@g__defer0`) and called from 
 
 * **A-49.** **Cancellation points** are exactly the suspended `await` sites (and the not-yet-started state). An instance is single-threaded, so the cancelled task is always suspended or unstarted when cancelled; cancellation never interrupts straight-line code.
 * **A-50.** **Signal:** none. A cancelled task is not resumed; user code observes nothing, so cancellation needs no error variant in `Result<T, E>` (the mixed-`E` problem that "no automatic error conversion" would create disappears) and no polling. The only user code that runs is `defer` blocks.
-* **A-51.** **Order:** cancelling a task cancels, innermost first, its open scopes' children (recursively, reverse spawn order), then runs its own registered `defer`s in reverse registration order, then releases its frame. Cancelling a finished, already cancelled or stale id is a no-op.
+* **A-51.** **Order:** cancelling a task cancels, innermost first, the directly awaited child frame chain (leaf first, so a wrapper such as `http_get` or `sleep` runs its `defer`), then its open scopes' children (recursively, reverse spawn order), then runs its own registered `defer`s in reverse registration order, then releases its frame. Cancelling a finished, already cancelled or stale id is a no-op.
 * **A-52.** A `defer` body that traps poisons the instance like any trap; a `defer` body cannot cancel or spawn.
 * **A-53.** **Host operations in flight** are cancelled by the wrapper's `defer` (A-20, A-21). A host that completes the operation anyway delivers a callback that resolves an orphaned `Oneshot`; `resolve` returns `false` (the waiter is gone) and is otherwise harmless. Side effects the host already performed are not undone: idempotency is the capability author's contract (documented per IDL function).
 * **A-54.** `Task.cancel()` consumes the handle (A-14). `Scope` offers `cancelAll()`.
@@ -851,14 +849,14 @@ Every stage gate also includes: a BAD ACTOR round (D-33, D-34 batching allowed) 
 |---|---|---|---|
 | **A0** (this document) | Spec, three verified paper lowerings | Owner reviews; answers Q-ASYNC-1..5 | none |
 | **8.Fix item** | Reserve `defer` (E0900); check whether a reserved word such as `spawn` is accepted as a member name after `.` (fallback method name `launch`) | Existing tests pass | none |
-| **A1** Scheduler and `Oneshot` library, no new syntax | Runtime-support scheduler (slots, generations, ready ring, `sched_drain`, `oxi_tick` returns `now_ms` while work remains), `Oneshot` in `std/async` in today's OxiScript (requires generic classes, which `std/collections` shows exist), proposed `host:timer` IDL with a virtual-clock test host, hand-written task closures | Deterministic replay of a recorded delivery log gives identical output and fuel; stale-id wake and cancel-while-queued tests; scheduler size on `micro` measured against 6.5; tick contract written down for 8.S1 | 8.M-link, 8.Std |
+| **A1** Scheduler and `Oneshot` library, no new syntax | Runtime-support scheduler (slots, generations, ready ring, `sched_drain`, `oxi_tick` returns `now_ms` while work remains), `Oneshot` in `std/async` in today's OxiScript with a callback-level API only (`resolve`, a done flag, the park id; generic classes exist, see `std/collections`); `wait()` arrives with A3, proposed `host:timer` IDL with a virtual-clock test host, hand-written task closures | Deterministic replay of a recorded delivery log gives identical output and fuel; stale-id wake and cancel-while-queued tests; scheduler size on `micro` measured against 6.5; tick contract written down for 8.S1 | 8.M-link, 8.Std |
 | **A2** Front end | Un-reserve and parse `async`/`await`/`defer`; async effect summary; `Pending`/`Task` single-consumer dataflow; reason codes (append-only) with fix-its; the `await e?` rule; docs and skill examples | Checker corpus with an `oxs-err` example per new code; the syntax fuzzer extended; every doc block compiles | A0 |
 | **A3** Lowering | `async-lower` in `oxiscript-lower`: frames, `start`/`poll`/`cancel`, `defer`, inlined scopes, wake ids; RC-balance checker accepts frames; the three examples of 6.4 produce IR equal up to names to the paper versions | Differential wasmi vs w2c2 (after 8.2b) vs browser on a task-graph corpus; **model-based fuzz test**: random task graphs with spawn, cancel, yield and timeouts against a small Rust reference scheduler, identical observable log; BAD ACTOR on cancel inside `defer`, stale wake, cancel during a turn, frame release order, reload during a turn | A1, A2 |
 | **A4** Host async IDL | `async fn` in the IDL front end and `oxi-bindgen`; generated wrappers; `host:timer`, a test `host:http`; delivery-log record and replay in `oxi run` and the test host | Live run and replay are identical; host-contract tests (completion exactly once or never, late completion dropped, generational ids); the 8.S1 demo uses it | A3, 8.S1 host interface |
 | **A5** Streams (optional) | `Stream<T>`, `for await`, generators sharing the A3 lowering | Its own spec first | A3 |
 | **8.4 / 8.3e integration** | Isolate channel and join as host operations (A-65); `std/resident` `download` as `async fn` (A-69); `--sched=det` | P-4 gate: parallel equals sequential on the corpus, including task interleavings | A4, 8.4, 8.3e |
 
-Ordering note: **8.S1 can ship with callbacks plus A1** (no async syntax) if A2 and A3 are late. Code written as callbacks over `Oneshot` stays source-compatible with the later syntax because the wrapper of A-20 is the same library.
+Ordering note: **8.S1 can ship with callbacks plus A1** (no async syntax) if A2 and A3 are late. Code written as callbacks over the callback-level `Oneshot` is easy to port to the later syntax: `wait()` is the same object with a suspending method, and the wrapper of A-20 is the same library.
 
 ---
 
