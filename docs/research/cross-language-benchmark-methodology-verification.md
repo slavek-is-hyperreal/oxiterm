@@ -151,7 +151,7 @@ Section A lists the findings that change the methodology; each one is also a row
 
 | ID | Claim | Status | Evidence |
 |---|---|---|---|
-| F1 | Crate `oxiscript-bench`, binary `oxiperf` | CONFIRMED | roadmap 8.Bench ("todo (no crate)"); naming is new |
+| F1 | Crate `oxiscript-perf`, binary `oxiperf` | CONFIRMED | roadmap 8.Bench ("todo (no crate)"); naming is new |
 | F2 | `--unstable-opt=<name>` A/B mode for 8.Lab | CONFIRMED (planned) | roadmap 8.Lab scope (`docs/roadmap/oxiscript.md:347`); not implemented |
 | F3 | 8.Lab promotion gate | PARTLY | A1 |
 | F4 | Fuel-only gains flagged as metering artifacts | CONFIRMED | memory-performance verification A1 |
@@ -171,7 +171,7 @@ Section A lists the findings that change the methodology; each one is also a row
 | G2 | OxiBench role R2 "nobody grades their own work", freeze §7 | CONFIRMED | `oxibench-methodology.md` §1, §7 |
 | G3 | OxiBench uses a private held-out test set with a canary | CONFIRMED | `oxibench-methodology.md` §3 ("Data sets and contamination") [content not reopened in detail] |
 | G4 | OxiPerf fully public | CONFIRMED | sound: performance benchmarks need no held-out set, they need upstream ports (A2) |
-| G5 | Shared stats crate `oxiscript-bench-stats` | UNVERIFIABLE | proposal; no such crate. Fine as an idea |
+| G5 | Shared stats crate `oxiscript-perf-stats` | UNVERIFIABLE | proposal; no such crate. Fine as an idea |
 
 ## H. Judgment of the methodology
 

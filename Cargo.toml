@@ -20,7 +20,7 @@ members = [
     "oxiscript/oxiscript-wasm",
     "oxiscript/oxiscript-rc",
     "oxiscript/oxiscript-runtime",
-    "oxiscript/oxiscript-bench",
+    "oxiscript/oxiscript-perf",
 ]
 resolver = "2"
 

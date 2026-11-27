@@ -1,6 +1,6 @@
 # OxiPerf: Methodology for Fair Cross-Language Performance Comparisons (v0.1, Draft)
 
-**Status:** Draft research specification for owner approval (feeds Stage `8.Bench` `oxiscript-bench`, Stage `8.Perf`, Stage `8.Mem`, and Stage `8.Lab` in [../roadmap/oxiscript.md](../roadmap/oxiscript.md)).  
+**Status:** Draft research specification for owner approval (feeds Stage `8.Bench` `oxiscript-perf`, Stage `8.Perf`, Stage `8.Mem`, and Stage `8.Lab` in [../roadmap/oxiscript.md](../roadmap/oxiscript.md)).  
 **Scope:** Performance benchmarking of **OxiScript** (`wasmi` interpreter, `w2c2` + C AOT, Wasmtime AOT, and browser Wasm engines) against other languages and runtimes (TypeScript/JavaScript on V8 and in browsers, AssemblyScript, Rust native and Rust → Wasm, C, Go/TinyGo, Python/MicroPython, Lua/LuaJIT).  
 **Naming boundary:** **OxiPerf** is the *performance* benchmark; **[OxiBench](oxibench-methodology.md)** is the *AI-agent usability* benchmark. The two share methodological discipline and selected harness utilities, never metrics or reports (Section 7).
 
@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-**OxiPerf** is OxiScript's methodology and harness (Stage `8.Bench`, crate `oxiscript-bench` in [../roadmap/oxiscript.md](../roadmap/oxiscript.md#s-8-bench)) for measuring OxiScript across its own execution tiers (`wasmi` 2.0 interpreter, `w2c2` + C compiler AOT, Wasmtime AOT, and browser Wasm engines) and comparing it honestly against external languages and runtimes (TypeScript/JavaScript on V8 and browsers, AssemblyScript, Rust native and Rust → Wasm, C, Go/TinyGo, Python/MicroPython, and Lua/LuaJIT). It serves four roadmap consumers: **8.Perf** (RC elision and allocator fast paths), **8.Mem** (the [D-20](../roadmap/oxiscript.md#d-20) "megabytes, not gigabytes" claim on Raspberry Pi 1 Model B+ and x86), **8.Lab** ([D-29](../roadmap/oxiscript.md#d-29) weekly Speedup Lab promotion gates), and **8.3a–e** (SIMD/GPU acceleration).
+**OxiPerf** is OxiScript's methodology and harness (Stage `8.Bench`, crate `oxiscript-perf` in [../roadmap/oxiscript.md](../roadmap/oxiscript.md#s-8-bench)) for measuring OxiScript across its own execution tiers (`wasmi` 2.0 interpreter, `w2c2` + C compiler AOT, Wasmtime AOT, and browser Wasm engines) and comparing it honestly against external languages and runtimes (TypeScript/JavaScript on V8 and browsers, AssemblyScript, Rust native and Rust → Wasm, C, Go/TinyGo, Python/MicroPython, and Lua/LuaJIT). It serves four roadmap consumers: **8.Perf** (RC elision and allocator fast paths), **8.Mem** (the [D-20](../roadmap/oxiscript.md#d-20) "megabytes, not gigabytes" claim on Raspberry Pi 1 Model B+ and x86), **8.Lab** ([D-29](../roadmap/oxiscript.md#d-29) weekly Speedup Lab promotion gates), and **8.3a–e** (SIMD/GPU acceleration).
 
 Cross-language benchmarks routinely fail peer scrutiny because of hidden measurement bias, unreached JIT steady states, algorithmic divergence disguised as language differences, and cherry-picked reporting (van der Kouwe et al. found an average of 5 benchmarking flaws across 50 top-tier systems papers, with only 1 of 50 flaw-free; Barrett et al. found at most 43.5% of ⟨VM, benchmark⟩ pairs reliably reach a peak steady state). OxiPerf neutralises these failures through six non-negotiable pillars:
 
@@ -267,7 +267,7 @@ To preserve full continuity with `docs/roadmap/oxiscript.md` without overloading
 > **Corrected by Claude (Opus), 2026-11-26:** roadmap 8.Bench owns GEMM and the image filter and its gate blocks 8.3a, 8.3b and 8.3d; deferring them is fine only if 8.Bench keeps them in its SIMD/GPU part (ledger E9).
 
 - **v0.2 Embedded UI Frame Extension (Stage `8.Mem` / `8.S1`):** Adds end-to-end OxiUI `<script lang="oxs">` frame-time & RSS benchmarks (full redraw vs. damage-rect diff on Raspberry Pi 1 framebuffer and browser local mode).
-- **Internal-Only RC Micro-Suite (`8.Perf`):** Keeps the existing OxiScript-internal micro-probes (`B1–B9` from [oxiscript-memory-performance.md §6.1](oxiscript-memory-performance.md#61-proposed-microbenchmark--macrobenchmark-suite-oxiscript-bench--oxiscript-rc--oxiscript-wasm), e.g., `new class`, `[1,2,3]`, cycle headroom at 90% heap) inside `oxiscript-bench --suite internal-rc`; these drive `8.Perf` engineering and are **never** marketed as cross-language benchmarks.
+- **Internal-Only RC Micro-Suite (`8.Perf`):** Keeps the existing OxiScript-internal micro-probes (`B1–B9` from [oxiscript-memory-performance.md §6.1](oxiscript-memory-performance.md#61-proposed-microbenchmark--macrobenchmark-suite-oxiscript-perf--oxiscript-rc--oxiscript-wasm), e.g., `new class`, `[1,2,3]`, cycle headroom at 90% heap) inside `oxiscript-perf --suite internal-rc`; these drive `8.Perf` engineering and are **never** marketed as cross-language benchmarks.
 
 ### 4.3 Per-Language Implementation Verification Gate
 
@@ -283,13 +283,13 @@ Before any language's implementation of `P01..P12` enters a frozen OxiPerf relea
 
 ## 5. Harness Design, Reproducibility Package, and `8.Perf`/`8.Lab` Integration
 
-The harness lives in the Stage `8.Bench` crate (`oxiscript/oxiscript-bench`, binary `oxiperf`) with benchmark sources under `bench/oxiperf/`. It follows three engineering principles: **one-command execution**, **automated environment capture**, and **strict separation of execution from statistical analysis** (no manual spreadsheet editing).
+The harness lives in the Stage `8.Bench` crate (`oxiscript/oxiscript-perf`, binary `oxiperf`) with benchmark sources under `bench/oxiperf/`. It follows three engineering principles: **one-command execution**, **automated environment capture**, and **strict separation of execution from statistical analysis** (no manual spreadsheet editing).
 
 ### 5.1 One-Command CLI Interface
 
 ```text
 # Run full cross-language suite for all locally available runtimes & targets
-cargo run -p oxiscript-bench --bin oxiperf -- run \
+cargo run -p oxiscript-perf --bin oxiperf -- run \
   --suite v0.1 \
   --track base \
   --size server \
@@ -298,14 +298,14 @@ cargo run -p oxiscript-bench --bin oxiperf -- run \
   --out results/oxiperf-v0.1-2026-12-01-x86
 
 # Run A/B Speedup Lab or 8.Perf comparison (paired interleaved invocations)
-cargo run -p oxiscript-bench --bin oxiperf -- compare \
+cargo run -p oxiscript-perf --bin oxiperf -- compare \
   --baseline main \
   --candidate "--unstable-opt=swar-utf8" \
   --targets wasmi,w2c2,wasmtime \
   --tier release
 
 # Regenerate statistics, warmup diagnostics, and Markdown/CSV tables from raw data only
-cargo run -p oxiscript-bench --bin oxiperf -- analyze \
+cargo run -p oxiscript-perf --bin oxiperf -- analyze \
   --input results/oxiperf-v0.1-2026-12-01-x86 \
   --out reports/oxiperf-v0.1-2026-12-01-x86.md
 ```
@@ -430,7 +430,7 @@ OxiScript maintains **two distinct, strictly non-overlapping benchmark programs*
 
 | Dimension | **OxiPerf** (this document) | **[OxiBench](oxibench-methodology.md)** |
 |---|---|---|
-| **Roadmap stage** | `8.Bench` (`oxiscript-bench`), feeding `8.Perf`, `8.Mem`, `8.Lab`, `8.3a–e` | `8.OB` (blocked on owner approval & API keys, [Q-OB-1](../roadmap/oxiscript.md#q-ob)) |
+| **Roadmap stage** | `8.Bench` (`oxiscript-perf`), feeding `8.Perf`, `8.Mem`, `8.Lab`, `8.3a–e` | `8.OB` (blocked on owner approval & API keys, [Q-OB-1](../roadmap/oxiscript.md#q-ob)) |
 | **Question answered** | *How fast, small, and memory-light are OxiScript programs across `wasmi`, `w2c2`, Wasmtime, and browsers compared to other languages/runtimes?* | *How accurately do AI models write correct OxiScript (with/without docs and compiler loop) compared to TypeScript, and which language features cause mistakes?* |
 | **Subjects under test** | Compilers, Wasm engines, allocators, hardware targets (`micro`/`device`/`web`/`server`). | Frontier and open-weight LLM APIs (isolated from the repo). |
 | **Primary metrics** | Wall time (cold & steady state), `wasmi` fuel (budget only), RSS/PSS/heap/SRAM/Flash, code size, compile latency. | `pass@1` in condition C2, TS twin gap, `OXS-*` diagnostic taxonomy, tokens/cost per pass. |
@@ -441,7 +441,7 @@ OxiScript maintains **two distinct, strictly non-overlapping benchmark programs*
 - **Shared methodological discipline and tooling primitives:**
   1. **Preregistration freeze commit** before any publishable run; version bumps whenever methodology or benchmarks change; never mix versions in one table.
   2. **Role separation for fairness:** independent implementation/task auditing (Role R2) so nobody grades or self-optimises their own benchmark unfairly; deterministic harness (R3); script-only statistics (R5).
-  3. **Shared Rust statistics & reporting utilities** (optional internal library crate `oxiscript-bench-stats`): 10,000-resample bootstrap engine (flat task-level for OxiBench, hierarchical invocation×iteration for OxiPerf), JSON-manifest validator, Markdown table generator, and website frozen-report quote checker.
+  3. **Shared Rust statistics & reporting utilities** (optional internal library crate `oxiscript-perf-stats`): 10,000-resample bootstrap engine (flat task-level for OxiBench, hierarchical invocation×iteration for OxiPerf), JSON-manifest validator, Markdown table generator, and website frozen-report quote checker.
   4. **Identical publication ethics:** publish negative results, disclose conflicts/versions, quote only frozen reports on the websites.
 - **Strictly separate:** Benchmark directories (`bench/oxiperf/` vs. `bench/oxibench/` + private external store), version counters (`oxiperf-v0.1` vs. `oxibench-v0.1`), execution schedules (OxiPerf runs locally/on boards per milestone or weekly in `8.Lab`; OxiBench runs once per toolchain release against paid LLM APIs), and published reports/pages (never combined into a composite score).
 
@@ -451,7 +451,7 @@ OxiScript maintains **two distinct, strictly non-overlapping benchmark programs*
 
 Following the roadmap convention ([../roadmap/oxiscript.md §7](../roadmap/oxiscript.md#7-open-questions-for-the-owner)), these decisions lock OxiPerf v0.1 before the first freeze commit:
 
-1. **`Q-OP-1` (Methodology approval & freeze gate):** Approve this methodology (v0.1) as the governing spec for Stage `8.Bench` (`oxiscript-bench`), requiring a freeze commit before any cross-language numbers are published on the sites.
+1. **`Q-OP-1` (Methodology approval & freeze gate):** Approve this methodology (v0.1) as the governing spec for Stage `8.Bench` (`oxiscript-perf`), requiring a freeze commit before any cross-language numbers are published on the sites.
 2. **`Q-OP-2` (Mandatory v0.1 competitor roster):** Confirm the minimum set of comparison languages required for the first frozen OxiPerf v0.1 release vs. deferred to v0.2:
 
 > **Corrected by Claude (Opus), 2026-11-26:** recommended v0.1 scope: dev box only, AWFY subset P01-P06 with upstream ports (JS, Lua, Python, C++ as native reference) plus OxiScript on wasmi and Rust; the Pi 1 rows (C, wasmi, LuaJIT, Lua, CPython; w2c2 after 8.2b) as the 8.Mem part; ESP32-S3 after 8.S3 and 8.2b with C, w2c2 and MicroPython first (verification section H).
@@ -463,5 +463,5 @@ Following the roadmap convention ([../roadmap/oxiscript.md §7](../roadmap/oxisc
 3. **`Q-OP-3` (Unifying `8.Bench` SIMD/GPU workloads with OxiPerf):** Confirm merging `8.Bench`'s existing `particles` and `MLP` workloads into `P11` (`physics_2d_step`) and `P12` (`tiny_mlp_layer`) in v0.1, while keeping `GEMM` and `image_filter_3x3` as the v0.2 Data-Parallel Extension once Stage `8.3a` begins.
 4. **`Q-OP-4` (DVFS & quiet-machine setup on dev box and Raspberry Pi 1 B+):** Confirm whether benchmark runs on the `i5-3450` dev box and Raspberry Pi 1 Model B+ may temporarily set `scaling_governor=performance`, disable Turbo Boost, and stop non-essential services (via a documented wrapper script) so wall-time runs qualify as `release`-tier publishable data.
 5. **`Q-OP-5` (Browser engine coverage in v0.1):** Is automated headless Chromium (via Playwright/CDP against a local COOP/COEP server) sufficient for the first frozen `web` report, with Firefox (SpiderMonkey) and WebKit (JSC) added in v0.2?
-6. **`Q-OP-6` (Analysis implementation language):** Confirm implementing `oxiperf analyze` (hierarchical bootstrap, Barrett changepoint/drift check, Markdown generator) in pure Rust inside `oxiscript-bench` (zero Python/R runtime dependencies, deterministic compiled binary, shared with OxiBench stats).
+6. **`Q-OP-6` (Analysis implementation language):** Confirm implementing `oxiperf analyze` (hierarchical bootstrap, Barrett changepoint/drift check, Markdown generator) in pure Rust inside `oxiscript-perf` (zero Python/R runtime dependencies, deterministic compiled binary, shared with OxiBench stats).
 7. **`Q-OP-7` (Speedup Lab `8.Lab` public reporting tier):** For the weekly `oxiscript-vX.Y.C-speedup.N` alphas ([D-29](../roadmap/oxiscript.md#d-29)), should the optional public Speedup Lab table require full `release`-tier runs (10×30 invocations on quiet hardware), or may weekly alphas publish `ci`-tier numbers with an explicit `"alpha/unfrozen"` banner while reserving `release`-tier for promoted defaults?

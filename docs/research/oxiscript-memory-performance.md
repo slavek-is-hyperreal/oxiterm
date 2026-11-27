@@ -446,7 +446,7 @@ Production JIT/AOT engines (V8, JavaScriptCore, SpiderMonkey, Go, OCaml 5, .NET,
 
 ## 6. Benchmark Suite Design, Baselines, Metrics, and Literature Reference Numbers
 
-### 6.1 Proposed Microbenchmark & Macrobenchmark Suite (`oxiscript-bench` / `oxiscript-rc` + `oxiscript-wasm`)
+### 6.1 Proposed Microbenchmark & Macrobenchmark Suite (`oxiscript-perf` / `oxiscript-rc` + `oxiscript-wasm`)
 
 To drive every optimisation stage empirically (matching OxiScript's "measure before claiming" rule in Stage `8.Mem`), establish a deterministic benchmark harness running identical `.oxs` programs across all runtime/compiler variants:
 

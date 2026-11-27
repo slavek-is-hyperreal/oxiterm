@@ -16,7 +16,7 @@ Rules:
 | Playground "no main" notice | 0bd281a | small change, no BAD ACTOR yet | next round |
 | OxiUI "How it works" diagram and statuses | 31e8075 | small change, static page | next round |
 | Taller live demos (CSS) | (sites commit) | small change | next round |
-| OxiPerf v0 harness (`oxiscript-bench`) | merge of oxiperf | small, tooling only | next round |
+| OxiPerf v0 harness (`oxiscript-perf`) | merge of oxiperf | small, tooling only | next round |
 | Versioning rule: std counts, `--owner-release` | d624ff5 | small change in a release script | next round |
 
 ## Rounds done

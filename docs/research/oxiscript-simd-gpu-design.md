@@ -767,7 +767,7 @@ All stages follow the repository's process rule (`docs/history/oxi-ui-plan-histo
 
 **Rule: set up the benchmark suite *before* writing Stage 8.3a/8.3b/8.3d code** so every stage measures real before/after deltas against a frozen baseline (mirroring `oxiterm-server/benches/frame_cost.rs` from Stage 5.0 **[V]**).
 
-### 8.1 Harness Design (`oxiscript/oxiscript-bench`, `harness = false`)
+### 8.1 Harness Design (`oxiscript/oxiscript-perf`, `harness = false`)
 
 Run every workload across **five execution targets** with identical deterministic seed inputs and an automated correctness oracle (exact bitwise check for integers; `max_abs_err` / `max_rel_err` check for floats):
 1. **OxiScript Scalar Wasm on `wasmi 2.0.3`** (baseline live interpreter).

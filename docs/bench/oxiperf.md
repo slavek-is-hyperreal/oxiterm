@@ -8,7 +8,7 @@ Method: [cross-language-benchmark-methodology.md](../research/cross-language-ben
 
 ```bash
 export TMPDIR=/path/with/space       # C executables and smoke-test output go here
-cargo run -p oxiscript-bench --release --features wasmtime -- run   # without --features wasmtime the Wasmtime rows are reported as unavailable
+cargo run -p oxiscript-perf --release --features wasmtime -- run   # without --features wasmtime the Wasmtime rows are reported as unavailable
 ```
 
 Writes `bench/oxiperf/results/<date>-<cpu>/` with:
@@ -25,7 +25,7 @@ Counts are **derived, not fixed** (verification A4): the harness first runs a pi
 
 Other commands: `oxiperf analyze --input DIR` rebuilds `summary.json` and `report.md` from `raw.jsonl` alone (statistics are never edited by hand). Useful flags of `run`: `--quick` (tiny sizes, one invocation; what the smoke test uses), `--workloads sort,tree`, `--engines oxiscript-wasmi,rust-native`, `--invocations N` (default 5), `--iters N` (30), `--warmup N` (3), `--min-iter-ms MS` (10), `--pin-core C` (runs every child under `taskset`), `--out DIR`. The exit code is non-zero if any checksum disagrees or any child run is invalid.
 
-`--no-default-features` drops the Wasmtime executor and with it the long Cranelift build (the Wasmtime rows then say "unavailable"). The unit tests and the debug smoke test run without Cranelift: `cargo test -p oxiscript-bench --no-default-features`. Build with `CARGO_BUILD_JOBS=2` on a shared machine; per-package `-p` only.
+`--no-default-features` drops the Wasmtime executor and with it the long Cranelift build (the Wasmtime rows then say "unavailable"). The unit tests and the debug smoke test run without Cranelift: `cargo test -p oxiscript-perf --no-default-features`. Build with `CARGO_BUILD_JOBS=2` on a shared machine; per-package `-p` only.
 
 ## What is measured
 
@@ -108,4 +108,4 @@ From the methodology (section 6), binding for this project:
 
 ## Adding a workload
 
-Create `bench/oxiperf/suites/<id>/` with `main.oxs` (`@host export function run(n: i32): u32`, `export function main(): void {}`; it must pass `oxi check`), `main.js` (`exports.run`), `main.rs` (`pub fn run(n: i32) -> u32`), optionally `main.c` (`uint32_t run(int32_t n)` and `#include "../../drivers/c_harness.h"` at the end); register it in `oxiscript/oxiscript-bench/src/workloads.rs` and `native.rs`. Make the checksum use only `u32` wrapping arithmetic (JS has no 64-bit integers) and never depend on hash-map iteration order or f64 summation order.
+Create `bench/oxiperf/suites/<id>/` with `main.oxs` (`@host export function run(n: i32): u32`, `export function main(): void {}`; it must pass `oxi check`), `main.js` (`exports.run`), `main.rs` (`pub fn run(n: i32) -> u32`), optionally `main.c` (`uint32_t run(int32_t n)` and `#include "../../drivers/c_harness.h"` at the end); register it in `oxiscript/oxiscript-perf/src/workloads.rs` and `native.rs`. Make the checksum use only `u32` wrapping arithmetic (JS has no 64-bit integers) and never depend on hash-map iteration order or f64 summation order.
