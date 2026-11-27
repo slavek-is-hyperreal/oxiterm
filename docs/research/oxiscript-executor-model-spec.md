@@ -18,7 +18,7 @@ The design in ten sentences:
 2. Eligibility for a non-CPU executor is computed from `Op::may_trap()` and the effect set, not from a hand-written list.
 3. Layer 0 core is `generate`, `map`, `zip`, `reduce`, `scan` (associative integer operators only), `filter` (CPU only), `gather`; everything else (scatter, stencil, matmul, conv, sort) is a library built on those.
 4. Reduction order is a normative **canonical pairwise tree** (split at the largest power of two below the length), the same on every executor and for every class; a float `+` reduction exists only under the explicit name `reduceSum`.
-5. Out-of-bounds (Q-SIMD-4, proposal): the automatic path offloads only proved-in-bounds code in every build mode; trap timing inside `Resident` operations is **deferred to the next sync point on every executor**; an explicit core `gather` carries an always-on guard feeding that deferred trap; `host:gpu` gets language-defined zero/skip guards (WebGPU does not return zero, ledger A6); the QPU accepts only host-validated affine streaming access.
+5. Out-of-bounds (Q-SIMD-4, proposal): the automatic path offloads only proved-in-bounds code in every build mode; trap timing inside `Resident` operations is **deferred to the next sync point on every executor**; an explicit core `gather` carries an always-on guard feeding that deferred trap; `host:gpu` keeps the existing recommendation of language-defined zero/skip guards plus the debug flag; the QPU accepts only host-validated affine streaming access.
 6. The executor choice is a pure function of static residency types, host facts, profile, target and per-edition constants; a size threshold may only choose between executors of the same class and the same residency domain.
 7. `@approx` is a function attribute with integer-valued keys (the attribute grammar has no float literal), propagates to callers (`OXS-E0502`), and is an error under `safety` (`OXS-E0501`).
 8. The QPU executor is a *streaming-kernel* executor: audited memory skeletons plus a whitelisted straight-line ALU body, never guest machine code, behind a privileged helper with a fixed command set; `host:fft` (GPU_FFT, BSD-3) is a fixed capability next to it, not an executor.
@@ -33,7 +33,7 @@ D-30 adopted the lead's recommendation for Q-SIMD-1..3 and 5..18 and recorded th
 |---|---|---|
 | Q-SIMD-1 | integer `Simd` forbids plain `+ - *` (`+% +|`) | 3.3 operator set |
 | Q-SIMD-2 | inline-element arrays at the start of 8.3d | 8.4 |
-| Q-SIMD-3 | placement report (8.S4b) before 8.3b or a minimal `Remark` type early | 9 |
+| Q-SIMD-3 | adopted recommendation: placement report (8.S4b) lands first, 8.3b plugs into its schema | 9 |
 | Q-SIMD-12 | no runtime-inserted transfers; library `gpuMap` does `upload`+`map`+`download` visibly | R-POL-2 |
 | Q-SIMD-13 | thresholds are fixed constants per language edition | R-POL-4 |
 | Q-SIMD-14 | name `Resident<T>`; no manifest "may use GPU" line (host quotas only) | 2.4 |
@@ -94,7 +94,9 @@ R-EXE-7. The type system never depends on host availability: `Resident<T>` has o
 
 R-EXE-8 (visible transfers, Q-SIMD-12). The runtime MUST NOT insert a transfer. `upload(xs: T[]): Result<Resident<T[]>, i32>` (fallible: quota) and `download(r, cb)` (callback form until 8.4 async, because readback is asynchronous) are the only host/accelerator crossings, each one `OXS-P0306` line. No layer-0 operation on `Resident` input returns host data: a reduction returns `Resident<scalar>`. Mixing `Resident` and host arrays in one combinator is a compile error (code to be allocated in the `OXS-E` range). A `Resident` input whose body is not eligible for the **baseline executor** (the WGSL eligibility of R-EXE-3) is a compile error, because the check is static and must not depend on the host.
 
-R-EXE-9 (lifetimes, errors). Resident values are handles owned by the instance arena: released on drop and on hot reload. `upload` returns `Err(status)` when the domain quota is exceeded. A dispatch-cap overflow traps with kind `quota`; device loss or a failure recorded by a guard (R-OOB-3) traps with the first reported failure at the next sync point (R-OOB-4), after which all handles of that domain are poisoned (further operations on them trap again) and the program rebuilds by `upload` (Q-SIMD-15).
+R-EXE-9 (lifetimes, errors). Resident values are handles owned by the instance arena: released on drop and on hot reload. `upload` returns `Err(status)` when the domain quota is exceeded. A dispatch-cap overflow traps with the **proposed** kind `quota` (see the note below); device loss or a failure recorded by a guard (R-OOB-3) traps with the first reported failure at the next sync point (R-OOB-4), after which all handles of that domain are poisoned (further operations on them trap again) and the program rebuilds by `upload` (Q-SIMD-15).
+
+Note on trap kinds: `ir.md` and `oxiscript-abi/src/trap.rs` define `unreachable overflow div_by_zero bounds bad_cast null_deref out_of_memory assert bad_utf8 panic`. `quota` (dispatch cap, QPU timeout) and `device_lost` do **not** exist. They are proposed new `TrapKind` values, an ABI minor bump landing with 8.3d (append-only; it may ride the ABI 1.1 `simd128` release).
 
 R-EXE-10 (domain completeness). An accelerator domain MAY be exposed as a `Resident` domain only if (a) it is `host_visible` (the CPU fallback runs in place, no transfer), or (b) its eligibility is a superset of the baseline eligibility, so that no baseline-eligible `Resident` code is left without a variant on that host. WebGPU satisfies (b) by definition (it *is* the baseline). The QPU satisfies neither unless `vcio2` is adopted (section 7.3); otherwise it is offered only through fixed capabilities.
 
@@ -173,6 +175,8 @@ Named operators (the only parallel reductions in core):
 
 R-L0-4 (GPU honesty). WGSL drivers may reassociate and fuse `[S]`, so on the `wgsl` executor R-L0-3 is a **MUST on the emitted code** (explicit interleaved addressing with barriers, no `subgroupAdd`, no atomics), not a guarantee about what the driver executes. Float results from the GPU remain class C even though the structure is fixed. Only the CPU executors and the QPU (no driver compiler between us and the machine code) can guarantee the association. Cost: shared-memory tree reductions with fixed addressing are somewhat slower than free-form ones; the 8.3d benchmarks record it.
 
+R-L0-4a. The WGSL emitter MUST implement float `min` and `max` with the IR's NaN-propagating semantics explicitly (a NaN check and select around the builtin), because the WGSL builtins do not promise it `[S]`; otherwise NaN-ness would diverge, which the deviation model of R-CLS-2 does not allow.
+
 R-L0-5 (what the tree breaks). The auto-vectoriser shape S4 of the SIMD report (strided vector accumulators plus a horizontal sum) is exactly right for integers (any association) and **wrong for floats**, because its association differs from R-L0-3. For floats the vectoriser MUST either emit the canonical tree (partial sums over aligned blocks of the vector width, combined as in R-L0-3) or not vectorise (`OXS-P0106`). Float `scan` has no canonical parallel order and is not core: a float prefix sum is a sequential loop, CPU only.
 
 ### 3.4 Example (parses today; `Resident`, `upload`, `reduceSum` are the proposed names)
@@ -198,7 +202,7 @@ export function main(log: Log): void {
 
 ### 4.1 Class E: exact
 
-R-CLS-1. A region is class E when every operation in it is an integer, boolean or fixed-point operation (including `+% +| *% & | ^ << >> min max`, comparisons, `select`, integer `as` with `.wrap`/`.sat`). On every executor the result MUST be bit-identical to the scalar reference, and a trap, where the executor permits one, MUST be the same trap kind. A speedup in 8.Lab never moves a class E region to another class (D-29).
+R-CLS-1. The accuracy class belongs to the **pair (region, executor)**, and class E means *bit-identical to the scalar reference, with the same trap kind where a trap is possible*. An integer, boolean or fixed-point region (including `+% +| *% & | ^ << >> min max`, comparisons, `select`, integer `as` with `.wrap`/`.sat`) is class E on every executor. A float region is class E on scalar and simd128 (both IEEE-exact, bit-identical), class C on `wgsl`, class A on `qpu_vc4`. (The `class` column of the 2.1 table is therefore the strongest class an executor gives *float* code.) On a class E pair the result MUST be bit-identical. A speedup in 8.Lab never moves a class E region to another class (D-29).
 
 Fixed point is a library over integers (`std/fixed`, proposed), e.g. Q16.16, class E on every executor (compiles today):
 
@@ -244,7 +248,7 @@ R-CLS-4. `safety` profile: a region with float element type MUST NOT run on a cl
 
 ### 4.3 Class A: `@approx`
 
-R-CLS-5 (syntax). `@approx(ulp: N)` or `@approx(rel_ppm: N)` on a function declaration, where `N` is a positive integer literal. The attribute grammar of `grammar.md` section 4 allows only `STRING | INT | true | false | Ident` as an argument, so integer-valued keys avoid a grammar change (a float literal argument is an optional later extension). `ulp` is the maximum error in units in the last place of `f32` against the **reference result** (the result of the function body executed on the scalar executor); `rel_ppm` is the maximum relative error in parts per million. Exactly one key. Results with magnitude below `2^-126` are exempt (flush-to-zero range). Example (frozen attribute, parses today, rejected only as unknown):
+R-CLS-5 (syntax). `@approx(ulp: N)` or `@approx(rel_ppm: N)` on a function declaration, where `N` is a positive integer literal. The attribute grammar of `grammar.md` section 4 allows only `STRING | INT | true | false | Ident` as an argument, so integer-valued keys avoid a grammar change (a float literal argument is an optional later extension). `ulp` is the maximum error in units in the last place of `f32` against the **reference result**: the result of the function's **exact twin**, i.e. the same body with every approximate callee replaced by its exact `std/math` counterpart, run on the scalar executor (the body's own result is *not* the reference, because for a library approximation the body is itself the approximation); `rel_ppm` is the maximum relative error in parts per million. Exactly one key. Results with magnitude below `2^-126` are exempt (flush-to-zero range). Example (frozen attribute, parses today, rejected only as unknown):
 
 ```oxs
 @approx(ulp: 8)
@@ -253,11 +257,11 @@ function fastInvSqrt(x: f32): f32 {
 }
 ```
 
-R-CLS-6 (meaning). `@approx(b)` means: an executor MAY return any value within `b` of the reference. An executor with a hardware approximation (QPU SFU `recip`, `recipsqrt`, `exp2`, `log2`) MAY substitute it for a body that the compiler recognises as a library approximation. The declared bound MUST hold on **every** executor that may run the function. For library functions in `std/math/approx` (Quake-style `rsqrt`, Schraudolph `exp`, minimax polynomials; owner idea in the roadmap Ideas table) the bound is documented per function and **proved by an exhaustive sweep of all `2^32` `f32` inputs** (feasible for a unary function) on every executor in CI; for a user-declared bound it is a test obligation of the program (a `law` over a sample, or the differential harness).
+R-CLS-6 (meaning). `@approx(b)` means: an executor MAY return any value within `b` of the reference. An executor with a hardware approximation (QPU SFU `recip`, `recipsqrt`, `exp2`, `log2`) MAY substitute it for a body that the compiler recognises as a library approximation. The declared bound MUST hold on **every** executor that may run the function. For library functions in `std/math/approx` (Quake-style `rsqrt`, Schraudolph `exp`, minimax polynomials; owner idea in the roadmap Ideas table) the bound is documented per function **against the exact `std/math` function** (so a QPU SFU result is judged against true `rsqrt`, not against the Quake iteration) and **proved by an exhaustive sweep of all `2^32` `f32` inputs** (feasible for a unary function) on every executor in CI; for a user-declared bound it is a test obligation of the program (a `law` over a sample, or the differential harness).
 
 R-CLS-7 (propagation). A function that calls an `@approx` function, a `std/math/approx` function or a host function marked `approx` in its IDL MUST itself be `@approx(...)` (`OXS-E0502`, fix: add `@approx(ulp: N)`). The compiler does not compute a composed bound; the author states it; the harness checks it. This keeps approximation visible in every signature on the path, in the spirit of the placement report.
 
-R-CLS-8 (`safety`). Under `@@profile(safety)` (or `@profile(safety)` on a function) an `@approx` declaration and any call to an approximate function is `OXS-E0501` (fix: use the exact `std/math` function or move the code out of the `safety` unit). `@expect(exact)` (proposed) asserts that a function reaches no `@approx` and no class C/A region; it is assertable (a static fact) and is the certification evidence for "this offload is class E".
+R-CLS-8 (`safety`). Under `@@profile(safety)` (or `@profile(safety)` on a function) an `@approx` declaration and any call to an approximate function is `OXS-E0501` (fix: use the exact `std/math` function or move the code out of the `safety` unit). `@expect(exact)` (proposed) asserts that a function reaches no `@approx` call and no float region that is *eligible* for a class C/A executor; in practice its layer-0 regions are integer regions, or its float regions are host-typed (never `Resident`). It is assertable (a static fact, independent of the host) and is the certification evidence for "every placement of this code is class E".
 
 R-CLS-9 (report). Every region placed on a class A executor, and every call to an approximate function, emits `OXS-P0309` (not assertable: target fact) with the bound; the run log records the executor actually used.
 
@@ -268,7 +272,7 @@ R-CLS-10 (the QPU rule, D-30). An auto-path float region MAY run on the QPU only
 ### 5.1 Facts
 
 * CPU: an out-of-range index traps `bounds`, precisely, at the access.
-* WebGPU: a shader cannot trap. Robust access gives, for a read, any in-bounds value or zero; for a write, a discard or a store at another in-bounds location; implementations differ (naga offers `Restrict`, `ReadZeroSkipWrite`, `Unchecked`) (ledger A6). "WebGPU returns zero" is **false**; the lead's proposal (3) rested on it.
+* WebGPU: a shader cannot trap. Robust access gives, for a read, any in-bounds value or zero; for a write, a discard or a store at another in-bounds location; implementations differ (naga offers `Restrict`, `ReadZeroSkipWrite`, `Unchecked`) (ledger A6). "WebGPU returns zero" is an oversimplification (the owner's own Q-SIMD-4 text says "zero or a value from another place in the array"); the emitter therefore always writes its own guards (SIMD report section 9, Q4).
 * VideoCore IV: no IOMMU. An out-of-range TMU read or VPM DMA write corrupts arbitrary physical memory, including the kernel (videocore report 3.1). There is no robust-access fallback at all.
 * Prior art for a read-back failure flag: Futhark records a failure in a single 32-bit `global_failure` word in device memory, every kernel starts by checking it, the host reads it after each kernel launch and raises the error; the measured overhead of its GPU bounds checking is a geometric mean of 4% to 6% on 19 benchmarks (Henriksen, "Bounds Checking on GPU", HLPP 2020; blog "How Futhark implements bounds checking on the GPU"). This matches the lead's estimate ("a few to a dozen percent").
 
@@ -278,9 +282,9 @@ R-CLS-10 (the QPU rule, D-30). An auto-path float region MAY run on the QPU only
 
 (2) *Debug mode with a flag read back by the CPU, which then traps.* Right in intent, with two defects: (a) if it changed **eligibility** between debug and release, the executor choice would depend on the build mode, violating the P-5 rule that assertable facts are identical in debug and release; (b) a read-back trap fires **later** than the CPU trap would, so ordering of host effects between access and sync differs. Both are fixed by stating the timing as a language rule (R-OOB-4) that every executor obeys, and by making the flag a *self-check of the prover* in debug rather than an eligibility change.
 
-(3) *`host:gpu` keeps WebGPU semantics.* Amended: the language must not inherit driver-defined behaviour. In `host:gpu` kernels the emitter always inserts explicit guards with the language-defined result **read gives 0, write is skipped**, deterministic on every vendor, plus the debug flag.
+(3) *`host:gpu` keeps zero/skip plus a debug flag.* Conforms to SIMD report section 9 Q4 (revised): the emitter inserts explicit guards with the language-defined result **read gives 0, write is skipped**, deterministic on every vendor (not the driver's robust-access behaviour), plus the debug flag.
 
-Addition beyond the three options: a **core `gather` with an always-on guard** and the deferred trap, so that data-dependent reads can be offloaded explicitly and visibly.
+Genuine additions beyond the three options: (a) the **deferred-trap timing rule** for all `Resident` operations on every executor; (b) a **core `gather` with an always-on guard** feeding that trap, enabled only by the Q-SIMD-16 measurement; (c) the debug flag as a **self-check of the prover** that never changes eligibility.
 
 ### 5.3 Normative rules
 
@@ -316,7 +320,7 @@ export function gatherRef(xs: f32[], idx: i32[]): Result<f32[], i32> {
 
 ## 6. Executor choice policy
 
-R-POL-1 (pure function). `executor = f(static residency types of the inputs, host facts, profile, target, edition constants)`. Host facts are: `ComputeTier`, the host's accelerator domain (`none | webgpu | vc4`), SIMD128 availability. No timing, load, history, adaptive tuning or dynamic profile may enter. Same facts, same executor, on every run (the 10,000-combination property test of the 8.3d gate).
+R-POL-1 (pure function). `executor = f(static residency types of the inputs, host facts, profile, target, edition constants)`. Host facts are: `ComputeTier`, the host's accelerator domain (`none | webgpu | vc4`), SIMD128 availability. A further input is **the element count of the operation** (the length of its input arrays, needed for the `N_simd_min` threshold of R-POL-4): it is program data, a function of the program's inputs, not timing or load, so determinism holds (the same inputs give the same executor). No timing, load, history, adaptive tuning or dynamic profile may enter. Same facts, same executor, on every run (the 10,000-combination property test of the 8.3d gate).
 
 R-POL-2 (table, Q-SIMD-12). Static types decide the domain; the runtime never inserts a transfer.
 
@@ -390,7 +394,7 @@ R-QPU-1. A QPU variant MUST NOT be machine code supplied by a module. The module
 
 R-QPU-2 (why). VideoCore IV has no IOMMU, and every QPU compute tool needs root or the `vcio2` kernel driver (ledger A9). Whoever can start a QPU program can overwrite any physical memory. Letting an untrusted module choose QPU machine code would void the sandbox of P-6. Under R-QPU-1 the QPU can only touch the buffers the host bound to the skeleton.
 
-R-QPU-3 (fuel). Every launch carries the firmware's `EXECUTE_QPU` timeout, which acts as fuel: a hang ends in a trap of kind `quota` (via the deferred channel of R-OOB-4), the helper resets V3D, and all handles of the domain are poisoned.
+R-QPU-3 (fuel). Every launch carries the firmware's `EXECUTE_QPU` timeout, which acts as fuel: a hang ends in a trap of the proposed kind `quota` (via the deferred channel of R-OOB-4), the helper resets V3D, and all handles of the domain are poisoned.
 
 ### 7.3 Data path on the Pi 1
 
@@ -431,14 +435,14 @@ Consequences: callers must be `@approx` (R-CLS-7); `safety` refuses it (R-CLS-8)
 |---|---|---|---|
 | E | bit-identical result and identical trap kind, across scalar, simd128, wgsl (and qpu) | all programs, 5,000+ fuzz cases | none |
 | C | `close` (R-CLS-3) against the scalar reference, **and** run-to-run bit-identical on one executor and host | curated well-conditioned corpus with a declared condition bound per entry | scalar equals simd128 **bit-for-bit** (both IEEE-exact) |
-| A | within the declared bound of the scalar reference on every executor that may run it, **and** run-to-run bit-identical on one executor and host | exhaustive `2^32` sweep for unary `std/math/approx` functions; fuzz for others | different executors or hosts may legitimately differ in bits |
+| A | within the declared bound of the exact twin (R-CLS-5) on every executor that may run it, **and** run-to-run bit-identical on one executor and host | exhaustive `2^32` sweep for unary `std/math/approx` functions; fuzz for others | different executors or hosts may legitimately differ in bits |
 
 Cross-cutting tests:
 
 * **Policy property test:** at least 10,000 combinations of (types, tier, accelerator, SIMD, profile, target, edition) give the same executor on repeat; the same-class rule (R-POL-3) is asserted on every pair of executors a threshold can choose between.
 * **Debug versus release:** eligibility and `assertable` codes identical (R-OOB-1).
 * **Deferred trap suite (R-OOB-4):** the same program with an out-of-range index run on CPU-over-`Resident` and on the GPU reports the same trap kind, span and lowest index; chunked dispatch keeps the lowest index; a program that never downloads still traps at the end of the turn; poisoned handles trap on reuse.
-* **Reduction tree suite:** `reduceSum` on lengths `1..300`, powers of two and neighbours, equals the reference of R-L0-3 bit-for-bit on scalar and simd128; on `wgsl` equals under `close` with the structure checked by a probe kernel that uses non-associative values (e.g. subtraction-like patterns of `f32` crafted so that every distinct association gives a distinct result, to detect a driver or emitter that reassociates).
+* **Reduction tree suite:** `reduceSum` on lengths `1..300`, powers of two and neighbours, equals the reference of R-L0-3 bit-for-bit on scalar and simd128; on `wgsl` equals under `close` with the structure checked by a probe kernel that uses non-associative values (e.g. subtraction-like patterns of `f32` crafted so that every distinct association gives a distinct result, to detect a driver or emitter that reassociates). A detected reassociation on `wgsl` is **reported** (a run note and a CI warning naming driver and version), not a gate failure, because R-L0-4 only promises the emitted structure; on scalar and simd128 it is a gate failure.
 * **Sequential-equivalence CI** (8.3b): every program run sequentially and in parallel and diffed.
 * **Policy log equals source:** logged transfers equal the source's `upload`/`download` calls.
 
@@ -456,7 +460,7 @@ Cross-cutting tests:
 | **8.3a** | add the executor descriptor and `Accept/Reject` hook to the vector IR work (a Rust trait in the IR crate, no behaviour yet); `Simd.sum` is defined as the canonical tree for its width (R-L0-3); state class E in the gate text ("bit-identical" is the class E predicate) |
 | **8.3b** | the vocabulary of section 3 is the "spec pass" the stage waits on (Q-SIMD-18); the vectoriser shape S4 is **split**: integer reductions keep strided accumulators, float reductions must use the canonical tree or not vectorise (`P0106`) (R-L0-5); `scanInclusive/Exclusive` for integer operators and `reduceSum` land on CPU; `filter` CPU only; reason codes `P0103..P0112` as proposed; `zip` length precondition |
 | **8.3c** | expose `ComputeTier` and the **domain facts** (`host_visible`, quotas) as the host half of R-POL-1; nothing else changes |
-| **8.3d** | `Resident<T>` with R-EXE-7..11 including **sync points and the deferred failure channel** (so the timing semantics never change later); eligibility from `may_trap()` (R-EXE-3); class C deviation model and `close` gate (R-CLS-2/3); the 8.3d gate text "f32 within 1e-5 relative" is restated as the curated-corpus predicate; R-L0-4 emitter rules (tree order, no `subgroupAdd`, no float atomics); policy per section 6 with edition constants; `@approx` parse and check (`OXS-E0501..E0503`) because the first user is the `safety` rule itself and because class C needs the class vocabulary; `@expect(gpu)`, `@expect(exact)`; codes `P0302..P0306`, `P0308..P0310`; the R-OOB-1/2 rules always, R-OOB-3 enabled by the Q-SIMD-16 measurement |
+| **8.3d** | `Resident<T>` with R-EXE-7..11 including **sync points and the deferred failure channel** (so the timing semantics never change later); eligibility from `may_trap()` (R-EXE-3); class C deviation model and `close` gate (R-CLS-2/3); the 8.3d gate text "f32 within 1e-5 relative" is restated as the curated-corpus predicate; R-L0-4 emitter rules (tree order, no `subgroupAdd`, no float atomics); policy per section 6 with edition constants; `@approx` parse and check (`OXS-E0501..E0503`) because the first user is the `safety` rule itself and because class C needs the class vocabulary; `@expect(gpu)`, `@expect(exact)`; new `TrapKind` values `quota` and `device_lost` (ABI minor bump); codes `P0302..P0306`, `P0308..P0310`; the R-OOB-1/2 rules always, R-OOB-3 enabled by the Q-SIMD-16 measurement |
 | **8.3e** | `host:gpu` kernels use the language-defined guards (R-OOB-5); `std/tensor` documents its accumulation order (matmul ascending `k`); `std/math/approx` is **not** here (8.Lab) |
 | **8.Lab** | `std/math/approx` cards with an exhaustive-sweep test per function; SWAR lowering of `Simd` on `device`/`micro` is a lowering of the scalar executor, class E, invisible to the policy |
 | **8.Mem** | QPU probe as already planned, plus: test Mode V (`vcio2`) and the `&v3d`-disabled overlay; `host:fft` as the smallest demo marked `approx` |
@@ -466,7 +470,7 @@ No stage is removed. The roadmap rows 8.3a-e only gain the scope items above; re
 
 ## 9. Open questions for the owner
 
-1. **Q-SIMD-4 (still open).** Approve the amended proposal of section 5: (1) automatic path only proved-in-bounds, in every build mode; (2) deferred-trap semantics for all `Resident` operations, a core `gather` with a guard that is **enabled only if the Q-SIMD-16 measurement asks for it**, and a debug self-check of the prover; (3) `host:gpu` with language-defined zero/skip guards rather than WebGPU's driver-defined behaviour. *Recommendation:* approve. It keeps one program from ever behaving differently on GPU and CPU except by the declared classes, and it fixes a false premise (WebGPU does not return zero).
+1. **Q-SIMD-4 (still open).** Approve the amended proposal of section 5: (1) automatic path only proved-in-bounds, in every build mode; (2) deferred-trap semantics for all `Resident` operations, a core `gather` with a guard that is **enabled only if the Q-SIMD-16 measurement asks for it**, and a debug self-check of the prover; (3) `host:gpu` with language-defined zero/skip guards and the debug flag (already the SIMD report's recommendation). *Recommendation:* approve. It keeps one program from ever behaving differently on GPU and CPU except by the declared classes; the genuinely new parts are the deferred-trap timing rule, the staged checked `gather` and the prover self-check.
 2. **Class C name and scope.** Approve three classes E, C, A with C implicit for `f32` on GPU and not user-visible beyond `safety` (no annotation needed for C). *Recommendation:* approve; the alternative (every GPU float kernel needs `@approx`) taxes ordinary tensor code with no extra information.
 3. **`@approx` argument form.** Integer keys (`ulp: 8`, `rel_ppm: 1000`) with no grammar change, versus extending `AttrArg` with float literals (`rel: 1e-3`). *Recommendation:* integer keys now, float literals as a later additive grammar change.
 4. **Canonical tree for floats costs speed on the GPU** (fixed addressing, no subgroup operations, no atomics). Accept as the price of run-to-run determinism and an auditable structure? *Recommendation:* accept; measure the cost in 8.3d and report it; offer an explicit `@approx` free-form reduction only if the cost is large.
