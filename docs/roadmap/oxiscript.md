@@ -186,7 +186,7 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.HX | done | 2026-11-26, 1b08076 |
 | 8.Rel | done | 2026-11-26, eed8d35 |
 | 8.2a | done | 2026-11-26, d8fb0f8 |
-| 8.M-link | in-progress | — |
+| 8.M-link | done | 2026-11-27, a17d1ef |
 | 8.Std | done | 2026-11-26, fd7bf41 |
 | 8.Perf | todo | — |
 | 8.Lab | todo | — |
