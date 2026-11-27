@@ -126,6 +126,7 @@ Each is stated in the plan rows, specs or commit messages of the date shown; wor
 | <a id="d-35"></a>D-35 | 2026-11-27 | **Batch answers, as the lead recommended** (docs/owner-questions.md): Q-SIMD-4 (only proved-in-bounds code goes to the GPU on the automatic path; a deferred trap at the next sync point, always the first failing index; debug self-check; `host:gpu` read-0/skip-write + debug flag); Q-EXE-1..6 (accuracy classes E/C/A; `@approx` with integer keys now; canonical float reduction tree on every executor, cost measured in 8.3d; QPU mode decided after the 8.Mem probe, start with mode H + `host:fft`; no guest machine code on the QPU ever; 8.3f an idea row); Q-ASYNC-1..5 (explicit `async`, plain `R` with `Pending<R>`, cancellation = not resumed + `defer`, reserve `defer` now in 8.Fix, reload cancels tasks); Q-DX-2,3,4,6,8,9,10 (MCP inside `oxi`; debugger after LSP; other editors via LSP; git + `rust:` until 1.0; telemetry only manual; DX owned by the lead; `oxi migrate` after 8.S5); Q-SAFE-2,3,4 and Q-PLAN-2 (IEC 62443 research by Gemini + Claude verification; Z3/cvc5; handover docs; 5% threshold); Q-OP-1..7 (OxiPerf methodology approved, v0.1 scope as recommended). OxiBench questions Q-OB-1..5: deferred by the owner. | owner, conversation 2026-11-27 |
 | <a id="d-36"></a>D-36 | 2026-11-27 | **Board simulation (answers Q-DX-1):** (1) **support Wokwi as the market leader**: `oxi build --target micro` firmware (w2c2 + ESP-IDF, D-27/D-28) runs in Wokwi's ESP32 simulator, with a ready `wokwi.toml`/`diagram.json` per `oxi new` board template and docs; check Wokwi's terms and free tier before promising CI use; (2) **our own simple simulator** (virtual `host:gpio`/`host:sensor`/`host:ui` in the browser on the wasm32 core, no CPU emulation) **only after we have bought the board and really run something on it** (after the 8.S3 first-light milestone), so it mirrors real behaviour. | owner, conversation 2026-11-27 |
 | <a id="d-37"></a>D-37 | 2026-11-27 | **Implicit lossless numeric widening** at assignment, argument and `return` only, for the exact pairs listed under P-2 (exception to P-2); lossy or narrowing conversions keep `as`; no promotion inside operators. Goal: less friction for TypeScript developers with no loss of precision. No "lax mode" or dialect (P-3). Implemented in 8.Fix. | owner, conversation 2026-11-27 |
+| <a id="d-38"></a>D-38 | 2026-11-27 | **AI-assisted TS → OxiScript migration (`oxi migrate`), token-frugal; supersedes "after 8.S5" in D-35 for Q-DX-10.** Deterministic pipeline first, AI only on holes: TS parsed by a permissive Rust parser (`oxc_parser`, MIT), deterministic rules rewrite everything certain into an OxiScript AST printed by our formatter, uncertain spots become marked holes with a reason; `oxi check --json` applies machine-applicable fixes; only the remaining holes and errors go to an AI model, one small snippet each (function-level context, the registry reason code, neighbour signatures), never a whole file; loop until zero errors, plus differential tests when the TS source has tests. **Skeleton (parser, holes, check loop, AI hook, token accounting) early as stage [8.Mig](#s-8-mig); rules grown from the 8.S5 port data.** Also a **tree-sitter grammar for OxiScript** in [8.D1](#s-8-d1) (editors Zed/Neovim/Helix, structural queries; parses the whole corpus like our parser). | owner, conversation 2026-11-27 |
 
 ### 2.5 Superseded
 
@@ -189,6 +190,7 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.Std | done | 2026-11-26, fd7bf41 |
 | 8.Perf | todo | — |
 | 8.Lab | todo | — |
+| 8.Mig | todo | — |
 | 8.Fix | todo | — |
 | 8.Spec | todo | — |
 | 8.Sec | todo | — |
@@ -351,6 +353,13 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 - Gate: fuel per operation within 1.5x of the bump stub on the BL06 table and on the 8.S5 programs, **and wall time measured next to fuel on wasmi and on w2c2** (fuel alone rewards code layout, verification finding); percentage of retain/release removed reported per corpus; Stub-versus-Linked and optimised-versus-unoptimised differential runs identical; leak tests and the `stale_object` check stay green; BAD ACTOR attacks use-after-free through wrong borrow inference.
 - Depends on: 8.M-link merged (memres document verified and merged to `main` 2026-11-26, d8cb3b7). Status: todo.
 
+<a id="s-8-mig"></a>
+#### 8.Mig `oxi migrate`: AI-assisted TS → OxiScript (todo)
+
+- Scope ([D-38](#d-38)): `oxi migrate file.ts|dir` = TS parse (`oxc_parser`, MIT; licence re-checked at adoption) → deterministic rules (`==`→`===`, `var`→`let`, `undefined`→`null`, `console`→`host:log` + `oxi.toml` needs, numeric types from annotations and use, classes → `struct`/`class` + interfaces, exceptions → `Result` where the call graph is local, imports) → OxiScript AST via our formatter, uncertain spots as holes with a reason → `oxi check --json` + machine-applicable fixes → AI only on remaining holes/errors, one snippet each, via a pluggable model hook (Claude Code / Gemini CLI, no paid API: D-32) → loop to zero errors; differential tests TS vs OxiScript when tests exist. Token accounting per file. Rules extended from the 8.S5 friction log.
+- Gate: a corpus of real TS files (permissive licences) migrates to zero `oxi check` errors; tokens per 1000 lines measured against a pure-agent migration of the same corpus (target: a large reduction, reported, not promised); the AI never receives a whole file; every deterministic rule has a test; BAD ACTOR on hostile TS input (parser bombs, prompt injection inside TS comments/strings sent to the AI hook).
+- Depends on: 8.D1 (MCP tools, tree-sitter grammar useful), 8.S5 for the rule data (skeleton may start before). Status: todo.
+
 <a id="s-8-lab"></a>
 #### 8.Lab Speedup Lab (todo; owner 2026-11-26)
 
@@ -379,6 +388,7 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 #### 8.D1 DevKit v1 (todo)
 
 - Scope: `oxi dev` live reload to the browser simulator; MCP server `oxi mcp` (check, format, compile, run sandboxed and fuel-limited, explain_code, apply_fix, report, test_laws, docs_search; licence of `rmcp` read first); `create-oxi` scaffolder; `oxi doctor` basics; first-15-minutes walkthrough timed end to end; the agent test (10 programs from `AGENTS.md` only) repeated clean-room, with the apply-fix half of the loop actually exercised [R3-83, R3-231, R3-232, R3-233, R3-230, R3-238, R3-89, R3-235, R2-120]. Ideas kept in the list: `oxi migrate`, `oxi report-friction`, CI GitHub Action ([Ideas](#s-ideas), [Q-DX-8](#q-dx)).
+- Tree-sitter grammar for OxiScript ([D-38](#d-38)): `tree-sitter-oxiscript` (MIT), highlights/locals/injections queries for Zed, Neovim, Helix; test: parses the whole `.oxs` corpus with the same accept/reject result as `oxiscript-syntax`.
 - Gate: the walkthrough timing of every step that exists (target under 5 min from `create-oxi` to a toy, estimate); an agent given only `AGENTS.md` writes 10 programs that pass `oxi check`, fix loops counted; MCP run is sandboxed by tests; more than half of the common-delta diagnostics (`==`, `;`, `.length`, `as`) have machine-applicable fixes, measured.
 - Depends on: [8.S1](#s-8-s1), [8.S2](#s-8-s2). Status: todo.
 
