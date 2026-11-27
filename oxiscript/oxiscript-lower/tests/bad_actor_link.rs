@@ -363,7 +363,7 @@ export function main(log: Log): void { log.write(2, "up"); }
             failures.push(format!("n={n}: collect_cycles failed with {e} at {pages}/256 pages"));
         }
     }
-    assert!(failures.is_empty(), "BA-LINK-01: collector OOMs on garbage that fits:\n{}", failures.join("\n"));
+    assert_eq!(failures.len(), 0, "BA-LINK-01: collector OOMs on garbage that fits:\n{}", failures.join("\n"));
 }
 
 /// Every compiler-raised trap must report the same kind Stub vs Linked (single trap channel unchanged).

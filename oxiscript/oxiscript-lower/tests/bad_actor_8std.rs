@@ -64,7 +64,7 @@ fn math_special_values_match_reference() {
             if ulp(g, w) > 2 || zero_sign { bad.push(format!("{n}({x:e},{y:e}) = {g:e} want {w:e}")); }
         }}
     }
-    assert!(bad.is_empty(), "{} mismatches, first 25:\n{}", bad.len(), bad.iter().take(25).cloned().collect::<Vec<_>>().join("\n"));
+    assert_eq!(bad.len(), 0, "{} mismatches, first 25:\n{}", bad.len(), bad.iter().take(25).cloned().collect::<Vec<_>>().join("\n"));
 }
 
 /// BS02: huge trig arguments (Payne-Hanek) and subnormal/near-zero cases, dense sweep.
@@ -83,7 +83,7 @@ fn math_trig_huge_arguments() {
             if ulp(g, w) > 2 { bad.push(format!("{n}({x:e}) = {g:e} want {w:e}")); }
         }
     }
-    assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
+    assert_eq!(bad.len(), 0, "{} mismatches:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
 }
 
 /// BS03: exp/log/pow tails (overflow, underflow into subnormals) over a full exponent sweep.
@@ -108,7 +108,7 @@ fn math_exp_log_pow_tails() {
         let g = f(&mut p, "fpow", &[b, e]); let w = b.powf(e);
         if ulp(g, w) > 2 { bad.push(format!("pow({b:e},{e:e}) = {g:e} want {w:e}")); }
     }
-    assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
+    assert_eq!(bad.len(), 0, "{} mismatches:\n{}", bad.len(), bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
 }
 
 /// BS04: cross-run determinism (two fresh instances, same bits).
@@ -147,7 +147,7 @@ fn string_parse_int_edges() {
     for (k, (i, w)) in cases.iter().chain(c32.iter()).enumerate() {
         if got[k] != *w { bad.push(format!("parse({i:?}) = {} want {w}", got[k])); }
     }
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 /// BS06: parseFloat versus Rust str::parse (correct rounding, overflow, subnormals, hard halfway cases).
@@ -169,7 +169,7 @@ fn string_parse_float_correct_rounding() {
         }
     }
     for (k, c) in info.iter().enumerate() { eprintln!("info parseFloat({c:?}) = {}", got[cases.len() + k]); }
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 /// BS07: toFixed must equal exact-decimal rounding (Rust format!("{:.N}")) incl. ties, huge, tiny, negative zero.
@@ -187,7 +187,7 @@ fn string_to_fixed_matches_exact_decimal() {
     }}
     let got = logs(SIMP, &ex);
     let bad: Vec<String> = want.iter().zip(got.iter()).filter(|(w, g)| w.2 != **g).map(|(w, g)| format!("toFixed({:e}, {}) = {g:?} want {:?}", w.0, w.1, w.2)).collect();
-    assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{} mismatches:\n{}", bad.len(), bad.join("\n"));
 }
 
 /// BS08: toRadix bounds; invalid radix must not silently produce garbage.
@@ -216,7 +216,7 @@ fn string_utf8_and_degenerate() {
     let ex: Vec<String> = cases.iter().map(|c| c.0.clone()).collect();
     let got = logs(SIMP, &ex);
     let bad: Vec<String> = cases.iter().zip(got.iter()).filter(|(c, g)| c.1 != **g).map(|(c, g)| format!("{} = {g:?} want {:?}", c.0, c.1)).collect();
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 /// BS10: repeat / padStart with an absurd count must trap (memory/fuel), never return Ok with garbage or hang.

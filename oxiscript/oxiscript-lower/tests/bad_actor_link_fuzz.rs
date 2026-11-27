@@ -420,7 +420,7 @@ fn fuzz_short_seeded() {
     let (n, fails) = campaign(0..200, 1);
     eprintln!("generated functions: {n} (x2 variants), failures: {}", fails.len());
     for f in fails.iter().take(2) { eprintln!("{f}"); }
-    assert!(fails.is_empty(), "{} failing programs (first shown above)", fails.len());
+    assert_eq!(fails.len(), 0, "{} failing programs (first shown above)", fails.len());
 }
 
 fn fuzz_long_seeded() {
@@ -428,7 +428,7 @@ fn fuzz_long_seeded() {
     eprintln!("generated functions: {n} (x2 variants), failures: {}", fails.len());
     for f in fails.iter() { eprintln!("{}", f.lines().next().unwrap_or("")); }
     if let Some(f) = fails.first() { let _ = f; }
-    assert!(fails.is_empty(), "{} failing programs", fails.len());
+    assert_eq!(fails.len(), 0, "{} failing programs", fails.len());
 }
 
 /// The host log caps a line at 1024 bytes (char boundary): treat a capped line as equal to its model.
@@ -476,7 +476,7 @@ fn link_fuzz_wide() {
     eprintln!("both-modes generator failures (ignored): {both}");
     eprintln!("link fuzz seeds {lo}..{hi} x {nf} funcs: generated {n}, failures {}", fails.len());
     for f in fails.iter().take(3) { eprintln!("{}", f.lines().next().unwrap_or("")); }
-    assert!(fails.is_empty(), "{} failing programs", fails.len());
+    assert_eq!(fails.len(), 0, "{} failing programs", fails.len());
 }
 
 #[test]

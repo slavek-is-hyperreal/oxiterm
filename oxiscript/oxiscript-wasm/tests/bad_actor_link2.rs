@@ -180,7 +180,7 @@ fn allocating_before_oxi_init_never_overlaps_program_static_data() {
         }
         assert!(!report[0].contains("INSIDE") && !report[0].contains("CORRUPTED") && report[0].contains("lens() Ok(Some(110))"), "control (no early call) is not clean: {}", report[0]);
         let bad: Vec<_> = report.iter().filter(|r| r.contains("OVERLAPS") || r.contains("INSIDE") || r.contains("CORRUPTED")).collect();
-        assert!(bad.is_empty(), "BL2-06: allocation before oxi_init lands in program static data:\n{bad:#?}");
+        assert_eq!(bad.len(), 0, "BL2-06: allocation before oxi_init lands in program static data:\n{bad:#?}");
     }
 }
 

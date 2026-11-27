@@ -387,7 +387,7 @@ fn rt_init_recall_matrix() {
         eprintln!("{r}");
     }
     let bad: Vec<_> = report.iter().filter(|r| r.contains("OVERLAPS") || r.contains("CORRUPTED")).collect();
-    assert!(bad.is_empty(), "rt_init recall corrupts memory:\n{}", bad.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    assert_eq!(bad.len(), 0, "rt_init recall corrupts memory:\n{}", bad.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
 }
 
 /// Large-chunk churn: ~1 MB blocks allocated and freed repeatedly must not grow memory without bound
@@ -495,7 +495,7 @@ fn f64_text_matches_documented_format_1e6() {
     }
     assert_eq!(w.i32("oxi_live_objects", &[]).unwrap(), 0, "f64 text leaks");
     eprintln!("f64 text: {} values, fnv-ish hash {hash:#x}, mismatches {}", edge.len() + n + 200_000, bad.len());
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "{}", bad.join("\n"));
 }
 
 /// Same hash on a second fresh instance (determinism across instances/runs).
@@ -550,7 +550,7 @@ export func @mk1(%n: i32) -> i32 {\nentry:\n  %a: [u8] = array.new %n\n  %l: i32
         eprintln!("{o}");
     }
     let bad: Vec<_> = out.iter().filter(|o| o.contains("WRAPPED")).collect();
-    assert!(bad.is_empty(), "size wrap accepted:\n{}", bad.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    assert_eq!(bad.len(), 0, "size wrap accepted:\n{}", bad.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
 }
 
 /// deinit now runs the cycle collector first: genuine leaks (unbalanced retain) of acyclic objects,

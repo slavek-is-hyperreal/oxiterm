@@ -174,6 +174,6 @@ fn stub_and_linked_agree_on_corpus() {
     for l in &leaks {
         eprintln!("{l}");
     }
-    assert!(diffs.is_empty(), "{} differential mismatches", diffs.len());
-    assert!(leaks.is_empty(), "{} leaks", leaks.len());
+    assert_eq!(diffs.len(), 0, "{} differential mismatches", diffs.len());
+    assert_eq!(leaks.len(), 0, "{} leaks", leaks.len());
 }

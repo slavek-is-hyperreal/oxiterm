@@ -38,7 +38,7 @@ fn module_imports_only_set_trap_and_exports_every_runtime_row() {
     match imps[0].ty() {
         ExternType::Func(ft) => {
             assert_eq!(ft.params(), &[wasmi::ValType::I32]);
-            assert!(ft.results().is_empty());
+            assert_eq!(ft.results().len(), 0);
         }
         other => panic!("oxi_set_trap: expected func, got {other:?}"),
     }
