@@ -1204,6 +1204,12 @@ impl<'a> Verifier<'a> {
                     self.e(format!("{ctx}: str.from_f64 needs an f64 and yields str"));
                 }
             }
+            Op::StrFromF32 { x } => {
+                want_results!(1);
+                if ty(x) != Ty::F32 || ty(&res[0]) != Ty::Str {
+                    self.e(format!("{ctx}: str.from_f32 needs an f32 and yields str"));
+                }
+            }
             Op::ArrayEmpty => {
                 want_results!(1);
                 if !matches!(ty(&res[0]), Ty::Array(_)) {

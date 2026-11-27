@@ -39,7 +39,7 @@ fn explain(reason: &str) -> &'static str {
         "panic" => "the program called panic",
         "host_denied" => "the program used a capability it was not given",
         "host_bad_argument" => "a host function rejected an argument (for example a log message or state key over 64 KiB)",
-        "unreachable" => "the program reached code that cannot run yet (for example, an f64 converted to text is not supported by the current runtime)",
+        "unreachable" => "the program reached unreachable code",
         "out_of_fuel" => "the program used up its instruction budget (an endless loop? raise it with --fuel)",
         "stack_overflow" => "the call stack is too deep (endless recursion?)",
         "memory_bounds" => "a memory access was out of range",
