@@ -18,6 +18,7 @@ fn log_of(src: &str) -> (Vec<String>, i32) {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn ring_of_100k_class_nodes_is_collected() {
     let t = Instant::now();
     let (log, live) = log_of(
@@ -38,6 +39,7 @@ export function main(log: Log): void {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn many_small_cycles_in_a_loop_are_collected() {
     let t = Instant::now();
     let (log, live) = log_of(
@@ -62,6 +64,7 @@ export function main(log: Log): void {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn cycles_through_arrays_and_closures_are_collected() {
     let (log, live) = log_of(
         r#"
@@ -120,6 +123,7 @@ export function main(log: Log): void {
 
 /// True leak must still show after deinit's collect: closure held by the host (never dropped).
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn host_held_closure_still_counts_after_deinit() {
     let src = format!(
         "{HDR}{}",
@@ -140,6 +144,7 @@ export function main(log: Log, t: Ticker): void {
 
 /// Cycle that is ALSO reachable from a host-held closure must not be collected.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn host_held_cycle_is_not_collected() {
     let src = format!(
         "{HDR}{}",
@@ -161,6 +166,7 @@ export function main(log: Log, t: Ticker): void {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn double_deinit_is_harmless() {
     let mut p = Prog::new(&format!(
         "{HDR}{}",
@@ -184,6 +190,7 @@ export function main(log: Log): void { log.write(2, g.s); }
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn call_after_deinit_does_not_touch_freed_memory() {
     let mut p = Prog::new(&format!(
         "{HDR}{}",
@@ -205,6 +212,7 @@ export function main(log: Log): void { log.write(2, g); }
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn runtime_oom_is_one_exact_trap_and_instance_recovers_on_restart() {
     let src = format!(
         "{HDR}{}",
@@ -237,6 +245,7 @@ export function main(log: Log): void { log.write(2, "up"); }
 /// Memory limit exactly at the boundary: sweep max_memory_pages so the memory.grow failure falls at every
 /// point; the only acceptable outcomes are success or exactly out_of_memory.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn memory_limit_sweep_only_oom_or_success() {
     let src = format!(
         "{HDR}{}",
@@ -269,6 +278,7 @@ export function main(log: Log): void {
 
 /// Reload / instance swap with the real runtime: no growth over many swaps, zero leak at the end.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn reload_many_times_does_not_leak_or_grow() {
     let src = format!(
         "{HDR}{}",
@@ -293,6 +303,7 @@ export function main(log: Log): void {
 
 /// A user program cannot name the runtime's private import module or its trap helper.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn guest_cannot_import_oxi_rt_or_export_trap_helpers() {
     // IDL module literally named "oxi:rt" with the helper's name
     let idl = r#"
@@ -320,6 +331,7 @@ interface Evil "oxi:rt" @1 {
 /// BA-LINK-01: the cycle collector allocates its own work vectors, so collecting garbage that FITS in
 /// memory can itself trap out_of_memory (and poison the instance). Sweep the amount of garbage.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn collect_cycles_needs_headroom_probe() {
     let src = format!(
         "{HDR}{}",
@@ -356,6 +368,7 @@ export function main(log: Log): void { log.write(2, "up"); }
 
 /// Every compiler-raised trap must report the same kind Stub vs Linked (single trap channel unchanged).
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn compiler_traps_report_same_kind_stub_and_linked() {
     use oxiscript_wasm::RuntimeMode;
     let cases: &[(&str, &str)] = &[
@@ -395,6 +408,7 @@ fn compiler_traps_report_same_kind_stub_and_linked() {
 
 /// Deep structures: freeing and collecting must not recurse on the Wasm stack.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn deep_array_nesting_and_deep_ring_collect_without_stack_overflow() {
     let src = format!(
         "{HDR}{}",
@@ -430,6 +444,7 @@ export function main(log: Log): void { log.write(2, "up"); }
 /// Scratch is now the runtime's 4096-byte static buffer in .bss (neighbours: allocator/RT state).
 /// Max-size payloads (4096 bytes, all 0xFF-ish UTF-8) must not corrupt the runtime.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn max_scratch_payloads_do_not_corrupt_runtime_state() {
     let src = format!(
         "{HDR}{}",
@@ -464,6 +479,7 @@ export function main(log: Log): void { log.write(2, "up"); }
 /// a long-running instance cyclic garbage accumulates until the memory limit. The new `deinit` collect hides
 /// this from every leak check. Each `mk()` call creates ONE garbage 2-cycle.
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn long_running_instance_leaks_cycles_until_oom_without_host_collect() {
     let src = format!(
         "{HDR}{}",
@@ -492,6 +508,7 @@ export function main(log: Log): void { log.write(2, "up"); }
 
 /// f32 text: abi.md documents f64 only. What does `${f32}` print for a value that is inexact in f32?
 #[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: the whole bad_actor_link file takes > 10 min in debug (wasmi debug build); runs in the gate release step")]
 fn f32_text_probe() {
     let mut p = Prog::new(&format!(
         "{HDR}{}",
