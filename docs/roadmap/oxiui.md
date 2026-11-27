@@ -262,6 +262,13 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - Gate: owned by 8.S1 (counter page driven by OxiScript in both modes; BAD ACTOR on capability escape).
 - Depends: [8.S1](oxiscript.md#s-8-s1), [8.M-link](oxiscript.md#s-8-m-link), 7.1 (done), U.Idle. Status: todo. Sources: R2-62; R4-55; R3-44.
 
+<a id="s-u-anim"></a>
+#### U.Anim Client-side animation (owner 2026-11-27)
+- Scope: server-streamed animations are jerky on real networks because every 16 ms frame travels over the network. Instead the server sends a **visual description** once (element, property, from, to, duration, easing; covers TCSS `transition`, `spring()`, drag inertia, appear/disappear) and the GUI client (and local mode) interpolates at the display refresh rate; a new target mid-animation retargets smoothly. Cell mode: colour transitions only; SSH terminals keep server-ticked animation.
+- **Security invariants (owner: the streamed version is meant for sensitive uses such as logins and banking, where the client knows no logic):** (1) animation messages carry only values that will be visible anyway, never logic, rules or hidden state; (2) the server stays the only source of truth and accepts nothing from the client about animations; (3) hit-testing during an animation is decided by the server from the deterministic timeline, never from the client's view; (4) a page/server **strict mode** disables client-side animation completely (server-ticked or no animation), also honouring reduced-motion.
+- Gate: 60 fps on the GUI client under an injected 100 ms network delay with jitter; final frame identical to the server (test); interrupting mid-way changes direction without a jump; strict mode sends no animation messages (test); BAD ACTOR (Opus) attacks the client parser (malformed/huge descriptions) and checks that no animation message reveals anything not on screen.
+- Depends: the GUI-default decision and the gemini-oxiui merge. Status: todo.
+
 <a id="s-u-quirks"></a>
 #### U.Quirks Pinned quirks and filesystem users
 - Scope: decide each Phase 4 quirk the traces pin (do not fix silently): `<for>` re-expanded only on `StatePatched`, `current_page` not normalised, Enter pushes `'\r'` into predictive echo, `<for>` template node rendered, origin policy of `open_url` and token resync differs between App Server response and push endpoint; remove residual filesystem users (`source_path`/`base_source_path`, `Renderer::read_asset`, attach `page` param check); `0x21 update_document` cleared and resent every GUI frame on media pages (fix needs client + trace baseline change).
