@@ -4,9 +4,6 @@ Po polsku, dla twórcy (zob. [creator_persona.md](../creator_persona.md)). Odpow
 
 Stan: 2026-11-26 wieczór. Otwarte zostały:
 
-## F. Narzędzia
-- **Q-DX-1** Własny darmowy symulator płytki w przeglądarce (wirtualne GPIO i czujniki) zamiast płatnego Wokwi. **Sugestia:** tak. Wyjaśnienie: patrz rozmowa 2026-11-27.
-
 ## G. OxiBench (test agentów AI) — odłożone przez twórcę na później (2026-11-27)
 
 - **Q-OB-1** Zatwierdzić metodologię (`docs/research/oxibench-methodology.md`, sekcje 1 i 10). **Sugestia:** przeczytaj i zatwierdź albo popraw.
