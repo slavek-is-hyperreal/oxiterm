@@ -56,7 +56,13 @@ fn r1_01_many_functions_with_max_locals_tiny_bodies() {
     let attack = many_locals_module(9_900, 29_990);
     let (dt, r) = time_load(&attack);
     eprintln!("attack: 9900 funcs x 29990 locals: {} bytes, {dt:?}, {r:?}", attack.len());
-    assert!(r.is_ok(), "accepted shape expected: {r:?}");
+    // R1-01 fix: `load::reject_reexports` now bounds total declared locals (1 M),
+    // rejecting this 296.9 M-locals amplification payload with OXS-E0408 before
+    // eager compilation.
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("OXS-E0408")),
+        "expected OXS-E0408 rejection for 296.9M declared locals: {r:?}"
+    );
     // A legitimate module loads at roughly 80 ns/byte in release (600 KB of nested
     // blocks: ~48 ms). Allow 20x that before calling it an amplification.
     let budget = Duration::from_nanos(attack.len() as u64 * 80 * 20).max(Duration::from_millis(100));

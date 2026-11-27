@@ -133,7 +133,7 @@ pub fn collect(run: &Run) -> Vec<Diag> {
             code: d.code.to_string(),
             severity: severity_of(d.code),
             message: sanitize_terminal(&d.message),
-            file: sanitize_terminal(&run.files[fi].display),
+            file: run.files[fi].display.clone(),
             range: r,
             fixes: fixes_of(run, d),
         };
@@ -150,7 +150,7 @@ pub fn diag_at(srcs: &[SourceFile], span: Span, code: &str, message: String, fix
         code: code.to_string(),
         severity: severity_of(code),
         message: sanitize_terminal(&message),
-        file: sanitize_terminal(&srcs[fi].display),
+        file: srcs[fi].display.clone(),
         range: r,
         fixes: fixes
             .into_iter()
@@ -175,7 +175,7 @@ fn fixes_of(run: &Run, d: &Diagnostic) -> Vec<FixOut> {
                 .filter_map(|e| {
                     let (fi, r) = range(&run.files, e.span)?;
                     Some(EditOut {
-                        file: sanitize_terminal(&run.files[fi].display),
+                        file: run.files[fi].display.clone(),
                         range: r,
                         new_text: e.replacement.clone(),
                     })
@@ -194,7 +194,7 @@ fn range_json(r: &Range) -> Value {
 }
 
 pub fn diag_json(d: &Diag) -> Value {
-    json!({
+    let mut obj = json!({
         "code": d.code,
         "severity": d.severity,
         "message": d.message,
@@ -209,7 +209,14 @@ pub fn diag_json(d: &Diag) -> Value {
                 "new_text": e.new_text,
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
-    })
+    });
+    let safe = sanitize_terminal(&d.file);
+    if safe != d.file {
+        if let Some(m) = obj.as_object_mut() {
+            m.insert("file_display".to_string(), json!(safe));
+        }
+    }
+    obj
 }
 
 /// The whole `oxi check --json` document.

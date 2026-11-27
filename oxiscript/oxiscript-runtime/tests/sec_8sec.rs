@@ -242,3 +242,118 @@ fn fuel_fault_injection_sweep_poisons_cleanly_and_recovers_on_restart() {
     }
     assert!(saw_trap && saw_ok, "sweep must cover both trap and ok paths");
 }
+
+/// R1-01 boundary: a module right at the 1 000 000 total declared locals cap loads
+/// cheaply, while exceeding it by even 1 local is rejected with `OXS-E0408`.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "heavy: run with --release")]
+fn total_declared_locals_cap_accepts_at_limit_and_rejects_above() {
+    use std::time::Instant;
+
+    fn leb_u32(mut v: u32, out: &mut Vec<u8>) {
+        loop {
+            let b = (v & 0x7f) as u8;
+            v >>= 7;
+            if v == 0 {
+                out.push(b);
+                break;
+            }
+            out.push(b | 0x80);
+        }
+    }
+
+    fn read_leb(b: &[u8], p: &mut usize) -> u32 {
+        let mut r = 0u32;
+        let mut s = 0;
+        loop {
+            let x = b[*p];
+            *p += 1;
+            r |= u32::from(x & 0x7f) << s;
+            s += 7;
+            if x & 0x80 == 0 {
+                return r;
+            }
+        }
+    }
+
+    fn module_with_locals(funcs: u32, locals_per_func: u32, extra_in_last: u32) -> Vec<u8> {
+        let mut body = String::new();
+        for _ in 0..funcs {
+            body.push_str("(func (local i64))\n");
+        }
+        let wasm = Fixture::new(&[]).body(&body).bytes();
+        let mut out = wasm[..8].to_vec();
+        let mut p = 8;
+        while p < wasm.len() {
+            let id = wasm[p];
+            p += 1;
+            let size = read_leb(&wasm, &mut p) as usize;
+            let sec = &wasm[p..p + size];
+            p += size;
+            if id != 10 {
+                out.push(id);
+                leb_u32(size as u32, &mut out);
+                out.extend_from_slice(sec);
+                continue;
+            }
+            let mut q = 0;
+            let count = read_leb(sec, &mut q);
+            let mut new = Vec::new();
+            leb_u32(count, &mut new);
+            let mut matched = 0u32;
+            for _ in 0..count {
+                let bsz = read_leb(sec, &mut q) as usize;
+                let fb = &sec[q..q + bsz];
+                q += bsz;
+                if fb == [1, 1, 0x7e, 0x0b] {
+                    matched += 1;
+                    let n = if matched == funcs {
+                        locals_per_func + extra_in_last
+                    } else {
+                        locals_per_func
+                    };
+                    let mut nb = vec![1];
+                    leb_u32(n, &mut nb);
+                    nb.extend_from_slice(&[0x7e, 0x0b]);
+                    leb_u32(nb.len() as u32, &mut new);
+                    new.extend_from_slice(&nb);
+                } else {
+                    leb_u32(bsz as u32, &mut new);
+                    new.extend_from_slice(fb);
+                }
+            }
+            out.push(10);
+            leb_u32(new.len() as u32, &mut out);
+            out.extend_from_slice(&new);
+        }
+        out
+    }
+
+    let host = Host::new(Limits::default());
+    // Exactly 1 000 000 locals (50 functions x 20 000 locals): accepted and cheap.
+    let at_cap = module_with_locals(50, 20_000, 0);
+    let t0 = Instant::now();
+    host.instantiate(&at_cap, Grants::none())
+        .expect("1 000 000 total locals must be accepted");
+    let dt_ok = t0.elapsed();
+    eprintln!(
+        "R1-01 at cap (50 x 20 000 = 1 000 000 locals): {} bytes, load {dt_ok:?}",
+        at_cap.len()
+    );
+    assert!(dt_ok.as_millis() < 200, "at-cap load took {dt_ok:?}");
+
+    // 1 000 001 locals: rejected immediately with OXS-E0408.
+    let over_cap = module_with_locals(50, 20_000, 1);
+    let t1 = Instant::now();
+    let err = host
+        .instantiate(&over_cap, Grants::none())
+        .err()
+        .expect("1 000 001 total locals must be rejected");
+    let dt_err = t1.elapsed();
+    eprintln!(
+        "R1-01 over cap (1 000 001 locals): {} bytes, reject {dt_err:?}, err {err:?}",
+        over_cap.len()
+    );
+    assert_eq!(err.code(), "OXS-E0408");
+    assert!(dt_err.as_millis() < 50, "over-cap rejection took {dt_err:?}");
+}

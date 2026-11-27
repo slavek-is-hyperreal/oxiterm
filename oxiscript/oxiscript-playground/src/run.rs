@@ -6,7 +6,7 @@
 //! terminated); the deterministic limit is fuel.
 
 use crate::{check_json, host_interfaces, utf16_at};
-use oxiscript_abi::sanitize::sanitize_terminal;
+use oxiscript_abi::sanitize::{sanitize_log, sanitize_terminal};
 use oxiscript_abi::target::Target;
 use oxiscript_lower::{compile_source_with_notes, Options};
 use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
@@ -185,7 +185,7 @@ pub fn run_json(src: &str, fuel: u64) -> String {
         "ok": true,
         "noMain": !has_main,
         "exported": exported.iter().map(|n| sanitize_terminal(n)).collect::<Vec<_>>(),
-        "lines": r.lines.iter().map(|l| json!({ "level": l.level, "msg": sanitize_terminal(&l.msg) })).collect::<Vec<_>>(),
+        "lines": r.lines.iter().map(|l| json!({ "level": l.level, "msg": sanitize_log(&l.msg) })).collect::<Vec<_>>(),
         "dropped": r.dropped,
         "fuelUsed": r.fuel_used,
         "fuel": fuel,

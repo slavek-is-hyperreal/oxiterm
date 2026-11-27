@@ -731,6 +731,14 @@ impl<'a> Parser<'a> {
             ));
             return;
         }
+        if self.cur_nl() && matches!(self.kind(), Tk::TemplateFull | Tk::TemplateHead) {
+            self.diag(Diagnostic::new(
+                "OXS-E0004",
+                at,
+                "missing `;` on this line before a template literal on the next line; automatic `;` insertion is skipped because a leading `` ` `` is an ASI hazard",
+            ));
+            return;
+        }
         let d = Diagnostic::new("OXS-E0004", at, "statements end with `;`").with_fix(Fix::insert(
             "insert `;`",
             at,

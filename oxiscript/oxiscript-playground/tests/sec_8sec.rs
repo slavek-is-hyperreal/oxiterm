@@ -54,3 +54,20 @@ export function main(log: Log): void {
     assert!(msg.contains("\\x0d"), "expected escaped CR: {msg}");
     assert!(msg.contains("\\u{202e}"), "expected escaped RLO: {msg}");
 }
+
+#[cfg(feature = "run")]
+#[test]
+fn playground_run_json_preserves_zwj_and_zwnj_in_log_lines() {
+    let src = r#"
+import { Log } from "host:log";
+export function main(log: Log): void {
+  log.write(2, "family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}");
+  log.write(2, "\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}");
+}
+"#;
+    let v: Value = serde_json::from_str(&run_json(src, 1_000_000)).expect("valid json");
+    assert_eq!(v["ok"], Value::Bool(true), "{v}");
+    let lines = v["lines"].as_array().expect("lines");
+    assert_eq!(lines[0]["msg"].as_str(), Some("family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"));
+    assert_eq!(lines[1]["msg"].as_str(), Some("\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}"));
+}

@@ -140,11 +140,13 @@ impl Capability for LogCap {
     }
 }
 
-/// Escape every control and bidi/invisible character (via the shared
-/// `oxiscript_abi::sanitize` implementation) and cut the result at `max` bytes
+/// Escape every terminal control, bidi control and spoofing invisible character
+/// (via `oxiscript_abi::sanitize::sanitize_log_bounded`) while preserving
+/// legitimate orthographic joiners (`U+200C` ZWNJ and `U+200D` ZWJ for emoji
+/// sequences, Persian and Indic text), and cut the result at `max` bytes
 /// without splitting a character or an escape sequence. Sinks only ever see
 /// text with no control or bidi characters, so a script cannot forge log lines
 /// or drive the host terminal.
 pub fn sanitize(msg: &str, max: usize) -> String {
-    oxiscript_abi::sanitize::sanitize_terminal_bounded(msg, max)
+    oxiscript_abi::sanitize::sanitize_log_bounded(msg, max)
 }

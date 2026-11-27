@@ -48,10 +48,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use wasmi::{
     CompilationMode, Config, EnforcedLimits, Engine, ExternType, Func, FuncType, Global, Linker,
-    Memory, Module, Store, StoreLimitsBuilder, TrapCode, Val, ValType,
+    Memory, Module, ResumableCall, Store, StoreLimitsBuilder, TrapCode, Val, ValType,
 };
 
 const PAGE: usize = 65_536;
+/// Fuel slice size when `Limits::call_wall_micros` is active so compute-only
+/// loops without host calls still yield periodically to check the wall clock.
+const WALL_FUEL_SLICE: u64 = 10_000;
 
 struct HostInner {
     /// One `Engine` per instance (built from this config): wasmi's engine
@@ -453,6 +456,7 @@ impl Instance {
                 host_calls: 0,
                 clock: host.clock.clone(),
                 call_start_us: None,
+                fuel_reserve: 0,
             },
         );
         store.limiter(|d| &mut d.limits);
@@ -583,7 +587,6 @@ impl Instance {
             return Err(Error::Poisoned);
         }
         let fuel = self.store.data().cfg.fuel_per_call;
-        let _ = self.store.set_fuel(fuel);
         for c in &mut self.store.data_mut().caps {
             if let Some(imp) = c.imp.as_mut() {
                 imp.begin_turn();
@@ -604,9 +607,50 @@ impl Instance {
             None
         };
         self.store.data_mut().call_start_us = t0;
-        let r = f.call(&mut self.store, args, &mut results);
+        let r = if wall_cap > 0 && t0.is_some() {
+            let slice = fuel.min(WALL_FUEL_SLICE);
+            self.store.data_mut().fuel_reserve = fuel - slice;
+            let _ = self.store.set_fuel(slice);
+            let mut step = f.call_resumable(&mut self.store, args, &mut results);
+            loop {
+                match step {
+                    Ok(ResumableCall::Finished) => break Ok(()),
+                    Ok(ResumableCall::HostTrap(ht)) => break Err(ht.into_host_error()),
+                    Ok(ResumableCall::OutOfFuel(handle)) => {
+                        if let (Some(start), Some(clk)) = (t0, self.store.data().clock.as_ref()) {
+                            if clk().saturating_sub(start) >= wall_cap {
+                                break Err(wasmi::Error::host(HostTrap(
+                                    TrapCause::HostFailure("wall-clock limit exceeded".into()),
+                                )));
+                            }
+                        }
+                        let left_in_slice = self.store.get_fuel().unwrap_or(0);
+                        let reserve = self.store.data().fuel_reserve;
+                        let req = handle.required_fuel();
+                        if left_in_slice.saturating_add(reserve) < req {
+                            break Err(TrapCode::OutOfFuel.into());
+                        }
+                        let grant =
+                            reserve.min(WALL_FUEL_SLICE.max(req.saturating_sub(left_in_slice)));
+                        self.store.data_mut().fuel_reserve = reserve - grant;
+                        let _ = self.store.set_fuel(left_in_slice.saturating_add(grant));
+                        step = handle.resume(&mut self.store, &mut results);
+                    }
+                    Err(e) => break Err(e),
+                }
+            }
+        } else {
+            self.store.data_mut().fuel_reserve = 0;
+            let _ = self.store.set_fuel(fuel);
+            f.call(&mut self.store, args, &mut results)
+        };
         self.store.data_mut().call_start_us = None;
-        let left = self.store.get_fuel().unwrap_or(0);
+        let left = self
+            .store
+            .get_fuel()
+            .unwrap_or(0)
+            .saturating_add(self.store.data().fuel_reserve);
+        self.store.data_mut().fuel_reserve = 0;
         self.last_fuel_used = fuel.saturating_sub(left);
         match r {
             Ok(()) => {

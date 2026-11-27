@@ -9,7 +9,7 @@ use crate::check::{project_for, HostCache, EXIT_FATAL, EXIT_FINDINGS};
 use crate::needs;
 use crate::project::{self, Entry};
 use crate::report;
-use oxiscript_abi::sanitize::sanitize_terminal;
+use oxiscript_abi::sanitize::{sanitize_log, sanitize_terminal};
 use oxiscript_abi::target::Target;
 use oxiscript_playground::run::{run_wasm_on, DEFAULT_FUEL};
 use std::collections::HashMap;
@@ -148,7 +148,7 @@ pub fn run(a: &Args) -> i32 {
     let report = run_wasm_on(&wasm, fuel, target);
     let mut pipe_closed = false;
     for l in &report.lines {
-        let clean = sanitize_terminal(&l.msg);
+        let clean = sanitize_log(&l.msg);
         let r = if l.level >= 3 { emit(true, &format!("{}: {clean}", if l.level == 3 { "warn" } else { "error" })) } else { emit(false, &clean) };
         match r {
             Sink::Ok => {}

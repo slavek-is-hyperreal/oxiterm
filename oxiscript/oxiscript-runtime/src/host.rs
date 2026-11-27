@@ -63,6 +63,9 @@ pub(crate) struct Data {
     pub host_calls: u64,
     pub clock: Option<crate::Clock>,
     pub call_start_us: Option<u64>,
+    /// Remaining call fuel held in reserve while `call_wall_micros` runs the
+    /// guest in bounded fuel slices (zero when wall-clock slicing is inactive).
+    pub fuel_reserve: u64,
 }
 
 fn check_wall(caller: &Caller<'_, Data>) -> Result<(), WasmiError> {
@@ -81,10 +84,18 @@ fn check_wall(caller: &Caller<'_, Data>) -> Result<(), WasmiError> {
 }
 
 fn charge(caller: &mut Caller<'_, Data>, amount: u64) -> Result<(), WasmiError> {
-    let fuel = caller.get_fuel()?;
+    let mut fuel = caller.get_fuel()?;
     if fuel < amount {
-        caller.set_fuel(0)?;
-        return Err(TrapCode::OutOfFuel.into());
+        let need = amount - fuel;
+        let reserve = caller.data().fuel_reserve;
+        if reserve >= need {
+            caller.data_mut().fuel_reserve = reserve - need;
+            fuel += need;
+        } else {
+            caller.data_mut().fuel_reserve = 0;
+            caller.set_fuel(0)?;
+            return Err(TrapCode::OutOfFuel.into());
+        }
     }
     caller.set_fuel(fuel - amount)?;
     Ok(())

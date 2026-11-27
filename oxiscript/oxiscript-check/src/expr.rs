@@ -1466,8 +1466,10 @@ impl<'a> Checker<'a> {
 
     // ---- assignment -------------------------------------------------------------------------
 
-    /// Type of an assignment target and whether it can be assigned; reports errors.
-    fn place(&mut self, target: &'a Expr, plain: bool) -> Option<Ty> {
+    /// Type of an assignment target `(read_ty, write_ty)` and whether it can be assigned;
+    /// reports errors. `read_ty` reflects flow narrowing (used by compound assignment and `++`/`--`);
+    /// `write_ty` is the declared storage type (used by plain assignment and write-back checks).
+    fn place(&mut self, target: &'a Expr, plain: bool) -> Option<(Ty, Ty)> {
         let t = strip_paren(target);
         match &t.kind {
             ExprKind::Ident(_) => {
@@ -1489,7 +1491,8 @@ impl<'a> Checker<'a> {
                             return None;
                         }
                         self.mods[self.cm].out.locals[l.0 as usize].mutated = true;
-                        Some(self.mods[self.cm].out.locals[l.0 as usize].ty)
+                        let declared = self.mods[self.cm].out.locals[l.0 as usize].ty;
+                        Some((ty, declared))
                     }
                     Some(Res::Def(d)) if self.kind_of(d) == DefKind::Global => {
                         let g = self.globals.get(&d).cloned()?;
@@ -1504,7 +1507,7 @@ impl<'a> Checker<'a> {
                             return None;
                         }
                         self.note_effect(4);
-                        Some(g.ty)
+                        Some((g.ty, g.ty))
                     }
                     Some(_) => {
                         self.err("OXS-E0109", target.span, &[("what", "this name"), ("detail", "it is not a variable")]);
@@ -1548,7 +1551,8 @@ impl<'a> Checker<'a> {
                         break;
                     }
                 }
-                Some(ty)
+                let write_ty = self.declared_member_ty(t).unwrap_or(ty);
+                Some((ty, write_ty))
             }
             ExprKind::This => {
                 self.err("OXS-E0109", target.span, &[("what", "`this`"), ("detail", "it is not a variable")]);
@@ -1560,6 +1564,21 @@ impl<'a> Checker<'a> {
                 None
             }
         }
+    }
+
+    fn declared_member_ty(&mut self, t: &'a Expr) -> Option<Ty> {
+        let ExprKind::Member { obj, .. } = &t.kind else { return None };
+        let Some(Res::Field { owner, index }) = self.mods[self.cm].out.res.get(&t.id).copied() else { return None };
+        let ot = self.mods[self.cm].out.expr_ty.get(strip_paren(obj).id.0 as usize).copied()?;
+        let args: Vec<Ty> = match self.tys.kind(self.non_null(ot)).clone() {
+            TyKind::Adt(_, a) => a.to_vec(),
+            TyKind::Variants(_, a, _) => a.to_vec(),
+            _ => Vec::new(),
+        };
+        let fty = self.records.get(&owner)?.fields.get(index as usize)?.ty;
+        let tps = self.defs[owner.0 as usize].info.tparams.clone();
+        let map: Vec<(ParamId, Ty)> = tps.into_iter().zip(args).collect();
+        Some(self.tys.subst(fty, &map))
     }
 
     fn const_to_let_fix(&self, l: LocalId) -> Option<Fix> {
@@ -1765,71 +1784,86 @@ impl<'a> Checker<'a> {
 
     fn assign(&mut self, e: &'a Expr, op: Option<BinOp>, target: &'a Expr, value: &'a Expr) -> Ty {
         // the value is evaluated first for definite-assignment purposes only when it does not mention the target
-        let tt = self.place(target, op.is_none());
-        let Some(tt) = tt else {
+        let Some((read_ty, write_ty)) = self.place(target, op.is_none()) else {
             self.expr(value, None);
             return ERROR;
         };
-        self.set_ty(target.id, tt);
         match op {
             None => {
-                let vt = self.expr(value, Some(tt));
-                let ok = self.coerce_to(value, vt, tt);
+                self.set_ty(target.id, write_ty);
+                let vt = self.expr(value, Some(write_ty));
+                let ok = self.coerce_to(value, vt, write_ty);
                 self.invalidate_target(target);
                 // assignment narrowing for locals declared with a wider type
-                if ok && vt != tt {
+                if ok && vt != write_ty {
                     if let Some(p) = self.path_of(strip_paren(target)) {
                         if vt != ERROR && self.mods[self.cm].out.res.get(&strip_paren(target).id).is_some_and(|r| matches!(r, Res::Local(_))) {
                             self.flow.set(p, vt);
                         }
                     }
                 }
+                write_ty
             }
             Some(bop) => {
-                let vt = self.expr(value, Some(tt));
-                if tt != ERROR && vt != ERROR {
-                    let t_null = matches!(self.tys.kind(tt), TyKind::Nullable(_) | TyKind::Null);
+                self.set_ty(target.id, read_ty);
+                let vt = self.expr(value, Some(read_ty));
+                let mut res_ok = false;
+                if read_ty != ERROR && vt != ERROR {
+                    let t_null = matches!(self.tys.kind(read_ty), TyKind::Nullable(_) | TyKind::Null);
                     let v_null = matches!(self.tys.kind(vt), TyKind::Nullable(_) | TyKind::Null);
                     if t_null || v_null {
                         if t_null {
-                            self.possibly_null(target, tt);
+                            self.possibly_null(target, read_ty);
                         }
                         if v_null {
                             self.possibly_null(value, vt);
                         }
                     } else {
-                        match self.binary_result(bop, tt, vt) {
-                            Some(r) if r == tt => {
+                        match self.binary_result(bop, read_ty, vt) {
+                            Some(r) if r == read_ty && self.assignable(r, write_ty) => {
                                 if matches!(bop, BinOp::Shl | BinOp::Shr) {
-                                    self.check_shift_amount(value, tt);
+                                    self.check_shift_amount(value, read_ty);
                                 }
+                                res_ok = true;
                             }
                             _ => {
-                                let (sl, sr) = (self.show(tt), self.show(vt));
-                                let fix = if matches!(bop, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(value, tt, vt, format!("Convert the right operand with `as {sl}`")) };
+                                let (sl, sr) = (self.show(read_ty), self.show(vt));
+                                let fix = if matches!(bop, BinOp::Shl | BinOp::Shr) { None } else { self.as_fix(value, read_ty, vt, format!("Convert the right operand with `as {sl}`")) };
                                 self.err_fix("OXS-E0110", e.span, &[("op", &format!("{}=", Self::op_str(bop))), ("lhs", &sl), ("rhs", &sr)], fix);
                             }
                         }
                     }
                 }
                 self.invalidate_target(target);
+                if res_ok && read_ty != write_ty && read_ty != ERROR {
+                    if let Some(p) = self.path_of(strip_paren(target)) {
+                        self.flow.set(p, read_ty);
+                    }
+                }
+                read_ty
             }
         }
-        let _ = e;
-        tt
     }
 
     fn update(&mut self, e: &'a Expr, target: &'a Expr) -> Ty {
-        let Some(tt) = self.place(target, false) else { return ERROR };
-        self.set_ty(target.id, tt);
-        if matches!(self.tys.kind(tt), TyKind::Nullable(_) | TyKind::Null) {
-            self.possibly_null(target, tt);
-        } else if !matches!(self.tys.kind(tt), TyKind::Num(_)) && tt != ERROR {
-            let s = self.show(tt);
+        let Some((read_ty, write_ty)) = self.place(target, false) else { return ERROR };
+        self.set_ty(target.id, read_ty);
+        let mut res_ok = false;
+        if matches!(self.tys.kind(read_ty), TyKind::Nullable(_) | TyKind::Null) {
+            self.possibly_null(target, read_ty);
+        } else if !matches!(self.tys.kind(read_ty), TyKind::Num(_)) && read_ty != ERROR {
+            let s = self.show(read_ty);
             self.err("OXS-E0128", e.span, &[("op", "++"), ("ty", &s)]);
+        } else if read_ty != ERROR {
+            res_ok = self.assignable(read_ty, write_ty);
         }
         self.invalidate_target(target);
-        tt
+        if res_ok && read_ty != write_ty && read_ty != ERROR {
+            if let Some(p) = self.path_of(strip_paren(target)) {
+                self.flow.set(p, read_ty);
+            }
+        }
+        read_ty
     }
 
     // ---- casts ------------------------------------------------------------------------------

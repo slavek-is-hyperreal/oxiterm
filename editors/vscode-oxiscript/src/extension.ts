@@ -149,7 +149,7 @@ function spawnOxi(args: string[], input: string, cwd: string, key: string): Prom
 }
 
 function warnMissing(e: NodeJS.ErrnoException): void {
-  output.appendLine(`cannot run oxi: ${e.message}`);
+  output.appendLine(sanitizeTerminal(`cannot run oxi: ${e.message}`));
   if (warnedMissing) return;
   warnedMissing = true;
   void vscode.window
@@ -167,7 +167,7 @@ async function check(doc: vscode.TextDocument): Promise<void> {
     await checkInner(doc);
   } catch (e) {
     // never an unhandled rejection; drop results that might be stale
-    output.appendLine(`oxi check failed for ${doc.fileName}: ${(e as Error).message}`);
+    output.appendLine(sanitizeTerminal(`oxi check failed for ${doc.fileName}: ${(e as Error).message}`));
     collection.delete(doc.uri);
     checked.delete(doc.uri.toString());
   }
@@ -316,7 +316,7 @@ class Formatter implements vscode.DocumentFormattingEditProvider {
     }
     if (r.code !== 0) {
       // Syntax errors: the diagnostics already show them; leave the buffer alone.
-      output.appendLine(`oxi fmt did not format ${doc.fileName}: ${r.stderr.trim()}`);
+      output.appendLine(sanitizeTerminal(`oxi fmt did not format ${doc.fileName}: ${r.stderr.trim()}`));
       return [];
     }
     if (r.stdout === doc.getText()) return [];
@@ -344,7 +344,7 @@ async function semicolonEdits(doc: vscode.TextDocument): Promise<vscode.TextEdit
     if (!ins) return [];
     return ins.map((p) => vscode.TextEdit.replace(new vscode.Range(p.line, p.character, p.line, p.character), ";"));
   } catch (e) {
-    output.appendLine(`semicolon fix failed for ${doc.fileName}: ${(e as Error).message}`);
+    output.appendLine(sanitizeTerminal(`semicolon fix failed for ${doc.fileName}: ${(e as Error).message}`));
     return [];
   }
 }

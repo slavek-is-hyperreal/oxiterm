@@ -2,6 +2,8 @@
 
 use crate::check::{EXIT_FATAL, EXIT_FINDINGS, EXIT_OK};
 use crate::project::{self, collect_oxs, ReadError, SourceFile};
+use oxiscript_abi::sanitize::sanitize_terminal;
+use oxiscript_syntax::lexer::is_invisible;
 use oxiscript_syntax::{parse, CommentKind, FileId};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -13,14 +15,37 @@ pub struct Args {
 }
 
 fn syntax_errors(display: &str, src: &str, e: &oxiscript_syntax::FormatError) -> String {
+    let safe_display = sanitize_terminal(display);
     let f = SourceFile::new(display.to_string(), src.to_string());
     let mut s = String::new();
     for d in e.diagnostics.iter().filter(|d| d.is_error()).take(5) {
         let (l, c, _) = f.pos(d.span.lo);
-        s.push_str(&format!("{display}:{l}:{c}: error[{}]: {}\n", d.code, d.message));
+        s.push_str(&format!(
+            "{safe_display}:{l}:{c}: error[{}]: {}\n",
+            d.code,
+            sanitize_terminal(&d.message)
+        ));
     }
-    s.push_str(&format!("{display}: not formatted (fix the syntax errors first: `oxi check --fix` inserts missing `;` and applies the other safe syntax fixes, `oxi check` shows the rest)\n"));
+    s.push_str(&format!("{safe_display}: not formatted (fix the syntax errors first: `oxi check --fix` inserts missing `;` and applies the other safe syntax fixes, `oxi check` shows the rest)\n"));
     s
+}
+
+/// Escape invisible and bidi control characters inside preserved line comments,
+/// matching `oxiscript-syntax`'s block-comment hygiene so `oxi fmt` cannot
+/// re-emit raw Trojan Source controls in `//` or `///` comments.
+fn sanitize_line_comment(s: &str) -> String {
+    if !s.chars().any(|c| is_invisible(c) && !matches!(c, '\n' | '\r' | '\t')) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if is_invisible(c) && !matches!(c, '\n' | '\r' | '\t') {
+            out.push_str(&format!("\\u{{{:X}}}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// The canonical format of `src`, keeping what the formatter has no business changing: a leading
@@ -72,9 +97,9 @@ fn restore_line_comments(input: &str, output: &str) -> String {
         if !y.2 {
             continue;
         }
-        let want = input[x.0..x.1].trim_end();
+        let want = sanitize_line_comment(input[x.0..x.1].trim_end());
         res.push_str(&output[at..y.0]);
-        res.push_str(want);
+        res.push_str(&want);
         at = y.1;
     }
     res.push_str(&output[at..]);
@@ -85,7 +110,7 @@ pub fn run(a: &Args) -> i32 {
     if a.stdin {
         let mut src = String::new();
         if let Err(e) = std::io::stdin().read_to_string(&mut src) {
-            eprintln!("error: cannot read stdin: {e}");
+            eprintln!("error: cannot read stdin: {}", sanitize_terminal(&e.to_string()));
             return EXIT_FATAL;
         }
         return match format_preserving(&src) {
@@ -103,11 +128,14 @@ pub fn run(a: &Args) -> i32 {
     let mut files = Vec::new();
     for p in &paths {
         if !p.exists() {
-            eprintln!("error: {}: no such file or directory", p.display());
+            eprintln!(
+                "error: {}: no such file or directory",
+                sanitize_terminal(&p.display().to_string())
+            );
             return EXIT_FATAL;
         }
         if let Err(e) = collect_oxs(p, &mut files) {
-            eprintln!("error: {e}");
+            eprintln!("error: {}", sanitize_terminal(&e));
             return EXIT_FATAL;
         }
     }
@@ -115,6 +143,7 @@ pub fn run(a: &Args) -> i32 {
     let mut bad = 0;
     for f in &files {
         let display = f.strip_prefix("./").unwrap_or(f).to_string_lossy().replace('\\', "/");
+        let safe_display = sanitize_terminal(&display);
         let src = match project::read_regular(f, project::MAX_SOURCE_BYTES) {
             Ok(s) => s,
             Err(ReadError::Skipped(why)) => {
@@ -123,7 +152,7 @@ pub fn run(a: &Args) -> i32 {
             }
             Err(ReadError::Failed(why) | ReadError::TooLarge(why) | ReadError::NotUtf8(why)) => {
                 // one unreadable file does not stop the others
-                eprintln!("error: {display}: {why}");
+                eprintln!("error: {safe_display}: {}", sanitize_terminal(&why));
                 bad += 1;
                 continue;
             }
@@ -133,12 +162,12 @@ pub fn run(a: &Args) -> i32 {
                 if out != src {
                     changed += 1;
                     if a.check {
-                        println!("would reformat {display}");
+                        println!("would reformat {safe_display}");
                     } else if let Err(e) = project::write_atomic(f, &out) {
-                        eprintln!("error: {display}: {e}");
+                        eprintln!("error: {safe_display}: {}", sanitize_terminal(&e));
                         bad += 1;
                     } else {
-                        println!("formatted {display}");
+                        println!("formatted {safe_display}");
                     }
                 }
             }

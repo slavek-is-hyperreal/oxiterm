@@ -56,7 +56,10 @@ pub fn run(code: &str) -> i32 {
             0
         }
         None => {
-            eprintln!("error: `{code}` is not a known code (expected e.g. OXS-E0102; the full list is oxiscript-abi/registry/codes.txt)");
+            eprintln!(
+                "error: `{}` is not a known code (expected e.g. OXS-E0102; the full list is oxiscript-abi/registry/codes.txt)",
+                oxiscript_abi::sanitize::sanitize_terminal(code)
+            );
             2
         }
     }

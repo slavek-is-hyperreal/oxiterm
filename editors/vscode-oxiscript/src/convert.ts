@@ -27,6 +27,8 @@ export interface Diag {
   severity: "error" | "warning" | "note" | "internal";
   message: string;
   file: string;
+  /** Optional terminal-safe display form of `file`, emitted when `file` holds control/bidi/invisible characters. */
+  file_display?: string;
   range: Range;
   fixes: Fix[];
 }

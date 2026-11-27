@@ -61,23 +61,24 @@ Keys are emitted in alphabetical order; the shape is stable within schema 1 (fie
 | `fatal` | string or null | set (and `diagnostics` empty) when the run could not start (exit 2): missing path, broken `oxi.toml` or IDL |
 | `notes` | string[] (optional, only when non-empty) | things `oxi` skipped or replaced without it being an error: a symlink or special file named `*.oxs`/`*.idl` that was not read, a project IDL that replaces a built-in `host:` module. Also printed as `note: ...` on stderr. Additive: schema stays 1 |
 | `fix` | object (optional, only with `--fix`) | `{applied, capped, reverted, round_limit}`: fixes applied; files with more syntax errors than one check lists (fixed the first ones per round); files where a round was undone because it did not reduce the syntax errors; files where the round limit stopped with fixes pending |
-| `files` | string[] | entry files checked (paths as shown to the user) |
+| `files` | string[] | entry files checked (verbatim paths relative to cwd with `/` separators; exact matching key for `diagnostics[].file`, `fixes[].edits[].file` and `file_targets`) |
 | `summary` | object | counts of `errors` and `warnings` |
 | `diagnostics[].code` | string | stable registry code; `oxi explain <code>` |
 | `diagnostics[].severity` | `"error"`, `"warning"`, `"note"`, `"internal"` | derived from the code class |
-| `diagnostics[].file` | string | the file the diagnostic is in (may be an imported module) |
+| `diagnostics[].file` | string | the file the diagnostic is in (may be an imported module); verbatim path matching `files[]` |
+| `diagnostics[].file_display` | string (optional, only when `file` contains terminal control, bidi or invisible format characters) | terminal-safe escaped form of `file` (`\xNN` / `\u{xxxx}`) for human display; additive, schema stays 1 |
 | `range` | object | `start`/`end`, each `{byte, line, col, utf16}`: `byte` = UTF-8 offset from the start of the file, `line` 1-based, `col` 1-based in characters, `utf16` 1-based in UTF-16 code units (LSP / VS Code columns are `utf16 - 1`) |
 | `fixes[].title` | string | what the fix does |
 | `fixes[].applicability` | string | `machine-applicable`: apply without review (syntax-level repairs: `;`, `===`, parentheses, float suffix, `:` for a switch arm); `maybe-incorrect`: a proposal that may need a human (type-level changes, stub `switch` cases, several alternatives for one diagnostic, the ambiguous `?`, `for...in` to `for...of` because keys become values, and any `;` offered on a line with `throw`/`try`/`catch`); `advice`: text only, `edits` is empty |
-| `fixes[].edits[]` | object | `{file, range, new_text}`: replace the bytes of `range` by `new_text` (an insertion has `start == end`); edits of one fix apply together; ranges are in the pre-edit file |
+| `fixes[].edits[]` | object | `{file, range, new_text}`: replace the bytes of `range` by `new_text` (an insertion has `start == end`); `file` uses the same verbatim path as `files[]` and `diagnostics[].file`; edits of one fix apply together; ranges are in the pre-edit file |
 
-`--fix-only semicolons` (instead of `--fix`; not with `--json`) applies only the machine-applicable insertions of a missing `;` (`OXS-E0004`), with the same convergence guard; with `--stdin` it prints the fixed source on stdout (exit 0) and writes nothing. `OXS-E0004` fixes on a line that starts like a continuation (`(`, `[`, a backtick, an operator) are `maybe-incorrect`, because `a` newline `[1]` already parses as `a[1]`.
+`--fix-only semicolons` (instead of `--fix`; not with `--json`) applies only the machine-applicable insertions of a missing `;` (`OXS-E0004`), with the same convergence guard; with `--stdin` it prints the fixed source on stdout (exit 0) and writes nothing. `OXS-E0004` fixes on a line that starts like a continuation (`(`, `[`, a backtick, an operator) or immediately before a line starting with a template literal (`` ` ``) are never machine-applicable, because inserting `;` there can change meaning.
 
-Diagnostics are sorted by file then position and de-duplicated across entry files.
+Diagnostics are sorted by file then position and de-duplicated across entry files. Human `oxi check` output escapes `file`, `message`, source snippets and fix titles through the shared terminal sanitiser while looking up snippets by the verbatim `file` path.
 
 ## `oxi fmt [paths] [--check] [--stdin]`
 
-Canonical formatter (`oxiscript-syntax`), no options, idempotent. A BOM, the file's line-ending style (CRLF stays CRLF) and the text of `//` / `///` comments are kept; raw control and invisible characters inside string literals are written as escapes. Files with syntax errors are not touched and exit 1 (`oxi check --fix` repairs the safe ones: the missing `;`, ...). Files are replaced atomically; symlinks and special files are skipped. `--check` lists files that would change (`would reformat <path>`) and writes nothing. `--stdin` formats stdin to stdout (exit 1 and nothing on stdout when it has syntax errors).
+Canonical formatter (`oxiscript-syntax`), no options, idempotent. A BOM, the file's line-ending style (CRLF stays CRLF) and the text of `//` / `///` comments are kept; raw control, bidi and invisible characters inside string literals and comments (`//`, `///`, `/* */`) are written as escapes. Files with syntax errors are not touched and exit 1 (`oxi check --fix` repairs the safe ones: the missing `;`, ...). Files are replaced atomically; symlinks and special files are skipped. `--check` lists files that would change (`would reformat <path>`) and writes nothing. `--stdin` formats stdin to stdout (exit 1 and nothing on stdout when it has syntax errors). Echoed file names and error messages are passed through the shared terminal sanitiser.
 
 ## `oxi explain <code>`
 

@@ -83,6 +83,7 @@ pub fn apply(d: &mut Diag, f: &SourceFile) {
                     .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
                     .any(|w| matches!(w, "throw" | "try" | "catch" | "finally"));
             let cont = d.message.contains("before continuation on the next line")
+                || d.message.contains("before a template literal on the next line")
                 || d.message.contains("appears incomplete")
                 || continuation_hazard(before);
             if !exceptions && cont {

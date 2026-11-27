@@ -39,10 +39,11 @@ pub struct Limits {
     /// (`Host::set_clock`); makes pump non-deterministic, leave it unset in
     /// deterministic tests.
     pub pump_wall_micros: u64,
-    /// Wall-time cap of a single guest invocation in microseconds (0 = off),
-    /// independent of fuel. Checked at host-call boundaries and on return
-    /// using the host clock (`HostOptions::clock`); exceeding it traps and
-    /// poisons the instance.
+    /// Wall-time cap of a single guest invocation in microseconds (0 = off).
+    /// Checked at host-call boundaries, between bounded fuel slices (every
+    /// 10 000 fuel units during pure compute via resumable execution), and on
+    /// return using the host clock (`HostOptions::clock`); exceeding it traps
+    /// and poisons the instance.
     pub call_wall_micros: u64,
     /// Bound of the release queue (guest closures the host dropped).
     pub max_pending_releases: usize,

@@ -201,3 +201,37 @@ function id<T>(x: T): T { return x; }
         "expected OXS-E0701, got: {err:?}"
     );
 }
+
+#[test]
+fn compound_assign_and_update_on_narrowed_nullable_compile_and_run() {
+    let src = r#"
+import { Log } from "host:log";
+
+function add_if(a: i32 | null): i32 {
+  let x: i32 | null = a;
+  if (x !== null) {
+    x += 5;
+    x++;
+    return x;
+  }
+  return 0;
+}
+
+function append_if(s: string | null): string {
+  let t: string | null = s;
+  if (t !== null) {
+    t += "!";
+    return t;
+  }
+  return "none";
+}
+
+export function main(log: Log): void {
+  log.write(2, `${add_if(10)}`);
+  log.write(2, `${add_if(null)}`);
+  log.write(2, append_if("hi"));
+  log.write(2, append_if(null));
+}
+"#;
+    run_log(src, &["16", "0", "hi!", "none"]);
+}

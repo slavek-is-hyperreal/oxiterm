@@ -65,10 +65,12 @@ fn expect_sig(ft: &FuncType, params: &[ValType], results: &[ValType]) -> bool {
 }
 
 /// Structural module caps (matching `wasmi::EnforcedLimits::strict()` minus the
-/// lazy-compilation-only 40-avg-bytes/function heuristic; see `runtime.rs`).
+/// lazy-compilation-only 40-avg-bytes/function heuristic, plus a total declared
+/// locals cap to prevent tiny-body eager-compile amplification; see `runtime.rs`).
 const MAX_PARAMS: usize = 32;
 const MAX_RESULTS: usize = 32;
 const MAX_FUNCTIONS: u32 = 10_000;
+const MAX_TOTAL_LOCALS: u64 = 1_000_000;
 const MAX_GLOBALS: u32 = 1_000;
 const MAX_TABLES: u32 = 100;
 const MAX_ELEMENT_SEGMENTS: u32 = 1_000;
@@ -82,6 +84,7 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
     let bad = |e: wasmparser::BinaryReaderError| Error::reject("OXS-E0408", e.to_string());
     let mut imported_funcs = 0u32;
     let mut defined_funcs = 0u32;
+    let mut total_locals = 0u64;
     let mut globals = 0u32;
     let mut tables = 0u32;
     let mut memories = 0u32;
@@ -180,6 +183,21 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
                         return Err(Error::reject(
                             "OXS-E0407",
                             format!("export `{}` re-exports an imported host function", e.name),
+                        ));
+                    }
+                }
+            }
+            Payload::CodeSectionEntry(body) => {
+                let locals = body.get_locals_reader().map_err(bad)?;
+                for entry in locals {
+                    let (count, _) = entry.map_err(bad)?;
+                    total_locals = total_locals.saturating_add(u64::from(count));
+                    if total_locals > MAX_TOTAL_LOCALS {
+                        return Err(Error::reject(
+                            "OXS-E0408",
+                            format!(
+                                "module declares more than {MAX_TOTAL_LOCALS} total locals across its functions"
+                            ),
                         ));
                     }
                 }
