@@ -375,6 +375,244 @@ done:
 }
 "#;
 
+const FMOD_F64: &str = r#"
+func @lw.fmod_f64(%x: f64, %y: f64) -> f64 {
+entry:
+  %ux0: u64 = bitcast %x
+  %uy0: u64 = bitcast %y
+  %sign_mask: u64 = const 9223372036854775808
+  %abs_mask: u64 = const 9223372036854775807
+  %sx: u64 = and %ux0, %sign_mask
+  %ux: u64 = and %ux0, %abs_mask
+  %uy: u64 = and %uy0, %abs_mask
+  %c0: u64 = const 0
+  %inf_bits: u64 = const 9218868437227405312
+  %y_zero: bool = eq %uy, %c0
+  %x_bad: bool = ge %ux, %inf_bits
+  %y_nan: bool = gt %uy, %inf_bits
+  %b1: bool = or %y_zero, %x_bad
+  %is_nan: bool = or %b1, %y_nan
+  br_if %is_nan, ret_nan(), chk_le()
+ret_nan:
+  %nan_bits: u64 = const 9221120237041090560
+  %nan_f: f64 = bitcast %nan_bits
+  ret %nan_f
+chk_le:
+  %le_xy: bool = le %ux, %uy
+  br_if %le_xy, small(), norm_x()
+small:
+  %eq_xy: bool = eq %ux, %uy
+  br_if %eq_xy, ret_zero(), ret_x()
+ret_zero:
+  %zf: f64 = bitcast %sx
+  ret %zf
+ret_x:
+  ret %x
+norm_x:
+  %c52: u64 = const 52
+  %mant_mask: u64 = const 4503599627370495
+  %imp_bit: u64 = const 4503599627370496
+  %ex_u: u64 = shr.wrap %ux, %c52
+  %ex0: i32 = conv.wrap %ex_u
+  %i0: i32 = const 0
+  %i1: i32 = const 1
+  %x_sub: bool = eq %ex0, %i0
+  br_if %x_sub, norm_x_sub(), norm_x_norm()
+norm_x_sub:
+  %lz_x: u64 = clz %ux
+  %c11: u64 = const 11
+  %sh_x: u64 = sub.wrap %lz_x, %c11
+  %mx_s: u64 = shl.wrap %ux, %sh_x
+  %sh_xi: i32 = conv.wrap %sh_x
+  %ex_s: i32 = sub.wrap %i1, %sh_xi
+  br norm_y(%mx_s, %ex_s)
+norm_x_norm:
+  %mx_low: u64 = and %ux, %mant_mask
+  %mx_n: u64 = or %mx_low, %imp_bit
+  br norm_y(%mx_n, %ex0)
+norm_y(%mx: u64, %ex: i32):
+  %ey_u: u64 = shr.wrap %uy, %c52
+  %ey0: i32 = conv.wrap %ey_u
+  %y_sub: bool = eq %ey0, %i0
+  br_if %y_sub, norm_y_sub(), norm_y_norm()
+norm_y_sub:
+  %lz_y: u64 = clz %uy
+  %c11b: u64 = const 11
+  %sh_y: u64 = sub.wrap %lz_y, %c11b
+  %my_s: u64 = shl.wrap %uy, %sh_y
+  %sh_yi: i32 = conv.wrap %sh_y
+  %ey_s: i32 = sub.wrap %i1, %sh_yi
+  br loop(%mx, %ex, %my_s, %ey_s)
+norm_y_norm:
+  %my_low: u64 = and %uy, %mant_mask
+  %my_n: u64 = or %my_low, %imp_bit
+  br loop(%mx, %ex, %my_n, %ey0)
+loop(%rm: u64, %re: i32, %my: u64, %ey: i32):
+  %more: bool = gt %re, %ey
+  br_if %more, step(), after()
+step:
+  %ge_m: bool = ge %rm, %my
+  %diff: u64 = sub.wrap %rm, %my
+  %rm1: u64 = select %ge_m, %diff, %rm
+  %is_z: bool = eq %rm1, %c0
+  br_if %is_z, ret_zero(), step2(%rm1)
+step2(%rm2: u64):
+  %u1: u64 = const 1
+  %rm3: u64 = shl.wrap %rm2, %u1
+  %re2: i32 = sub.wrap %re, %i1
+  br loop(%rm3, %re2, %my, %ey)
+after:
+  %ge_last: bool = ge %rm, %my
+  %diff_last: u64 = sub.wrap %rm, %my
+  %rem_m: u64 = select %ge_last, %diff_last, %rm
+  %rem_z: bool = eq %rem_m, %c0
+  br_if %rem_z, ret_zero(), pack(%rem_m)
+pack(%pm: u64):
+  %lz_r: u64 = clz %pm
+  %c11c: u64 = const 11
+  %sh_r: u64 = sub.wrap %lz_r, %c11c
+  %pm2: u64 = shl.wrap %pm, %sh_r
+  %sh_ri: i32 = conv.wrap %sh_r
+  %pe: i32 = sub.wrap %ey, %sh_ri
+  %is_norm: bool = gt %pe, %i0
+  br_if %is_norm, pack_norm(%pm2, %pe), pack_sub(%pm2, %pe)
+pack_norm(%nm: u64, %ne: i32):
+  %ne_u: u64 = conv.wrap %ne
+  %exp_bits: u64 = shl.wrap %ne_u, %c52
+  %frac: u64 = and %nm, %mant_mask
+  %b_a: u64 = or %sx, %exp_bits
+  %b_out: u64 = or %b_a, %frac
+  %f_out: f64 = bitcast %b_out
+  ret %f_out
+pack_sub(%sm: u64, %se: i32):
+  %rsh_i: i32 = sub.wrap %i1, %se
+  %rsh_u: u64 = conv.wrap %rsh_i
+  %sub_m: u64 = shr.wrap %sm, %rsh_u
+  %sb_out: u64 = or %sx, %sub_m
+  %sf_out: f64 = bitcast %sb_out
+  ret %sf_out
+}
+"#;
+
+const FMOD_F32: &str = r#"
+func @lw.fmod_f32(%x: f32, %y: f32) -> f32 {
+entry:
+  %ux0: u32 = bitcast %x
+  %uy0: u32 = bitcast %y
+  %sign_mask: u32 = const 2147483648
+  %abs_mask: u32 = const 2147483647
+  %sx: u32 = and %ux0, %sign_mask
+  %ux: u32 = and %ux0, %abs_mask
+  %uy: u32 = and %uy0, %abs_mask
+  %c0: u32 = const 0
+  %inf_bits: u32 = const 2139095040
+  %y_zero: bool = eq %uy, %c0
+  %x_bad: bool = ge %ux, %inf_bits
+  %y_nan: bool = gt %uy, %inf_bits
+  %b1: bool = or %y_zero, %x_bad
+  %is_nan: bool = or %b1, %y_nan
+  br_if %is_nan, ret_nan(), chk_le()
+ret_nan:
+  %nan_bits: u32 = const 2143289344
+  %nan_f: f32 = bitcast %nan_bits
+  ret %nan_f
+chk_le:
+  %le_xy: bool = le %ux, %uy
+  br_if %le_xy, small(), norm_x()
+small:
+  %eq_xy: bool = eq %ux, %uy
+  br_if %eq_xy, ret_zero(), ret_x()
+ret_zero:
+  %zf: f32 = bitcast %sx
+  ret %zf
+ret_x:
+  ret %x
+norm_x:
+  %c23: u32 = const 23
+  %mant_mask: u32 = const 8388607
+  %imp_bit: u32 = const 8388608
+  %ex_u: u32 = shr.wrap %ux, %c23
+  %ex0: i32 = conv.wrap %ex_u
+  %i0: i32 = const 0
+  %i1: i32 = const 1
+  %x_sub: bool = eq %ex0, %i0
+  br_if %x_sub, norm_x_sub(), norm_x_norm()
+norm_x_sub:
+  %lz_x: u32 = clz %ux
+  %c8: u32 = const 8
+  %sh_x: u32 = sub.wrap %lz_x, %c8
+  %mx_s: u32 = shl.wrap %ux, %sh_x
+  %sh_xi: i32 = conv.wrap %sh_x
+  %ex_s: i32 = sub.wrap %i1, %sh_xi
+  br norm_y(%mx_s, %ex_s)
+norm_x_norm:
+  %mx_low: u32 = and %ux, %mant_mask
+  %mx_n: u32 = or %mx_low, %imp_bit
+  br norm_y(%mx_n, %ex0)
+norm_y(%mx: u32, %ex: i32):
+  %ey_u: u32 = shr.wrap %uy, %c23
+  %ey0: i32 = conv.wrap %ey_u
+  %y_sub: bool = eq %ey0, %i0
+  br_if %y_sub, norm_y_sub(), norm_y_norm()
+norm_y_sub:
+  %lz_y: u32 = clz %uy
+  %c8b: u32 = const 8
+  %sh_y: u32 = sub.wrap %lz_y, %c8b
+  %my_s: u32 = shl.wrap %uy, %sh_y
+  %sh_yi: i32 = conv.wrap %sh_y
+  %ey_s: i32 = sub.wrap %i1, %sh_yi
+  br loop(%mx, %ex, %my_s, %ey_s)
+norm_y_norm:
+  %my_low: u32 = and %uy, %mant_mask
+  %my_n: u32 = or %my_low, %imp_bit
+  br loop(%mx, %ex, %my_n, %ey0)
+loop(%rm: u32, %re: i32, %my: u32, %ey: i32):
+  %more: bool = gt %re, %ey
+  br_if %more, step(), after()
+step:
+  %ge_m: bool = ge %rm, %my
+  %diff: u32 = sub.wrap %rm, %my
+  %rm1: u32 = select %ge_m, %diff, %rm
+  %is_z: bool = eq %rm1, %c0
+  br_if %is_z, ret_zero(), step2(%rm1)
+step2(%rm2: u32):
+  %u1: u32 = const 1
+  %rm3: u32 = shl.wrap %rm2, %u1
+  %re2: i32 = sub.wrap %re, %i1
+  br loop(%rm3, %re2, %my, %ey)
+after:
+  %ge_last: bool = ge %rm, %my
+  %diff_last: u32 = sub.wrap %rm, %my
+  %rem_m: u32 = select %ge_last, %diff_last, %rm
+  %rem_z: bool = eq %rem_m, %c0
+  br_if %rem_z, ret_zero(), pack(%rem_m)
+pack(%pm: u32):
+  %lz_r: u32 = clz %pm
+  %c8c: u32 = const 8
+  %sh_r: u32 = sub.wrap %lz_r, %c8c
+  %pm2: u32 = shl.wrap %pm, %sh_r
+  %sh_ri: i32 = conv.wrap %sh_r
+  %pe: i32 = sub.wrap %ey, %sh_ri
+  %is_norm: bool = gt %pe, %i0
+  br_if %is_norm, pack_norm(%pm2, %pe), pack_sub(%pm2, %pe)
+pack_norm(%nm: u32, %ne: i32):
+  %ne_u: u32 = conv.wrap %ne
+  %exp_bits: u32 = shl.wrap %ne_u, %c23
+  %frac: u32 = and %nm, %mant_mask
+  %b_a: u32 = or %sx, %exp_bits
+  %b_out: u32 = or %b_a, %frac
+  %f_out: f32 = bitcast %b_out
+  ret %f_out
+pack_sub(%sm: u32, %se: i32):
+  %rsh_i: i32 = sub.wrap %i1, %se
+  %rsh_u: u32 = conv.wrap %rsh_i
+  %sub_m: u32 = shr.wrap %sm, %rsh_u
+  %sb_out: u32 = or %sx, %sub_m
+  %sf_out: f32 = bitcast %sb_out
+  ret %sf_out
+}
+"#;
+
 fn rc(t: &It, op: &str, v: &str) -> String {
     if t.is_managed() {
         format!("  {op} {v}\n")
@@ -399,6 +637,8 @@ impl<'c, 'a> Lw<'c, 'a> {
             "range" => ("lw.range", RANGE, &[]),
             "hash_u64" => ("lw.hash_u64", HASH_U64, &[]),
             "hash_str" => ("lw.hash_str", HASH_STR, &[]),
+            "fmod_f64" => ("lw.fmod_f64", FMOD_F64, &[]),
+            "fmod_f32" => ("lw.fmod_f32", FMOD_F32, &[]),
             other => panic!("unknown helper {other}"),
         };
         if self.helper_done.insert(sym.to_string()) {
@@ -408,6 +648,14 @@ impl<'c, 'a> Lw<'c, 'a> {
             self.add_text(sym, src);
         }
         sym.to_string()
+    }
+
+    pub fn ensure_fmod_f64(&mut self) -> String {
+        self.helper("fmod_f64")
+    }
+
+    pub fn ensure_fmod_f32(&mut self) -> String {
+        self.helper("fmod_f32")
     }
 
     fn add_text(&mut self, what: &str, src: &str) {

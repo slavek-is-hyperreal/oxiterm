@@ -1,5 +1,7 @@
 # HANDOFF 8.G (oxiscript-wasm codegen)
 
+> **Status (2026-11-26):** complete and merged (`bad1e94`; BAD ACTOR fixes recorded in `fixes.md`). Working notes below are kept as history.
+
 Status: STARTED (design done, writing code). Update after every milestone.
 
 ## Decisions

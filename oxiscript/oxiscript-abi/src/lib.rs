@@ -17,6 +17,7 @@
 //! * [`codes`]: the reason-code registry (diagnostics, placement, laws).
 //!
 //! Human-readable spec: `docs/oxiscript/abi.md`.
+#![forbid(unsafe_code)]
 #![allow(clippy::doc_markdown, clippy::too_many_lines)]
 
 pub mod codes;
@@ -24,6 +25,7 @@ pub mod exports;
 pub mod idl;
 pub mod layout;
 pub mod manifest;
+pub mod sanitize;
 pub mod target;
 pub mod trap;
 

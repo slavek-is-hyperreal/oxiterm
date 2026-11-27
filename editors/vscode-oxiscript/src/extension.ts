@@ -2,7 +2,7 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { Diag, Fix, displayMessage, parseReport, selectFixAll, selectSemicolons, semicolonInsertions, toPosition } from "./convert";
+import { Diag, Fix, displayMessage, parseReport, sanitizeTerminal, selectFixAll, selectSemicolons, semicolonInsertions, toPosition } from "./convert";
 
 const LANG = "oxiscript";
 
@@ -149,7 +149,7 @@ function spawnOxi(args: string[], input: string, cwd: string, key: string): Prom
 }
 
 function warnMissing(e: NodeJS.ErrnoException): void {
-  output.appendLine(`cannot run oxi: ${e.message}`);
+  output.appendLine(sanitizeTerminal(`cannot run oxi: ${e.message}`));
   if (warnedMissing) return;
   warnedMissing = true;
   void vscode.window
@@ -167,7 +167,7 @@ async function check(doc: vscode.TextDocument): Promise<void> {
     await checkInner(doc);
   } catch (e) {
     // never an unhandled rejection; drop results that might be stale
-    output.appendLine(`oxi check failed for ${doc.fileName}: ${(e as Error).message}`);
+    output.appendLine(sanitizeTerminal(`oxi check failed for ${doc.fileName}: ${(e as Error).message}`));
     collection.delete(doc.uri);
     checked.delete(doc.uri.toString());
   }
@@ -185,7 +185,7 @@ async function checkInner(doc: vscode.TextDocument): Promise<void> {
   }
   if (r.code === null) {
     // killed by a newer check, or timed out
-    if (r.stderr.trim()) output.appendLine(r.stderr.trim());
+    if (r.stderr.trim()) output.appendLine(sanitizeTerminal(r.stderr.trim()));
     return;
   }
   if (doc.version !== version) return; // a newer check is already scheduled
@@ -193,7 +193,7 @@ async function checkInner(doc: vscode.TextDocument): Promise<void> {
   try {
     report = parseReport(r.stdout);
   } catch (e) {
-    output.appendLine(`oxi check failed (exit ${r.code}): ${(e as Error).message}\n${r.stderr}`);
+    output.appendLine(sanitizeTerminal(`oxi check failed (exit ${r.code}): ${(e as Error).message} ${r.stderr}`));
     collection.delete(doc.uri);
     checked.delete(key);
     return;
@@ -203,9 +203,10 @@ async function checkInner(doc: vscode.TextDocument): Promise<void> {
   const entry = report.files[0] ?? doc.fileName;
   const items: Item[] = [];
   if (report.fatal) {
-    const d = new vscode.Diagnostic(new vscode.Range(0, 0, 0, 0), report.fatal, vscode.DiagnosticSeverity.Error);
+    const cleanFatal = sanitizeTerminal(report.fatal);
+    const d = new vscode.Diagnostic(new vscode.Range(0, 0, 0, 0), cleanFatal, vscode.DiagnosticSeverity.Error);
     d.source = "oxi";
-    items.push({ diag: d, src: { code: "fatal", severity: "error", message: report.fatal, file: doc.fileName, range: { start: { byte: 0, line: 1, col: 1, utf16: 1 }, end: { byte: 0, line: 1, col: 1, utf16: 1 } }, fixes: [] } });
+    items.push({ diag: d, src: { code: "fatal", severity: "error", message: cleanFatal, file: doc.fileName, range: { start: { byte: 0, line: 1, col: 1, utf16: 1 }, end: { byte: 0, line: 1, col: 1, utf16: 1 } }, fixes: [] } });
   }
   for (const s of report.diagnostics) {
     if (s.file !== entry) continue;
@@ -266,7 +267,8 @@ class Fixes implements vscode.CodeActionProvider {
       for (const f of withEdits) {
         const we = editsOf(doc, st.entry, f);
         if (!we) continue;
-        const title = f.applicability === "maybe-incorrect" ? `${f.title} (check the result)` : f.title;
+        const cleanTitle = sanitizeTerminal(f.title);
+        const title = f.applicability === "maybe-incorrect" ? `${cleanTitle} (check the result)` : cleanTitle;
         const a = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
         a.edit = we;
         a.diagnostics = [it.diag];
@@ -314,7 +316,7 @@ class Formatter implements vscode.DocumentFormattingEditProvider {
     }
     if (r.code !== 0) {
       // Syntax errors: the diagnostics already show them; leave the buffer alone.
-      output.appendLine(`oxi fmt did not format ${doc.fileName}: ${r.stderr.trim()}`);
+      output.appendLine(sanitizeTerminal(`oxi fmt did not format ${doc.fileName}: ${r.stderr.trim()}`));
       return [];
     }
     if (r.stdout === doc.getText()) return [];
@@ -342,7 +344,7 @@ async function semicolonEdits(doc: vscode.TextDocument): Promise<vscode.TextEdit
     if (!ins) return [];
     return ins.map((p) => vscode.TextEdit.replace(new vscode.Range(p.line, p.character, p.line, p.character), ";"));
   } catch (e) {
-    output.appendLine(`semicolon fix failed for ${doc.fileName}: ${(e as Error).message}`);
+    output.appendLine(sanitizeTerminal(`semicolon fix failed for ${doc.fileName}: ${(e as Error).message}`));
     return [];
   }
 }

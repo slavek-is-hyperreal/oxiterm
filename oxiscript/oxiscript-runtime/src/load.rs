@@ -64,20 +64,66 @@ fn expect_sig(ft: &FuncType, params: &[ValType], results: &[ValType]) -> bool {
     ft.params() == params && ft.results() == results
 }
 
-/// Reject any export that is a re-export of an imported function: user
-/// exports, `cb:*` trampolines and ABI rows must be *defined* in the module,
-/// otherwise the embedder could be handed a raw host import as an entry point.
+/// Structural module caps (matching `wasmi::EnforcedLimits::strict()` minus the
+/// lazy-compilation-only 40-avg-bytes/function heuristic, plus a total declared
+/// locals cap to prevent tiny-body eager-compile amplification; see `runtime.rs`).
+const MAX_PARAMS: usize = 32;
+const MAX_RESULTS: usize = 32;
+const MAX_FUNCTIONS: u32 = 10_000;
+const MAX_TOTAL_LOCALS: u64 = 1_000_000;
+const MAX_GLOBALS: u32 = 1_000;
+const MAX_TABLES: u32 = 100;
+const MAX_ELEMENT_SEGMENTS: u32 = 1_000;
+const MAX_MEMORIES: u32 = 1;
+const MAX_DATA_SEGMENTS: u32 = 1_000;
+
+/// Reject any export that is a re-export of an imported function and enforce
+/// structural module limits (independent of wasmi's lazy-compilation heuristic).
 pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
-    use wasmparser::{ExternalKind, Parser, Payload, TypeRef};
+    use wasmparser::{CompositeInnerType, ExternalKind, Parser, Payload, TypeRef};
     let bad = |e: wasmparser::BinaryReaderError| Error::reject("OXS-E0408", e.to_string());
     let mut imported_funcs = 0u32;
+    let mut defined_funcs = 0u32;
+    let mut total_locals = 0u64;
+    let mut globals = 0u32;
+    let mut tables = 0u32;
+    let mut memories = 0u32;
+    let mut elem_segs = 0u32;
+    let mut data_segs = 0u32;
     for payload in Parser::new(0).parse_all(wasm) {
         match payload.map_err(bad)? {
+            Payload::TypeSection(r) => {
+                for rg in r {
+                    let rg = rg.map_err(bad)?;
+                    for st in rg.into_types() {
+                        if let CompositeInnerType::Func(ft) = st.composite_type.inner {
+                            if ft.params().len() > MAX_PARAMS {
+                                return Err(Error::reject(
+                                    "OXS-E0408",
+                                    format!(
+                                        "function type has {} parameters (limit {MAX_PARAMS})",
+                                        ft.params().len()
+                                    ),
+                                ));
+                            }
+                            if ft.results().len() > MAX_RESULTS {
+                                return Err(Error::reject(
+                                    "OXS-E0408",
+                                    format!(
+                                        "function type has {} results (limit {MAX_RESULTS})",
+                                        ft.results().len()
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             Payload::ImportSection(r) => {
                 for imp in r {
                     let imp = imp.map_err(bad)?;
                     if matches!(imp.ty, TypeRef::Func(_)) {
-                        imported_funcs += 1;
+                        imported_funcs = imported_funcs.saturating_add(1);
                     } else {
                         // ABI 1.0 imports functions only (no memory, table, global or tag),
                         // refused here independently of what the engine would accept.
@@ -91,8 +137,15 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
                     }
                 }
             }
+            Payload::FunctionSection(r) => {
+                defined_funcs = defined_funcs.saturating_add(r.count());
+            }
+            Payload::GlobalSection(r) => {
+                globals = globals.saturating_add(r.count());
+            }
             // table64 is the table twin of memory64 (same ABI 1.0 rule).
             Payload::TableSection(r) => {
+                tables = tables.saturating_add(r.count());
                 for t in r {
                     let t = t.map_err(bad)?;
                     if t.ty.table64 || t.ty.shared {
@@ -106,6 +159,7 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
             // ABI 1.0 allows one 32-bit, unshared memory. Enforced here, independently of
             // which wasmi features Cargo feature unification happened to enable.
             Payload::MemorySection(r) => {
+                memories = memories.saturating_add(r.count());
                 for m in r {
                     let m = m.map_err(bad)?;
                     if m.memory64 || m.shared {
@@ -115,6 +169,12 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
                         ));
                     }
                 }
+            }
+            Payload::ElementSection(r) => {
+                elem_segs = elem_segs.saturating_add(r.count());
+            }
+            Payload::DataSection(r) => {
+                data_segs = data_segs.saturating_add(r.count());
             }
             Payload::ExportSection(r) => {
                 for e in r {
@@ -127,8 +187,60 @@ pub(crate) fn reject_reexports(wasm: &[u8]) -> Result<()> {
                     }
                 }
             }
+            Payload::CodeSectionEntry(body) => {
+                let locals = body.get_locals_reader().map_err(bad)?;
+                for entry in locals {
+                    let (count, _) = entry.map_err(bad)?;
+                    total_locals = total_locals.saturating_add(u64::from(count));
+                    if total_locals > MAX_TOTAL_LOCALS {
+                        return Err(Error::reject(
+                            "OXS-E0408",
+                            format!(
+                                "module declares more than {MAX_TOTAL_LOCALS} total locals across its functions"
+                            ),
+                        ));
+                    }
+                }
+            }
             _ => {}
         }
+    }
+    let total_funcs = imported_funcs.saturating_add(defined_funcs);
+    if total_funcs > MAX_FUNCTIONS {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {total_funcs} functions (limit {MAX_FUNCTIONS})"),
+        ));
+    }
+    if globals > MAX_GLOBALS {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {globals} globals (limit {MAX_GLOBALS})"),
+        ));
+    }
+    if tables > MAX_TABLES {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {tables} tables (limit {MAX_TABLES})"),
+        ));
+    }
+    if memories > MAX_MEMORIES {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {memories} memories (limit {MAX_MEMORIES})"),
+        ));
+    }
+    if elem_segs > MAX_ELEMENT_SEGMENTS {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {elem_segs} element segments (limit {MAX_ELEMENT_SEGMENTS})"),
+        ));
+    }
+    if data_segs > MAX_DATA_SEGMENTS {
+        return Err(Error::reject(
+            "OXS-E0408",
+            format!("module defines {data_segs} data segments (limit {MAX_DATA_SEGMENTS})"),
+        ));
     }
     Ok(())
 }

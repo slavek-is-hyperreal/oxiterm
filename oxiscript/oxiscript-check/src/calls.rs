@@ -381,6 +381,25 @@ impl<'a> Checker<'a> {
                 }
                 let s = self.show(base);
                 let _ = (e, obj);
+                if base == STR && name.name == "length" {
+                    let idx = self.err_fix(
+                        "OXS-E0108",
+                        name.span,
+                        &[("name", &name.name), ("ty", &s)],
+                        Some(Fix::replace(
+                            "A string has a byte length in UTF-8: use `.byteLength`",
+                            name.span,
+                            "byteLength",
+                        )),
+                    );
+                    if let Some(d) = self.diags.get_mut(idx) {
+                        d.fixes.push(Fix {
+                            title: "For the number of characters use `s.chars().length`.".into(),
+                            edits: Vec::new(),
+                        });
+                    }
+                    return MemberOut::Err;
+                }
                 self.err("OXS-E0108", name.span, &[("name", &name.name), ("ty", &s)]);
                 MemberOut::Err
             }

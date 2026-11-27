@@ -12,9 +12,11 @@
 //! `run_json(src, fuel)` compiles with `oxiscript-lower` and runs the module in `oxiscript-runtime`
 //! (wasmi, compiled into this wasm), so the browser worker and `oxi run` execute programs the same way
 //! with the same fuel limits. The page runs it in a Web Worker and terminates the worker on timeout.
+#![deny(unsafe_code)]
 
 use oxiscript_abi::codes;
 use oxiscript_abi::idl::{self, Interface};
+use oxiscript_abi::sanitize::sanitize_terminal;
 use oxiscript_check::{check_source, CheckOptions};
 use oxiscript_syntax::{apply_edits, Diagnostic, FileId, LineIndex, TextEdit};
 use serde_json::{json, Value};
@@ -94,14 +96,14 @@ fn diag_json(src: &str, li: &LineIndex, d: &Diagnostic) -> Value {
                             "end": utf16_at(src, e.span.hi as usize), "text": e.replacement })
                 })
                 .collect();
-            json!({ "title": f.title, "edits": edits })
+            json!({ "title": sanitize_terminal(&f.title), "edits": edits })
         })
         .collect();
     json!({
         "code": d.code,
         "severity": severity,
-        "title": def.as_ref().map_or_else(String::new, |c| c.title.clone()),
-        "message": d.message,
+        "title": def.as_ref().map_or_else(String::new, |c| sanitize_terminal(&c.title)),
+        "message": sanitize_terminal(&d.message),
         "start": utf16_at(src, lo), "end": utf16_at(src, hi),
         "line": line, "col": col, "endLine": end_line, "endCol": end_col,
         "fixes": fixes,

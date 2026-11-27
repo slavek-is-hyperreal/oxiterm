@@ -189,4 +189,4 @@ const p = { x: 1.0, y: 2.0 };
 
 * `main.oxs`: the program. `oxi.toml`: name, version, `needs` (the host interfaces `main` receives, in parameter order; `oxi check` enforces it). `idl/*.idl`: host interfaces declared by this project (placeholders until the real capabilities ship).
 * `oxi explain <code>`: every diagnostic code. Language reference: `docs/oxiscript/grammar.md` in the OxiScript repository (section 6 is the list of differences above, with reasons).
-* `oxi run` and `oxi build` are not available until the compiler back end lands; `oxi check` is the gate today.
+* `oxi run [file]` compiles and runs `main` in the sandboxed wasmi runtime (`host:log@1`, `host:state@1`); `oxi build [file] [-o out.wasm]` emits a `.wasm` module; `oxi check` is the fast type-check gate.

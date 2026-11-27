@@ -470,19 +470,57 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
 
     // ------------------------------------------------------------------ assignment forms
 
+    /// Declared storage type of an assignment target (may be wider than the
+    /// narrowed read type recorded on `target.id`, e.g. `i32 | null` vs `i32`).
+    fn place_storage_ty(&mut self, target: &Expr) -> Ty {
+        let t = strip(target);
+        match &t.kind {
+            ExprKind::Ident(_) | ExprKind::This => match self.res_of(t.id) {
+                Some(Res::Local(l) | Res::This(l)) => {
+                    let lt = self.local_info(l).ty;
+                    self.cty(lt)
+                }
+                Some(Res::Def(d)) if self.def_kind(d) == DefKind::Global => {
+                    let gt = self.lw.ck.globals[&d].ty;
+                    self.cty(gt)
+                }
+                _ => self.ty_of(t.id),
+            },
+            ExprKind::Member { obj, .. } => match self.res_of(t.id) {
+                Some(Res::Field { owner, index }) => {
+                    let ft = self.field_decl_ty(obj, owner, index);
+                    self.cty(ft)
+                }
+                Some(Res::StaticField { owner, index }) => {
+                    let ft = self.lw.ck.records[&owner].fields[index as usize].ty;
+                    self.cty(ft)
+                }
+                Some(Res::Def(d)) if self.def_kind(d) == DefKind::Global => {
+                    let gt = self.lw.ck.globals[&d].ty;
+                    self.cty(gt)
+                }
+                _ => self.ty_of(t.id),
+            },
+            _ => self.ty_of(t.id),
+        }
+    }
+
     pub fn assign(&mut self, e: &Expr, op: Option<BinOp>, target: &Expr, value: &Expr, want: bool) -> Opnd {
         let base = self.held.len();
         let Some(place) = self.prepare_place(target) else {
             self.unsupported("this assignment target", target.span);
             return Opnd::void();
         };
+        let storage_ty = self.place_storage_ty(target);
+        let read_ty = self.ty_of(strip(target).id);
         let nv: Option<ValueId> = match op {
             None => {
                 let v = self.expr(value);
                 self.own_of(v)
             }
             Some(bop) => {
-                let cur = self.place_read_owned(&place);
+                let raw_cur = self.place_read_owned(&place);
+                let cur = self.narrow(raw_cur, storage_ty, read_ty);
                 self.hold(cur);
                 let rhs = self.expr(value);
                 self.unhold(cur);
@@ -491,7 +529,8 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                         let r = self.binop_values(e, bop, cv, rv);
                         self.drop_o(cur);
                         self.drop_o(rhs);
-                        self.own_of(r)
+                        let wrapped = self.coerce(r, read_ty, storage_ty);
+                        self.own_of(wrapped)
                     }
                     _ => None,
                 }
@@ -501,7 +540,12 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             self.place_write(&place, nv);
         }
         let res = if want && nv.is_some() {
-            self.place_read_owned(&place)
+            let raw = self.place_read_owned(&place);
+            if op.is_some() {
+                self.narrow(raw, storage_ty, read_ty)
+            } else {
+                raw
+            }
         } else {
             Opnd::void()
         };
@@ -515,7 +559,10 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             self.unsupported("this `++`/`--` target", target.span);
             return Opnd::void();
         };
-        let cur = self.place_read_owned(&place);
+        let storage_ty = self.place_storage_ty(target);
+        let read_ty = self.ty_of(strip(target).id);
+        let raw_cur = self.place_read_owned(&place);
+        let cur = self.narrow(raw_cur, storage_ty, read_ty);
         if let Some(cv) = cur.v {
             let t = self.fb.ty(cv).clone();
             let one = match &t {
@@ -525,7 +572,10 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             };
             let bo = if op == IncDec::Inc { IB::Add } else { IB::Sub };
             let r = self.fb.emit1(Op::Bin { op: bo, ovf: Ovf::Trap, a: cv, b: one }, t);
-            self.place_write(&place, r);
+            let wrapped = self.coerce(Opnd::borrowed(r), read_ty, storage_ty);
+            if let Some(wv) = self.own_of(wrapped) {
+                self.place_write(&place, wv);
+            }
         }
         let _ = e;
         self.finish_place(base);

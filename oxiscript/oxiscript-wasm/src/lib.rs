@@ -12,6 +12,7 @@
 //! raised traps are `global.set $oxi_trap_kind; unreachable`.
 //!
 //! Spec: `docs/oxiscript/{ir,abi,contracts}.md`.
+#![forbid(unsafe_code)]
 #![allow(
     clippy::doc_markdown,
     clippy::too_many_lines,

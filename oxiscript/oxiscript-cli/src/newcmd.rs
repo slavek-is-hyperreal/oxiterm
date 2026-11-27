@@ -74,17 +74,18 @@ pub fn create(dir: &Path, name: &str, tpl: &str) -> Result<Vec<PathBuf>, String>
 }
 
 pub fn run(name: &str, tpl: &str) -> i32 {
+    use oxiscript_abi::sanitize::sanitize_terminal;
     let dir = PathBuf::from(name);
     match create(&dir, name, tpl) {
         Ok(files) => {
             for f in &files {
-                println!("created {}", f.display());
+                println!("created {}", sanitize_terminal(&f.display().to_string()));
             }
-            println!("\nNext:\n  cd {name}\n  oxi check\n  code .");
+            println!("\nNext:\n  cd {}\n  oxi check\n  code .", sanitize_terminal(name));
             EXIT_OK
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("error: {}", sanitize_terminal(&e));
             EXIT_FATAL
         }
     }

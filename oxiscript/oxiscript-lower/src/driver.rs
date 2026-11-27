@@ -23,6 +23,8 @@ pub struct Options {
     pub lower_all: bool,
     /// Compilation target (docs/oxiscript/abi.md 3.6); recorded in the manifest.
     pub target: oxiscript_wasm::Target,
+    /// Maximum number of generic instantiations before `OXS-E0701` (default [`crate::MAX_INSTANCES`]).
+    pub max_instantiations: usize,
     /// When `runtime == RuntimeMode::Linked`, link the debug build of `oxiscript-rc`
     /// (requires the `debug-runtime` feature of `oxiscript-wasm`).
     pub debug_runtime: bool,
@@ -35,6 +37,7 @@ impl Default for Options {
             validate_output: true,
             lower_all: false,
             target: oxiscript_wasm::Target::Device,
+            max_instantiations: crate::MAX_INSTANCES,
             debug_runtime: false,
         }
     }
@@ -47,6 +50,8 @@ pub struct CompileOutput {
     pub needs: Vec<Need>,
     /// Warnings of the lowering (none today).
     pub notes: Vec<Diagnostic>,
+    /// Number of generic instantiations created during lowering.
+    pub instantiations: usize,
 }
 
 /// A lowered program: the module and the capabilities (`needs`, in `oxi_init` order) it uses.
@@ -55,6 +60,8 @@ pub struct Lowered {
     pub needs: Vec<Need>,
     /// Warnings (none today; unfit exports are `OXS-E0121` errors in the checker).
     pub notes: Vec<Diagnostic>,
+    /// Number of generic instantiations created during lowering.
+    pub instantiations: usize,
 }
 
 fn check_diags(ck: &Checked) -> Diagnostics {
@@ -77,6 +84,16 @@ pub fn lower_full(ck: &mut Checked, interfaces: &[Interface]) -> Result<Lowered,
 
 /// [`lower_full`] with the choice of lowering all code (`all`) or only the reachable part.
 pub fn lower_with(ck: &mut Checked, interfaces: &[Interface], all: bool) -> Result<Lowered, Diagnostics> {
+    lower_with_budget(ck, interfaces, all, crate::MAX_INSTANCES)
+}
+
+/// [`lower_with`] with an explicit generic-instantiation budget (`OXS-E0701` when exceeded).
+pub fn lower_with_budget(
+    ck: &mut Checked,
+    interfaces: &[Interface],
+    all: bool,
+    max_instantiations: usize,
+) -> Result<Lowered, Diagnostics> {
     if !ck.ok() {
         return Err(check_diags(ck));
     }
@@ -88,6 +105,7 @@ pub fn lower_with(ck: &mut Checked, interfaces: &[Interface], all: bool) -> Resu
         .collect();
     let mut lw = Lw::new(ck, &asts, interfaces.to_vec(), "program");
     lw.lower_all = all;
+    lw.max_instances = max_instantiations;
     lw.run()
 }
 
@@ -135,7 +153,13 @@ impl<'c, 'a> Lw<'c, 'a> {
         self.out.funcs.push(main);
         let module = std::mem::take(&mut self.out);
         let notes = std::mem::take(&mut self.notes);
-        Ok(Lowered { module, needs, notes })
+        let instantiations = self.instances;
+        Ok(Lowered {
+            module,
+            needs,
+            notes,
+            instantiations,
+        })
     }
 
     /// Queue every non-generic function, method and constructor of every module.
@@ -616,7 +640,12 @@ pub fn compile_program(
     if !ck.ok() {
         return Err(check_diags(&ck));
     }
-    let Lowered { module, needs, notes } = lower_with(&mut ck, interfaces, opts.lower_all)?;
+    let Lowered {
+        module,
+        needs,
+        notes,
+        instantiations,
+    } = lower_with_budget(&mut ck, interfaces, opts.lower_all, opts.max_instantiations)?;
     let errs = ir::host::verify_with_interfaces(&module, ir::VerifyOptions::default(), interfaces);
     if !errs.is_empty() {
         return Err(Diagnostics(
@@ -636,7 +665,13 @@ pub fn compile_program(
         ..oxiscript_wasm::CompileOptions::default()
     };
     let wasm = oxiscript_wasm::compile(&module, &copts).map_err(|d| convert_wasm(&d))?;
-    Ok(CompileOutput { wasm, module, needs, notes })
+    Ok(CompileOutput {
+        wasm,
+        module,
+        needs,
+        notes,
+        instantiations,
+    })
 }
 
 /// Check, lower, verify and compile a single source file to Wasm bytes. Notes of the lowering are dropped;

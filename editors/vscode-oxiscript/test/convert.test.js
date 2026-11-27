@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
-const { parseReport, toPosition, selectFixAll, displayMessage, semicolonInsertions } = require("../out/convert.js");
+const { parseReport, toPosition, selectFixAll, displayMessage, sanitizeTerminal, semicolonInsertions } = require("../out/convert.js");
 
 const SNAP = path.join(__dirname, "..", "..", "..", "oxiscript", "oxiscript-cli", "tests", "snapshots");
 const syntax = fs.readFileSync(path.join(SNAP, "check_bad_syntax.json"), "utf8");
@@ -63,4 +63,20 @@ test("semicolonInsertions accepts only text that differs by inserted semicolons"
   assert.strictEqual(semicolonInsertions("a", "b"), undefined);
   assert.strictEqual(semicolonInsertions("ab", "a"), undefined);
   assert.strictEqual(semicolonInsertions("a\rb", "a;\rb"), undefined); // lone CR: line numbering is the editor's
+});
+
+test("sanitizeTerminal and displayMessage escape ESC, OSC, CSI, C1, CR and bidi controls", () => {
+  assert.strictEqual(sanitizeTerminal("\x1b[2Jhi"), "\\x1b[2Jhi");
+  assert.strictEqual(sanitizeTerminal("\x1b]0;pwn\x07ok"), "\\x1b]0;pwn\\x07ok");
+  assert.strictEqual(sanitizeTerminal("\u009b31m\u009d0;t\u009c"), "\\x9b31m\\x9d0;t\\x9c");
+  assert.strictEqual(sanitizeTerminal("a\rb\u202ec\u2066d\u2069"), "a\\x0db\\u{202e}c\\u{2066}d\\u{2069}");
+  const d = {
+    code: "OXS-E0014",
+    severity: "error",
+    message: "bad \x1b[31m\u202e",
+    file: "f",
+    range: { start: {}, end: {} },
+    fixes: [{ title: "try \x1b]0;x\x07", applicability: "advice", edits: [] }],
+  };
+  assert.strictEqual(displayMessage(d), "bad \\x1b[31m\\u{202e}\nhelp: try \\x1b]0;x\\x07");
 });

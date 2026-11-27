@@ -684,6 +684,13 @@ title Expression has no effect
 message this expression statement has no effect
 fix Remove it or assign the value.
 
+code OXS-W0005
+severity warning
+phase check
+title Unreachable case label
+message case label {label} is already excluded by narrowing
+fix Remove the unreachable case label.
+
 code OXS-W0700
 severity warning
 phase lower

@@ -27,6 +27,8 @@ export interface Diag {
   severity: "error" | "warning" | "note" | "internal";
   message: string;
   file: string;
+  /** Optional terminal-safe display form of `file`, emitted when `file` holds control/bidi/invisible characters. */
+  file_display?: string;
   range: Range;
   fixes: Fix[];
 }
@@ -157,8 +159,39 @@ export function semicolonInsertions(orig: string, fixed: string): Array<{ line: 
   return i === orig.length ? out : undefined;
 }
 
+/**
+ * Escape terminal control characters (C0, DEL, C1 including 8-bit CSI/OSC),
+ * bidi overrides/isolates (Trojan Source) and invisible format characters into
+ * visible ASCII sequences. Matches `oxiscript_abi::sanitize::sanitize_terminal`.
+ */
+export function sanitizeTerminal(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    const unsafe =
+      cp <= 0x1f ||
+      (cp >= 0x7f && cp <= 0x9f) ||
+      cp === 0x00ad ||
+      cp === 0x061c ||
+      cp === 0x180e ||
+      (cp >= 0x200b && cp <= 0x200f) ||
+      (cp >= 0x2028 && cp <= 0x202e) ||
+      (cp >= 0x2060 && cp <= 0x2064) ||
+      (cp >= 0x2066 && cp <= 0x206f) ||
+      cp === 0xfeff ||
+      (cp >= 0xfff9 && cp <= 0xfffb) ||
+      (cp >= 0xe0000 && cp <= 0xe007f);
+    if (unsafe) {
+      out += cp < 0x100 ? `\\x${cp.toString(16).padStart(2, "0")}` : `\\u{${cp.toString(16)}}`;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 /** Message shown in the editor: the diagnostic plus its advice-only fixes. */
 export function displayMessage(d: Diag): string {
-  const advice = d.fixes.filter((f) => f.edits.length === 0).map((f) => `help: ${f.title}`);
-  return [d.message, ...advice].join("\n");
+  const advice = d.fixes.filter((f) => f.edits.length === 0).map((f) => `help: ${sanitizeTerminal(f.title)}`);
+  return [sanitizeTerminal(d.message), ...advice].join("\n");
 }

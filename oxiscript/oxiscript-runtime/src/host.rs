@@ -61,13 +61,41 @@ pub(crate) struct Data {
     pub handles: HandleTable<usize>,
     pub memory: Option<Memory>,
     pub host_calls: u64,
+    pub clock: Option<crate::Clock>,
+    pub call_start_us: Option<u64>,
+    /// Remaining call fuel held in reserve while `call_wall_micros` runs the
+    /// guest in bounded fuel slices (zero when wall-clock slicing is inactive).
+    pub fuel_reserve: u64,
+}
+
+fn check_wall(caller: &Caller<'_, Data>) -> Result<(), WasmiError> {
+    let d = caller.data();
+    let cap = d.cfg.call_wall_micros;
+    if cap > 0 {
+        if let (Some(t0), Some(clk)) = (d.call_start_us, d.clock.as_ref()) {
+            if clk().saturating_sub(t0) >= cap {
+                return Err(trap(TrapCause::HostFailure(
+                    "wall-clock limit exceeded".into(),
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn charge(caller: &mut Caller<'_, Data>, amount: u64) -> Result<(), WasmiError> {
-    let fuel = caller.get_fuel()?;
+    let mut fuel = caller.get_fuel()?;
     if fuel < amount {
-        caller.set_fuel(0)?;
-        return Err(TrapCode::OutOfFuel.into());
+        let need = amount - fuel;
+        let reserve = caller.data().fuel_reserve;
+        if reserve >= need {
+            caller.data_mut().fuel_reserve = reserve - need;
+            fuel += need;
+        } else {
+            caller.data_mut().fuel_reserve = 0;
+            caller.set_fuel(0)?;
+            return Err(TrapCode::OutOfFuel.into());
+        }
     }
     caller.set_fuel(fuel - amount)?;
     Ok(())
@@ -155,6 +183,7 @@ pub(crate) fn make_import(
         let f = &itf.fns[fi];
         let cfg = Arc::clone(&caller.data().cfg);
         charge(&mut caller, cfg.host_call_fuel)?;
+        check_wall(&caller)?;
         caller.data_mut().host_calls += 1;
         let has_status = matches!(f.ret, IdlRet::Result(_));
 
@@ -296,6 +325,7 @@ pub(crate) fn make_import(
         if extra > 0 {
             charge(&mut caller, extra)?;
         }
+        check_wall(&caller)?;
 
         // 4. results.
         let value = match outcome {
@@ -354,11 +384,11 @@ pub(crate) fn make_import(
                         f.name
                     ))));
                 }
+                charge(&mut caller, u64::from(len) / cfg.bytes_per_fuel.max(1))?;
                 if len > oc {
                     results[0] = Val::I32(STATUS_BUFFER_TOO_SMALL);
                     results[1] = Val::I32(len as i32);
                 } else {
-                    charge(&mut caller, u64::from(len) / cfg.bytes_per_fuel.max(1))?;
                     if len > 0 {
                         let data = mem.data_mut(&mut caller);
                         // `region` was checked against this memory before the

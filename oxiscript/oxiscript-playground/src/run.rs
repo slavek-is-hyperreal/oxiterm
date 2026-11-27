@@ -6,6 +6,7 @@
 //! terminated); the deterministic limit is fuel.
 
 use crate::{check_json, host_interfaces, utf16_at};
+use oxiscript_abi::sanitize::{sanitize_log, sanitize_terminal};
 use oxiscript_abi::target::Target;
 use oxiscript_lower::{compile_source_with_notes, Options};
 use oxiscript_runtime::caps::log::{LogLimits, LogProvider, LogSink};
@@ -72,7 +73,7 @@ fn classify(e: &Error) -> StopReason {
         Error::Limit(_) => "limit",
         Error::Poisoned | Error::BadCall(_) => "engine",
     };
-    StopReason { reason, code: e.code().to_string(), detail: e.to_string() }
+    StopReason { reason, code: e.code().to_string(), detail: sanitize_terminal(&e.to_string()) }
 }
 
 /// Run a compiled module: `main` executes inside `oxi_init` with `fuel` instructions of budget.
@@ -144,8 +145,8 @@ pub fn compile(src: &str) -> Result<Vec<u8>, String> {
                     let (lo, hi) = d.span.map_or((0, 0), |s| (s.lo, s.hi.max(s.lo)));
                     let (line, col) = li.line_col(src, lo);
                     let (el, ec) = li.line_col(src, hi);
-                    let title = oxiscript_abi::codes::lookup(&d.code).map_or_else(Default::default, |c| c.title);
-                    json!({ "code": d.code, "severity": "error", "title": title, "message": d.message,
+                    let title = oxiscript_abi::codes::lookup(&d.code).map_or_else(Default::default, |c| sanitize_terminal(&c.title));
+                    json!({ "code": d.code, "severity": "error", "title": title, "message": sanitize_terminal(&d.message),
                             "start": utf16_at(src, lo as usize), "end": utf16_at(src, hi as usize),
                             "line": line, "col": col, "endLine": el, "endCol": ec, "fixes": [] })
                 })
@@ -183,8 +184,8 @@ pub fn run_json(src: &str, fuel: u64) -> String {
     json!({
         "ok": true,
         "noMain": !has_main,
-        "exported": exported,
-        "lines": r.lines.iter().map(|l| json!({ "level": l.level, "msg": l.msg })).collect::<Vec<_>>(),
+        "exported": exported.iter().map(|n| sanitize_terminal(n)).collect::<Vec<_>>(),
+        "lines": r.lines.iter().map(|l| json!({ "level": l.level, "msg": sanitize_log(&l.msg) })).collect::<Vec<_>>(),
         "dropped": r.dropped,
         "fuelUsed": r.fuel_used,
         "fuel": fuel,

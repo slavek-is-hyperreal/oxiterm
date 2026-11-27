@@ -704,7 +704,11 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
     /// The type of field `index` of `owner` as seen through the object expression `obj`.
     pub fn field_decl_ty(&mut self, obj: &Expr, owner: DefId, index: u32) -> Ty {
         let ot = self.ty_of(strip(obj).id);
-        let args: Vec<Ty> = match self.kind(ot) {
+        let inner = match self.kind(ot) {
+            TyKind::Nullable(i) => i,
+            _ => ot,
+        };
+        let args: Vec<Ty> = match self.kind(inner) {
             TyKind::Adt(_, a) => a.to_vec(),
             TyKind::Variants(_, a, _) => a.to_vec(),
             _ => Vec::new(),
@@ -1236,8 +1240,19 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
             }
         };
         if t.is_float() && ibo == IB::Rem {
-            self.lw.err("OXS-E0703", "remainder on floats".to_string(), Some(e.span));
-            return Opnd::void();
+            let sym = if t == It::F32 {
+                self.lw.ensure_fmod_f32()
+            } else {
+                self.lw.ensure_fmod_f64()
+            };
+            let r = self.fb.emit1(
+                Op::Call {
+                    callee: sym,
+                    args: vec![av, bv],
+                },
+                t,
+            );
+            return Opnd::borrowed(r);
         }
         let r = self.fb.emit1(Op::Bin { op: ibo, ovf, a: av, b: bv }, t);
         Opnd::borrowed(r)

@@ -42,6 +42,7 @@
 //! are walked iteratively; unions have at most 64 variants; at most
 //! [`MAX_ERRORS`] diagnostics are kept. Work is linear in the program size
 //! except flow joins, which are linear in the number of live facts per branch.
+#![forbid(unsafe_code)]
 #![allow(
     clippy::assigning_clones,
     clippy::option_map_unit_fn,
@@ -683,6 +684,20 @@ impl<'a> Checker<'a> {
         s.get(span.lo as usize..span.hi as usize).unwrap_or("")
     }
 
+    pub fn clip_snippet(&self, span: Span) -> String {
+        let raw = self.span_text(span).trim();
+        let flat: String = raw
+            .chars()
+            .map(|c| if matches!(c, '\n' | '\r' | '\t') { ' ' } else { c })
+            .take(40)
+            .collect();
+        if raw.chars().count() > 40 {
+            format!("{flat}...")
+        } else {
+            flat
+        }
+    }
+
     // ---- type display -----------------------------------------------------
 
     pub fn show(&self, t: Ty) -> String {
@@ -929,6 +944,28 @@ impl<'a> Checker<'a> {
         self.check_instantiation_cycles();
         self.check_init_order(order);
         self.compute_effects();
+        if !self.diags.iter().any(Diagnostic::is_error) {
+            for &k in order {
+                if self.mods[k].is_std || self.mods[k].is_prelude {
+                    continue;
+                }
+                let unused: Vec<(Span, String)> = self.mods[k]
+                    .out
+                    .locals
+                    .iter()
+                    .filter(|l| {
+                        matches!(l.kind, LocalKind::Let | LocalKind::Const | LocalKind::ForOf)
+                            && !l.used
+                            && !l.name.is_empty()
+                            && !l.name.starts_with('_')
+                    })
+                    .map(|l| (l.span, l.name.clone()))
+                    .collect();
+                for (sp, name) in unused {
+                    self.err("OXS-W0001", sp, &[("name", &name)]);
+                }
+            }
+        }
         if self.tys.overflowed {
             self.err(
                 "OXS-E0113",

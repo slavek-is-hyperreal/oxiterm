@@ -93,6 +93,7 @@ static NOTES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// Tell the user (stderr, once) and remember for the JSON `notes` field that something was skipped
 /// or replaced. Notes never change the exit code.
 pub fn note(msg: String) {
+    let msg = oxiscript_abi::sanitize::sanitize_terminal(&msg);
     let mut n = NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if !n.contains(&msg) {
         {

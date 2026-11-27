@@ -78,10 +78,15 @@ pub fn apply(d: &mut Diag, f: &SourceFile) {
             // `throw`, `try`, `catch`, `finally` anywhere before the error on its line (`} catch (e) {`,
             // `if (x) throw "y";`): the `;` fix would only paper over a construct that does not exist.
             let before = line_before(f, d);
-            let exceptions = before
-                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-                .any(|w| matches!(w, "throw" | "try" | "catch" | "finally"));
-            if !exceptions && continuation_hazard(before) {
+            let exceptions = d.message.contains("has no exceptions")
+                || before
+                    .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                    .any(|w| matches!(w, "throw" | "try" | "catch" | "finally"));
+            let cont = d.message.contains("before continuation on the next line")
+                || d.message.contains("before a template literal on the next line")
+                || d.message.contains("appears incomplete")
+                || continuation_hazard(before);
+            if !exceptions && cont {
                 // `a\n[1]` reads as `a[1]`: the missing `;` belongs at the end of the previous line, and
                 // adding it here would change the meaning of the program.
                 for fx in &mut d.fixes {

@@ -72,8 +72,8 @@ Plus the safety-driven additions: undefined behaviour, implicit allocation, ambi
 3. Is a "write once, run on MCU" promise in scope for v1, or only "same compiler, MCU backend later"?
 4. Which safety standard is the first realistic customer target (it changes what to design for)?
 5. Compiler team size and licence of any formal-verification back end.
-7. GPU scope: is "kernel profile + WGSL back end" wanted in v1, or is CPU SIMD/multicore enough for the first release? (section K)
 6. Persona priority: MakeCode-style blocks editor and web flasher in or out of v1? (section J.3)
+7. GPU scope: is "kernel profile + WGSL back end" wanted in v1, or is CPU SIMD/multicore enough for the first release? (section K)
 
 ---
 
@@ -171,7 +171,7 @@ TypeScript's design goals list "apply a sound or provably correct type system" a
 For compile-to-native, unsoundness is not cosmetic: the compiler would lay out memory based on a type that may be false. Static Hermes and mypyc both resolve this by making types binding [S].
 
 **Decisions [O]:**
-- No `any`; provide `unknown` plus checked narrowing and a typed decode API for untyped input.
+- No `any`; provide `unknown` plus checked narrowing and a typed decode API for untyped input. *(MVP status 2026-11-26: `unknown` was not adopted in the MVP and is reserved as `OXS-E0900` in `grammar.md`; JSON/untyped decode comes via crates in 8.N; final owner decision tracked in `Q-LANG-5`.)*
 - `as` is either a *checked* downcast (`as?` returning `T | null`, or trapping `as!`) or a numeric conversion with defined semantics. No assertion that merely claims a type.
 - Arrays and function parameters are covariant/contravariant exactly as soundness requires (arrays of mutable elements invariant). This will reject some TS programs; accept that.
 - Non-nullable by default; `T | null` with flow narrowing; **one** absence value (no `undefined`).
@@ -196,7 +196,7 @@ Keep TS discriminated unions (`kind: "circle"`) as sum types with exhaustive `sw
 
 TS `number` is one IEEE double. STS pays tagged ints + boxed doubles for it [V]; AssemblyScript replaced `number` with explicit wasm types and BigInt with i64 [V].
 
-**Recommendation [O]:** explicit `i8..i64, u8..u64, f32, f64`, plus aliases `int = i32` (or pointer-sized?) and `float = f64`; decide `int` width once (i32 is the natural Wasm/MCU width). Literal inference defaults to `int`/`float`; a literal adapts to context when unambiguous. Overflow: **checked (trap) by default**, with explicit `+%` (wrapping), `+|` (saturating), `checked_add` returning `Result`. Rationale: determinism and no UB; cost is a branch, which profiles/optimisers can remove with range analysis or an explicit unchecked operator in a `trusted` block. Division by zero, shifts out of range, array bounds: all defined (trap or `Result`), never UB (section I).
+**Recommendation [O]:** explicit `i8..i64, u8..u64, f32, f64`, plus aliases `int = i32` (or pointer-sized?) and `float = f64`; decide `int` width once (i32 is the natural Wasm/MCU width). *(MVP status 2026-11-26: `int`/`float` aliases were not adopted in `grammar.md` 1.1; explicit `i32`/`f64` etc. are used instead; owner confirmation tracked in `Q-LANG-5`.)* Literal inference defaults to `int`/`float`; a literal adapts to context when unambiguous. Overflow: **checked (trap) by default**, with explicit `+%` (wrapping), `+|` (saturating), `checked_add` returning `Result`. Rationale: determinism and no UB; cost is a branch, which profiles/optimisers can remove with range analysis or an explicit unchecked operator in a `trusted` block. Division by zero, shifts out of range, array bounds: all defined (trap or `Result`), never UB (section I).
 
 ### B.6 Strings
 

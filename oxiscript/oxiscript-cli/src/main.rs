@@ -4,6 +4,7 @@
 //! `fmt --check` would change a file), `2` usage / I/O / configuration error,
 //! `3` reserved (it used to mean "not merged yet"; never reused), `4` the program
 //! ran and stopped on a trap (`run`: overflow, bounds, out of fuel, ...).
+#![forbid(unsafe_code)]
 #![allow(
     clippy::too_many_lines,
     clippy::needless_pass_by_value,
