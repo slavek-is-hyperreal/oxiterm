@@ -24,3 +24,4 @@ Rules:
 | Round | Changes | Model | Report |
 |---|---|---|---|
 | 8.M-link round 2 | gemini-rtlink d6b6afd | Opus | running (2026-11-26) |
+| 2026-11-27-1 | 8.Spec+8.Sec+8.Fix (gemini-fixspecsec 75d2354), 8.Std v0 (Opus pass), OxiPerf v0, 0bd281a, d624ff5, 31e8075, demo CSS | Opus | [rounds/2026-11-27-1.md](rounds/2026-11-27-1.md): 0 high, 3 medium (R1-03, R1-04, R1-40), 9 low; fixes pending |
