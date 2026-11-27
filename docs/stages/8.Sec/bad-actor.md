@@ -10,6 +10,7 @@ Tests (this branch): `oxiscript/oxiscript-{runtime,syntax,check,lower,cli}/tests
 | R1-01 | 1 | LOW | `oxiscript-runtime/tests/bad_actor_round1.rs::r1_01_many_functions_with_max_locals_tiny_bodies` (release) | 80 KB module = 0.85 s eager compile (9 900 functions x 29 990 locals) |
 | R1-02 | 1 | LOW | `oxiscript-runtime/tests/bad_actor_round1.rs::r1_02_wall_cap_does_not_stop_a_compute_only_loop` | `call_wall_micros` never interrupts a loop without host calls (closure list says "independent of fuel") |
 | R1-05 | 1 | LOW | `oxiscript-runtime/tests/bad_actor_round1.rs::r1_05_log_sanitiser_mangles_zwj_and_zwnj_text` | shared sanitiser escapes ZWJ/ZWNJ: emoji sequences, Persian and Indic log text are mangled |
+| R1-12 | 1 | LOW | `oxiscript-cli/tests/bad_actor_round1.rs::r1_12_fmt_keeps_raw_bidi_in_line_comments` | `oxi fmt` keeps a raw U+202E in a `//` comment (R2-133 says fmt cannot re-emit Trojan Source controls) |
 | R1-11 | 1 | LOW | `oxiscript-syntax/tests/bad_actor_round1.rs::r1_11_continuation_hazard_fix_never_changes_meaning` | E0004 offers (and `--fix-only semicolons` applies) `;` before a line starting with a template literal |
 | R1-21 | 1 | LOW (pre-existing, message new) | `oxiscript-check/tests/bad_actor_round1.rs::r1_21_e0105_precision` | `x += 1` / `x++` on a narrowed `T \| null` local: E0105 "`x` may be null here" although `x` is narrowed |
 
@@ -18,7 +19,7 @@ Tests (this branch): `oxiscript/oxiscript-{runtime,syntax,check,lower,cli}/tests
 ### R1-03 MEDIUM: `oxi fmt` bypasses the shared sanitiser
 `oxiscript-cli/src/fmtcmd.rs` prints `display` (the file name) and the syntax diagnostics without `sanitize_terminal`: `would reformat {display}`, `formatted {display}`, `error: {display}: {why}`, `error: {e}`, and `syntax_errors()` (`{display}:{l}:{c}: error[..]: {message}`).
 Repro: `touch $'esc\e]0;PWN\a.oxs'` with a syntax error (or `ugly\u{9b}31m.oxs` needing formatting), then `oxi fmt --check .` or `oxi fmt .`: stdout/stderr contain the raw ESC ] 0 ; PWN BEL (terminal title rewritten) and the raw 8-bit CSI U+009B.
-Expected: every `oxi` output path goes through `sanitize_terminal` (closure list R3-206 says it is wired into `oxi`). Actual: `check`, `run`, `build` are covered, `fmt` is not.
+Expected: every `oxi` output path goes through `sanitize_terminal` (closure list R3-206 says it is wired into `oxi`). Actual: `check`, `run`, `build` are covered, `fmt` is not. Lexer messages already escape the character (`unexpected character \u{1b}`), so the vector is the file name: running `oxi fmt` in a cloned repo with such a file. Other unsanitised echoes (argv only, info): `oxi explain <code>` and `oxi new <name>` print the argument raw.
 
 ### R1-04 MEDIUM: sanitised `file` fields no longer match `files[]`
 `report::collect` and `diag_at` sanitise `Diag.file` and `EditOut.file`, but `check.rs` pushes the raw display name into `names` (`files[]`) and `file_targets`. The file name is data in JSON (serde already escapes C0), so sanitising it there changes the key.
@@ -26,7 +27,7 @@ Repro: a file `soft\u{ad}hy.oxs` containing `a == b`: `oxi check --json soft­hy
 Expected: JSON keeps paths verbatim (it is not a terminal), only human output escapes them; or all three fields use the same form.
 
 ### R1-01 LOW: eager-compile amplification through declared locals
-The new structural caps do not bound the total number of declared locals. 9 900 functions, each `(local 29990 i64)` in one compressed entry (8 bytes per body, wasmi's per-function cap is 30 000 locals), make an 80 033-byte module that costs 0.85 s of `Module::new` in release (a normal module loads at ~80 ns/byte: 600 KB of nested blocks in 48 ms). `strict()` refused this exact shape (average body < 40 bytes); it would have needed ~400 KB for the same cost, so the class pre-exists, but the claim in 8.Fix/closed.md R2-109 ("every structural cap from strict() is enforced") misses that the dropped rule was also what bounded locals per byte. Loading is not fuel-metered; with hot reload a guest-supplied module can buy ~10 us of host CPU per byte.
+The new structural caps do not bound the total number of declared locals. 9 900 functions, each `(local 29990 i64)` in one compressed entry (8 bytes per body, wasmi's per-function cap is 30 000 locals), make an 80 033-byte module that costs 0.85 s to load (validation, eager translation and instantiation, `Host::instantiate`) in release (a normal module loads at ~80 ns/byte: 600 KB of nested blocks in 48 ms). `strict()` refused this exact shape (average body < 40 bytes); it would have needed ~400 KB for the same cost, so the class pre-exists, but the claim in 8.Fix/closed.md R2-109 ("every structural cap from strict() is enforced") misses that the dropped rule was also what bounded locals per byte. Loading is not fuel-metered; with hot reload a guest-supplied module can buy ~10 us of host CPU per byte.
 Expected: a cap on the sum of declared locals (e.g. 1-2 M per module) in `reject_reexports`. Call-time cost of such functions is metered (wasmi charges fuel for zeroed locals): checked, not a finding.
 
 ### R1-02 LOW: `call_wall_micros` reports, does not stop
@@ -44,11 +45,15 @@ Expected: a cap on the sum of declared locals (e.g. 1-2 M per module) in `reject
 ### Attacks that held (target 1)
 - Loader (`load.rs`): 4 M-target `br_table` (rejected by validation), 200 000 nested blocks (48 ms), 60 000 `local.get` + `local.set` preservation pattern (12 ms), 1 000 element segments x 1 300 items (97 ms); type-section param/result caps; counts saturate; imports of memory/table/global still refused. Hot-reload non-widening: reviewed, `needs` recorded only on success; no bypass found.
 - Sanitiser: C0/DEL/C1/bidi/tag characters fully covered; no terminal control outside `is_control`; identifiers are ASCII-only (U+200D, U+3164, U+1D173 give E0014), so invisible identifiers are impossible; playground JSON, `oxi check/run/build`, runtime log: clean.
-- `forbid(unsafe_code)`: present in every crate root except the documented `oxiscript-rc` (and `oxiscript-bench`, tooling, info).
+- `forbid(unsafe_code)`: present in every crate root except the documented `oxiscript-rc` (and `oxiscript-bench`, tooling, info); the playground's `deny` is not overridden anywhere (no `allow(unsafe_code)` in `oxiscript/`).
+- `max_instantiations`: budget 1 gives E0701 through both `compile_source` and `compile_program`, budget 0 does not fire without generics, the count is reported (`probe_max_instantiations_both_entry_points`). The `.length` advice `s.chars().length` and the `byteLength` replacement type-check; the replacement is maybe-incorrect, so `--fix` never applies it.
 - Formatter F8: 56 comment placements (binary operators both sides, calls, arrays, objects, ternary, unary, `as`, return, assignment, `?`, templates, type positions, unions, statements, items): output parses, is a fixed point, keeps every comment, and the code with comments removed is unchanged (`probe_formatter_comment_oracle_over_placements`).
 - throw/try/catch: no false positive on property names, object keys or strings; no `;` fix on statement uses.
 - E0126: mutating method call, `++`, `+=`, nested field, nested closure all rejected. E0105: optional chain, `<`, `*`, `<<`, `-=`, `--` all caught. W0001: no false positive (closure, template, `?`, switch subject, compound assign, for-of, law). W0005: no false positive after reassignment.
 - Float `%`: 40 000 random bit patterns (subnormal, near-max, inf/NaN, `%=`) bit-exact with Rust on f64 and f32; worst case `f64::MAX % 5e-324` costs 6 447 fuel.
+
+### R1-12 LOW: raw bidi survives `oxi fmt` in line comments
+8.Fix R2-133 says the formatter escapes invisible/bidi characters in comments "so `oxi fmt` cannot re-emit raw Trojan Source controls". It does so for `/* */` (`/* c\u{202E}d */`), but `fmtcmd::format_preserving` restores the original text of `//` and `///` comments, so `// a<U+202E>b` keeps the raw override after `oxi fmt`. The lexer still warns (W0003), so it is visible; the closure claim is wrong. Expected: same treatment for line comments, or the claim narrowed.
 
 **Verdict target 1: merge after fixes** (R1-03 and R1-04 must be fixed before merge; the LOW findings can be tracked).
 

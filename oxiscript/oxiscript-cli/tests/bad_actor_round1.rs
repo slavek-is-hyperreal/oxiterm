@@ -87,3 +87,16 @@ fn r1_04_json_file_names_are_inconsistent() {
     let out = String::from_utf8_lossy(&h.stdout);
     assert!(out.contains("return a == b;"), "human output has no source snippet:\n{out}");
 }
+
+/// R1-12: 8.Fix R2-133 says `oxi fmt` escapes bidi/invisible characters in comments so it
+/// "cannot re-emit raw Trojan Source controls"; that holds for `/* */` but `format_preserving`
+/// restores the original text of `//` line comments, so a raw U+202E survives `oxi fmt`.
+#[test]
+fn r1_12_fmt_keeps_raw_bidi_in_line_comments() {
+    let d = scratch("bidi");
+    std::fs::write(d.join("b.oxs"), "// a\u{202e}b\nexport   function g(): i32 {\n  return 1; /* c\u{202e}d */\n}\n").unwrap();
+    let o = oxi(&["fmt", "b.oxs"], &d, None);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let out = std::fs::read_to_string(d.join("b.oxs")).unwrap();
+    assert!(!out.contains('\u{202e}'), "formatted file still holds a raw U+202E:\n{out:?}");
+}

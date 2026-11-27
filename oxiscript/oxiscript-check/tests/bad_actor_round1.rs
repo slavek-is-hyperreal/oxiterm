@@ -140,3 +140,16 @@ fn probe_w0005_precision() {
     let excluded = "type S = { kind: \"a\" } | { kind: \"b\" };\nexport function f(s: S): i32 {\n  if (s.kind === \"a\") {\n    return 0;\n  }\n  switch (s.kind) {\n    case \"a\":\n      return 9;\n    case \"b\":\n      return 1;\n  }\n}\n";
     assert!(has(excluded, "OXS-W0005"), "{:?}", diags(excluded));
 }
+
+/// Probe: the advice attached to `s.length` (`s.chars().length`) must itself type-check, and the
+/// `byteLength` replacement is a real member.
+#[test]
+fn probe_length_advice_type_checks() {
+    for src in [
+        "export function f(s: string): i32 {\n  return s.chars().length;\n}\n",
+        "export function f(s: string): i32 {\n  return s.byteLength;\n}\n",
+    ] {
+        let e = errors(src);
+        assert!(e.is_empty(), "advised code does not check: {src:?} {e:?}");
+    }
+}

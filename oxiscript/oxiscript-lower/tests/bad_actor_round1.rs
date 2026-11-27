@@ -101,3 +101,31 @@ fn fmod_worst_case_fuel() {
     eprintln!("f64::MAX % min subnormal: fuel {fuel}");
     assert!(fuel < 100_000, "one `%` costs {fuel} fuel");
 }
+
+const TWO_INST: &str = r#"
+function id<T>(x: T): T {
+  return x;
+}
+@host export function run(): i32 {
+  const a = id(1);
+  const b = id(true);
+  return b ? a : 0;
+}
+"#;
+
+/// Probe: `Options::max_instantiations` is honoured by both entry points, and a budget of 0 does
+/// not fire on a program without generics.
+#[test]
+fn probe_max_instantiations_both_entry_points() {
+    use oxiscript_lower::{compile_program, compile_source, Options};
+    let opts = Options { target: test_target(), max_instantiations: 1, ..Options::default() };
+    let e1 = compile_source(TWO_INST, &interfaces(), &opts).expect_err("budget 1, two instantiations");
+    assert!(e1.to_string().contains("OXS-E0701"), "{e1}");
+    let e2 = compile_program("", TWO_INST, &mut oxiscript_check::NoLoader, &interfaces(), &opts).err().expect("budget 1");
+    assert!(e2.to_string().contains("OXS-E0701"), "{e2}");
+    let zero = Options { target: test_target(), max_instantiations: 0, ..Options::default() };
+    compile_source("@host export function f(): i32 {\n  return 1;\n}\n", &interfaces(), &zero).expect("no generics, budget 0");
+    let ok = compile_program("", TWO_INST, &mut oxiscript_check::NoLoader, &interfaces(), &Options { target: test_target(), ..Options::default() }).expect("default");
+    eprintln!("instantiations reported: {}", ok.instantiations);
+    assert!(ok.instantiations >= 2);
+}

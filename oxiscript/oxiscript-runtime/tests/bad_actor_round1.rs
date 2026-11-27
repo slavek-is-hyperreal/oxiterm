@@ -34,7 +34,7 @@ fn assert_cheap(name: &str, wasm: &[u8]) {
     );
 }
 
-/// R1-01: 10 000 functions, each with 50 000 declared locals in one compressed
+/// R1-01: 9 900 functions, each with 29 990 declared locals (wasmi caps at 30 000) in one compressed
 /// local entry (about 8 bytes per body). `strict()` refused this shape (average
 /// body < 40 bytes); `default()` + the new caps accept it. Measures how much
 /// eager compilation and instantiation cost the shape buys.
