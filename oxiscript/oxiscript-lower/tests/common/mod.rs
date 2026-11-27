@@ -24,6 +24,16 @@ pub fn test_host_options() -> oxiscript_runtime::HostOptions {
     oxiscript_runtime::HostOptions { max_target: test_target(), ..Default::default() }
 }
 
+/// Optional runtime override for lower tests: `OXI_RUNTIME=linked|stub|linked-debug` (default `linked`).
+pub fn test_runtime() -> (oxiscript_wasm::RuntimeMode, bool) {
+    match std::env::var("OXI_RUNTIME").as_deref() {
+        Ok("stub") => (oxiscript_wasm::RuntimeMode::Stub, false),
+        Ok("linked-debug") => (oxiscript_wasm::RuntimeMode::Linked, true),
+        Ok("linked") | Err(_) => (oxiscript_wasm::RuntimeMode::Linked, false),
+        Ok(other) => panic!("OXI_RUNTIME={other}: expected linked, stub, or linked-debug"),
+    }
+}
+
 pub const TICKER_IDL: &str = r#"
 interface Ticker "host:ticker" @1 {
     callback OnTick(n: i32, label: str);
@@ -51,12 +61,49 @@ pub fn show_diags(d: &oxiscript_lower::Diagnostics) -> String {
 }
 
 pub fn compile(src: &str) -> Vec<u8> {
-    compile_source(src, &interfaces(), &Options { target: test_target(), ..Options::default() }).unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
+    let (runtime, debug_runtime) = test_runtime();
+    compile_source(
+        src,
+        &interfaces(),
+        &Options {
+            target: test_target(),
+            runtime,
+            debug_runtime,
+            ..Options::default()
+        },
+    )
+    .unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
+}
+
+pub fn compile_with_mode(src: &str, runtime: oxiscript_wasm::RuntimeMode, debug_runtime: bool) -> Vec<u8> {
+    compile_source(
+        src,
+        &interfaces(),
+        &Options {
+            target: test_target(),
+            runtime,
+            debug_runtime,
+            ..Options::default()
+        },
+    )
+    .unwrap_or_else(|e| panic!("compile ({runtime:?}, debug={debug_runtime}) failed:\n{e}\n--- source ---\n{src}"))
 }
 
 pub fn compile_full(src: &str) -> CompileOutput {
-    compile_program("", src, &mut oxiscript_check::NoLoader, &interfaces(), &Options { target: test_target(), ..Options::default() })
-        .unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
+    let (runtime, debug_runtime) = test_runtime();
+    compile_program(
+        "",
+        src,
+        &mut oxiscript_check::NoLoader,
+        &interfaces(),
+        &Options {
+            target: test_target(),
+            runtime,
+            debug_runtime,
+            ..Options::default()
+        },
+    )
+    .unwrap_or_else(|e| panic!("compile failed:\n{e}\n--- source ---\n{src}"))
 }
 
 /// Shared state of the scripted `host:ticker` test capability.
@@ -233,11 +280,35 @@ impl Prog {
 }
 
 /// Compile `src`, run `main`, check the log and that nothing leaks.
+/// Runs in Linked mode (or `OXI_RUNTIME` if overridden) and also checks Stub
+/// parity automatically (tolerating only Stub's documented `Unreachable` trap
+/// on float-to-text and Stub's lack of cycle collection when Linked freed to 0).
 pub fn run_log(src: &str, want: &[&str]) {
     let mut p = Prog::new(src);
     let got = p.log();
-    assert_eq!(got, want.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "log of:\n{src}");
+    let want_vec: Vec<String> = want.iter().map(|s| (*s).to_string()).collect();
+    assert_eq!(got, want_vec, "log of:\n{src}");
     p.finish();
+
+    // Automatic Stub parity check when running under default Linked mode.
+    if std::env::var("OXI_RUNTIME").is_err() {
+        let stub_wasm = compile_with_mode(src, oxiscript_wasm::RuntimeMode::Stub, false);
+        let env = env();
+        match env.host.instantiate(&stub_wasm, Grants::all()) {
+            Ok(mut rt) => {
+                let s_got: Vec<String> = env.sink.lines().into_iter().map(|l| l.msg).collect();
+                assert_eq!(s_got, want_vec, "Stub vs Linked log mismatch for:\n{src}");
+                // Stub has no cycle collector; if Linked collected to 0, Stub may report cyclic live > 0.
+                let _ = rt.deinit().unwrap_or_else(|e| panic!("Stub deinit failed: {e}"));
+            }
+            Err(oxiscript_runtime::Error::Trap(t))
+                if t.guest_kind == Some(oxiscript_abi::trap::TrapKind::Unreachable) =>
+            {
+                // Expected Stub-only limitation: `oxi_str_from_f64`/`oxi_str_from_f32` trap Unreachable in Stub.
+            }
+            Err(e) => panic!("Stub instantiate failed where Linked succeeded: {e}\n--- source ---\n{src}"),
+        }
+    }
 }
 
 pub fn trap_kind(e: &oxiscript_runtime::Error) -> Option<oxiscript_abi::trap::TrapKind> {

@@ -90,7 +90,7 @@ fn std_md_and_sources_agree() {
             missing_in_md.push(e.clone());
         }
     }
-    assert!(missing_in_md.is_empty(), "exported but undocumented: {missing_in_md:?}");
+    assert_eq!(missing_in_md.len(), 0, "exported but undocumented: {missing_in_md:?}");
     // names the doc lists as functions/constants must exist
     let mut missing_in_code = vec![];
     for l in md.lines().filter(|l| l.trim_start().starts_with('*') || l.starts_with('|')) {
@@ -103,7 +103,7 @@ fn std_md_and_sources_agree() {
         }
     }
     missing_in_code.sort(); missing_in_code.dedup();
-    assert!(missing_in_code.is_empty(), "documented but not exported: {missing_in_code:?}");
+    assert_eq!(missing_in_code.len(), 0, "documented but not exported: {missing_in_code:?}");
 }
 
 /// std.md claims `isFinite`/`isNaN`/`isInfinite` have `*F32` variants and tables list F32 constants: they must exist.

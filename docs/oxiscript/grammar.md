@@ -48,7 +48,7 @@ ESCAPE   = "\" ( "n" | "r" | "t" | "0" | "\" | '"' | "'" | "`" | "$" | "x" HEX H
 TEMPLATE = "`" { CHAR | ESCAPE | "${" Expr "}" } "`" ;               (* newlines allowed *)
 ```
 
-`\xHH` must be ASCII (`<= 0x7F`); `\u{...}` must be a Unicode scalar value (no surrogates). A `string` is UTF-8, immutable, with byte length; there is no O(1) code-point indexing (library: `bytes()`, `chars()`). A template literal is sugar for string concatenation with `toString`-style formatting of each interpolation (numbers, bool, string; other types need an explicit conversion).
+`\xHH` must be ASCII (`<= 0x7F`); `\u{...}` must be a Unicode scalar value (no surrogates). A `string` is UTF-8, immutable, with byte length; there is no O(1) code-point indexing (library: `bytes()`, `chars()`). A template literal is sugar for string concatenation with `toString`-style formatting of each interpolation (numbers, bool, string; other types need an explicit conversion). Both `f32` and `f64` format as the shortest round-trip decimal representation of their own precision (for example `0.1f32` prints `"0.1"`, `3.4028235e38f32` prints `"3.4028235e38"`, `0.1` prints `"0.1"`), with a trailing `.0` stripped for integral values (`1.0` -> `"1"`, `-0.0` -> `"-0"`), `"NaN"` for NaN, and `"Infinity"` / `"-Infinity"` for infinities (see `abi.md` 3.1).
 
 ### 1.3 Operators and punctuation
 

@@ -242,13 +242,12 @@ impl<'l, 'c, 'a> Fx<'l, 'c, 'a> {
                 let r = self.fb.emit1(Op::Call { callee: h, args: vec![v] }, It::Str);
                 Opnd::owned(r)
             }
-            It::F64 | It::F32 => {
-                let x = if t == It::F32 {
-                    self.fb.emit1(Op::Conv { ovf: Ovf::Trap, a: v }, It::F64)
-                } else {
-                    v
-                };
-                let r = self.fb.emit1(Op::StrFromF64 { x }, It::Str);
+            It::F64 => {
+                let r = self.fb.emit1(Op::StrFromF64 { x: v }, It::Str);
+                Opnd::owned(r)
+            }
+            It::F32 => {
+                let r = self.fb.emit1(Op::StrFromF32 { x: v }, It::Str);
                 Opnd::owned(r)
             }
             t if t.is_int() => {

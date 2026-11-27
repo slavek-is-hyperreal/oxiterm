@@ -5,11 +5,17 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "OxiIR to Core WebAssembly code generator (Phase 8)."
 
+[features]
+default = []
+# Also embed a debug build of `oxiscript-rc` (with `stale_object` trap 65 and
+# freed-memory poisoning) so CI test suites can verify compiler output with it.
+debug-runtime = []
+
 [dependencies]
 oxiscript-abi = { path = "../oxiscript-abi" }
 oxiscript-ir = { path = "../oxiscript-ir" }
 # Bytecode Alliance; Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT.
-wasm-encoder = { version = "0.263", default-features = false, features = ["std"] }
+wasm-encoder = { version = "0.263", default-features = false, features = ["std", "wasmparser"] }
 # Same licence; validates our own output with exactly the ABI feature set.
 wasmparser = { version = "0.263", default-features = false, features = ["std", "validate", "features"] }
 

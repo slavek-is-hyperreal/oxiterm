@@ -601,6 +601,17 @@ pub(crate) fn check(
                     ))
                 }
             }
+        } else if name == exports::COLLECT_STEP || name == exports::COLLECT_STAT {
+            // optional runtime exports: (i32) -> i32
+            match ty {
+                ExternType::Func(ft) if expect_sig(ft, &[ValType::I32], &[ValType::I32]) => {}
+                _ => {
+                    return Err(Error::reject(
+                        "OXS-E0407",
+                        format!("optional runtime export `{name}` must have type (i32) -> i32"),
+                    ))
+                }
+            }
         } else if exports::is_reserved_export_name(name.as_str()) {
             return Err(Error::reject(
                 "OXS-E0407",

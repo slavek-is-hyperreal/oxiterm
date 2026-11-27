@@ -25,16 +25,20 @@ pub struct Options {
     pub target: oxiscript_wasm::Target,
     /// Maximum number of generic instantiations before `OXS-E0701` (default [`crate::MAX_INSTANCES`]).
     pub max_instantiations: usize,
+    /// When `runtime == RuntimeMode::Linked`, link the debug build of `oxiscript-rc`
+    /// (requires the `debug-runtime` feature of `oxiscript-wasm`).
+    pub debug_runtime: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
-            runtime: oxiscript_wasm::RuntimeMode::Stub,
+            runtime: oxiscript_wasm::RuntimeMode::Linked,
             validate_output: true,
             lower_all: false,
             target: oxiscript_wasm::Target::Device,
             max_instantiations: crate::MAX_INSTANCES,
+            debug_runtime: false,
         }
     }
 }
@@ -657,6 +661,7 @@ pub fn compile_program(
         runtime: opts.runtime,
         validate_output: opts.validate_output,
         target: opts.target,
+        debug_runtime: opts.debug_runtime,
         ..oxiscript_wasm::CompileOptions::default()
     };
     let wasm = oxiscript_wasm::compile(&module, &copts).map_err(|d| convert_wasm(&d))?;

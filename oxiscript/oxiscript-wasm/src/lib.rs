@@ -63,6 +63,7 @@ mod cfg;
 mod cx;
 mod func;
 mod helpers;
+mod link;
 mod modlayout;
 mod stubrt;
 mod target;
@@ -144,13 +145,16 @@ impl std::error::Error for Diagnostics {}
 /// Where the runtime-support functions (`oxi_alloc`, `oxi_retain`, ...) come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeMode {
-    /// Embed the **test stub** runtime (bump allocator, exact counts): the
-    /// module is complete and loads in `oxiscript-runtime`.
+    /// Statically link the real `oxiscript-rc` memory runtime (reference
+    /// counting, deferred destruction, cycle collector, `oxi_str_from_f64`)
+    /// into one self-contained Core Wasm module.
+    Linked,
+    /// Embed the **test stub** runtime (bump allocator, exact counts, no cycle
+    /// collector, no `f64 -> string`): small and fast for compiler unit tests.
     Stub,
     /// Import the runtime functions from the Wasm module [`RT_MODULE`]
-    /// (`oxi:rt`), field = ABI export name (plus `oxi_rt_init(i32, i32)`).
-    /// The result is meant to be statically linked with the real runtime
-    /// (slice 8.M) and is not loadable on its own.
+    /// (`oxi:rt`), field = ABI export name (including `oxi_rt_init(i32, i32, i32)`).
+    /// Useful for inspecting compiler-only golden dumps; not loadable on its own.
     Import,
 }
 
@@ -175,6 +179,10 @@ pub struct CompileOptions {
     /// validator allows). No code path emits a non-Device feature today, so
     /// every target yields the same code; only the manifest differs.
     pub target: Target,
+    /// When `runtime == RuntimeMode::Linked`, link the debug build of `oxiscript-rc`
+    /// (with `stale_object` trap 65 and freed-memory poisoning). Requires the
+    /// `debug-runtime` Cargo feature of `oxiscript-wasm`.
+    pub debug_runtime: bool,
 }
 
 impl Default for CompileOptions {
@@ -187,6 +195,7 @@ impl Default for CompileOptions {
             validate_output: true,
             allow_raw_exports: false,
             target: Target::Device,
+            debug_runtime: false,
         }
     }
 }
@@ -275,13 +284,28 @@ pub fn compile_with_stats(module: &Module, opts: &CompileOptions) -> Result<Outp
 }
 
 fn compile_inner(m: &Module, opts: &CompileOptions) -> Result<Output, Diagnostic> {
-    let lay = modlayout::Layout::build(m)?;
+    let (lay, table_base, scratch_ptr) = if opts.runtime == RuntimeMode::Linked {
+        let rt = link::runtime_layout(opts.debug_runtime)?;
+        let lay = modlayout::Layout::build_at(m, rt.p_data_base)?;
+        (lay, rt.table_len, rt.scratch_ptr)
+    } else {
+        let lay = modlayout::Layout::build(m)?;
+        let sp = lay.static_end;
+        (lay, 0, sp)
+    };
     let static_end = lay.static_end;
-    let mut cx = cx::Cx::new(m, opts, lay)?;
+    let mut cx = cx::Cx::new(m, opts, lay, table_base, scratch_ptr)?;
     cx.resolve_needs()?;
     wrap::gen_all(&mut cx)?;
-    let functions = cx.defs.len();
-    let wasm = cx.assemble(static_end)?;
+    let mut functions = cx.defs.len();
+    let raw_wasm = cx.assemble(static_end)?;
+    let wasm = if opts.runtime == RuntimeMode::Linked {
+        let (merged, n_fns) = link::merge(&raw_wasm, static_end, opts.debug_runtime)?;
+        functions = n_fns;
+        merged
+    } else {
+        raw_wasm
+    };
     if opts.validate_output {
         validate_for(&wasm, opts.target).map_err(|e| {
             Diagnostic::new(I_INTERNAL, format!("generated module failed validation: {e}"), None)

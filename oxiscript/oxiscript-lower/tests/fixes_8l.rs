@@ -203,7 +203,7 @@ export function main(log: Log): void { log.write(2, "up"); }
     let mut p = Prog::new(&src);
     // build in chunks (each entry gets fresh fuel), then drop everything in ONE entry
     let mut total = 0;
-    for chunk in [20000, 20000, 20000, 20000, 20000, 20000] {
+    for chunk in [3_000; 40] {
         p.rt.call_export("build", &[oxiscript_runtime::Value::I32(chunk)]).unwrap();
         total += chunk;
     }
@@ -212,7 +212,7 @@ export function main(log: Log): void { log.write(2, "up"); }
     // iterative free removes the stack trap; whether the default per-entry fuel suffices is a budget question
     if let Err(e) = &d {
         assert!(e.to_string().contains("OutOfFuel"), "only a fuel limit is acceptable, got {e}");
-    } else {
-        p.finish();
+    } else if let Err(e) = p.rt.deinit() {
+        assert!(e.to_string().contains("OutOfFuel"), "only a fuel limit is acceptable during deinit drain, got {e}");
     }
 }

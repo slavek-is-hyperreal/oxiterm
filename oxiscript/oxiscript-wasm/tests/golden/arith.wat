@@ -7,11 +7,12 @@
   (type (;5;) (func (param i32 i32 i32) (result i32)))
   (type (;6;) (func (param i64) (result i32)))
   (type (;7;) (func (param f64) (result i32)))
-  (type (;8;) (func (param i32 i32) (result i32 i32)))
-  (type (;9;) (func (param i32 f32) (result i32)))
-  (type (;10;) (func (result f64)))
-  (type (;11;) (func))
-  (type (;12;) (func (param i64) (result i64)))
+  (type (;8;) (func (param i32 i32 i32)))
+  (type (;9;) (func (param i32 i32) (result i32 i32)))
+  (type (;10;) (func (param i32 f32) (result i32)))
+  (type (;11;) (func (result f64)))
+  (type (;12;) (func))
+  (type (;13;) (func (param i64) (result i64)))
   (import "oxi:rt" "oxi_alloc" (func (;0;) (type 0) (param i32) (result i32)))
   (import "oxi:rt" "oxi_alloc_bytes" (func (;1;) (type 0) (param i32) (result i32)))
   (import "oxi:rt" "oxi_free_bytes" (func (;2;) (type 1) (param i32 i32)))
@@ -32,7 +33,7 @@
   (import "oxi:rt" "oxi_array_new" (func (;17;) (type 4) (param i32 i32) (result i32)))
   (import "oxi:rt" "oxi_array_grow" (func (;18;) (type 1) (param i32 i32)))
   (import "oxi:rt" "oxi_trap" (func (;19;) (type 2) (param i32)))
-  (import "oxi:rt" "oxi_rt_init" (func (;20;) (type 1) (param i32 i32)))
+  (import "oxi:rt" "oxi_rt_init" (func (;20;) (type 8) (param i32 i32 i32)))
   (table (;0;) 0 0 funcref)
   (memory (;0;) 2)
   (global (;0;) (mut i32) i32.const 0)
@@ -68,7 +69,7 @@
     return
     unreachable
   )
-  (func (;22;) (type 8) (param i32 i32) (result i32 i32)
+  (func (;22;) (type 9) (param i32 i32) (result i32 i32)
     (local i32 i32 i32 i32 i32 i32 i32 i64)
     local.get 0
     local.get 1
@@ -183,7 +184,7 @@
     return
     unreachable
   )
-  (func (;24;) (type 9) (param i32 f32) (result i32)
+  (func (;24;) (type 10) (param i32 f32) (result i32)
     (local i32 i32 i32 i32 i32 i32)
     local.get 0
     i32.popcnt
@@ -214,7 +215,7 @@
     return
     unreachable
   )
-  (func (;25;) (type 10) (result f64)
+  (func (;25;) (type 11) (result f64)
     (local f32 f32 f64 f64 f64 f64 f64 f64 f64 f64 f64 f64)
     f64.const -0x0p+0 (;=-0;)
     local.set 2
@@ -249,16 +250,17 @@
     return
     unreachable
   )
-  (func (;26;) (type 11)
+  (func (;26;) (type 12)
     global.get 2
     global.get 3
+    i32.const 1280
     call 20
   )
-  (func (;27;) (type 11))
-  (func (;28;) (type 12) (param i64) (result i64)
+  (func (;27;) (type 12))
+  (func (;28;) (type 13) (param i64) (result i64)
     i64.const -1
   )
-  (func (;29;) (type 10) (result f64)
+  (func (;29;) (type 11) (result f64)
     (local f64)
     call 25
     local.set 0

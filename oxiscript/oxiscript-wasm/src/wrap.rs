@@ -179,9 +179,10 @@ pub(crate) fn gen_all(cx: &mut Cx<'_>) -> Result<(), Diagnostic> {
     let init = cx.declare(&vec![ValType::I32; n], &[]);
     {
         let mut b = Body::new(n);
-        if cx.opts.runtime == RuntimeMode::Import {
+        if matches!(cx.opts.runtime, RuntimeMode::Import | RuntimeMode::Linked) {
             b.s().global_get(2).global_get(3);
-            b.s().call(cx.rt("oxi_rt_init"));
+            b.i32c(cx.lay.static_end as i32);
+            b.s().call(cx.rt(exports::RT_INIT));
         }
         if let Some(main) = m.func("main") {
             for i in 0..n {
@@ -193,6 +194,15 @@ pub(crate) fn gen_all(cx: &mut Cx<'_>) -> Result<(), Diagnostic> {
         cx.set_body(init, b.finish());
     }
     cx.exports.push((exports::INIT.into(), ExportKind::Func, init));
+    if cx.opts.runtime == RuntimeMode::Linked {
+        let set_trap = cx.declare(&[ValType::I32], &[]);
+        let mut b = Body::new(1);
+        b.get(0);
+        b.s().global_set(G_TRAP);
+        cx.set_body(set_trap, b.finish());
+        cx.exports
+            .push((crate::link::SET_TRAP_EXPORT.into(), ExportKind::Func, set_trap));
+    }
     let deinit = cx.declare(&[], &[]);
     {
         let mut b = Body::new(0);

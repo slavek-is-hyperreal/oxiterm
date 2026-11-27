@@ -42,6 +42,8 @@ pub(crate) struct Cx<'a> {
     pub defs: Vec<(u32, Option<Function>)>,
     pub n_imports: u32,
     helpers: BTreeMap<HKey, u32>,
+    pub closure_table_base: u32,
+    pub scratch_ptr: u32,
     pub closure_targets: Vec<String>,
     closure_ix: HashMap<String, u32>,
     pub exports: Vec<(String, ExportKind, u32)>,
@@ -109,7 +111,7 @@ impl<'a> Cx<'a> {
         if let Some(i) = self.closure_ix.get(func) {
             return *i;
         }
-        let i = self.closure_targets.len() as u32;
+        let i = self.closure_table_base + self.closure_targets.len() as u32;
         self.closure_targets.push(func.to_string());
         self.closure_ix.insert(func.to_string(), i);
         i
@@ -126,6 +128,8 @@ impl<'a> Cx<'a> {
         m: &'a Module,
         opts: &'a CompileOptions,
         lay: Layout,
+        closure_table_base: u32,
+        scratch_ptr: u32,
     ) -> Result<Cx<'a>, Diagnostic> {
         let safety = m
             .attrs
@@ -146,6 +150,8 @@ impl<'a> Cx<'a> {
             defs: Vec::new(),
             n_imports: 0,
             helpers: BTreeMap::new(),
+            closure_table_base,
+            scratch_ptr,
             closure_targets: Vec::new(),
             closure_ix: HashMap::new(),
             exports: Vec::new(),
@@ -161,26 +167,32 @@ impl<'a> Cx<'a> {
             cx.imports.push((imp.module.clone(), imp.field.clone(), t));
         }
         // runtime functions
-        if opts.runtime == RuntimeMode::Import {
-            let mut names: Vec<&'static str> = exports::EXPORTS
+        if matches!(opts.runtime, RuntimeMode::Import | RuntimeMode::Linked) {
+            for e in exports::EXPORTS
                 .iter()
                 .filter(|e| e.provider == Provider::Runtime && e.kind == AbiKind::Func)
-                .map(|e| e.name)
-                .collect();
-            names.push("oxi_rt_init");
-            for n in names {
-                let (p, r) = if n == "oxi_rt_init" {
-                    (vec![ValType::I32, ValType::I32], vec![])
-                } else {
-                    let e = exports::find(n).expect("export row");
-                    (
-                        e.params.iter().map(|t| wasm_ty(*t)).collect::<Vec<_>>(),
-                        e.results.iter().map(|t| wasm_ty(*t)).collect::<Vec<_>>(),
-                    )
-                };
+            {
+                let p: Vec<ValType> = e.params.iter().map(|t| wasm_ty(*t)).collect();
+                let r: Vec<ValType> = e.results.iter().map(|t| wasm_ty(*t)).collect();
                 let t = cx.sig_type(&p, &r);
-                cx.rt_idx.insert(n.to_string(), cx.imports.len() as u32);
-                cx.imports.push((RT_MODULE.to_string(), n.to_string(), t));
+                cx.rt_idx.insert(e.name.to_string(), cx.imports.len() as u32);
+                cx.imports.push((RT_MODULE.to_string(), e.name.to_string(), t));
+            }
+            // Internal f32-to-string helper: imported only when used so ABI 1.0 golden
+            // dumps for programs without `str.from_f32` remain byte-identical.
+            let uses_f32_fmt = m.funcs.iter().any(|f| {
+                f.blocks.iter().any(|b| {
+                    b.insts
+                        .iter()
+                        .any(|ins| matches!(ins.op, oxiscript_ir::Op::StrFromF32 { .. }))
+                })
+            });
+            if uses_f32_fmt {
+                let t = cx.sig_type(&[ValType::F32], &[ValType::I32]);
+                cx.rt_idx
+                    .insert("oxi_str_from_f32".to_string(), cx.imports.len() as u32);
+                cx.imports
+                    .push((RT_MODULE.to_string(), "oxi_str_from_f32".to_string(), t));
             }
         }
         cx.n_imports = cx.imports.len() as u32;
@@ -272,7 +284,7 @@ impl<'a> Cx<'a> {
     }
 
     pub(crate) fn assemble(self, static_end: u32) -> Result<Vec<u8>, Diagnostic> {
-        let stub = self.opts.runtime == RuntimeMode::Stub;
+        let export_scratch = matches!(self.opts.runtime, RuntimeMode::Stub | RuntimeMode::Linked);
         if let Some((p, r)) = self
             .types
             .iter()
@@ -315,7 +327,7 @@ impl<'a> Cx<'a> {
         }
         module.section(&fs);
         let mut tabs = TableSection::new();
-        let nt = self.closure_targets.len() as u64;
+        let nt = u64::from(self.closure_table_base) + self.closure_targets.len() as u64;
         tabs.table(TableType {
             element_type: RefType::FUNCREF,
             table64: false,
@@ -324,7 +336,11 @@ impl<'a> Cx<'a> {
             shared: false,
         });
         module.section(&tabs);
-        let pages = (u64::from(static_end) + 4096 + 65536).div_ceil(65536);
+        let pages = if self.opts.runtime == RuntimeMode::Linked {
+            u64::from(static_end).div_ceil(65536).max(1)
+        } else {
+            (u64::from(static_end) + 4096 + 65536).div_ceil(65536)
+        };
         let mut mems = MemorySection::new();
         mems.memory(MemoryType {
             minimum: pages,
@@ -346,7 +362,7 @@ impl<'a> Cx<'a> {
         gs.global(g(false), &ConstExpr::i32_const(oxiscript_abi::layout::ABI_VERSION as i32)); // 1
         gs.global(g(false), &ConstExpr::i32_const(self.lay.typedesc_base as i32)); // 2
         gs.global(g(false), &ConstExpr::i32_const(self.lay.typedesc_count as i32)); // 3
-        gs.global(g(false), &ConstExpr::i32_const(static_end as i32)); // 4 scratch ptr
+        gs.global(g(false), &ConstExpr::i32_const(self.scratch_ptr as i32)); // 4 scratch ptr
         gs.global(g(false), &ConstExpr::i32_const(4096)); // 5 scratch cap
         gs.global(g(true), &ConstExpr::i32_const(heap as i32)); // 6
         gs.global(g(true), &ConstExpr::i32_const(0)); // 7
@@ -380,7 +396,7 @@ impl<'a> Cx<'a> {
         es.export(exports::TRAP_KIND, ExportKind::Global, 0);
         es.export(exports::TYPEDESC_BASE, ExportKind::Global, 2);
         es.export(exports::TYPEDESC_COUNT, ExportKind::Global, 3);
-        if stub {
+        if export_scratch {
             es.export(exports::SCRATCH_PTR, ExportKind::Global, 4);
         }
         es.export(exports::SCRATCH_CAP, ExportKind::Global, 5);
@@ -388,7 +404,7 @@ impl<'a> Cx<'a> {
             es.export(n, *k, *i);
         }
         module.section(&es);
-        if nt > 0 {
+        if !self.closure_targets.is_empty() {
             let idxs: Vec<u32> = self
                 .closure_targets
                 .iter()
@@ -398,7 +414,7 @@ impl<'a> Cx<'a> {
             elems.segment(ElementSegment {
                 mode: wasm_encoder::ElementMode::Active {
                     table: None,
-                    offset: &ConstExpr::i32_const(0),
+                    offset: &ConstExpr::i32_const(self.closure_table_base as i32),
                 },
                 elements: Elements::Functions(Cow::Owned(idxs)),
             });
@@ -419,7 +435,7 @@ impl<'a> Cx<'a> {
         let mut ds = DataSection::new();
         ds.active(
             0,
-            &ConstExpr::i32_const(oxiscript_abi::layout::RESERVED_LOW_BYTES as i32),
+            &ConstExpr::i32_const(self.lay.data_base as i32),
             self.lay.segment.iter().copied(),
         );
         module.section(&ds);

@@ -892,6 +892,11 @@ impl<'c, 'a> FnGen<'c, 'a> {
                 self.call_rt("oxi_str_from_f64");
                 self.set(res[0]);
             }
+            Op::StrFromF32 { x } => {
+                self.get(*x);
+                self.call_rt("oxi_str_from_f32");
+                self.set(res[0]);
+            }
             Op::ArrayEmpty => {
                 let Ty::Array(e) = self.ty(res[0]) else {
                     return self.err("array.empty result is not an array");

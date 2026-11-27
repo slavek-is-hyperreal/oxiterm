@@ -453,6 +453,7 @@ fn op_text(op: &Op, n: &dyn Fn(&ValueId) -> String, ns: &dyn Fn(&[ValueId]) -> S
         Op::StrSlice { s, lo, hi } => format!("str.slice {}, {}, {}", n(s), n(lo), n(hi)),
         Op::StrByte { s, idx } => format!("str.byte {}, {}", n(s), n(idx)),
         Op::StrFromF64 { x } => format!("str.from_f64 {}", n(x)),
+        Op::StrFromF32 { x } => format!("str.from_f32 {}", n(x)),
         Op::ArrayEmpty => "array.empty".to_string(),
         Op::ArrayPop { arr } => format!("array.pop {}", n(arr)),
         Op::IsNull { val } => format!("is_null {}", n(val)),

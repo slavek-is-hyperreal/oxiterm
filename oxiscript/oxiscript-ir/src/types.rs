@@ -538,6 +538,10 @@ pub enum Op {
     StrFromF64 {
         x: ValueId,
     },
+    /// Shortest round-trip decimal text of a float (`NaN`, `Infinity`, `-Infinity`); f32 operand.
+    StrFromF32 {
+        x: ValueId,
+    },
     /// New empty array (`len 0`, owned) of any element type, including non-null references.
     ArrayEmpty,
     /// Remove and return the last element (traps `bounds` when empty); the result is
@@ -655,6 +659,7 @@ impl Op {
                 | Op::StrConcat { .. }
                 | Op::StrSlice { .. }
                 | Op::StrFromF64 { .. }
+                | Op::StrFromF32 { .. }
                 | Op::ArrayEmpty
         )
     }
@@ -674,7 +679,7 @@ impl Op {
             Op::StrConcat { a, b } | Op::StrEq { a, b } | Op::StrCmp { a, b } => vec![a, b],
             Op::StrSlice { s, lo, hi } => vec![s, lo, hi],
             Op::StrByte { s, idx } => vec![s, idx],
-            Op::StrFromF64 { x } => vec![x],
+            Op::StrFromF64 { x } | Op::StrFromF32 { x } => vec![x],
             Op::ArrayPop { arr } => vec![arr],
             Op::Bin { a, b, .. } | Op::Cmp { a, b, .. } => vec![a, b],
             Op::Un { a, .. } | Op::Conv { a, .. } | Op::Bitcast { a } => vec![a],
@@ -721,7 +726,7 @@ impl Op {
             Op::StrConcat { a, b } | Op::StrEq { a, b } | Op::StrCmp { a, b } => vec![*a, *b],
             Op::StrSlice { s, lo, hi } => vec![*s, *lo, *hi],
             Op::StrByte { s, idx } => vec![*s, *idx],
-            Op::StrFromF64 { x } => vec![*x],
+            Op::StrFromF64 { x } | Op::StrFromF32 { x } => vec![*x],
             Op::ArrayPop { arr } => vec![*arr],
             Op::Bin { a, b, .. } | Op::Cmp { a, b, .. } => vec![*a, *b],
             Op::Un { a, .. } | Op::Conv { a, .. } | Op::Bitcast { a } => vec![*a],
