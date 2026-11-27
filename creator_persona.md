@@ -20,6 +20,9 @@ Plik dla prowadzącego (lead, obecnie Claude) i każdego agenta, który przejmie
 - Bezpieczeństwo jako sposób myślenia: łańcuchy podatności, piaskownica, uprawnienia, „nie ufaj agentowi, sprawdź”.
 - Licencje oprogramowania (GPL kontra MIT/Apache) i ich skutki.
 - Nazwy i hasła z kultury technicznej, które sam przywołuje: PyO3, V8, SWAR, LLVM, Bend 2, re-entrancy (ale patrz punkt 3).
+- Myślenie o bezpieczeństwie operacyjnym: od razu zauważa, że publiczne repo zdradziłoby np. terminy odnawiania tokenów; rozumie model „klient nic nie wie o logice” w wersji strumieniowanej (logowania, banki).
+- Wzorce webowe jako punkt odniesienia: `event-htmx` jak „PHP-owe kliknięcie w link”, OxiScript jak „JS na stronie + API serwera”; zna htmx, PyO3, Wokwi, Rust Anything, sztuczkę z Quake (szybki odwrotny pierwiastek), Fortran w fizyce.
+- Pomysły architektoniczne z intuicji, które okazują się trafne: transpilator TS→OxiScript „maszynowo + AI tylko na niejasne miejsca”, animacje liczone lokalnie, tryb archaic od lat 70, kompilacja i interpreter jako dwie drogi.
 
 ## 3. Czego jeszcze nie rozumie albo zna tylko z nazwy (tłumacz przy okazji)
 
@@ -38,6 +41,9 @@ Wnioski z pytań zadanych w rozmowach (w nawiasie pytanie lub sytuacja):
 | GitHub Actions | „Node.js 20 przestarzały” | co to workflow, runner, akcja, wersja |
 | Re-entrancy, granica hosta | prośba o wyjaśnienie | rysunek słowny: kto kogo woła i co jest zablokowane |
 | Strategie testów | „jak sprawdzić, że bramka działa”, „co z fuzzingiem” | bramka = lista testów przed scaleniem; fuzzing = losowe dane szukające awarii |
+| Limity modeli AI | sprawdzanie `/usage`, „czy to był limit 5 h” | dobrze rozumie z praktyki; pomogło pokazanie liczb (koszt tury, cache) |
+| Tryby wyświetlania OxiUI | „czy okno porusza się po gridzie” | pokazać różnicę komórkowy / GUI na żywo |
+| Gdzie działa kod (serwer / przeglądarka) | „jak to się dzieli na streamowaną i lokalną” | diagram strzałek: kto liczy, co płynie przez sieć |
 
 Ogólnie: **rozumie „co” i „po co”, nie zawsze „jak w środku”.** Decyzje podejmuje trafnie, gdy dostanie skutki w prostych słowach.
 
@@ -69,3 +75,14 @@ Dopisuj tu każde nowe pojęcie wyjaśnione w rozmowie, jednym-dwoma zdaniami.
 - **Worktree:** osobna kopia repozytorium na dysku dla jednego agenta, żeby agenci sobie nie przeszkadzali.
 - **Tag / wydanie:** nazwany punkt w historii gita (np. `oxiscript-v0.0.2`), od którego liczy się wersja.
 - **Sekret (GitHub):** zaszyfrowana wartość (np. klucz API) dostępna dla workflow, niewidoczna w logach i w repo.
+- **API Token kontra Global API Key (Cloudflare):** token ma tylko wybrane uprawnienia i da się go łatwo cofnąć; klucz globalny daje dostęp do całego konta. Używamy tokenów.
+- **Tryb komórkowy kontra GUI:** komórkowy rysuje siatkę znaków (jak terminal, skoki o całe pola); GUI rysuje listę rysowania z dokładnymi współrzędnymi i fontem proporcjonalnym (płynny ruch). Serwer decyduje, który tryb dostaje klient.
+- **Strona strumieniowana kontra lokalna:** strumieniowana: rdzeń i skrypty działają na serwerze, przeglądarka tylko wyświetla i odsyła kliknięcia; lokalna: rdzeń i skrypty działają w przeglądarce (Wasm), serwer tylko raz wysyła pliki.
+- **`event-htmx` kontra OxiScript:** pierwsze to model „kliknięcie → serwer aplikacji → nowy stan” (bez kodu na stronie), drugie to logika na stronie plus wywołania serwera (`host:app`).
+- **Interpreter kontra kompilacja (dwie drogi):** ten sam plik Wasm wykonuje wasmi (wolniej, ale natychmiast, z paliwem) albo zamieniamy go na kod procesora (Wasmtime, w2c2, przeglądarka): szybciej, ale bez paliwa, więc kompilator wstawia limity pracy.
+- **OxiPerf kontra OxiBench:** OxiPerf mierzy szybkość i pamięć programów (i porównuje z innymi językami według uczciwej metodologii); OxiBench mierzy, jak dobrze modele AI piszą w OxiScript.
+- **BAD ACTOR rounds:** kilka zmian zbieranych do jednej rundy ataku Opusa, żeby oszczędzić koszt; bez rundy nie ma tagu wydania.
+- **Cache tokenów:** model przy każdym kroku dostaje cały kontekst rozmowy; jeśli ten kontekst był już wysłany, jest „z cache” i kosztuje około 10–20 razy mniej. Dlatego długa sesja jest tańsza na krok niż wiele krótkich.
+- **Tree-sitter:** biblioteka do szybkiego rozbioru kodu na drzewo, używana przez edytory (podświetlanie, nawigacja) i narzędzia (wyszukiwanie wzorców).
+- **Kolumnowe tablice (Fortran):** Fortran trzyma macierz kolumnami i liczy indeksy od 1; dowiązanie z innego języka musi to przetłumaczyć.
+- **Tryb archaic:** ta sama strona wyświetlana na coraz starszych terminalach (256 kolorów → 16 → VT100 mono → VT52 → dalekopis), z coraz mniejszą liczbą funkcji.
