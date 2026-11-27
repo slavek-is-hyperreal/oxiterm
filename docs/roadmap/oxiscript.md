@@ -127,6 +127,7 @@ Each is stated in the plan rows, specs or commit messages of the date shown; wor
 | <a id="d-36"></a>D-36 | 2026-11-27 | **Board simulation (answers Q-DX-1):** (1) **support Wokwi as the market leader**: `oxi build --target micro` firmware (w2c2 + ESP-IDF, D-27/D-28) runs in Wokwi's ESP32 simulator, with a ready `wokwi.toml`/`diagram.json` per `oxi new` board template and docs; check Wokwi's terms and free tier before promising CI use; (2) **our own simple simulator** (virtual `host:gpio`/`host:sensor`/`host:ui` in the browser on the wasm32 core, no CPU emulation) **only after we have bought the board and really run something on it** (after the 8.S3 first-light milestone), so it mirrors real behaviour. | owner, conversation 2026-11-27 |
 | <a id="d-37"></a>D-37 | 2026-11-27 | **Implicit lossless numeric widening** at assignment, argument and `return` only, for the exact pairs listed under P-2 (exception to P-2); lossy or narrowing conversions keep `as`; no promotion inside operators. Goal: less friction for TypeScript developers with no loss of precision. No "lax mode" or dialect (P-3). Implemented in 8.Fix. | owner, conversation 2026-11-27 |
 | <a id="d-38"></a>D-38 | 2026-11-27 | **AI-assisted TS → OxiScript migration (`oxi migrate`), token-frugal; supersedes "after 8.S5" in D-35 for Q-DX-10.** Deterministic pipeline first, AI only on holes: TS parsed by a permissive Rust parser (`oxc_parser`, MIT), deterministic rules rewrite everything certain into an OxiScript AST printed by our formatter, uncertain spots become marked holes with a reason; `oxi check --json` applies machine-applicable fixes; only the remaining holes and errors go to an AI model, one small snippet each (function-level context, the registry reason code, neighbour signatures), never a whole file; loop until zero errors, plus differential tests when the TS source has tests. **Skeleton (parser, holes, check loop, AI hook, token accounting) early as stage [8.Mig](#s-8-mig); rules grown from the 8.S5 port data.** Also a **tree-sitter grammar for OxiScript** in [8.D1](#s-8-d1) (editors Zed/Neovim/Helix, structural queries; parses the whole corpus like our parser). | owner, conversation 2026-11-27 |
+| <a id="d-39"></a>D-39 | 2026-11-27 | **Two interaction models, side by side.** `event-htmx` stays the declarative, PHP-like model: a click sends an action to the App Server, which answers with a state patch; no code on the page. OxiScript is the JS-like model: logic on the page plus calls to the page's own App Server through a new capability `host:app` (stage [8.S1b](#s-8-s1b)), replies delivered as callbacks now and as `await` after 8.4a. Arbitrary internet access is a separate future `host:http` capability with an operator allowlist. | owner, conversation 2026-11-27 |
 
 ### 2.5 Superseded
 
@@ -195,7 +196,8 @@ One row per stage; the status column uses only `done`, `in-progress`, `todo`, `i
 | 8.Spec | todo | — |
 | 8.Sec | todo | — |
 | 8.0 | todo | — |
-| 8.S1 | todo | — |
+| 8.S1 | in-progress | — |
+| 8.S1b | todo | — |
 | 8.S2 | todo | — |
 | 8.D1 | todo | — |
 | 8.D2 | todo | — |
@@ -362,6 +364,13 @@ Named in the old plan four times but never scheduled. It measures; it does not r
 - Prior art to study first (owner 2026-11-27): **Rust Anything** (github.com/erkamyaman/rust-anything, MIT OR Apache-2.0): an agent-driven tool that rewrites an app into Rust piece by piece, keeps the old app calling the new pieces through FFI (PyO3, napi), and checks every step against the original with a "gate". The OxiScript version fits naturally: an OxiScript function compiles to a Wasm module that a JS/TS app can call directly, so a TS app can be ported function by function, each step checked differentially against the TS original (our D-38 pipeline does the translation, the gate the checking). Licence allows reusing ideas and code.
 - Gate: a corpus of real TS files (permissive licences) migrates to zero `oxi check` errors; tokens per 1000 lines measured against a pure-agent migration of the same corpus (target: a large reduction, reported, not promised); the AI never receives a whole file; every deterministic rule has a test; BAD ACTOR on hostile TS input (parser bombs, prompt injection inside TS comments/strings sent to the AI hook).
 - Depends on: 8.D1 (MCP tools, tree-sitter grammar useful), 8.S5 for the rule data (skeleton may start before). Status: todo.
+
+<a id="s-8-s1b"></a>
+#### 8.S1b `host:app`: OxiScript ↔ the page's App Server (todo; right after 8.S1)
+
+- Scope ([D-39](#d-39)): capability `host:app@1`: `call(action, payload, cb)` sends a request to the App Server of the page (only that server: the same one that already receives `event-htmx` actions; no arbitrary URLs) and delivers `(status, body)` to the callback between turns, deterministically; server-driven mode: the OxiUI server makes the call with the existing App Server protocol; local mode: the browser makes it; size, time and rate limits; a page can withhold the capability (`caps`). Documented in `abi.md`; a demo page (search box filtering results from the App Server) in both modes. Later: `await app.call(...)` via 8.4a.
+- Gate: the demo works in both modes with identical results; no request can reach any host other than the page's App Server (tests with crafted actions, redirects, URLs in payloads); timeouts and errors arrive as callbacks, never as hangs; BAD ACTOR (Opus) on capability escape, request smuggling and amplification.
+- Depends on: [8.S1](#s-8-s1). Status: todo.
 
 <a id="s-8-lab"></a>
 #### 8.Lab Speedup Lab (todo; owner 2026-11-26)
