@@ -41,7 +41,9 @@ pub(crate) const FUNCS: &[&str] = &[
     "oxi_array_new",
     "oxi_array_grow",
     "oxi_trap",
+    "oxi_rt_init",
     // internal helpers (not exported)
+    "oxi_str_from_f32",
     "bump",
     "free_obj",
     "new_str",
@@ -49,12 +51,12 @@ pub(crate) const FUNCS: &[&str] = &[
 ];
 
 pub(crate) fn is_internal(name: &str) -> bool {
-    matches!(name, "bump" | "free_obj" | "new_str" | "utf8_ok")
+    matches!(name, "oxi_str_from_f32" | "bump" | "free_obj" | "new_str" | "utf8_ok")
 }
 
 /// Signature of a stub function: (params, results).
 pub(crate) fn sig(name: &str) -> (Vec<ValType>, Vec<ValType>) {
-    use ValType::{F64, I32, I64};
+    use ValType::{F32, F64, I32, I64};
     match name {
         "bump" | "oxi_alloc" | "oxi_alloc_bytes" | "oxi_clone" | "new_str" => (vec![I32], vec![I32]),
         "oxi_is_unique" => (vec![I32], vec![I32]),
@@ -65,8 +67,10 @@ pub(crate) fn sig(name: &str) -> (Vec<ValType>, Vec<ValType>) {
             (vec![I32, I32], vec![I32])
         }
         "oxi_str_slice" => (vec![I32, I32, I32], vec![I32]),
+        "oxi_rt_init" => (vec![I32, I32, I32], vec![]),
         "oxi_str_from_i64" => (vec![I64], vec![I32]),
         "oxi_str_from_f64" => (vec![F64], vec![I32]),
+        "oxi_str_from_f32" => (vec![F32], vec![I32]),
         _ => (vec![], vec![]),
     }
 }
@@ -785,7 +789,7 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
             b.s().i32_sub().memory_copy(0, 0);
             b.get(r);
         }
-        "oxi_str_from_i64" | "oxi_str_from_f64" => {
+        "oxi_str_from_i64" | "oxi_str_from_f64" | "oxi_str_from_f32" => {
             trap(b, TrapKind::Unreachable);
         }
         "oxi_array_new" => {
@@ -922,6 +926,7 @@ pub(crate) fn build(name: &str, ix: &dyn Fn(&str) -> u32) -> Function {
             b.get(0);
             b.s().global_set(G_TRAP).unreachable();
         }
+        "oxi_rt_init" => {}
         other => unreachable!("unknown stub function {other}"),
     }
     body.finish()

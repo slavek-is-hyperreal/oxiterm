@@ -39,7 +39,9 @@ pub(crate) struct Layout {
     pub data_ix: HashMap<String, usize>,
     pub typedesc_base: u32,
     pub typedesc_count: u32,
-    /// The static segment, placed at [`RESERVED_LOW_BYTES`].
+    /// Start address of [`Self::segment`] in linear memory.
+    pub data_base: u32,
+    /// The static segment, placed at [`Self::data_base`].
     pub segment: Vec<u8>,
     /// First address after the static data (8-aligned).
     pub static_end: u32,
@@ -146,8 +148,11 @@ fn rec_layout(
 
 impl Layout {
     pub(crate) fn build(m: &Module) -> Result<Layout, Diagnostic> {
+        Self::build_at(m, RESERVED_LOW_BYTES)
+    }
+
+    pub(crate) fn build_at(m: &Module, base: u32) -> Result<Layout, Diagnostic> {
         let mut seg: Vec<u8> = Vec::new();
-        let base = RESERVED_LOW_BYTES;
         let mut descs: BTreeMap<u32, TypeDesc> = BTreeMap::new();
         let mut ptr_maps: Vec<(u32, Vec<u32>)> = Vec::new(); // (type id, slots)
 
@@ -342,6 +347,7 @@ impl Layout {
             data_ix,
             typedesc_base,
             typedesc_count,
+            data_base: base,
             segment: seg,
             static_end,
         })

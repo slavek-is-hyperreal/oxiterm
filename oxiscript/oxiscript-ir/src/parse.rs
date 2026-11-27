@@ -1260,6 +1260,9 @@ impl Parser {
             "str.from_f64" => Op::StrFromF64 {
                 x: self.value(names)?,
             },
+            "str.from_f32" => Op::StrFromF32 {
+                x: self.value(names)?,
+            },
             "array.empty" => Op::ArrayEmpty,
             "array.pop" => Op::ArrayPop {
                 arr: self.value(names)?,

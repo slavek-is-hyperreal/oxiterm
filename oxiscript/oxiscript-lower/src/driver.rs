@@ -23,15 +23,19 @@ pub struct Options {
     pub lower_all: bool,
     /// Compilation target (docs/oxiscript/abi.md 3.6); recorded in the manifest.
     pub target: oxiscript_wasm::Target,
+    /// When `runtime == RuntimeMode::Linked`, link the debug build of `oxiscript-rc`
+    /// (requires the `debug-runtime` feature of `oxiscript-wasm`).
+    pub debug_runtime: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
-            runtime: oxiscript_wasm::RuntimeMode::Stub,
+            runtime: oxiscript_wasm::RuntimeMode::Linked,
             validate_output: true,
             lower_all: false,
             target: oxiscript_wasm::Target::Device,
+            debug_runtime: false,
         }
     }
 }
@@ -628,6 +632,7 @@ pub fn compile_program(
         runtime: opts.runtime,
         validate_output: opts.validate_output,
         target: opts.target,
+        debug_runtime: opts.debug_runtime,
         ..oxiscript_wasm::CompileOptions::default()
     };
     let wasm = oxiscript_wasm::compile(&module, &copts).map_err(|d| convert_wasm(&d))?;

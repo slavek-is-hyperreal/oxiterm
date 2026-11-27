@@ -7,9 +7,10 @@
   (type (;5;) (func (param i32 i32 i32) (result i32)))
   (type (;6;) (func (param i64) (result i32)))
   (type (;7;) (func (param f64) (result i32)))
-  (type (;8;) (func (param i32) (result i64)))
-  (type (;9;) (func))
-  (type (;10;) (func (param i64) (result i64)))
+  (type (;8;) (func (param i32 i32 i32)))
+  (type (;9;) (func (param i32) (result i64)))
+  (type (;10;) (func))
+  (type (;11;) (func (param i64) (result i64)))
   (import "oxi:rt" "oxi_alloc" (func (;0;) (type 0) (param i32) (result i32)))
   (import "oxi:rt" "oxi_alloc_bytes" (func (;1;) (type 0) (param i32) (result i32)))
   (import "oxi:rt" "oxi_free_bytes" (func (;2;) (type 1) (param i32 i32)))
@@ -30,7 +31,7 @@
   (import "oxi:rt" "oxi_array_new" (func (;17;) (type 4) (param i32 i32) (result i32)))
   (import "oxi:rt" "oxi_array_grow" (func (;18;) (type 1) (param i32 i32)))
   (import "oxi:rt" "oxi_trap" (func (;19;) (type 2) (param i32)))
-  (import "oxi:rt" "oxi_rt_init" (func (;20;) (type 1) (param i32 i32)))
+  (import "oxi:rt" "oxi_rt_init" (func (;20;) (type 8) (param i32 i32 i32)))
   (table (;0;) 0 0 funcref)
   (memory (;0;) 2)
   (global (;0;) (mut i32) i32.const 0)
@@ -53,7 +54,7 @@
   (export "oxi_tick" (func 25))
   (export "sum" (func 21))
   (export "classify" (func 22))
-  (func (;21;) (type 8) (param i32) (result i64)
+  (func (;21;) (type 9) (param i32) (result i64)
     (local i32 i32 i32 i32 i32 i64 i64 i64 i64 i64)
     i32.const 0
     local.set 1
@@ -156,13 +157,14 @@
     return
     unreachable
   )
-  (func (;23;) (type 9)
+  (func (;23;) (type 10)
     global.get 2
     global.get 3
+    i32.const 1280
     call 20
   )
-  (func (;24;) (type 9))
-  (func (;25;) (type 10) (param i64) (result i64)
+  (func (;24;) (type 10))
+  (func (;25;) (type 11) (param i64) (result i64)
     i64.const -1
   )
   (data (;0;) (i32.const 1024) "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\04\01\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00")
