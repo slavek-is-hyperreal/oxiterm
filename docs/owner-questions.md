@@ -4,9 +4,25 @@ Po polsku, dla twórcy (zob. [creator_persona.md](../creator_persona.md)). Odpow
 
 Stan: 2026-11-26 wieczór. Otwarte zostały:
 
-## D. SIMD i GPU
+## D. SIMD i GPU (specyfikacja wykonawców 8.3: docs/research/oxiscript-executor-model-spec.md)
 
-- **Q-SIMD-4 Odczyt poza tablicą na GPU.** Wyjaśnienie jest w rozmowie z 2026-11-26 i w skrócie: na CPU odczyt `a[i]` poza tablicą zatrzymuje program (pułapka). Karta graficzna nie umie się tak zatrzymać w środku tysięcy równoległych wątków: WebGPU w takiej sytuacji zwraca zero albo wartość z innego miejsca tablicy, po cichu. Mamy trzy wyjścia: (1) w automatycznej ścieżce (ten sam kod na CPU i GPU) kompilator dopuszcza na GPU tylko kod, w którym udowodni, że indeks mieści się w tablicy (np. `for (i of range(0, a.length))`), a resztę zostawia na CPU; (2) na GPU dokładamy sprawdzenie każdego indeksu i zapis „wystąpił błąd” do osobnej flagi, którą CPU sprawdza po zakończeniu i wtedy zgłasza pułapkę (wolniej o kilka do kilkunastu procent); (3) w ręcznym API `host:gpu` dla ekspertów zachowanie jak w WebGPU (zero), z trybem debug, który robi (2). **Sugestia:** (1) w ścieżce automatycznej, (2) jako tryb debug zawsze dostępny, (3) tylko w `host:gpu`. Dzięki temu ten sam program nigdy nie zachowuje się inaczej na GPU niż na CPU.
+- **Q-SIMD-4 Odczyt poza tablicą na GPU.** Problem: na CPU odczyt `a[i]` poza tablicą zatrzymuje program, a GPU tak nie umie (zwraca zero albo cudzą wartość, po cichu). Propozycja ze specyfikacji: (1) w ścieżce automatycznej na GPU idzie tylko kod, w którym kompilator udowodni, że indeks jest w zakresie, w każdym trybie budowania; (2) błąd w operacji na danych na GPU zgłaszany jest przy najbliższym punkcie synchronizacji (`download`, `sync()`, koniec tury), zawsze ten pierwszy (najniższy indeks), więc wynik jest powtarzalny; (3) w trybie debug kompilator dodatkowo sprawdza sam siebie; (4) ręczne `host:gpu` dla ekspertów: odczyt zera, pominięty zapis plus flaga debug. **Sugestia:** zatwierdzić.
+- **Q-EXE-1 Trzy klasy dokładności:** E (bit w bit, liczby całkowite), C (float na GPU w opisanej tolerancji, bez adnotacji), A (`@approx`, jawne przybliżenie). **Sugestia:** zatwierdzić.
+- **Q-EXE-2 Zapis `@approx`:** liczby całkowite teraz (`@approx(ulp: 2)`, `@approx(rel_ppm: 10)`), liczby z przecinkiem później. **Sugestia:** tak.
+- **Q-EXE-3 Sumowanie floatów w stałej kolejności (drzewo) na każdym wykonawcy:** wynik zawsze ten sam, ale GPU trochę wolniejsze. **Sugestia:** przyjąć, zmierzyć koszt w 8.3d.
+- **Q-EXE-4 Dostęp do QPU na Raspberry:** tryb H (pomocnik z uprawnieniami, kopie danych) czy V (dane wspólne). **Sugestia:** zdecydować po sondzie w 8.Mem, zacząć od H z `host:fft`.
+- **Q-EXE-5 Program nigdy nie wysyła własnego kodu maszynowego na QPU** (tylko listę dozwolonych operacji, którą host sprawdza). **Sugestia:** tak, to jedyna bariera bezpieczeństwa.
+- **Q-EXE-6 Etap 8.3f (QPU) jako pomysł bez terminu** do czasu sondy. **Sugestia:** tak.
+
+## E2. Async (specyfikacja 8.4a: docs/research/oxiscript-async-spec.md)
+
+Rekomendacja: `async function` / `await` jak w TypeScript, kompilowane do maszyn stanów, bez zmiany ABI i bez propozycji Wasm, których nie mamy.
+
+- **Q-ASYNC-1 `async` pisane jawnie czy wywnioskowane przez kompilator.** **Sugestia:** jawnie (czytelne dla osób z TS, sygnatury się nie zmieniają po cichu).
+- **Q-ASYNC-2 Typ wyniku:** zwykłe `R` (a niewyczekane wywołanie ma typ `Pending<R>`) zamiast `Promise<R>`. **Sugestia:** `R`.
+- **Q-ASYNC-3 Anulowanie:** zadanie po prostu nie jest wznawiane, a sprzątanie robią bloki `defer`; bez osobnego błędu „anulowano”. **Sugestia:** tak.
+- **Q-ASYNC-4 Nowe słowo `defer`** (sprzątanie przy wyjściu z bloku, także w kodzie synchronicznym), zarezerwować teraz. **Sugestia:** tak.
+- **Q-ASYNC-5 Przeładowanie kodu w trakcie zadań:** wszystkie anulowane, trwała praca zapisana w `host:state` i wznawiana. **Sugestia:** tak.
 
 ## F. Narzędzia
 
