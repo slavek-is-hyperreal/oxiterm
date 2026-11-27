@@ -258,6 +258,8 @@ Critical path to the first visible result (the old path 8.C -> 8.P -> 8.T -> 8.L
 
 Gate legend: for stages that had an owner row in the old plan (8.S1-8.S5, 8.D, 8.W, 8.Std, 8.Dom, 8.Mem, 8.N, 8.Perf, 8.3a-e) the gate is the owner's text, with amendments marked (8.S4c); gates of stages that are new in this roadmap (8.M-link, 8.Fix, 8.Spec, 8.Sec, 8.0, 8.Bench, 8.2b, 8.2c, 8.S3w, 8.4a, 8.Pub, 8.Repo) and added dependencies (for example 8.N -> 8.Std) are proposals for owner approval.
 
+**Order agreed with the owner on 2026-11-27:** 8.S1 (now) → 8.2b (compiled path with budget checks, `micro` target, differential interpreter vs compiled: the biggest single speedup, OxiPerf shows wasmi 20-50x slower than native while Wasmtime is ~1.8x of Rust) → 8.Perf (after the Gemini weekly quota refresh, ~2026-12-03).
+
 Parallel to it, in order of unblocking value:
 
 ```
