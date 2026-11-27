@@ -1,0 +1,1993 @@
+{
+  "baseline": "rust-native",
+  "bootstrap": {
+    "method": "hierarchical (invocations, then iterations), splitmix64 seeded",
+    "mpes_external": 0.1,
+    "resamples": 10000
+  },
+  "digests": [
+    {
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "digest_ok": true,
+      "executors": 55,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "digest_ok": true,
+      "executors": 55,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "digest_ok": true,
+      "executors": 55,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "map_set",
+      "checksum": 2476134049,
+      "digest_ok": true,
+      "executors": 35,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "digest_ok": true,
+      "executors": 55,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "digest_ok": true,
+      "executors": 51,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "digest_ok": true,
+      "executors": 48,
+      "kind": "digest"
+    },
+    {
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "digest_ok": true,
+      "executors": 55,
+      "kind": "digest"
+    }
+  ],
+  "digests_ok": true,
+  "geomean_vs_rust_native": [
+    {
+      "benchmarks": 2,
+      "engine": "c-gcc",
+      "geomean": 0.7568810052154048,
+      "max": 1.0855778160986116,
+      "min": 0.5277086981333851,
+      "origin": "awfy"
+    },
+    {
+      "benchmarks": 2,
+      "engine": "js-node",
+      "geomean": 1.5338208677684952,
+      "max": 2.2796102235390268,
+      "min": 1.0320213649286711,
+      "origin": "awfy"
+    },
+    {
+      "benchmarks": 2,
+      "engine": "oxiscript-wasmi",
+      "geomean": 22.85487841300257,
+      "max": 34.47610571073732,
+      "min": 15.150941688592463,
+      "origin": "awfy"
+    },
+    {
+      "benchmarks": 2,
+      "engine": "oxiscript-wasmtime",
+      "geomean": 1.7773279886722955,
+      "max": 2.5394257233677795,
+      "min": 1.2439406084020406,
+      "origin": "awfy"
+    },
+    {
+      "benchmarks": 5,
+      "engine": "c-gcc",
+      "geomean": 1.2771649105529133,
+      "max": 1.8487312549629549,
+      "min": 1.02420897030643,
+      "origin": "own"
+    },
+    {
+      "benchmarks": 6,
+      "engine": "js-node",
+      "geomean": 2.5663071665505286,
+      "max": 4.378082096284191,
+      "min": 1.3240786015277517,
+      "origin": "own"
+    },
+    {
+      "benchmarks": 6,
+      "engine": "oxiscript-wasmi",
+      "geomean": 50.029518434603226,
+      "max": 97.02516879201484,
+      "min": 25.378796404727773,
+      "origin": "own"
+    },
+    {
+      "benchmarks": 6,
+      "engine": "oxiscript-wasmtime",
+      "geomean": 3.722163930343063,
+      "max": 5.501689070897337,
+      "min": 1.9311316585785432,
+      "origin": "own"
+    }
+  ],
+  "rows": [
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4430,
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "ci95_ms": [
+        827.2942145,
+        1300.829214
+      ],
+      "cold_first_call_ms_median": 1159.369953,
+      "cold_process_ms_median": 1167.614194,
+      "compile_ms_first": 1.746849,
+      "compile_ms_median": 1.337757,
+      "cv": 0.3287172431759768,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 1976420138,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        808.11652525,
+        1350.9199815
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 1.1102315,
+      "max_ms": 2424.439061,
+      "mean_ms": 1124.574583075,
+      "median_ms": 1052.727677,
+      "min_ms": 656.917611,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 1810.5463936499998,
+      "peak_rss_mib_median": 5.94921875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          11.696705317078424,
+          18.775488044372455
+        ],
+        "ratio": 15.150941688592463,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 2,
+      "workload_title": "AWFY Mandelbrot"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4430,
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "ci95_ms": [
+        75.0281245,
+        108.809404
+      ],
+      "cold_first_call_ms_median": 150.4234155,
+      "cold_process_ms_median": 185.925564,
+      "compile_ms_first": 1.746849,
+      "compile_ms_median": 1.337757,
+      "cv": 0.5523135448549514,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        72.84909225,
+        113.21000925
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 30.9162605,
+      "max_ms": 481.46438,
+      "mean_ms": 104.947602825,
+      "median_ms": 86.432298,
+      "min_ms": 67.77813,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 208.16241289999996,
+      "peak_rss_mib_median": 12.1484375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.038790037665577,
+          1.5390843379188652
+        ],
+        "ratio": 1.2439406084020406,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 2,
+      "workload_title": "AWFY Mandelbrot"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "ci95_ms": [
+        64.746498,
+        77.464328
+      ],
+      "cold_first_call_ms_median": 102.7948595,
+      "cold_process_ms_median": 123.39218600000001,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.4474345510390829,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        63.179703,
+        90.79181125
+      ],
+      "iterations_per_invocation": 30,
+      "language": "rust",
+      "load_ms_median": 0.00025100000000000003,
+      "max_ms": 353.38295,
+      "mean_ms": 83.8865266875,
+      "median_ms": 69.4826565,
+      "min_ms": 58.311699,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 146.00086979999998,
+      "peak_rss_mib_median": 3.814453125,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Mandelbrot"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16408,
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "ci95_ms": [
+        63.466752,
+        136.253954
+      ],
+      "cold_first_call_ms_median": 130.354523,
+      "cold_process_ms_median": 132.4567975,
+      "compile_ms_first": null,
+      "compile_ms_median": 100.941873,
+      "cv": 0.5939658923754859,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        63.07931575,
+        133.70454525
+      ],
+      "iterations_per_invocation": 10,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 328.85803,
+      "mean_ms": 110.02908803749999,
+      "median_ms": 75.4288305,
+      "min_ms": 58.642207,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 260.59320114999997,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.8880839856841679,
+          1.9813739986993757
+        ],
+        "ratio": 1.0855778160986116,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Mandelbrot"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 450,
+      "benchmark": "awfy_mandelbrot",
+      "checksum": 191,
+      "ci95_ms": [
+        67.353995,
+        99.015753
+      ],
+      "cold_first_call_ms_median": 80.1550885,
+      "cold_process_ms_median": 157.24865549999998,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.7647069057272661,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        64.344881,
+        109.76332
+      ],
+      "iterations_per_invocation": 10,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 611.671647,
+      "mean_ms": 99.5967749875,
+      "median_ms": 71.707586,
+      "min_ms": 59.658993,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 182.8405725499998,
+      "peak_rss_mib_median": 43.23046875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.9137021267551568,
+          1.4351644597287077
+        ],
+        "ratio": 1.0320213649286711,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Mandelbrot"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4099,
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "ci95_ms": [
+        390.022194,
+        572.1071965
+      ],
+      "cold_first_call_ms_median": 566.447061,
+      "cold_process_ms_median": 573.018689,
+      "compile_ms_first": 1.311703,
+      "compile_ms_median": 1.1143455,
+      "cv": 0.33729314458818355,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 761602750,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        386.48278975,
+        589.98448275
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 0.8339985000000001,
+      "max_ms": 1122.798105,
+      "mean_ms": 526.220901475,
+      "median_ms": 472.0026755,
+      "min_ms": 352.736994,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 865.4512554999999,
+      "peak_rss_mib_median": 13.8828125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          21.320711201959053,
+          49.57116213831904
+        ],
+        "ratio": 34.47610571073732,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 126,
+      "workload_title": "AWFY Sieve"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4099,
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "ci95_ms": [
+        33.661109,
+        47.6416375
+      ],
+      "cold_first_call_ms_median": 36.767697999999996,
+      "cold_process_ms_median": 60.71426699999999,
+      "compile_ms_first": 1.311703,
+      "compile_ms_median": 1.1143455,
+      "cv": 0.4694880985947498,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        32.969582,
+        45.3094015
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 17.3832545,
+      "max_ms": 149.245086,
+      "mean_ms": 44.234347862499995,
+      "median_ms": 34.766564,
+      "min_ms": 31.394452,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 88.32599839999999,
+      "peak_rss_mib_median": 19.912109375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.7148363300020866,
+          3.7362074462787453
+        ],
+        "ratio": 2.5394257233677795,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 126,
+      "workload_title": "AWFY Sieve"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "ci95_ms": [
+        10.453264,
+        20.046649
+      ],
+      "cold_first_call_ms_median": 13.067183,
+      "cold_process_ms_median": 19.922117,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.4880357170559246,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        10.6799215,
+        20.08518375
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.000255,
+      "max_ms": 48.670186,
+      "mean_ms": 16.900117962499998,
+      "median_ms": 13.690719,
+      "min_ms": 9.944149,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 32.48407489999999,
+      "peak_rss_mib_median": 3.802734375,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Sieve"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16448,
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "ci95_ms": [
+        6.714772,
+        11.5171395
+      ],
+      "cold_first_call_ms_median": 9.088772500000001,
+      "cold_process_ms_median": 10.66423,
+      "compile_ms_first": null,
+      "compile_ms_median": 102.000487,
+      "cv": 0.5221343942296848,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.5,
+      "invocations": 8,
+      "iqr_ms": [
+        6.559224375,
+        11.51338925
+      ],
+      "iterations_per_invocation": 10,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 35.492221,
+      "mean_ms": 9.578374025,
+      "median_ms": 7.2247115,
+      "min_ms": 6.176973,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 16.5291144,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.349574862642028,
+          0.8827636675523323
+        ],
+        "ratio": 0.5277086981333851,
+        "verdict": "faster"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Sieve"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 504,
+      "benchmark": "awfy_sieve",
+      "checksum": 334500,
+      "ci95_ms": [
+        27.026128,
+        40.2515765
+      ],
+      "cold_first_call_ms_median": 43.388684999999995,
+      "cold_process_ms_median": 103.8992795,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.5346793543530058,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        26.85106625,
+        39.92527275
+      ],
+      "iterations_per_invocation": 10,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 123.431931,
+      "mean_ms": 40.3348182875,
+      "median_ms": 31.209503,
+      "min_ms": 25.216359,
+      "n": 500,
+      "origin": "awfy",
+      "p95_ms": 85.93413155,
+      "peak_rss_mib_median": 43.177734375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.4631266859490828,
+          3.45150160862665
+        ],
+        "ratio": 2.2796102235390268,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "AWFY Sieve"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 5155,
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "ci95_ms": [
+        162.0351965,
+        266.312493
+      ],
+      "cold_first_call_ms_median": 188.8290615,
+      "cold_process_ms_median": 194.002519,
+      "compile_ms_first": 1.945002,
+      "compile_ms_median": 1.636551,
+      "cv": 0.5418196445668616,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 239141117,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        159.25208025,
+        269.84398675
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 0.941436,
+      "max_ms": 777.625377,
+      "mean_ms": 241.533620125,
+      "median_ms": 183.5930005,
+      "min_ms": 144.57002,
+      "n": 60000,
+      "origin": "own",
+      "p95_ms": 567.7230837499999,
+      "peak_rss_mib_median": 7.09375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          23.279356623249924,
+          40.90270670551433
+        ],
+        "ratio": 28.841427876342063,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 17,
+      "workload_title": "merge sort"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 5155,
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "ci95_ms": [
+        11.825183,
+        25.571804
+      ],
+      "cold_first_call_ms_median": 14.473223,
+      "cold_process_ms_median": 52.383722,
+      "compile_ms_first": 1.945002,
+      "compile_ms_median": 1.636551,
+      "cv": 0.7231385052890885,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        11.763347,
+        23.7000275
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 27.3451095,
+      "max_ms": 81.408903,
+      "mean_ms": 20.231350550000002,
+      "median_ms": 12.627712,
+      "min_ms": 11.431189,
+      "n": 60000,
+      "origin": "own",
+      "p95_ms": 51.171841549999996,
+      "peak_rss_mib_median": 13.150390625,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.6595595145310744,
+          3.9859344006996795
+        ],
+        "ratio": 1.9837425386553296,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 17,
+      "workload_title": "merge sort"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "ci95_ms": [
+        6.076498,
+        7.382699
+      ],
+      "cold_first_call_ms_median": 6.986152000000001,
+      "cold_process_ms_median": 9.9605185,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.9579515573249576,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        5.987367375,
+        8.121120125
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.000245,
+      "max_ms": 74.9032795,
+      "mean_ms": 8.10237114375,
+      "median_ms": 6.36560025,
+      "min_ms": 5.7968045,
+      "n": 60000,
+      "origin": "own",
+      "p95_ms": 11.6380068,
+      "peak_rss_mib_median": 3.9609375,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "merge sort"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16480,
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "ci95_ms": [
+        6.089646,
+        12.606721
+      ],
+      "cold_first_call_ms_median": 6.407285,
+      "cold_process_ms_median": 14.9235775,
+      "compile_ms_first": null,
+      "compile_ms_median": 121.317127,
+      "cv": 0.4776999736121085,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 4,
+      "iqr_ms": [
+        6.037420375,
+        10.5735015
+      ],
+      "iterations_per_invocation": 30,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 24.6421105,
+      "mean_ms": 8.847009583333334,
+      "median_ms": 6.9164225,
+      "min_ms": 5.687991,
+      "n": 60000,
+      "origin": "own",
+      "p95_ms": 16.493728575,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.8662604510300322,
+          1.9430804267044572
+        ],
+        "ratio": 1.0865310777251524,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": null,
+      "workload_title": "merge sort"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 842,
+      "benchmark": "sort",
+      "checksum": 36663703,
+      "ci95_ms": [
+        13.167714,
+        16.025896
+      ],
+      "cold_first_call_ms_median": 44.415150499999996,
+      "cold_process_ms_median": 127.940241,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 1.2513650972713484,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        13.15736025,
+        19.720054
+      ],
+      "iterations_per_invocation": 16,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 249.992656,
+      "mean_ms": 22.303015921875,
+      "median_ms": 13.6727965,
+      "min_ms": 12.455968,
+      "n": 60000,
+      "origin": "own",
+      "p95_ms": 50.45178394999997,
+      "peak_rss_mib_median": 51.548828125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.836814156721592,
+          2.5470135313865487
+        ],
+        "ratio": 2.147919436191426,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "merge sort"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 10988,
+      "benchmark": "map_set",
+      "checksum": 2476134049,
+      "ci95_ms": [
+        107.640757,
+        158.795764
+      ],
+      "cold_first_call_ms_median": 187.804623,
+      "cold_process_ms_median": 213.7336985,
+      "compile_ms_first": 7.434481,
+      "compile_ms_median": 6.891476,
+      "cv": 0.5155793156201346,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 95052681,
+      "inner_reps_median": 1.0,
+      "invocations": 4,
+      "iqr_ms": [
+        106.99897725,
+        200.5223405
+      ],
+      "iterations_per_invocation": 30,
+      "language": "oxiscript",
+      "load_ms_median": 2.483142,
+      "max_ms": 528.356737,
+      "mean_ms": 161.62128617500002,
+      "median_ms": 120.362735,
+      "min_ms": 95.510851,
+      "n": 20000,
+      "origin": "own",
+      "p95_ms": 336.3934576,
+      "peak_rss_mib_median": 10.10546875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          21.174245206622615,
+          48.30282321312911
+        ],
+        "ratio": 34.51625185709547,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "stdlib",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 63,
+      "workload_title": "Map/Set churn"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 10988,
+      "benchmark": "map_set",
+      "checksum": 2476134049,
+      "ci95_ms": [
+        9.269799,
+        23.8525465
+      ],
+      "cold_first_call_ms_median": 28.885947,
+      "cold_process_ms_median": 148.692653,
+      "compile_ms_first": 7.434481,
+      "compile_ms_median": 6.891476,
+      "cv": 0.7040311769276292,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 3,
+      "iqr_ms": [
+        9.30947875,
+        25.86001025
+      ],
+      "iterations_per_invocation": 30,
+      "language": "oxiscript",
+      "load_ms_median": 116.3261315,
+      "max_ms": 91.076867,
+      "mean_ms": 22.484849766666667,
+      "median_ms": 18.3330345,
+      "min_ms": 8.127835,
+      "n": 20000,
+      "origin": "own",
+      "p95_ms": 54.6763183,
+      "peak_rss_mib_median": 16.17578125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          2.470108267655531,
+          7.269954935802805
+        ],
+        "ratio": 5.257338461998394,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "stdlib",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": 63,
+      "workload_title": "Map/Set churn"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "map_set",
+      "checksum": 2476134049,
+      "ci95_ms": [
+        3.08462875,
+        5.6575525
+      ],
+      "cold_first_call_ms_median": 4.073228500000001,
+      "cold_process_ms_median": 8.3661745,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.5450811886764196,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 3.5,
+      "invocations": 8,
+      "iqr_ms": [
+        3.008567375,
+        5.936625375
+      ],
+      "iterations_per_invocation": 30,
+      "language": "rust",
+      "load_ms_median": 0.0002485,
+      "max_ms": 20.532715,
+      "mean_ms": 4.704405372083323,
+      "median_ms": 3.48713225,
+      "min_ms": 2.798949,
+      "n": 20000,
+      "origin": "own",
+      "p95_ms": 8.739846499999999,
+      "peak_rss_mib_median": 4.080078125,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "stdlib",
+      "warmup_status": "speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "Map/Set churn"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 677,
+      "benchmark": "map_set",
+      "checksum": 2476134049,
+      "ci95_ms": [
+        6.217208,
+        13.35058875
+      ],
+      "cold_first_call_ms_median": 24.482164,
+      "cold_process_ms_median": 88.2320735,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.6998903813766871,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        6.2421035,
+        13.94832325
+      ],
+      "iterations_per_invocation": 10,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 57.086633,
+      "mean_ms": 11.2325224125,
+      "median_ms": 8.23677625,
+      "min_ms": 5.115317,
+      "n": 20000,
+      "origin": "own",
+      "p95_ms": 20.186076149999998,
+      "peak_rss_mib_median": 57.884765625,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.3069051517306596,
+          4.096402366389276
+        ],
+        "ratio": 2.3620487149576848,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "stdlib",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "Map/Set churn"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 5412,
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "ci95_ms": [
+        221.561863,
+        443.00724
+      ],
+      "cold_first_call_ms_median": 274.5489935,
+      "cold_process_ms_median": 279.5118275,
+      "compile_ms_first": 1.652273,
+      "compile_ms_median": 1.4209845,
+      "cv": 0.4788761226903861,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 204150668,
+      "inner_reps_median": 1.0,
+      "invocations": 6,
+      "iqr_ms": [
+        220.4106405,
+        369.3229615
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 0.9286555,
+      "max_ms": 815.085115,
+      "mean_ms": 336.66445541666667,
+      "median_ms": 271.5191805,
+      "min_ms": 181.711813,
+      "n": 12000,
+      "origin": "own",
+      "p95_ms": 683.6350810999999,
+      "peak_rss_mib_median": 14.939453125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          45.72853943825523,
+          129.670291570448
+        ],
+        "ratio": 79.50073565925611,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": 142,
+      "workload_title": "string template"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 5412,
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "ci95_ms": [
+        16.5153115,
+        24.741023
+      ],
+      "cold_first_call_ms_median": 25.5380045,
+      "cold_process_ms_median": 66.1823965,
+      "compile_ms_first": 1.652273,
+      "compile_ms_median": 1.4209845,
+      "cv": 1.1523679206317237,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        16.49418825,
+        24.791503
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 32.6601815,
+      "max_ms": 228.527704,
+      "mean_ms": 29.640277962499997,
+      "median_ms": 18.634563,
+      "min_ms": 15.527695,
+      "n": 12000,
+      "origin": "own",
+      "p95_ms": 74.69497469999997,
+      "peak_rss_mib_median": 21.064453125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          2.9681897871244716,
+          7.239601804114655
+        ],
+        "ratio": 5.456194529096092,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 142,
+      "workload_title": "string template"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "ci95_ms": [
+        3.2869436000000003,
+        6.29221775
+      ],
+      "cold_first_call_ms_median": 3.3740544999999997,
+      "cold_process_ms_median": 6.464924999999999,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 1.307477622314993,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 3.0,
+      "invocations": 8,
+      "iqr_ms": [
+        3.308473125,
+        5.6130695
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.000225,
+      "max_ms": 63.2777535,
+      "mean_ms": 6.339616214999999,
+      "median_ms": 3.415304,
+      "min_ms": 3.221051,
+      "n": 12000,
+      "origin": "own",
+      "p95_ms": 20.045521375,
+      "peak_rss_mib_median": 3.833984375,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "string template"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16568,
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "ci95_ms": [
+        3.756731,
+        9.0196835
+      ],
+      "cold_first_call_ms_median": 10.02115,
+      "cold_process_ms_median": 16.689833,
+      "compile_ms_first": null,
+      "compile_ms_median": 113.542942,
+      "cv": 0.49791345670487974,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 3,
+      "iqr_ms": [
+        3.55168275,
+        8.5958365
+      ],
+      "iterations_per_invocation": 30,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 20.4928935,
+      "mean_ms": 6.7246715111111115,
+      "median_ms": 6.31397925,
+      "min_ms": 3.340813,
+      "n": 12000,
+      "origin": "own",
+      "p95_ms": 12.0974674,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.8829673103215003,
+          2.552430890001891
+        ],
+        "ratio": 1.8487312549629549,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": null,
+      "workload_title": "string template"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 480,
+      "benchmark": "string_template",
+      "checksum": 119536424,
+      "ci95_ms": [
+        6.9273955,
+        13.059307
+      ],
+      "cold_first_call_ms_median": 21.620976,
+      "cold_process_ms_median": 77.96353300000001,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.5157897131135465,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        6.6679375,
+        11.193358875
+      ],
+      "iterations_per_invocation": 14,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 27.716479,
+      "mean_ms": 10.403435459821429,
+      "median_ms": 8.35021425,
+      "min_ms": 5.6743975,
+      "n": 12000,
+      "origin": "own",
+      "p95_ms": 22.703691699999993,
+      "peak_rss_mib_median": 57.908203125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.384153037725426,
+          3.5871568053100122
+        ],
+        "ratio": 2.444940260076409,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "string template"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 6089,
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "ci95_ms": [
+        114.964827,
+        234.187041
+      ],
+      "cold_first_call_ms_median": 175.0658985,
+      "cold_process_ms_median": 182.693867,
+      "compile_ms_first": 2.262014,
+      "compile_ms_median": 2.0230185,
+      "cv": 0.5958332804911027,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 119675338,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        114.157418,
+        234.22578625
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 1.5498425,
+      "max_ms": 780.652243,
+      "mean_ms": 191.363862725,
+      "median_ms": 138.0655005,
+      "min_ms": 101.992894,
+      "n": 6000,
+      "origin": "own",
+      "p95_ms": 403.8003245,
+      "peak_rss_mib_median": 8.6953125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          62.832430703702855,
+          166.79869893373345
+        ],
+        "ratio": 97.02516879201484,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 42,
+      "workload_title": "JSON tokenizer"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 6089,
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "ci95_ms": [
+        7.045263,
+        12.381347
+      ],
+      "cold_first_call_ms_median": 9.8918295,
+      "cold_process_ms_median": 51.3258985,
+      "compile_ms_first": 2.262014,
+      "compile_ms_median": 2.0230185,
+      "cv": 0.5600464583694367,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        7.04539,
+        11.543880625
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 28.9485945,
+      "max_ms": 38.874583,
+      "mean_ms": 10.650224918749998,
+      "median_ms": 7.828829,
+      "min_ms": 6.732131,
+      "n": 6000,
+      "origin": "own",
+      "p95_ms": 21.205812899999987,
+      "peak_rss_mib_median": 14.732421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          3.6692377133559915,
+          8.388088161772194
+        ],
+        "ratio": 5.501689070897337,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 42,
+      "workload_title": "JSON tokenizer"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "ci95_ms": [
+        1.3597971000000002,
+        2.1434329
+      ],
+      "cold_first_call_ms_median": 2.314056,
+      "cold_process_ms_median": 4.587295,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.38603615728641466,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 8.0,
+      "invocations": 8,
+      "iqr_ms": [
+        1.35409605,
+        2.1427207000000004
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.0002485,
+      "max_ms": 4.7119458,
+      "mean_ms": 1.8102219787499993,
+      "median_ms": 1.4229864500000002,
+      "min_ms": 1.3236553999999998,
+      "n": 6000,
+      "origin": "own",
+      "p95_ms": 3.0234781149999996,
+      "peak_rss_mib_median": 4.173828125,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "JSON tokenizer"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16520,
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "ci95_ms": [
+        1.383679,
+        2.98559
+      ],
+      "cold_first_call_ms_median": 2.8849600000000004,
+      "cold_process_ms_median": 5.9525565,
+      "compile_ms_first": null,
+      "compile_ms_median": 147.801237,
+      "cv": 0.45319854364754214,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 8.0,
+      "invocations": 8,
+      "iqr_ms": [
+        1.375921125,
+        2.950966125
+      ],
+      "iterations_per_invocation": 10,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 5.1727032,
+      "mean_ms": 2.3447050312500006,
+      "median_ms": 2.0801217,
+      "min_ms": 1.3114065,
+      "n": 6000,
+      "origin": "own",
+      "p95_ms": 4.866291035,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.8411884452376036,
+          2.1169020590893703
+        ],
+        "ratio": 1.461800075468041,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "JSON tokenizer"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 1641,
+      "benchmark": "json_tokenize",
+      "checksum": 265995841,
+      "ci95_ms": [
+        5.671683,
+        12.884568
+      ],
+      "cold_first_call_ms_median": 32.839202,
+      "cold_process_ms_median": 117.31515999999999,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.7350081842432772,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        5.57185725,
+        12.9608685
+      ],
+      "iterations_per_invocation": 30,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 71.344093,
+      "mean_ms": 10.534527666666666,
+      "median_ms": 6.2299515,
+      "min_ms": 5.228394,
+      "n": 6000,
+      "origin": "own",
+      "p95_ms": 25.254077749999997,
+      "peak_rss_mib_median": 70.830078125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          2.9154263471462065,
+          9.068278359662242
+        ],
+        "ratio": 4.378082096284191,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "JSON tokenizer"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4047,
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "ci95_ms": [
+        99.092797,
+        154.262234
+      ],
+      "cold_first_call_ms_median": 114.252035,
+      "cold_process_ms_median": 118.983513,
+      "compile_ms_first": 1.688488,
+      "compile_ms_median": 1.6220439999999998,
+      "cv": 0.5788849101103422,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 89418873,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        95.41300625,
+        184.40736775
+      ],
+      "iterations_per_invocation": 30,
+      "language": "oxiscript",
+      "load_ms_median": 0.859876,
+      "max_ms": 623.903506,
+      "mean_ms": 152.82800725,
+      "median_ms": 116.8676025,
+      "min_ms": 83.639908,
+      "n": 13,
+      "origin": "own",
+      "p95_ms": 318.0396652499998,
+      "peak_rss_mib_median": 8.16796875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          19.47772386128987,
+          35.73145501744563
+        ],
+        "ratio": 25.378796404727773,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": 33,
+      "workload_title": "tree alloc/walk"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4047,
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "ci95_ms": [
+        8.0705185,
+        14.687168
+      ],
+      "cold_first_call_ms_median": 9.931329000000002,
+      "cold_process_ms_median": 34.4024445,
+      "compile_ms_first": 1.688488,
+      "compile_ms_median": 1.6220439999999998,
+      "cv": 1.6044692425440927,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        8.051242625,
+        13.042357
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 18.8979435,
+      "max_ms": 184.983142,
+      "mean_ms": 18.93561411875,
+      "median_ms": 8.89272775,
+      "min_ms": 7.4462075,
+      "n": 13,
+      "origin": "own",
+      "p95_ms": 54.16249204999991,
+      "peak_rss_mib_median": 14.1484375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          1.5510740702439056,
+          3.271758449079657
+        ],
+        "ratio": 1.9311316585785432,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 33,
+      "workload_title": "tree alloc/walk"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "ci95_ms": [
+        4.05502915,
+        5.5374523
+      ],
+      "cold_first_call_ms_median": 4.5877645000000005,
+      "cold_process_ms_median": 8.791043,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.40294156290581573,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.5,
+      "invocations": 8,
+      "iqr_ms": [
+        3.895710725,
+        6.428210025
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.0002645,
+      "max_ms": 16.34057,
+      "mean_ms": 5.437035155000001,
+      "median_ms": 4.60493085,
+      "min_ms": 3.683283,
+      "n": 13,
+      "origin": "own",
+      "p95_ms": 8.494025749999999,
+      "peak_rss_mib_median": 4.3125,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "tree alloc/walk"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 20632,
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "ci95_ms": [
+        4.258616,
+        9.3394165
+      ],
+      "cold_first_call_ms_median": 7.6290335,
+      "cold_process_ms_median": 9.008619,
+      "compile_ms_first": null,
+      "compile_ms_median": 186.266481,
+      "cv": 0.6400772300691104,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        4.051708425,
+        9.237450375
+      ],
+      "iterations_per_invocation": 10,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 24.151898,
+      "mean_ms": 7.56581216375,
+      "median_ms": 5.20314,
+      "min_ms": 3.8049112999999997,
+      "n": 13,
+      "origin": "own",
+      "p95_ms": 19.131180399999998,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.8243844676530103,
+          2.14952390810361
+        ],
+        "ratio": 1.1299062178099808,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "tree alloc/walk"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 490,
+      "benchmark": "tree",
+      "checksum": 1309755268,
+      "ci95_ms": [
+        4.319141549999999,
+        7.7104683
+      ],
+      "cold_first_call_ms_median": 29.082873499999998,
+      "cold_process_ms_median": 105.869073,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.5619208080458229,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 3.0,
+      "invocations": 8,
+      "iqr_ms": [
+        4.254955275,
+        8.119422125
+      ],
+      "iterations_per_invocation": 10,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 23.021904,
+      "mean_ms": 7.030366115000002,
+      "median_ms": 6.0972904,
+      "min_ms": 2.26336,
+      "n": 13,
+      "origin": "own",
+      "p95_ms": 13.594107025,
+      "peak_rss_mib_median": 73.724609375,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.9112629902436582,
+          1.8077964611403519
+        ],
+        "ratio": 1.3240786015277517,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup",
+      "wasm_pages": null,
+      "workload_title": "tree alloc/walk"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4798,
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "ci95_ms": [
+        111.1365395,
+        206.242478
+      ],
+      "cold_first_call_ms_median": 145.134542,
+      "cold_process_ms_median": 149.7721085,
+      "compile_ms_first": 1.422091,
+      "compile_ms_median": 1.3668985,
+      "cv": 0.6346665147295493,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmi",
+      "excluded_invalid": 0,
+      "fuel": 170694912,
+      "inner_reps_median": 1.0,
+      "invocations": 8,
+      "iqr_ms": [
+        107.0904215,
+        208.36217125
+      ],
+      "iterations_per_invocation": 30,
+      "language": "oxiscript",
+      "load_ms_median": 0.930797,
+      "max_ms": 656.744188,
+      "mean_ms": 183.17618368333333,
+      "median_ms": 130.152616,
+      "min_ms": 91.568291,
+      "n": 100,
+      "origin": "own",
+      "p95_ms": 455.43075164999993,
+      "peak_rss_mib_median": 6.884765625,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          44.10455890160686,
+          142.7352022426674
+        ],
+        "ratio": 80.46202760110454,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 13,
+      "workload_title": "matmul f64"
+    },
+    {
+      "artifact": "wasm",
+      "artifact_bytes": 4798,
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "ci95_ms": [
+        6.438562,
+        8.44468025
+      ],
+      "cold_first_call_ms_median": 7.122118,
+      "cold_process_ms_median": 33.8843865,
+      "compile_ms_first": 1.422091,
+      "compile_ms_median": 1.3668985,
+      "cv": 0.34879109493419874,
+      "digest_ok": true,
+      "engine": "oxiscript-wasmtime",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 2.0,
+      "invocations": 8,
+      "iqr_ms": [
+        6.37984925,
+        9.167143375
+      ],
+      "iterations_per_invocation": 10,
+      "language": "oxiscript",
+      "load_ms_median": 18.674644,
+      "max_ms": 19.094241,
+      "mean_ms": 8.306625799999999,
+      "median_ms": 7.11518,
+      "min_ms": 6.0893215,
+      "n": 100,
+      "origin": "own",
+      "p95_ms": 13.884477849999996,
+      "peak_rss_mib_median": 12.8203125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          2.4110892117377394,
+          6.106731146549049
+        ],
+        "ratio": 4.398696139513838,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": 13,
+      "workload_title": "matmul f64"
+    },
+    {
+      "artifact": null,
+      "artifact_bytes": null,
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "ci95_ms": [
+        1.2780641499999998,
+        2.8038031
+      ],
+      "cold_first_call_ms_median": 1.9307275,
+      "cold_process_ms_median": 6.872726,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 1.1173783570215312,
+      "digest_ok": true,
+      "engine": "rust-native",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 7.5,
+      "invocations": 8,
+      "iqr_ms": [
+        1.274368175,
+        2.91078065
+      ],
+      "iterations_per_invocation": 10,
+      "language": "rust",
+      "load_ms_median": 0.000264,
+      "max_ms": 17.34346,
+      "mean_ms": 2.9595327287499997,
+      "median_ms": 1.6175657,
+      "min_ms": 1.1955284,
+      "n": 100,
+      "origin": "own",
+      "p95_ms": 9.486150599999991,
+      "peak_rss_mib_median": 3.953125,
+      "ratio_vs_rust_native": null,
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "matmul f64"
+    },
+    {
+      "artifact": "executable",
+      "artifact_bytes": 16448,
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "ci95_ms": [
+        1.1092533999999998,
+        2.1716275
+      ],
+      "cold_first_call_ms_median": 1.661076,
+      "cold_process_ms_median": 4.619987999999999,
+      "compile_ms_first": null,
+      "compile_ms_median": 122.875331,
+      "cv": 0.6637706059668326,
+      "digest_ok": true,
+      "engine": "c-gcc",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 10.5,
+      "invocations": 8,
+      "iqr_ms": [
+        1.046822625,
+        2.34595355
+      ],
+      "iterations_per_invocation": 30,
+      "language": "c",
+      "load_ms_median": null,
+      "max_ms": 10.773098300000001,
+      "mean_ms": 2.0273575612499997,
+      "median_ms": 1.6567253,
+      "min_ms": 0.9519536999999999,
+      "n": 100,
+      "origin": "own",
+      "p95_ms": 4.983889640000001,
+      "peak_rss_mib_median": 8.7421875,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          0.4947470125040613,
+          1.5446509161361366
+        ],
+        "ratio": 1.02420897030643,
+        "verdict": "parity / within noise"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "matmul f64"
+    },
+    {
+      "artifact": "source",
+      "artifact_bytes": 604,
+      "benchmark": "matmul",
+      "checksum": 29996421,
+      "ci95_ms": [
+        4.451506,
+        8.731541
+      ],
+      "cold_first_call_ms_median": 29.1460705,
+      "cold_process_ms_median": 129.715484,
+      "compile_ms_first": null,
+      "compile_ms_median": null,
+      "cv": 0.831362954893906,
+      "digest_ok": true,
+      "engine": "js-node",
+      "excluded_invalid": 0,
+      "fuel": null,
+      "inner_reps_median": 3.0,
+      "invocations": 8,
+      "iqr_ms": [
+        4.3336834500000005,
+        9.002191024999998
+      ],
+      "iterations_per_invocation": 10,
+      "language": "javascript",
+      "load_ms_median": null,
+      "max_ms": 44.914551,
+      "mean_ms": 8.436724917500001,
+      "median_ms": 6.426004,
+      "min_ms": 3.3711817,
+      "n": 100,
+      "origin": "own",
+      "p95_ms": 17.272387834999986,
+      "peak_rss_mib_median": 50.6953125,
+      "ratio_vs_rust_native": {
+        "ci95": [
+          2.066236053755207,
+          6.229676783758504
+        ],
+        "ratio": 3.97263863841821,
+        "verdict": "slower"
+      },
+      "runtime_mode": "stub",
+      "track": "base",
+      "warmup_status": "slowdown+speedup+steady",
+      "wasm_pages": null,
+      "workload_title": "matmul f64"
+    }
+  ],
+  "run_id": "2026-11-26-i5-3450",
+  "runtime_mode": "stub",
+  "schema_version": 1
+}

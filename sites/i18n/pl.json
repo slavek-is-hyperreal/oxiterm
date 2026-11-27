@@ -228,17 +228,25 @@
             "x": "Od tekstu do pikseli"
           },
           {
+            "t": "widget",
+            "id": "pipeline"
+          },
+          {
+            "t": "h3",
+            "x": "Jak składa się cały potok"
+          },
+          {
             "t": "ol",
             "items": [
               "Piszesz stronę w THTML (pudełka, tekst, przyciski, pola) i stylizujesz ją w TCSS (kolory, ramki, układ flex, w całych komórkach znakowych).",
-              "Rdzeń ją analizuje, układa i tworzy listę rysowania: wypełnienia, ramki, ścieżki i ustawione ciągi glifów.",
-              "Klient rysuje listę. Klient terminalowy zamienia ją na komórki i sekwencje sterujące, klient przeglądarkowy maluje ją na płótnie, a klient urządzenia będzie rysował na ekranie.",
-              "Kliknięcia i klawisze wracają jako zdarzenia. Akcje wbudowane (`inc:count`, `toggle:open`, `set:tab=a`) wykonuje rdzeń; resztę dostaje Twój serwer aplikacji."
+              "Rdzeń ją analizuje, przechowuje stan, układa i tworzy listę rysowania: wypełnienia, ramki, ścieżki i ustawione ciągi glifów.",
+              "Odbiornik rysuje listę. Odbiornik terminalowy zamienia ją na komórki i sekwencje sterujące przez SSH, przeglądarka maluje ją na płótnie (serwer wysyła różnice komórek lub listę; tryb lokalny uruchamia rdzeń w stronie), odbiornik programowy rysuje do framebuffera lub PNG, odbiornik GPU do PNG, a czytnik ekranu dostaje drzewo tekstowe (`--a11y`) lub lustro ARIA.",
+              "Kliknięcia i klawisze wracają jako zdarzenia. Rdzeń wykonuje akcje wbudowane (`inc:count`, `toggle:open`, `set:tab=a`) na własnym stanie i ładuje strony (`page.thtml`); akcje trafiają też do Twojego serwera aplikacji przez HTTP, który może odpowiedzieć łatkami stanu."
             ]
           },
           {
             "t": "h2",
-            "x": "Trzy miejsca, gdzie działa rdzeń"
+            "x": "Gdzie działa rdzeń"
           },
           {
             "t": "table",
@@ -264,7 +272,12 @@
                 "działa"
               ],
               [
-                "Urządzenie (ESP32, konsola Linux, Android)",
+                "Framebuffer Linuksa (OxiDE)",
+                "Działa tam renderer, a odbiornik programowy rysuje stronę na ekran framebuffer lub DRM (wymaga jawnej zgody); pętla zdarzeń rdzenia jeszcze tam nie działa, więc bez wejścia (7.2b)",
+                "częściowo"
+              ],
+              [
+                "Okno natywne, ekrany ESP32, Android",
                 "Na urządzeniu",
                 "planowane"
               ]
@@ -535,6 +548,65 @@
         "p1": "Ta strona jest zbudowana z THTML i plików multimedialnych (obrazy, animacja Lottie, diagram). Tę samą stronę można serwować przez SSH do terminala poleceniem oxiterm-cli serve, jak poniżej. Na tej stronie przeglądarka uruchamia rdzeń OxiUI lokalnie, jako WebAssembly.",
         "cmd": "oxiterm-cli serve your-page.thtml",
         "p2": "Publiczny serwer SSH jeszcze nie działa. Uruchom go na własnym komputerze."
+      }
+    },
+    "pipeline": {
+      "title": "Droga od strony THTML na ekran",
+      "desc": "Od lewej do prawej: źródło strony trafia do rdzenia (analiza, stan, układ), który tworzy listę rysowania. Odbiorniki zamieniają listę na terminal, płótno w przeglądarce, framebuffer, obraz z GPU albo drzewo tekstowe dla czytników ekranu. Kliknięcia i klawisze wracają do rdzenia jako zdarzenia, a akcje mogą dotrzeć do Twojego serwera aplikacji przez HTTP. Planowane cele narysowano przerywaną linią.",
+      "src": {
+        "t": "Twoja strona",
+        "s": "znaczniki THTML|style TCSS"
+      },
+      "core": {
+        "t": "Rdzeń",
+        "s": "oxiterm-renderer|+ oxiterm-core",
+        "parse": "Analiza|THTML + kaskada TCSS",
+        "state": "Stan i zdarzenia|inc:, dec:, toggle:, set:",
+        "layout": "Układ|flex, całe komórki"
+      },
+      "list": {
+        "t": "Lista rysowania",
+        "s": "wypełnienia, ramki,|ścieżki, ciągi glifów"
+      },
+      "sinks": "Odbiorniki: gdzie wychodzą piksele",
+      "ssh": {
+        "t": "Terminal SSH",
+        "s": "Odbiornik komórek: komórki + sekwencje|sterujące (obrazy Kitty/Sixel, różnica na klatkę)"
+      },
+      "web": {
+        "t": "Płótno w przeglądarce, z serwera",
+        "s": "WebSocket, cienki klient: różnica komórek|lub lista rysowania z ?gui=1"
+      },
+      "local": {
+        "t": "Przeglądarka, lokalnie (Wasm)",
+        "s": "Sam rdzeń działa w stronie (7.1):|lista na płótnie, bez serwera"
+      },
+      "fb": {
+        "t": "Ekran framebuffer (OxiDE)",
+        "s": "Programowy: PNG, /dev/fb0, DRM (za zgodą).|Rysuje stronę; pętli wejścia brak (7.2b)"
+      },
+      "gpu": {
+        "t": "Obraz z GPU (wgpu)",
+        "s": "Bezokienkowy odbiornik GPU do PNG (5.2).|Okno natywne: jeszcze nie (5.3-5.7)"
+      },
+      "sr": {
+        "t": "Czytnik ekranu",
+        "s": "--a11y: liniowy tekst przez SSH.|Przeglądarka GUI i lokalna: lustro ARIA"
+      },
+      "future": {
+        "t": "Planowane",
+        "s": "Okno natywne, ekrany ESP32,|powłoka Android (7.3)"
+      },
+      "app": {
+        "t": "Serwer aplikacji",
+        "s": "dowolny język|przez HTTP"
+      },
+      "appEdge": "akcja tam,|łatka stanu z powrotem",
+      "events": "Zdarzenia: kliknięcia i klawisze",
+      "status": {
+        "done": "działa",
+        "partial": "częściowo",
+        "planned": "planowane"
       }
     }
   },

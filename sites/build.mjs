@@ -239,8 +239,81 @@ function stripBack(src) {
 }
 const pre = (code, lang) => `<pre class="code" data-lang="${lang}" tabindex="0"><code>${esc(code.replace(/\n+$/, ''))}</code></pre>`;
 
+
+// ---------------------------------------------------------------- pipeline diagram (how-it-works)
+/** Inline SVG in two layouts (wide: left to right; tall: top to bottom), toggled by a media query in site.css.d/oxiui.css.
+ * Labels come from i18n oxiui.pipeline.*; "|" in a label starts a new line. No style attributes: classes only (strict CSP).
+ * Each SVG has its own id prefix (dgw / dgt): the page check forbids duplicate ids. */
+function pipelineSvg(lang) {
+  const P = (k) => T(lang, 'oxiui.pipeline.' + k);
+  const lines = (x, y, str, cls, dy, anchor) => '<text class="' + cls + '" text-anchor="' + anchor + '" x="' + x + '" y="' + y + '">' + String(str).split('|').map((l, i) => '<tspan x="' + x + '"' + (i ? ' dy="' + dy + '"' : '') + '>' + esc(l) + '</tspan>').join('') + '</text>';
+  const box = (x, y, w, h, cls) => '<rect class="dg-box ' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8"/>';
+  const edge = (id, d, kind, ends) => '<path class="dg-edge dg-' + kind + '" d="' + d + '"' + (ends.includes('s') ? ' marker-start="url(#' + id + kind + ')"' : '') + (ends.includes('e') ? ' marker-end="url(#' + id + kind + ')"' : '') + '/>';
+  const mk = (id, kind) => '<marker id="' + id + kind + '" class="dg-mk-' + kind + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>';
+  const open = (id, cls, vb) => '<svg class="dg ' + cls + '" viewBox="' + vb + '" role="img" aria-labelledby="' + id + '-t ' + id + '-d" xmlns="http://www.w3.org/2000/svg" focusable="false"><title id="' + id + '-t">' + esc(P('title')) + '</title><desc id="' + id + '-d">' + esc(P('desc')) + '</desc><defs>' + mk(id, 'pat') + mk(id, 'act') + '</defs>';
+  const SINKS = [['ssh', 'done'], ['web', 'done'], ['local', 'done'], ['fb', 'partial'], ['gpu', 'done'], ['sr', 'done'], ['future', 'planned']];
+  const cls = (st) => (st === 'planned' ? 'dg-plan' : st === 'partial' ? 'dg-part' : 'dg-pat');
+  const tag = (x, y, st, anchor) => '<text class="dg-tag dg-tag-' + st + '" text-anchor="' + anchor + '" x="' + x + '" y="' + y + '">' + esc((st === 'planned' ? '○ ' : st === 'partial' ? '◑ ' : '● ') + P('status.' + st)) + '</text>';
+
+  // ---------------- wide
+  const W = 'dgw';
+  const INTERACTIVE = [0, 1, 2, 5]; // sinks with an input path back to the core (SSH, browser x2, ARIA mirror clicks)
+  let w = open(W, 'dg-wide', '0 0 1030 600');
+  w += box(8, 190, 140, 90, 'dg-pat') + lines(78, 228, P('src.t'), 'dg-t', 16, 'middle') + lines(78, 250, P('src.s'), 'dg-s', 15, 'middle');
+  w += box(196, 30, 190, 420, 'dg-pat dg-core') + lines(291, 54, P('core.t'), 'dg-t', 16, 'middle') + lines(291, 72, P('core.s'), 'dg-s', 14, 'middle');
+  [['parse', 100], ['state', 214], ['layout', 328]].forEach(([k, y]) => { w += '<rect class="dg-sub" x="212" y="' + y + '" width="158" height="92" rx="6"/>' + lines(291, y + 38, P('core.' + k), 'dg-s2', 18, 'middle'); });
+  w += edge(W, 'M291 192 V214', 'pat', 'e') + edge(W, 'M291 306 V328', 'pat', 'e');
+  w += box(420, 150, 150, 150, 'dg-pat dg-list') + lines(495, 190, P('list.t'), 'dg-t', 16, 'middle') + lines(495, 222, P('list.s'), 'dg-s', 16, 'middle');
+  w += edge(W, 'M148 235 H196', 'pat', 'e') + edge(W, 'M386 235 H420', 'pat', 'e');
+  const RY = (i) => 28 + i * 70; // sink box top
+  w += '<text class="dg-cap" x="612" y="16">' + esc(P('sinks')) + '</text>';
+  w += edge(W, 'M570 225 H592 M592 ' + (RY(0) + 31) + ' V' + (RY(6) + 31), 'pat', '');
+  SINKS.forEach(([k, st], i) => {
+    const y = RY(i);
+    w += box(612, y, 380, 62, cls(st)) + lines(624, y + 23, P(k + '.t'), 'dg-t', 16, 'start') + lines(624, y + 42, P(k + '.s'), 'dg-s', 14, 'start') + tag(980, y + 23, st, 'end');
+    w += edge(W, 'M592 ' + (y + 31) + ' H612', 'pat', 'e');
+  });
+  // events: stubs from the interactive sinks join one spine, which runs under the sinks back to the core
+  w += edge(W, 'M1014 ' + (RY(0) + 31) + ' V560 H330 V450', 'act', 'e');
+  INTERACTIVE.forEach((i) => { w += edge(W, 'M992 ' + (RY(i) + 31) + ' H1014', 'act', ''); });
+  w += lines(672, 552, P('events'), 'dg-lbl', 15, 'middle');
+  w += box(8, 330, 150, 80, 'dg-act dg-app') + lines(83, 362, P('app.t'), 'dg-t', 16, 'middle') + lines(83, 384, P('app.s'), 'dg-s', 15, 'middle');
+  w += edge(W, 'M158 370 H196', 'act', 'se');
+  w += lines(83, 436, P('appEdge'), 'dg-lbl', 15, 'middle');
+  w += '</svg>';
+
+  // ---------------- tall
+  const Tn = 'dgt';
+  let t = open(Tn, 'dg-tall', '0 0 360 1200');
+  t += box(8, 8, 150, 76, 'dg-pat') + lines(83, 36, P('src.t'), 'dg-t', 16, 'middle') + lines(83, 56, P('src.s'), 'dg-s', 15, 'middle');
+  t += box(202, 8, 150, 76, 'dg-act dg-app') + lines(277, 36, P('app.t'), 'dg-t', 16, 'middle') + lines(277, 56, P('app.s'), 'dg-s', 15, 'middle');
+  t += edge(Tn, 'M83 84 V140', 'pat', 'e') + edge(Tn, 'M277 84 V140', 'act', 'se');
+  t += lines(266, 106, P('appEdge'), 'dg-lbl', 14, 'end') + '<g transform="translate(0 20)">';
+  t += box(30, 120, 306, 216, 'dg-pat dg-core') + lines(183, 142, P('core.t'), 'dg-t', 16, 'middle') + lines(183, 158, P('core.s').replace('|', ' '), 'dg-s', 14, 'middle');
+  [['parse', 170], ['state', 216], ['layout', 262]].forEach(([k, y]) => { t += '<rect class="dg-sub" x="46" y="' + y + '" width="274" height="40" rx="6"/>' + lines(183, y + 17, P('core.' + k), 'dg-s2', 14, 'middle'); });
+  t += lines(183, 326, P('events'), 'dg-lbl', 15, 'middle');
+  t += edge(Tn, 'M183 336 V366', 'pat', 'e');
+  t += box(30, 366, 306, 64, 'dg-pat dg-list') + lines(183, 392, P('list.t'), 'dg-t', 16, 'middle') + lines(183, 412, P('list.s').replace('|', ' '), 'dg-s', 15, 'middle');
+  t += '<text class="dg-cap" x="30" y="452">' + esc(P('sinks')) + '</text>';
+  const TY = (i) => 474 + i * 100;
+  t += edge(Tn, 'M30 398 H14 V' + (TY(6) + 46), 'pat', '');
+  SINKS.forEach(([k, st], i) => {
+    const y = TY(i);
+    t += box(30, y, 306, 92, cls(st)) + lines(42, y + 22, P(k + '.t'), 'dg-t', 16, 'start') + lines(42, y + 42, P(k + '.s'), 'dg-s', 15, 'start') + tag(42, y + 80, st, 'start');
+    t += edge(Tn, 'M14 ' + (y + 46) + ' H30', 'pat', 'e');
+  });
+  // events: stubs from the interactive sinks join a spine on the right that climbs to the core
+  t += edge(Tn, 'M350 ' + (TY(5) + 46) + ' V236 H336', 'act', 'e');
+  INTERACTIVE.forEach((i) => { t += edge(Tn, 'M336 ' + (TY(i) + 46) + ' H350', 'act', ''); });
+  t += '</g></svg>';
+  return '<figure class="pipeline">' + w + t + '</figure>';
+}
+
 // ---------------------------------------------------------------- HTML blocks
-const LATIN_WIDGETS = new Set(['dedication', 'latinnote']); // hidden while Latin is unpublished
+const LATIN_WIDGETS = new Set(['latinnote']); // hidden while Latin is unpublished
+// Owner 2026-11-26: no Latin site for now; only the in memoriam dedication stays, shown once the owner
+// has written its text and name (placeholders start with '[' and keep it hidden).
+const dedicationReady = (lang) => !T(lang, 'home.dedication.text').startsWith('[') && !T(lang, 'home.dedication.name').startsWith('[');
 function renderBlock(site, lang, b, ctx) {
   const I = (s) => inline(site, lang, s);
   switch (b.t) {
@@ -257,7 +330,7 @@ function renderBlock(site, lang, b, ctx) {
       return `<div class="compare"><figure><figcaption>TypeScript</figcaption>${pre(readTs(b.cmp), 'ts')}</figure><figure><figcaption>OxiScript</figcaption>${pre(readExample(b.cmp), 'oxs')}</figure></div>`;
     case 'links':
       return `<p class="links">${b.items.map((i) => { const u = resolveLink(site, lang, i.href); return `<a class="btn${i.primary ? ' primary' : ''}" href="${esc(u)}"${isExternal(u) ? ' rel="noopener"' : ''}>${esc(i.label)}</a>`; }).join(' ')}</p>`;
-    case 'widget': return LATIN_WIDGETS.has(b.id) && !LATIN_ON ? '' : widget(site, lang, b.id, b, ctx);
+    case 'widget': return (LATIN_WIDGETS.has(b.id) && !LATIN_ON) || (b.id === 'dedication' && !dedicationReady(lang)) ? '' : widget(site, lang, b.id, b, ctx);
     default: throw new Error(`unknown block type ${b.t}`);
   }
 }
@@ -286,6 +359,7 @@ function widget(site, lang, id, b, ctx) {
     case 'gallery':
       return GALLERY.map((g) => `<article class="card gallery-item" id="ex-${g}"><h3>${esc(T(lang, `oxiui.gallery.${g}.title`))}</h3><p>${esc(T(lang, `oxiui.gallery.${g}.desc`))}</p>${iframeStarter(site, lang, `demos/${g}.thtml`, `oxiui.gallery.${g}.title`)}<details><summary>${esc(T(lang, 'common.showSource'))}</summary>${pre(demoSource(g), 'thtml')}</details></article>`).join('');
     case 'roadmap': return roadmapHtml(site, lang);
+    case 'pipeline': return pipelineSvg(lang);
     case 'projectcards':
       return `<div class="cards">${['oxiui', 'oxiscript'].map((s) => `<article class="card project project-${s}"><h3><a href="${ORIGIN[s]}${pagePath(lang, 'index')}">${esc(T(lang, `common.sites.${s}`))}</a></h3><p>${esc(T(lang, `home.cards.${s}.text`))}</p><p class="links"><a class="btn primary" href="${ORIGIN[s]}${pagePath(lang, 'index')}">${esc(T(lang, `home.cards.${s}.cta`))}</a></p></article>`).join('')}<article class="card project project-next"><h3>${esc(T(lang, 'home.cards.next.title'))}</h3><p>${esc(T(lang, 'home.cards.next.text'))}</p></article></div>`;
     case 'latinnote': return `<p class="note latin-note">${esc(T(lang, 'home.latinNote'))}</p>`;
@@ -482,7 +556,7 @@ ${sc ? sc.css : ''}</style>
           btn(i.label, u.startsWith('/') ? `open:${ORIGIN[site]}${u}` : `open:${u}`);
         }
         break;
-      case 'widget': if (!(LATIN_WIDGETS.has(b.id) && !LATIN_ON)) thtmlWidget(b.id); break;
+      case 'widget': if (!(LATIN_WIDGETS.has(b.id) && !LATIN_ON) && !(b.id === 'dedication' && !dedicationReady(lang))) thtmlWidget(b.id); break;
     }
   }
   function thtmlWidget(wid) {
@@ -499,6 +573,7 @@ ${sc ? sc.css : ''}</style>
       case 'projectcards':
         for (const s of ['oxiui', 'oxiscript']) { textL('h2', t(`common.sites.${s}`)); textL('p', t(`home.cards.${s}.text`)); btn(t(`home.cards.${s}.cta`), `open:${ORIGIN[s]}${pagePath(lang, 'index')}`); }
         break;
+      case 'pipeline': break; // the numbered list and the table that follow are the text version
       case 'latinnote': textL('dim', t('home.latinNote')); break;
       case 'dedication':
         textL('h2', t('home.dedication.title')); textL('p', t('home.dedication.text')); textL('p', t('home.dedication.name')); textL('dim', t('home.dedication.note'));

@@ -228,17 +228,25 @@
             "x": "From text to pixels"
           },
           {
+            "t": "widget",
+            "id": "pipeline"
+          },
+          {
+            "t": "h3",
+            "x": "How the pipeline fits together"
+          },
+          {
             "t": "ol",
             "items": [
               "You write a page in THTML (boxes, text, buttons, inputs) and style it with TCSS (colours, borders, flex layout, in whole character cells).",
-              "The core parses it, lays it out and produces a display list: fills, borders, paths and positioned glyph runs.",
-              "A client draws the list. A terminal client turns it into cells and escape codes, a browser client paints it on a canvas, and a device client will draw it to a screen.",
-              "Clicks and keys come back as events. Built-in actions (`inc:count`, `toggle:open`, `set:tab=a`) run in the core; anything else goes to your own App Server."
+              "The core parses it, keeps the state, lays it out and produces a display list: fills, borders, paths and positioned glyph runs.",
+              "A sink draws the list. The terminal sink turns it into cells and escape codes over SSH, the browser paints it on a canvas (the server sends cell diffs or the list; local mode runs the core in the page), the software sink draws it to a framebuffer or PNG, the GPU sink to a PNG, and a screen reader gets a text tree (`--a11y`) or an ARIA mirror.",
+              "Clicks and keys come back as events. The core runs built-in actions (`inc:count`, `toggle:open`, `set:tab=a`) on its own state and loads pages (`page.thtml`); actions are also sent to your App Server over HTTP, which can answer with state patches."
             ]
           },
           {
             "t": "h2",
-            "x": "Three places to run the core"
+            "x": "Where the core runs"
           },
           {
             "t": "table",
@@ -264,7 +272,12 @@
                 "works"
               ],
               [
-                "Device (ESP32, Linux console, Android)",
+                "Linux framebuffer (OxiDE)",
+                "The renderer runs there and a software sink draws the page to a framebuffer or DRM screen (explicit opt-in); the core event loop does not run there yet, so no input (7.2b)",
+                "partly"
+              ],
+              [
+                "Native window, ESP32 screens, Android",
                 "On the device",
                 "planned"
               ]
@@ -535,6 +548,65 @@
         "p1": "This page is built from THTML plus its media files (images, a Lottie animation, a diagram). The same page can be served over SSH to a terminal with oxiterm-cli serve, as in the command below. On this website the browser runs the OxiUI core locally, as WebAssembly.",
         "cmd": "oxiterm-cli serve your-page.thtml",
         "p2": "No public SSH server is running yet. Run it on your own machine."
+      }
+    },
+    "pipeline": {
+      "title": "Pipeline from a THTML page to the screen",
+      "desc": "Left to right: the page source goes into the core (parse, state, layout), which makes a display list. Sinks turn the list into a terminal, a browser canvas, a framebuffer, a GPU image or a text tree for screen readers. Clicks and keys come back to the core as events, and actions can reach your App Server over HTTP. Planned targets are drawn dashed.",
+      "src": {
+        "t": "Your page",
+        "s": "THTML markup|TCSS styles"
+      },
+      "core": {
+        "t": "Core",
+        "s": "oxiterm-renderer|+ oxiterm-core",
+        "parse": "Parse|THTML + TCSS cascade",
+        "state": "State and events|inc:, dec:, toggle:, set:",
+        "layout": "Layout|flex, whole cells"
+      },
+      "list": {
+        "t": "Display list",
+        "s": "fills, borders, paths,|positioned glyph runs"
+      },
+      "sinks": "Sinks: where the pixels come out",
+      "ssh": {
+        "t": "SSH terminal",
+        "s": "Cell sink: cells + escape codes|(Kitty/Sixel images, diff per frame)"
+      },
+      "web": {
+        "t": "Browser canvas, server-driven",
+        "s": "WebSocket to a thin client: cell diff,|or the display list with ?gui=1"
+      },
+      "local": {
+        "t": "Browser, local (WebAssembly)",
+        "s": "The core itself runs in the page (7.1):|display list on a canvas, no server"
+      },
+      "fb": {
+        "t": "Framebuffer screen (OxiDE)",
+        "s": "Software sink: PNG, /dev/fb0, DRM (opt-in).|Draws a page; no input loop yet (7.2b)"
+      },
+      "gpu": {
+        "t": "GPU image (wgpu)",
+        "s": "Headless GPU sink to PNG (5.2).|Native window: not yet (5.3-5.7)"
+      },
+      "sr": {
+        "t": "Screen reader",
+        "s": "--a11y: linear text over SSH.|GUI and local browser: ARIA mirror"
+      },
+      "future": {
+        "t": "Planned",
+        "s": "Native window, ESP32 screens,|Android shell (7.3)"
+      },
+      "app": {
+        "t": "Your App Server",
+        "s": "any language|over HTTP"
+      },
+      "appEdge": "action out,|state patch back",
+      "events": "Events: clicks and keys",
+      "status": {
+        "done": "works",
+        "partial": "partly",
+        "planned": "planned"
       }
     }
   },
