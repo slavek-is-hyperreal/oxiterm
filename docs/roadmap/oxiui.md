@@ -143,6 +143,7 @@ Renamed ids (old -> new): oxi-ui-plan-history.md "Phase 5 stages 5.2-5.7" keep t
 | U.Idle | todo | — |
 | U.S1 | todo, blocked on 8.S1 and 8.M-link | — |
 | U.Rive | in progress (branch gemini-rive) | — |
+| U.Mix | todo | — |
 | U.Quirks | todo | — |
 | U.Cpu | todo | — |
 | U.Damage | conditional on 8.Mem | — |
@@ -273,6 +274,14 @@ Done stages are in section 3 (same convention: id in the first cell, `date, hash
 - **Security invariants (owner: the streamed version is meant for sensitive uses such as logins and banking, where the client knows no logic):** (1) animation messages carry only values that will be visible anyway, never logic, rules or hidden state; (2) the server stays the only source of truth and accepts nothing from the client about animations; (3) hit-testing during an animation is decided by the server from the deterministic timeline, never from the client's view; (4) a page/server **strict mode** disables client-side animation completely (server-ticked or no animation), also honouring reduced-motion.
 - Gate: 60 fps on the GUI client under an injected 100 ms network delay with jitter; final frame identical to the server (test); interrupting mid-way changes direction without a jump; strict mode sends no animation messages (test); BAD ACTOR (Opus) attacks the client parser (malformed/huge descriptions) and checks that no animation message reveals anything not on screen.
 - Depends: [O-25](#o-25) (GUI default, decided 2026-11-27) and the gemini-oxiui merge. Status: todo.
+
+<a id="s-u-mix"></a>
+#### U.Mix Mixed server-rendered and browser-rendered pages (owner 2026-11-27)
+- Today `OXITERM_LOCAL_MODE=1` ships every page and script of the app to the browser (8.S1 BAD ACTOR note N-2). Owner ([D-40](oxiscript.md#d-40)): one app must be able to mix pages rendered on the server (streamed: login, payments, anything whose logic must stay secret) with pages rendered in the browser (local mode), and moving between them keeps the session.
+- Scope: per-page mode (`<page render="server|local">` or app config; default server, the server decides as in [O-25](#o-25)); `pages.json` bundles only local pages and their scripts; navigation from a local page to a server page switches the client to the streamed connection on the same session and back; the state a local page may send up and receive is limited to its `state-keys` (D-40); App Server pushes reach a local page through the server.
+- Security: every user-server-user message is encrypted (TLS/WSS only; local mode refuses plain HTTP except on localhost), bound to the session and checked by the server (the server never trusts a value from a local page more than a form input); a server-only page's markup, scripts and state never appear in anything sent to the browser before the user is on it, and then only as cells/display list.
+- Gate: a demo app with a local catalogue page and a server-only checkout page; tests that `pages.json` and every frame before navigation contain nothing of the server page; switching both ways keeps the session and the shared keys; a plain-HTTP local-mode request is refused; BAD ACTOR (Opus) on mode switching, replayed or forged state from a local page, and cross-session leaks.
+- Depends: 8.S1 (merged), 8.S1b `host:app`. Status: todo.
 
 <a id="s-u-rive"></a>
 #### U.Rive Real Rive playback (owner 2026-11-27)
